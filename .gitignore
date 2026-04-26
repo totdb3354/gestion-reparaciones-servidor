@@ -1,0 +1,14 @@
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credenciales — nunca subir al repo
+application-prod.properties
