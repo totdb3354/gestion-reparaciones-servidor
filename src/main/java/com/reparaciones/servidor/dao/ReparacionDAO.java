@@ -62,7 +62,7 @@ public class ReparacionDAO {
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1" +
-            " WHERE r.ID_REP LIKE 'A%'";
+            " WHERE r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
@@ -243,6 +243,8 @@ public class ReparacionDAO {
     public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion) {
         ensureTelefono(imei);
+        boolean creoReparacion = false;
+        Set<Integer> idComsUsados = new java.util.HashSet<>();
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId("R");
@@ -259,12 +261,28 @@ public class ReparacionDAO {
                     jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?",
                             fila.cantidad, fila.idCom);
                 }
+                creoReparacion = true;
+                idComsUsados.add(fila.idCom);
             } else if (idAsignacion != null) {
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
                         " VALUES (?,?,1,?,'PENDIENTE',?)",
                         idAsignacion, fila.idCom, fila.descripcionSolicitud, fila.cantidad);
+            }
+        }
+        if (idAsignacion != null && creoReparacion) {
+            // Solicitudes bloqueantes: PENDIENTE cuyo idCom no fue usado en esta llamada.
+            // Solicitudes de componente ya usado (o warnings acompañantes) no bloquean el cierre.
+            List<Integer> pendientes = jdbc.query(
+                    "SELECT COALESCE(ID_COM, 0) FROM Reparacion_componente" +
+                    " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'",
+                    (rs, row) -> rs.getInt(1), idAsignacion);
+            long bloqueantes = pendientes.stream()
+                    .filter(idCom -> idCom == 0 || !idComsUsados.contains(idCom))
+                    .count();
+            if (bloqueantes == 0) {
+                jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAsignacion);
             }
         }
     }
