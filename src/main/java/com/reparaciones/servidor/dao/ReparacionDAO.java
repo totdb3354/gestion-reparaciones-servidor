@@ -55,7 +55,7 @@ public class ReparacionDAO {
             "SELECT r.ID_REP, r.IMEI, t.NOMBRE AS NOMBRE_TEC," +
             " r.FECHA_ASIG, r.FECHA_FIN," +
             " NULL AS TIPO_COM, NULL AS OBSERVACIONES," +
-            " 0 AS ES_INCIDENCIA, 0 AS ES_RESUELTO, NULL AS INCIDENCIA," +
+            " (CASE WHEN r.ID_REP_ANTERIOR IS NOT NULL THEN 1 ELSE 0 END) AS ES_INCIDENCIA, 0 AS ES_RESUELTO, NULL AS INCIDENCIA," +
             " r.ID_REP_ANTERIOR, r.ID_TEC," +
             " COUNT(rc.ID_RC) AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " r.UPDATED_AT" +
@@ -110,16 +110,19 @@ public class ReparacionDAO {
                 "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ?", Integer.class, imei);
     }
 
+    private static final String ORDER_HISTORIAL =
+            " ORDER BY r.FECHA_ASIG DESC, CAST(SUBSTRING_INDEX(r.ID_REP,'_',-1) AS UNSIGNED) DESC";
+
     public List<ReparacionResumen> getHistorial(Integer idTecFilter) {
         if (idTecFilter != null) {
-            return jdbc.query(HISTORIAL_SELECT + " AND r.ID_TEC = ? ORDER BY r.ID_REP DESC",
+            return jdbc.query(HISTORIAL_SELECT + " AND r.ID_TEC = ?" + ORDER_HISTORIAL,
                     RESUMEN_MAPPER, idTecFilter);
         }
-        return jdbc.query(HISTORIAL_SELECT + " ORDER BY r.ID_REP DESC", RESUMEN_MAPPER);
+        return jdbc.query(HISTORIAL_SELECT + ORDER_HISTORIAL, RESUMEN_MAPPER);
     }
 
     public List<ReparacionResumen> getHistorialPorImei(String imei) {
-        return jdbc.query(HISTORIAL_SELECT + " AND r.IMEI = ? ORDER BY r.ID_REP DESC",
+        return jdbc.query(HISTORIAL_SELECT + " AND r.IMEI = ?" + ORDER_HISTORIAL,
                 RESUMEN_MAPPER, imei);
     }
 
@@ -283,6 +286,16 @@ public class ReparacionDAO {
                     .count();
             if (bloqueantes == 0) {
                 jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAsignacion);
+                List<String> prevs = jdbc.query(
+                        "SELECT ID_REP_ANTERIOR FROM Reparacion" +
+                        " WHERE ID_REP = ? AND ID_REP_ANTERIOR IS NOT NULL",
+                        (rs, row) -> rs.getString(1), idAsignacion);
+                if (!prevs.isEmpty()) {
+                    jdbc.update(
+                            "UPDATE Reparacion_componente SET ES_RESUELTO = 1" +
+                            " WHERE ID_REP = ? AND ES_INCIDENCIA = 1 AND ES_RESUELTO = 0",
+                            prevs.get(0));
+                }
             }
         }
     }
@@ -333,8 +346,8 @@ public class ReparacionDAO {
                 comentario, idRep);
         ensureTelefono(imei);
         String idAsig = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG) VALUES (?,?,?,NOW())",
-                idAsig, imei, idTec);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG) VALUES (?,?,?,?,NOW())",
+                idAsig, imei, idTec, idRep);
     }
 
     @Transactional
@@ -374,6 +387,29 @@ public class ReparacionDAO {
                 idRep);
         String imei = jdbc.queryForObject(
                 "SELECT IMEI FROM Reparacion WHERE ID_REP = ?", String.class, idRep);
+
+        // Si esta R* resolvía una incidencia y no quedan otras que la resuelvan, revertir
+        List<String> prevs = jdbc.query(
+                "SELECT ID_REP_ANTERIOR FROM Reparacion WHERE ID_REP = ? AND ID_REP_ANTERIOR IS NOT NULL",
+                (rs, row) -> rs.getString(1), idRep);
+        if (!prevs.isEmpty()) {
+            String idRepOrig = prevs.get(0);
+            Integer restantes = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP_ANTERIOR = ? AND ID_REP LIKE 'R%' AND ID_REP != ?",
+                    Integer.class, idRepOrig, idRep);
+            if (restantes != null && restantes == 0) {
+                jdbc.update(
+                        "UPDATE Reparacion_componente SET ES_RESUELTO = 0" +
+                        " WHERE ID_REP = ? AND ES_INCIDENCIA = 1",
+                        idRepOrig);
+                // Reabrir la A* si existe cerrada
+                jdbc.update(
+                        "UPDATE Reparacion SET FECHA_FIN = NULL" +
+                        " WHERE ID_REP_ANTERIOR = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NOT NULL",
+                        idRepOrig);
+            }
+        }
+
         for (RcRow rc : rows) {
             if (!rc.esReutilizado() && rc.idCom() > 0) {
                 jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",

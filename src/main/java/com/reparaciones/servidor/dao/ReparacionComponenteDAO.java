@@ -135,10 +135,18 @@ public class ReparacionComponenteDAO {
                 comentario, idRep);
     }
 
+    @Transactional
     public void borrarIncidencia(String idRep) {
         jdbc.update(
                 "UPDATE Reparacion_componente SET ES_INCIDENCIA = 0, INCIDENCIA = NULL WHERE ID_REP = ?",
                 idRep);
+        List<String> asigs = jdbc.query(
+                "SELECT ID_REP FROM Reparacion WHERE ID_REP_ANTERIOR = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
+                (rs, row) -> rs.getString(1), idRep);
+        for (String idAsig : asigs) {
+            jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ?", idAsig);
+            jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idAsig);
+        }
     }
 
     public void actualizarEstadoSolicitud(int idRc, String estado) {
