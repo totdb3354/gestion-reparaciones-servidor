@@ -115,9 +115,12 @@ public class CompraComponenteDAO {
     public void recibirResto(int idCompra, int cantidadExtra, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
+        int nuevaRecibida = (row.cantidadRecibida() != null ? row.cantidadRecibida() : 0) + cantidadExtra;
+        boolean completo = nuevaRecibida >= row.cantidad();
         jdbc.update(
                 "UPDATE Compra_componente" +
                 " SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ?" +
+                (completo ? ", ESTADO = 'recibido'" : "") +
                 " WHERE ID_COMPRA=?",
                 cantidadExtra, idCompra);
         jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
