@@ -23,6 +23,7 @@ public class TipoCambioDAO {
 
     public TipoCambioDAO(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        // followRedirects: Frankfurter redirige HTTP→HTTPS; sin esto la petición falla con respuesta vacía
         this.httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).build();
         this.objectMapper = new ObjectMapper();
     }
@@ -54,7 +55,7 @@ public class TipoCambioDAO {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(10))
-                    .header("User-Agent", "gestion-reparaciones/1.0")
+                    .header("User-Agent", "gestion-reparaciones/1.0") // algunas APIs rechazan peticiones sin User-Agent
                     .header("Accept", "application/json")
                     .GET()
                     .build();
@@ -62,6 +63,7 @@ public class TipoCambioDAO {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             String body = response.body();
 
+            // Validaciones explícitas: antes se lanzaba NullPointerException sin contexto
             if (body == null || body.isEmpty()) {
                 throw new RuntimeException("Frankfurter respuesta vacia (status " + response.statusCode() + ")");
             }
