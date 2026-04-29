@@ -18,12 +18,12 @@ import java.util.List;
 public class TipoCambioDAO {
 
     private final JdbcTemplate jdbc;
-    private final HttpClient   httpClient;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
     public TipoCambioDAO(JdbcTemplate jdbc) {
-        this.jdbc         = jdbc;
-        this.httpClient   = HttpClient.newHttpClient();
+        this.jdbc = jdbc;
+        this.httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.ALWAYS).build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -31,7 +31,6 @@ public class TipoCambioDAO {
         if ("EUR".equalsIgnoreCase(divisa)) return 1.0;
 
         LocalDate today = LocalDate.now();
-
         List<Double> cached = jdbc.query(
                 "SELECT TASA FROM TipoCambio WHERE DIVISA = ? AND FECHA = ?",
                 (rs, row) -> rs.getDouble("TASA"),
@@ -55,13 +54,30 @@ public class TipoCambioDAO {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(10))
+                    .header("User-Agent", "gestion-reparaciones/1.0")
+                    .header("Accept", "application/json")
                     .GET()
                     .build();
+
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            JsonNode root = objectMapper.readTree(response.body());
-            return root.get("rates").get(divisa).asDouble();
+            String body = response.body();
+
+            if (body == null || body.isEmpty()) {
+                throw new RuntimeException("Frankfurter respuesta vacia (status " + response.statusCode() + ")");
+            }
+
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode rates = root.get("rates");
+            if (rates == null) {
+                throw new RuntimeException("No hay 'rates' en respuesta: " + body);
+            }
+            JsonNode value = rates.get(divisa);
+            if (value == null) {
+                throw new RuntimeException("Divisa " + divisa + " no encontrada: " + body);
+            }
+            return value.asDouble();
         } catch (Exception e) {
-            throw new RuntimeException("Error llamando a Frankfurter API: " + e.getMessage(), e);
+            throw new RuntimeException("Error Frankfurter API: " + e.getMessage(), e);
         }
     }
 }
