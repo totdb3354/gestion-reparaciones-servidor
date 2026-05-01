@@ -1,0 +1,63 @@
+package com.reparaciones.servidor.model;
+
+import java.time.LocalDateTime;
+
+public class ReparacionResumen {
+    private String        idRep;
+    private String        imei;
+    private String        nombreTecnico;
+    private LocalDateTime fechaAsig;
+    private LocalDateTime fechaFin;
+    private String        tipoComponente;
+    private String        observaciones;
+    private boolean       esIncidencia;
+    private boolean       esResuelto;
+    private String        incidencia;
+    private String        idRepAnterior;
+    private int           idTec;
+    private int           esSolicitud;
+    private String        descripcionSolicitud;
+    private LocalDateTime updatedAt;
+
+    public ReparacionResumen() {}
+
+    public ReparacionResumen(String idRep, String imei, String nombreTecnico,
+                              LocalDateTime fechaAsig, LocalDateTime fechaFin,
+                              String tipoComponente, String observaciones,
+                              boolean esIncidencia, boolean esResuelto,
+                              String incidencia, String idRepAnterior, int idTec,
+                              int esSolicitud, String descripcionSolicitud,
+                              LocalDateTime updatedAt) {
+        this.idRep                = idRep;
+        this.imei                 = imei;
+        this.nombreTecnico        = nombreTecnico;
+        this.fechaAsig            = fechaAsig;
+        this.fechaFin             = fechaFin;
+        this.tipoComponente       = tipoComponente;
+        this.observaciones        = observaciones;
+        this.esIncidencia         = esIncidencia;
+        this.esResuelto           = esResuelto;
+        this.incidencia           = incidencia;
+        this.idRepAnterior        = idRepAnterior;
+        this.idTec                = idTec;
+        this.esSolicitud          = esSolicitud;
+        this.descripcionSolicitud = descripcionSolicitud;
+        this.updatedAt            = updatedAt;
+    }
+
+    public String        getIdRep()                { return idRep; }
+    public String        getImei()                 { return imei; }
+    public String        getNombreTecnico()        { return nombreTecnico; }
+    public LocalDateTime getFechaAsig()            { return fechaAsig; }
+    public LocalDateTime getFechaFin()             { return fechaFin; }
+    public String        getTipoComponente()       { return tipoComponente; }
+    public String        getObservaciones()        { return observaciones; }
+    public boolean       isEsIncidencia()          { return esIncidencia; }
+    public boolean       isEsResuelto()            { return esResuelto; }
+    public String        getIncidencia()           { return incidencia; }
+    public String        getIdRepAnterior()        { return idRepAnterior; }
+    public int           getIdTec()                { return idTec; }
+    public int           getEsSolicitud()          { return esSolicitud; }
+    public String        getDescripcionSolicitud() { return descripcionSolicitud; }
+    public LocalDateTime getUpdatedAt()            { return updatedAt; }
+}
