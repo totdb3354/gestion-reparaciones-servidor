@@ -174,7 +174,7 @@ public class ReparacionDAO {
                 "SELECT DISTINCT rc.ID_COM FROM Reparacion r" +
                 " JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
                 " WHERE r.IMEI = ? AND r.ID_REP LIKE 'R%' AND r.ID_REP != ?" +
-                " AND rc.ES_REUTILIZADO = 0 AND rc.ID_COM IS NOT NULL",
+                " AND rc.ID_COM IS NOT NULL",
                 (rs, row) -> rs.getInt(1), imei, idRepExcluir);
         return new HashSet<>(list);
     }
