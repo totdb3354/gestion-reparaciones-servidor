@@ -151,7 +151,7 @@ public class ReparacionController {
     @PutMapping("/{idRep}")
     public void editarReparacion(@PathVariable String idRep, @RequestBody EditarRequest req) {
         dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
-                req.observacionNueva(), req.nNuevas());
+                req.observacionNueva(), req.nNuevas(), req.updatedAt());
     }
 
     @PostMapping("/{idRep}/incidencia")
@@ -188,6 +188,7 @@ public class ReparacionController {
                                            String idRepAnterior, String idAsignacion) {}
     private record TecnicoRequest(int idTec, LocalDateTime updatedAt) {}
     private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
-                                 String observacionNueva, int nNuevas) {}
+                                 String observacionNueva, int nNuevas,
+                                 LocalDateTime updatedAt) {}
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
 }

@@ -145,11 +145,12 @@ public class ReparacionDAO {
     }
 
     public record DetalleEdicion(String imei, int idTec, int idCom,
-                                  boolean esReutilizado, String observacion, int cantidad) {}
+                                  boolean esReutilizado, String observacion, int cantidad,
+                                  LocalDateTime updatedAt) {}
 
     public DetalleEdicion getDetalleEdicion(String idRep) {
         return jdbc.queryForObject(
-                "SELECT r.IMEI, r.ID_TEC, rc.ID_COM, rc.ES_REUTILIZADO, rc.OBSERVACIONES, rc.CANTIDAD" +
+                "SELECT r.IMEI, r.ID_TEC, rc.ID_COM, rc.ES_REUTILIZADO, rc.OBSERVACIONES, rc.CANTIDAD, rc.UPDATED_AT" +
                 " FROM Reparacion r JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
                 " WHERE r.ID_REP = ?",
                 (rs, row) -> new DetalleEdicion(
@@ -158,7 +159,8 @@ public class ReparacionDAO {
                         rs.getInt("ID_COM"),
                         rs.getBoolean("ES_REUTILIZADO"),
                         rs.getString("OBSERVACIONES"),
-                        rs.getInt("CANTIDAD")),
+                        rs.getInt("CANTIDAD"),
+                        rs.getTimestamp("UPDATED_AT").toLocalDateTime()),
                 idRep);
     }
 
@@ -318,15 +320,23 @@ public class ReparacionDAO {
 
     @Transactional
     public void editarReparacion(String idRep, int idComNuevo, boolean esReutilizadoNuevo,
-                                  String observacionNueva, int nNuevas) {
-        record RcRow(int idCom, boolean esReutilizado, int cantidad) {}
+                                  String observacionNueva, int nNuevas, LocalDateTime updatedAt) {
+        record RcRow(int idCom, boolean esReutilizado, int cantidad, LocalDateTime updatedAt) {}
         RcRow vieja = jdbc.queryForObject(
-                "SELECT ID_COM, ES_REUTILIZADO, CANTIDAD" +
+                "SELECT ID_COM, ES_REUTILIZADO, CANTIDAD, UPDATED_AT" +
                 " FROM Reparacion_componente WHERE ID_REP = ?",
                 (rs, row) -> new RcRow(rs.getInt("ID_COM"),
-                        rs.getBoolean("ES_REUTILIZADO"), rs.getInt("CANTIDAD")),
+                        rs.getBoolean("ES_REUTILIZADO"), rs.getInt("CANTIDAD"),
+                        rs.getTimestamp("UPDATED_AT").toLocalDateTime()),
                 idRep);
-        if (vieja != null && !vieja.esReutilizado()) {
+        if (vieja == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reparación no encontrada: " + idRep);
+        }
+        if (!updatedAt.truncatedTo(ChronoUnit.SECONDS)
+                .equals(vieja.updatedAt().truncatedTo(ChronoUnit.SECONDS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
+        if (!vieja.esReutilizado()) {
             jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
                     vieja.cantidad(), vieja.idCom());
         }
