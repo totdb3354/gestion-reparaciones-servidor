@@ -384,6 +384,12 @@ public class ReparacionDAO {
                 "SELECT ID_REP FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
                 (rs, row) -> rs.getString(1), imei);
         for (String idAsig : asigs) {
+            // FOR UPDATE: si insertarCompleta tiene la fila bloqueada, esperamos.
+            // Tras el lock re-chequeamos FECHA_FIN: si el técnico ya cerró la A*, la saltamos.
+            Integer abierta = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                    Integer.class, idAsig);
+            if (abierta == null || abierta == 0) continue;
             jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ?", idAsig);
             jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idAsig);
         }
