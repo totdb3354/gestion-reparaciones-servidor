@@ -323,14 +323,14 @@ public class ReparacionDAO {
     }
 
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
-        LocalDateTime enBd = jdbc.queryForObject(
-                "SELECT UPDATED_AT FROM Reparacion WHERE ID_REP = ?",
-                (rs, row) -> rs.getTimestamp(1).toLocalDateTime().truncatedTo(ChronoUnit.SECONDS),
-                idRep);
-        if (!updatedAt.truncatedTo(ChronoUnit.SECONDS).equals(enBd)) {
+        // UPDATE atómico: el WHERE con UPDATED_AT evita la ventana SELECT→UPDATE del patrón TOCTOU
+        int filas = jdbc.update(
+                "UPDATE Reparacion SET ID_TEC = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
+                idTec, idRep,
+                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
-        jdbc.update("UPDATE Reparacion SET ID_TEC = ? WHERE ID_REP = ?", idTec, idRep);
     }
 
     @Transactional
