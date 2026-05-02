@@ -248,6 +248,16 @@ public class ReparacionDAO {
     @Transactional
     public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion) {
+        if (idAsignacion != null) {
+            // Bloquear la fila para que un DELETE concurrente (eliminarAsignacion) espere
+            Integer existe = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                    Integer.class, idAsignacion);
+            if (existe == null || existe == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La asignación ya fue eliminada o completada por otro usuario");
+            }
+        }
         ensureTelefono(imei);
         boolean creoReparacion = false;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
