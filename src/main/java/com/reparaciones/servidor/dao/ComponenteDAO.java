@@ -142,15 +142,14 @@ public class ComponenteDAO {
     }
 
     public void actualizar(int idCom, String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {
-        LocalDateTime enBd = jdbc.queryForObject(
-                "SELECT UPDATED_AT FROM Componente WHERE ID_COM = ?",
-                (rs, row) -> rs.getTimestamp(1).toLocalDateTime().truncatedTo(ChronoUnit.SECONDS),
-                idCom);
-        if (!updatedAt.truncatedTo(ChronoUnit.SECONDS).equals(enBd)) {
+        // UPDATE atómico: elimina la ventana TOCTOU del patrón SELECT-luego-UPDATE
+        int filas = jdbc.update(
+                "UPDATE Componente SET TIPO = ?, STOCK = ?, STOCK_MINIMO = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
+                tipo, stock, stockMinimo, idCom,
+                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
-        jdbc.update("UPDATE Componente SET TIPO = ?, STOCK = ?, STOCK_MINIMO = ? WHERE ID_COM = ?",
-                tipo, stock, stockMinimo, idCom);
     }
 
     public void setStockMinimo(int idCom, int stockMinimo) {
