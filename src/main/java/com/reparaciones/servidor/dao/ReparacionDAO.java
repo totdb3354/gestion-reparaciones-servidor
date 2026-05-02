@@ -314,7 +314,12 @@ public class ReparacionDAO {
     }
 
     public void completar(String idRep) {
-        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idRep);
+        int filas = jdbc.update(
+                "UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La asignación ya fue eliminada o completada por otro usuario");
+        }
     }
 
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
