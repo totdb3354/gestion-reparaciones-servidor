@@ -427,9 +427,11 @@ public class ReparacionDAO {
     private String nextId(String prefijo) {
         String hoy  = LocalDate.now().format(FMT_ID);
         String like = prefijo + hoy + "_%";
+        // FOR UPDATE serializa lecturas concurrentes dentro de la transacción del caller:
+        // dos threads leen el mismo MAX sin esto → mismo ID → PK violation
         Integer n = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ID_REP,'_',-1) AS UNSIGNED)),0)+1" +
-                " FROM Reparacion WHERE ID_REP LIKE ?",
+                " FROM Reparacion WHERE ID_REP LIKE ? FOR UPDATE",
                 Integer.class, like);
         return prefijo + hoy + "_" + (n != null ? n : 1);
     }
