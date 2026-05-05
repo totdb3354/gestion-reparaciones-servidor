@@ -145,11 +145,12 @@ public class ReparacionDAO {
     }
 
     public record DetalleEdicion(String imei, int idTec, int idCom,
-                                  boolean esReutilizado, String observacion, int cantidad) {}
+                                  boolean esReutilizado, String observacion, int cantidad,
+                                  LocalDateTime updatedAt) {}
 
     public DetalleEdicion getDetalleEdicion(String idRep) {
         return jdbc.queryForObject(
-                "SELECT r.IMEI, r.ID_TEC, rc.ID_COM, rc.ES_REUTILIZADO, rc.OBSERVACIONES, rc.CANTIDAD" +
+                "SELECT r.IMEI, r.ID_TEC, rc.ID_COM, rc.ES_REUTILIZADO, rc.OBSERVACIONES, rc.CANTIDAD, rc.UPDATED_AT" +
                 " FROM Reparacion r JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
                 " WHERE r.ID_REP = ?",
                 (rs, row) -> new DetalleEdicion(
@@ -158,7 +159,8 @@ public class ReparacionDAO {
                         rs.getInt("ID_COM"),
                         rs.getBoolean("ES_REUTILIZADO"),
                         rs.getString("OBSERVACIONES"),
-                        rs.getInt("CANTIDAD")),
+                        rs.getInt("CANTIDAD"),
+                        rs.getTimestamp("UPDATED_AT").toLocalDateTime()),
                 idRep);
     }
 
@@ -246,6 +248,16 @@ public class ReparacionDAO {
     @Transactional
     public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion) {
+        if (idAsignacion != null) {
+            // Bloquear la fila para que un DELETE concurrente (eliminarAsignacion) espere
+            Integer existe = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND ID_TEC = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                    Integer.class, idAsignacion, idTec);
+            if (existe == null || existe == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "La asignación ya fue eliminada, completada o reasignada a otro técnico");
+            }
+        }
         ensureTelefono(imei);
         boolean creoReparacion = false;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
@@ -302,31 +314,44 @@ public class ReparacionDAO {
     }
 
     public void completar(String idRep) {
-        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idRep);
+        int filas = jdbc.update(
+                "UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La asignación ya fue eliminada o completada por otro usuario");
+        }
     }
 
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
-        LocalDateTime enBd = jdbc.queryForObject(
-                "SELECT UPDATED_AT FROM Reparacion WHERE ID_REP = ?",
-                (rs, row) -> rs.getTimestamp(1).toLocalDateTime().truncatedTo(ChronoUnit.SECONDS),
-                idRep);
-        if (!updatedAt.truncatedTo(ChronoUnit.SECONDS).equals(enBd)) {
+        // UPDATE atómico: el WHERE con UPDATED_AT evita la ventana SELECT→UPDATE del patrón TOCTOU
+        int filas = jdbc.update(
+                "UPDATE Reparacion SET ID_TEC = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
+                idTec, idRep,
+                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
-        jdbc.update("UPDATE Reparacion SET ID_TEC = ? WHERE ID_REP = ?", idTec, idRep);
     }
 
     @Transactional
     public void editarReparacion(String idRep, int idComNuevo, boolean esReutilizadoNuevo,
-                                  String observacionNueva, int nNuevas) {
-        record RcRow(int idCom, boolean esReutilizado, int cantidad) {}
+                                  String observacionNueva, int nNuevas, LocalDateTime updatedAt) {
+        record RcRow(int idCom, boolean esReutilizado, int cantidad, LocalDateTime updatedAt) {}
         RcRow vieja = jdbc.queryForObject(
-                "SELECT ID_COM, ES_REUTILIZADO, CANTIDAD" +
-                " FROM Reparacion_componente WHERE ID_REP = ?",
+                "SELECT ID_COM, ES_REUTILIZADO, CANTIDAD, UPDATED_AT" +
+                " FROM Reparacion_componente WHERE ID_REP = ? FOR UPDATE",
                 (rs, row) -> new RcRow(rs.getInt("ID_COM"),
-                        rs.getBoolean("ES_REUTILIZADO"), rs.getInt("CANTIDAD")),
+                        rs.getBoolean("ES_REUTILIZADO"), rs.getInt("CANTIDAD"),
+                        rs.getTimestamp("UPDATED_AT").toLocalDateTime()),
                 idRep);
-        if (vieja != null && !vieja.esReutilizado()) {
+        if (vieja == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reparación no encontrada: " + idRep);
+        }
+        if (!updatedAt.truncatedTo(ChronoUnit.SECONDS)
+                .equals(vieja.updatedAt().truncatedTo(ChronoUnit.SECONDS))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
+        if (!vieja.esReutilizado()) {
             jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
                     vieja.cantidad(), vieja.idCom());
         }
@@ -364,6 +389,12 @@ public class ReparacionDAO {
                 "SELECT ID_REP FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
                 (rs, row) -> rs.getString(1), imei);
         for (String idAsig : asigs) {
+            // FOR UPDATE: si insertarCompleta tiene la fila bloqueada, esperamos.
+            // Tras el lock re-chequeamos FECHA_FIN: si el técnico ya cerró la A*, la saltamos.
+            Integer abierta = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                    Integer.class, idAsig);
+            if (abierta == null || abierta == 0) continue;
             jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ?", idAsig);
             jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idAsig);
         }
@@ -427,9 +458,11 @@ public class ReparacionDAO {
     private String nextId(String prefijo) {
         String hoy  = LocalDate.now().format(FMT_ID);
         String like = prefijo + hoy + "_%";
+        // FOR UPDATE serializa lecturas concurrentes dentro de la transacción del caller:
+        // dos threads leen el mismo MAX sin esto → mismo ID → PK violation
         Integer n = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ID_REP,'_',-1) AS UNSIGNED)),0)+1" +
-                " FROM Reparacion WHERE ID_REP LIKE ?",
+                " FROM Reparacion WHERE ID_REP LIKE ? FOR UPDATE",
                 Integer.class, like);
         return prefijo + hoy + "_" + (n != null ? n : 1);
     }
