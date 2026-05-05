@@ -339,7 +339,7 @@ public class ReparacionDAO {
         record RcRow(int idCom, boolean esReutilizado, int cantidad, LocalDateTime updatedAt) {}
         RcRow vieja = jdbc.queryForObject(
                 "SELECT ID_COM, ES_REUTILIZADO, CANTIDAD, UPDATED_AT" +
-                " FROM Reparacion_componente WHERE ID_REP = ?",
+                " FROM Reparacion_componente WHERE ID_REP = ? FOR UPDATE",
                 (rs, row) -> new RcRow(rs.getInt("ID_COM"),
                         rs.getBoolean("ES_REUTILIZADO"), rs.getInt("CANTIDAD"),
                         rs.getTimestamp("UPDATED_AT").toLocalDateTime()),
