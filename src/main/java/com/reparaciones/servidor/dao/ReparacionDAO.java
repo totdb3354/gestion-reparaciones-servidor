@@ -251,11 +251,11 @@ public class ReparacionDAO {
         if (idAsignacion != null) {
             // Bloquear la fila para que un DELETE concurrente (eliminarAsignacion) espere
             Integer existe = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE",
-                    Integer.class, idAsignacion);
+                    "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND ID_TEC = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                    Integer.class, idAsignacion, idTec);
             if (existe == null || existe == 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "La asignación ya fue eliminada o completada por otro usuario");
+                        "La asignación ya fue eliminada, completada o reasignada a otro técnico");
             }
         }
         ensureTelefono(imei);
