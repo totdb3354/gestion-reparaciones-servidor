@@ -1,10 +1,13 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.ComponenteDAO;
+import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -17,9 +20,11 @@ import java.util.Map;
 public class ComponenteController {
 
     private final ComponenteDAO dao;
+    private final LogDAO        logDao;
 
-    public ComponenteController(ComponenteDAO dao) {
-        this.dao = dao;
+    public ComponenteController(ComponenteDAO dao, LogDAO logDao) {
+        this.dao    = dao;
+        this.logDao = logDao;
     }
 
     @GetMapping
@@ -57,18 +62,25 @@ public class ComponenteController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody InsertarRequest req) {
+    public void insertar(@RequestBody InsertarRequest req,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertar(req.tipo(), req.stock(), req.stockMinimo());
+        logDao.insertar(principal.getIdUsu(), "CREAR_COMPONENTE", "TIPO: " + req.tipo());
     }
 
     @PutMapping("/{idCom}")
-    public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req) {
+    public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req,
+                           @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.actualizar(idCom, req.tipo(), req.stock(), req.stockMinimo(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE", "ID_COM: " + idCom);
     }
 
     @PatchMapping("/{idCom}/stock-minimo")
-    public void setStockMinimo(@PathVariable int idCom, @RequestBody StockMinimoRequest req) {
+    public void setStockMinimo(@PathVariable int idCom, @RequestBody StockMinimoRequest req,
+                               @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.setStockMinimo(idCom, req.stockMinimo());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
+                "ID_COM: " + idCom + ", STOCK_MINIMO: " + req.stockMinimo());
     }
 
     @PatchMapping("/{idCom}/stock")
@@ -77,14 +89,19 @@ public class ComponenteController {
     }
 
     @PatchMapping("/{idCom}/activo")
-    public void setActivo(@PathVariable int idCom, @RequestBody ActivoRequest req) {
+    public void setActivo(@PathVariable int idCom, @RequestBody ActivoRequest req,
+                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.setActivo(idCom, req.activo());
+        String accion = req.activo() ? "ALTA_COMPONENTE" : "BAJA_COMPONENTE";
+        logDao.insertar(principal.getIdUsu(), accion, "ID_COM: " + idCom);
     }
 
     @DeleteMapping("/{idCom}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable int idCom) {
+    public void eliminar(@PathVariable int idCom,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.eliminar(idCom);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_COMPONENTE", "ID_COM: " + idCom);
     }
 
     private record InsertarRequest(String tipo, int stock, int stockMinimo) {}
