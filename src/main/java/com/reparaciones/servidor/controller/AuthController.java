@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.ResponseEntity;
@@ -17,10 +18,12 @@ public class AuthController {
 
     private final AuthenticationManager authManager;
     private final JwtUtil               jwtUtil;
+    private final LogDAO                logDao;
 
-    public AuthController(AuthenticationManager authManager, JwtUtil jwtUtil) {
+    public AuthController(AuthenticationManager authManager, JwtUtil jwtUtil, LogDAO logDao) {
         this.authManager = authManager;
         this.jwtUtil     = jwtUtil;
+        this.logDao      = logDao;
     }
 
     @PostMapping("/login")
@@ -30,6 +33,8 @@ public class AuthController {
                     new UsernamePasswordAuthenticationToken(req.usuario(), req.password()));
             var principal = (UsuarioPrincipal) auth.getPrincipal();
             String token  = jwtUtil.generateToken(principal);
+
+            logDao.insertar(principal.getIdUsu(), "LOGIN", "");
 
             Map<String, Object> resp = new HashMap<>();
             resp.put("idUsu",         principal.getIdUsu());

@@ -1,8 +1,11 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
+import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.CompraComponente;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -14,9 +17,11 @@ import java.util.Map;
 public class CompraController {
 
     private final CompraComponenteDAO dao;
+    private final LogDAO              logDao;
 
-    public CompraController(CompraComponenteDAO dao) {
-        this.dao = dao;
+    public CompraController(CompraComponenteDAO dao, LogDAO logDao) {
+        this.dao    = dao;
+        this.logDao = logDao;
     }
 
     @GetMapping
@@ -36,30 +41,42 @@ public class CompraController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody InsertarRequest req) {
+    public void insertar(@RequestBody InsertarRequest req,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertar(req.idCom(), req.idProv(), req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), req.divisa(), req.precioEur());
+        logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO",
+                "ID_COM: " + req.idCom() + ", ID_PROV: " + req.idProv() + ", CANTIDAD: " + req.cantidad());
     }
 
     @PutMapping("/{idCompra}")
-    public void editar(@PathVariable int idCompra, @RequestBody EditarRequest req) {
+    public void editar(@PathVariable int idCompra, @RequestBody EditarRequest req,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.editar(idCompra, req.idProv(), req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), req.divisa(), req.precioEur(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
     @PatchMapping("/{idCompra}/confirmar-recibido")
-    public void confirmarRecibido(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req) {
+    public void confirmarRecibido(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.confirmarRecibido(idCompra, req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "RECIBIR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
     @PatchMapping("/{idCompra}/confirmar-parcial")
-    public void confirmarParcial(@PathVariable int idCompra, @RequestBody ConfirmarParcialRequest req) {
+    public void confirmarParcial(@PathVariable int idCompra, @RequestBody ConfirmarParcialRequest req,
+                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.confirmarParcial(idCompra, req.cantidadRecibida(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "RECIBIR_PARCIAL",
+                "ID_COMPRA: " + idCompra + ", CANTIDAD: " + req.cantidadRecibida());
     }
 
     @PatchMapping("/{idCompra}/recibir-resto")
-    public void recibirResto(@PathVariable int idCompra, @RequestBody RecibirRestoRequest req) {
+    public void recibirResto(@PathVariable int idCompra, @RequestBody RecibirRestoRequest req,
+                             @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.recibirResto(idCompra, req.cantidadExtra(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "RECIBIR_RESTO", "ID_COMPRA: " + idCompra);
     }
 
     @PatchMapping("/{idCompra}/confirmar-alterado")
@@ -68,8 +85,10 @@ public class CompraController {
     }
 
     @PatchMapping("/{idCompra}/cancelar")
-    public void cancelar(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req) {
+    public void cancelar(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.cancelar(idCompra, req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "CANCELAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
     private record InsertarRequest(int idCom, int idProv, int cantidad, boolean esUrgente,

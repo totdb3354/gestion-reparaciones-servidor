@@ -1,10 +1,13 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.model.*;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -18,10 +21,12 @@ public class ReparacionController {
 
     private final ReparacionDAO         dao;
     private final ReparacionComponenteDAO rcDao;
+    private final LogDAO                logDao;
 
-    public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao) {
-        this.dao   = dao;
-        this.rcDao = rcDao;
+    public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao) {
+        this.dao    = dao;
+        this.rcDao  = rcDao;
+        this.logDao = logDao;
     }
 
     // ── raw ──────────────────────────────────────────────────────────────────
@@ -119,46 +124,65 @@ public class ReparacionController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> insertar(@RequestBody InsertarRequest req) {
+    public Map<String, Object> insertar(@RequestBody InsertarRequest req,
+                                        @AuthenticationPrincipal UsuarioPrincipal principal) {
         String idRep = dao.insertar(req.imei(), req.idTec(), req.fechaAsig(), req.fechaFin());
+        logDao.insertar(principal.getIdUsu(), "CREAR_REPARACION",
+                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
         return Map.of("value", idRep);
     }
 
     @PostMapping("/asignaciones")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req) {
+    public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
+                                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
         String idRep = dao.insertarAsignacion(req.imei(), req.idTec());
+        logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION",
+                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
         return Map.of("value", idRep);
     }
 
     @PostMapping("/completa")
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertarCompleta(@RequestBody InsertarCompletaRequest req) {
+    public void insertarCompleta(@RequestBody InsertarCompletaRequest req,
+                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertarCompleta(req.filas(), req.imei(), req.idTec(),
                 req.idRepAnterior(), req.idAsignacion());
+        logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION",
+                "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
     }
 
     @PatchMapping("/{idRep}/completar")
-    public void completar(@PathVariable String idRep) {
+    public void completar(@PathVariable String idRep,
+                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.completar(idRep);
+        logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION", "ID_REP: " + idRep);
     }
 
     @PatchMapping("/asignaciones/{idRep}/tecnico")
-    public void actualizarTecnico(@PathVariable String idRep, @RequestBody TecnicoRequest req) {
+    public void actualizarTecnico(@PathVariable String idRep, @RequestBody TecnicoRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.actualizarTecnico(idRep, req.idTec(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "REASIGNAR_TECNICO",
+                "ID_REP: " + idRep + ", ID_TEC_NUEVO: " + req.idTec());
     }
 
     @PutMapping("/{idRep}")
-    public void editarReparacion(@PathVariable String idRep, @RequestBody EditarRequest req) {
+    public void editarReparacion(@PathVariable String idRep, @RequestBody EditarRequest req,
+                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
                 req.observacionNueva(), req.nNuevas(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_REPARACION", "ID_REP: " + idRep);
     }
 
     @PostMapping("/{idRep}/incidencia")
     @ResponseStatus(HttpStatus.CREATED)
     public void marcarIncidenciaYAsignar(@PathVariable String idRep,
-                                          @RequestBody IncidenciaRequest req) {
+                                          @RequestBody IncidenciaRequest req,
+                                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec());
+        logDao.insertar(principal.getIdUsu(), "MARCAR_INCIDENCIA",
+                "ID_REP: " + idRep + ", IMEI: " + req.imei());
     }
 
     @DeleteMapping("/imei/{imei}/incidencia-activa")
@@ -169,14 +193,18 @@ public class ReparacionController {
 
     @DeleteMapping("/asignaciones/{idAsig}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminarAsignacion(@PathVariable String idAsig) {
+    public void eliminarAsignacion(@PathVariable String idAsig,
+                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.eliminarAsignacion(idAsig);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION", "ID_REP: " + idAsig);
     }
 
     @DeleteMapping("/{idRep}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable String idRep) {
+    public void eliminar(@PathVariable String idRep,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.eliminar(idRep);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_REPARACION", "ID_REP: " + idRep);
     }
 
     // ── request records ───────────────────────────────────────────────────────
