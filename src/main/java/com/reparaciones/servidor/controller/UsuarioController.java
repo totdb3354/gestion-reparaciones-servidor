@@ -37,12 +37,15 @@ public class UsuarioController {
     public ResponseEntity<?> registrarTecnico(@RequestBody RegistrarTecnicoRequest req,
                                                @AuthenticationPrincipal UsuarioPrincipal principal) {
         try {
-            dao.registrarTecnico(req.nombreTecnico(), req.nombreUsuario(), req.password());
+            String rol = req.rol() != null ? req.rol() : "TECNICO";
+            dao.registrarTecnico(req.nombreTecnico(), req.nombreUsuario(), req.password(), rol);
             logDao.insertar(principal.getIdUsu(), "CREAR_USUARIO",
-                    "NOMBRE_USUARIO: " + req.nombreUsuario() + ", TECNICO: " + req.nombreTecnico());
+                    "NOMBRE_USUARIO: " + req.nombreUsuario() + ", ROL: " + rol + ", TECNICO: " + req.nombreTecnico());
             return ResponseEntity.status(HttpStatus.CREATED).build();
         } catch (DataIntegrityViolationException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }
     }
 
@@ -80,5 +83,5 @@ public class UsuarioController {
                 "ID_TEC: " + idTec + ", ID_USU: " + idUsu);
     }
 
-    private record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String password) {}
+    private record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String password, String rol) {}
 }

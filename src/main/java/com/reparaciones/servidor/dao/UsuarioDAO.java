@@ -42,15 +42,16 @@ public class UsuarioDAO {
                        u.ID_TEC, t.NOMBRE AS NOMBRE_TECNICO, t.ACTIVO
                 FROM Usuario u
                 JOIN Tecnico t ON u.ID_TEC = t.ID_TEC
-                WHERE u.ROL = 'TECNICO'
+                WHERE u.ROL IN ('TECNICO', 'SUPERTECNICO')
                 ORDER BY t.NOMBRE
                 """;
         return jdbc.query(sql, MAPPER);
     }
 
     @Transactional
-    public void registrarTecnico(String nombreTecnico, String nombreUsuario, String password) {
-        // Tecnico primero (AUTO_INCREMENT), luego Usuario con el ID_TEC generado
+    public void registrarTecnico(String nombreTecnico, String nombreUsuario, String password, String rol) {
+        if (!rol.equals("TECNICO") && !rol.equals("SUPERTECNICO"))
+            throw new IllegalArgumentException("Rol no permitido: " + rol);
         KeyHolder kh = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
@@ -62,8 +63,8 @@ public class UsuarioDAO {
         int    idTec = kh.getKey().intValue();
         String hash  = passwordEncoder.encode(password);
         jdbc.update(
-                "INSERT INTO Usuario (NOMBRE_USUARIO, PASSWORD, ROL, ID_TEC) VALUES (?, ?, 'TECNICO', ?)",
-                nombreUsuario, hash, idTec);
+                "INSERT INTO Usuario (NOMBRE_USUARIO, PASSWORD, ROL, ID_TEC) VALUES (?, ?, ?, ?)",
+                nombreUsuario, hash, rol, idTec);
     }
 
     // Solo actualiza Tecnico.ACTIVO — no hay ACTIVO en Usuario

@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.LogActividad;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,6 +18,7 @@ public class LogController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public List<LogActividad> getAll() {
         return logDao.getAll();
     }
