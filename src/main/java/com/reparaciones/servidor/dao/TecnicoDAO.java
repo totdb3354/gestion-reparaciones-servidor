@@ -23,15 +23,21 @@ public class TecnicoDAO {
     }
 
     public List<Tecnico> getAll() {
-        return jdbc.query(
-                "SELECT ID_TEC, NOMBRE, ACTIVO FROM Tecnico ORDER BY NOMBRE",
-                MAPPER);
+        return jdbc.query("""
+                SELECT t.ID_TEC, t.NOMBRE, t.ACTIVO FROM Tecnico t
+                JOIN Usuario u ON t.ID_TEC = u.ID_TEC
+                WHERE u.ROL IN ('TECNICO','SUPERTECNICO')
+                ORDER BY t.NOMBRE
+                """, MAPPER);
     }
 
     public List<Tecnico> getAllActivos() {
-        return jdbc.query(
-                "SELECT ID_TEC, NOMBRE, ACTIVO FROM Tecnico WHERE ACTIVO = 1 ORDER BY NOMBRE",
-                MAPPER);
+        return jdbc.query("""
+                SELECT t.ID_TEC, t.NOMBRE, t.ACTIVO FROM Tecnico t
+                JOIN Usuario u ON t.ID_TEC = u.ID_TEC
+                WHERE u.ROL IN ('TECNICO','SUPERTECNICO') AND t.ACTIVO = 1
+                ORDER BY t.NOMBRE
+                """, MAPPER);
     }
 
     public void insertar(String nombre) {
