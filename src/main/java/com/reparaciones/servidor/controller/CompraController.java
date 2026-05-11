@@ -91,6 +91,13 @@ public class CompraController {
         logDao.insertar(principal.getIdUsu(), "CANCELAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
+    @PatchMapping("/{idCompra}/desrecibir")
+    public void desrecibir(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
+                           @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.desrecibir(idCompra, req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "DESRECIBIR_PEDIDO", "ID_COMPRA: " + idCompra);
+    }
+
     private record InsertarRequest(int idCom, int idProv, int cantidad, boolean esUrgente,
                                    double precioUnidad, String divisa, double precioEur) {}
     private record EditarRequest(int idProv, int cantidad, boolean esUrgente,

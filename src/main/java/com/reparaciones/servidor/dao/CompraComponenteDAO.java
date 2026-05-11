@@ -139,6 +139,24 @@ public class CompraComponenteDAO {
         jdbc.update("UPDATE Compra_componente SET ESTADO='cancelado' WHERE ID_COMPRA=?", idCompra);
     }
 
+    @Transactional
+    public void desrecibir(int idCompra, LocalDateTime updatedAt) {
+        CompraRow row = getCompraRow(idCompra);
+        checkUpdatedAt(row.updatedAt(), updatedAt);
+        int cantidadARevertir = row.cantidadRecibida() != null ? row.cantidadRecibida() : row.cantidad();
+        Integer stockActual = jdbc.queryForObject(
+                "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, row.idCom());
+        if (stockActual == null || stockActual < cantidadARevertir) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Stock insuficiente para deshacer la recepción (" +
+                    "stock actual: " + stockActual + ", a descontar: " + cantidadARevertir + ")");
+        }
+        jdbc.update("UPDATE Compra_componente SET ESTADO='pendiente', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL" +
+                " WHERE ID_COMPRA=?", idCompra);
+        jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?",
+                cantidadARevertir, row.idCom());
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private record CompraRow(int idCom, int cantidad, Integer cantidadRecibida, LocalDateTime updatedAt) {}
