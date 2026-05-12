@@ -57,4 +57,8 @@ public class SolicitudStockDAO {
     public void actualizarEstado(int idSol, String estado) {
         jdbc.update("UPDATE Solicitud_Stock SET ESTADO = ? WHERE ID_SOL = ?", estado, idSol);
     }
+
+    public void borrar(int idSol) {
+        jdbc.update("DELETE FROM Solicitud_Stock WHERE ID_SOL = ?", idSol);
+    }
 }
