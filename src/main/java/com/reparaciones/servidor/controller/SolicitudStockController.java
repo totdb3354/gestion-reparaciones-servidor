@@ -54,5 +54,13 @@ public class SolicitudStockController {
         logDao.insertar(principal.getIdUsu(), accion, "ID_SOL: " + idSol + ", ESTADO: " + estado);
     }
 
+    @DeleteMapping("/{idSol}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void borrar(@PathVariable int idSol,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.borrar(idSol);
+        logDao.insertar(principal.getIdUsu(), "BORRAR_SOLICITUD_STOCK", "ID_SOL: " + idSol);
+    }
+
     private record InsertarRequest(int idCom, String descripcion) {}
 }
