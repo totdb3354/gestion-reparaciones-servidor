@@ -191,6 +191,16 @@ public class ReparacionController {
         dao.borrarIncidenciaPorImei(imei);
     }
 
+    @PostMapping("/{idAsignacion}/agotar-componente")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void agotarComponente(@PathVariable String idAsignacion,
+                                  @RequestBody AgotarRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
+        logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
+                "ID_ASIG: " + idAsignacion + ", ID_COM: " + req.idCom() + ", CANT: " + req.cantidad());
+    }
+
     @DeleteMapping("/asignaciones/{idAsig}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarAsignacion(@PathVariable String idAsig,
@@ -219,4 +229,5 @@ public class ReparacionController {
                                  String observacionNueva, int nNuevas,
                                  LocalDateTime updatedAt) {}
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
+    private record AgotarRequest(int idCom, int cantidad, String descripcion) {}
 }

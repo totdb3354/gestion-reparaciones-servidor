@@ -453,6 +453,27 @@ public class ReparacionDAO {
         deleteIfLastReparacion(imei);
     }
 
+    @Transactional
+    public void agotarComponente(String idAsignacion, int idCom, int cantidad, String descripcion) {
+        Integer existe = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                Integer.class, idAsignacion);
+        if (existe == null || existe == 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La asignación ya fue cerrada o no existe");
+        Integer stock = jdbc.queryForObject(
+                "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, idCom);
+        if (stock == null || stock < cantidad)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Stock insuficiente para descontar (stock actual: " + stock + ", a descontar: " + cantidad + ")");
+        jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?", cantidad, idCom);
+        jdbc.update(
+                "INSERT INTO Reparacion_componente" +
+                " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
+                " VALUES (?,?,1,?,'PENDIENTE',1)",
+                idAsignacion, idCom, descripcion);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private String nextId(String prefijo) {
