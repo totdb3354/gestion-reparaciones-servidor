@@ -155,10 +155,10 @@ public class ReparacionComponenteDAO {
             // Al recuperar también restauramos ES_SOLICITUD por si otro admin limpió antes
             jdbc.update("UPDATE Reparacion_componente SET ESTADO_SOLICITUD = 'PENDIENTE', ES_SOLICITUD = 1 WHERE ID_RC = ?",
                     idRc);
-        } else if ("GESTIONADA".equalsIgnoreCase(estado)) {
-            // Solo actúa si sigue PENDIENTE — evita doble gestión si dos admins piden a la vez
-            jdbc.update("UPDATE Reparacion_componente SET ESTADO_SOLICITUD = 'GESTIONADA' WHERE ID_RC = ? AND ESTADO_SOLICITUD = 'PENDIENTE'",
-                    idRc);
+        } else if ("GESTIONADA".equalsIgnoreCase(estado) || "RECHAZADA".equalsIgnoreCase(estado)) {
+            // Solo actúa si sigue PENDIENTE — evita sobreescribir solicitudes ya gestionadas
+            jdbc.update("UPDATE Reparacion_componente SET ESTADO_SOLICITUD = ? WHERE ID_RC = ? AND ESTADO_SOLICITUD = 'PENDIENTE'",
+                    estado, idRc);
         } else {
             jdbc.update("UPDATE Reparacion_componente SET ESTADO_SOLICITUD = ? WHERE ID_RC = ?",
                     estado, idRc);
