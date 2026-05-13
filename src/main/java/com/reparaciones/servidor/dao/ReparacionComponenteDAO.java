@@ -129,6 +129,7 @@ public class ReparacionComponenteDAO {
         }
     }
 
+    @Transactional
     public void marcarIncidencia(String idRep, String comentario) {
         jdbc.update(
                 "UPDATE Reparacion_componente SET ES_INCIDENCIA = 1, INCIDENCIA = ? WHERE ID_REP = ?",
