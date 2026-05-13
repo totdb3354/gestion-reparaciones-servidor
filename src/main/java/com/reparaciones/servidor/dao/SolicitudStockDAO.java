@@ -55,9 +55,13 @@ public class SolicitudStockDAO {
     }
 
     public void actualizarEstado(int idSol, String estado) {
-        // Solo actúa si sigue PENDIENTE — evita doble gestión/rechazo concurrente
-        jdbc.update("UPDATE Solicitud_Stock SET ESTADO = ? WHERE ID_SOL = ? AND ESTADO = 'PENDIENTE'",
-                estado, idSol);
+        if ("PENDIENTE".equalsIgnoreCase(estado)) {
+            jdbc.update("UPDATE Solicitud_Stock SET ESTADO = 'PENDIENTE' WHERE ID_SOL = ?", idSol);
+        } else {
+            // Solo actúa si sigue PENDIENTE — evita doble gestión/rechazo concurrente
+            jdbc.update("UPDATE Solicitud_Stock SET ESTADO = ? WHERE ID_SOL = ? AND ESTADO = 'PENDIENTE'",
+                    estado, idSol);
+        }
     }
 
     public void borrar(int idSol) {
