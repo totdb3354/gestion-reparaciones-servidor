@@ -274,8 +274,12 @@ public class ReparacionDAO {
                         " VALUES (?,?,?,?,0,?)",
                         idRep, fila.idCom, fila.reutilizado, fila.observacion, fila.cantidad);
                 if (!fila.reutilizado) {
-                    jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?",
-                            fila.cantidad, fila.idCom);
+                    int rows = jdbc.update(
+                            "UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND STOCK >= ?",
+                            fila.cantidad, fila.idCom, fila.cantidad);
+                    if (rows == 0)
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                "Stock insuficiente para el componente ID " + fila.idCom);
                 }
                 creoReparacion = true;
                 idComsUsados.add(fila.idCom);
@@ -461,12 +465,15 @@ public class ReparacionDAO {
         if (existe == null || existe == 0)
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La asignación ya fue cerrada o no existe");
-        Integer stock = jdbc.queryForObject(
-                "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, idCom);
-        if (stock == null || stock < cantidad)
+        int rows = jdbc.update(
+                "UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND STOCK >= ?",
+                cantidad, idCom, cantidad);
+        if (rows == 0) {
+            Integer stock = jdbc.queryForObject(
+                    "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, idCom);
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Stock insuficiente para descontar (stock actual: " + stock + ", a descontar: " + cantidad + ")");
-        jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?", cantidad, idCom);
+        }
         jdbc.update(
                 "INSERT INTO Reparacion_componente" +
                 " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
