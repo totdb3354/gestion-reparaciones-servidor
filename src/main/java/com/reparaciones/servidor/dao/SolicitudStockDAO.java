@@ -57,8 +57,11 @@ public class SolicitudStockDAO {
     public void actualizarEstado(int idSol, String estado) {
         if ("PENDIENTE".equalsIgnoreCase(estado)) {
             jdbc.update("UPDATE Solicitud_Stock SET ESTADO = 'PENDIENTE' WHERE ID_SOL = ?", idSol);
+        } else if ("GESTIONADA".equalsIgnoreCase(estado)) {
+            // Solo actúa si no está ya gestionada — evita doble pedido concurrente
+            jdbc.update("UPDATE Solicitud_Stock SET ESTADO = 'GESTIONADA' WHERE ID_SOL = ? AND ESTADO != 'GESTIONADA'", idSol);
         } else {
-            // Solo actúa si sigue PENDIENTE — evita doble gestión/rechazo concurrente
+            // RECHAZADA: solo si sigue PENDIENTE — evita sobreescribir solicitudes ya gestionadas
             jdbc.update("UPDATE Solicitud_Stock SET ESTADO = ? WHERE ID_SOL = ? AND ESTADO = 'PENDIENTE'",
                     estado, idSol);
         }
