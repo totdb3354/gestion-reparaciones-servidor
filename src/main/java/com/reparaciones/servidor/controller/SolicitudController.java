@@ -4,12 +4,14 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.model.SolicitudResumen;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@PreAuthorize("hasRole('SUPERTECNICO')")
 @RestController
 @RequestMapping("/api/solicitudes")
 public class SolicitudController {

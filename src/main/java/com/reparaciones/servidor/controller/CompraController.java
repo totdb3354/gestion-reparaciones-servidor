@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,21 +25,25 @@ public class CompraController {
         this.logDao = logDao;
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @GetMapping
     public List<CompraComponente> getAll() {
         return dao.getAll();
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @GetMapping("/pendientes")
     public List<CompraComponente> getPendientes() {
         return dao.getPendientes();
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping("/cantidad-pendiente/{idCom}")
     public Map<String, Object> getCantidadPendiente(@PathVariable int idCom) {
         return Map.of("value", dao.getCantidadPendientePorComponente(idCom));
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody InsertarRequest req,
@@ -49,6 +54,7 @@ public class CompraController {
                 "ID_COM: " + req.idCom() + ", ID_PROV: " + req.idProv() + ", CANTIDAD: " + req.cantidad());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idCompra}")
     public void editar(@PathVariable int idCompra, @RequestBody EditarRequest req,
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -57,6 +63,7 @@ public class CompraController {
         logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/confirmar-recibido")
     public void confirmarRecibido(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -64,6 +71,7 @@ public class CompraController {
         logDao.insertar(principal.getIdUsu(), "RECIBIR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/confirmar-parcial")
     public void confirmarParcial(@PathVariable int idCompra, @RequestBody ConfirmarParcialRequest req,
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -72,6 +80,7 @@ public class CompraController {
                 "ID_COMPRA: " + idCompra + ", CANTIDAD: " + req.cantidadRecibida());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/recibir-resto")
     public void recibirResto(@PathVariable int idCompra, @RequestBody RecibirRestoRequest req,
                              @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -79,11 +88,13 @@ public class CompraController {
         logDao.insertar(principal.getIdUsu(), "RECIBIR_RESTO", "ID_COMPRA: " + idCompra);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/confirmar-alterado")
     public void confirmarAlterado(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req) {
         dao.confirmarAlterado(idCompra, req.updatedAt());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/cancelar")
     public void cancelar(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -91,6 +102,7 @@ public class CompraController {
         logDao.insertar(principal.getIdUsu(), "CANCELAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/desrecibir")
     public void desrecibir(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {

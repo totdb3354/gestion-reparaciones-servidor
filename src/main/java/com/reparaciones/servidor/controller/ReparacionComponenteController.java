@@ -3,6 +3,7 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.model.ReparacionComponente;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -38,12 +39,14 @@ public class ReparacionComponenteController {
         dao.eliminar(idRep, idCom);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idRep}/incidencia")
     public void marcarIncidencia(@PathVariable String idRep,
                                   @RequestBody Map<String, String> body) {
         dao.marcarIncidencia(idRep, body.get("comentario"));
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/{idRep}/incidencia")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void borrarIncidencia(@PathVariable String idRep) {

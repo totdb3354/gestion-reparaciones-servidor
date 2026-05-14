@@ -3,11 +3,13 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.Proveedor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@PreAuthorize("hasRole('SUPERTECNICO')")
 @RestController
 @RequestMapping("/api/proveedores")
 public class ProveedorController {
