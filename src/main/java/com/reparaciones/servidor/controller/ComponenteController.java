@@ -7,6 +7,7 @@ import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -60,6 +61,7 @@ public class ComponenteController {
         return dao.getEvolucionStock(granularidad, desde, hasta);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody InsertarRequest req,
@@ -68,6 +70,7 @@ public class ComponenteController {
         logDao.insertar(principal.getIdUsu(), "CREAR_COMPONENTE", "TIPO: " + req.tipo());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idCom}")
     public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -75,6 +78,7 @@ public class ComponenteController {
         logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE", "ID_COM: " + idCom);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCom}/stock-minimo")
     public void setStockMinimo(@PathVariable int idCom, @RequestBody StockMinimoRequest req,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -88,6 +92,7 @@ public class ComponenteController {
         dao.actualizarStock(idCom, req.delta());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCom}/activo")
     public void setActivo(@PathVariable int idCom, @RequestBody ActivoRequest req,
                           @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -96,6 +101,7 @@ public class ComponenteController {
         logDao.insertar(principal.getIdUsu(), accion, "ID_COM: " + idCom);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/{idCom}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable int idCom,

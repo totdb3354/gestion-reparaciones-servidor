@@ -7,6 +7,7 @@ import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -132,6 +133,7 @@ public class ReparacionController {
         return Map.of("value", idRep);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping("/asignaciones")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
@@ -159,6 +161,7 @@ public class ReparacionController {
         logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION", "ID_REP: " + idRep);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/asignaciones/{idRep}/tecnico")
     public void actualizarTecnico(@PathVariable String idRep, @RequestBody TecnicoRequest req,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -175,6 +178,7 @@ public class ReparacionController {
         logDao.insertar(principal.getIdUsu(), "EDITAR_REPARACION", "ID_REP: " + idRep);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping("/{idRep}/incidencia")
     @ResponseStatus(HttpStatus.CREATED)
     public void marcarIncidenciaYAsignar(@PathVariable String idRep,
@@ -185,6 +189,7 @@ public class ReparacionController {
                 "ID_REP: " + idRep + ", IMEI: " + req.imei());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/imei/{imei}/incidencia-activa")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void borrarIncidenciaPorImei(@PathVariable String imei) {
@@ -201,6 +206,7 @@ public class ReparacionController {
                 "ID_ASIG: " + idAsignacion + ", ID_COM: " + req.idCom() + ", CANT: " + req.cantidad());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/asignaciones/{idAsig}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarAsignacion(@PathVariable String idAsig,
@@ -209,6 +215,7 @@ public class ReparacionController {
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION", "ID_REP: " + idAsig);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/{idRep}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable String idRep,

@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+@PreAuthorize("hasRole('SUPERTECNICO')")
 @RestController
 @RequestMapping("/api/compras")
 public class CompraController {
