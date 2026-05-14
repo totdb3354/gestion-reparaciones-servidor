@@ -1,13 +1,43 @@
 # Autorización de endpoints por rol
 
-> Estado tras `feat_autorizacion_roles`. Todos los endpoints requieren JWT válido. La separación de roles se aplica mediante `@PreAuthorize` en los controllers.
+---
+
+## Por qué existe este documento
+
+La aplicación tiene tres roles: **TECNICO**, **SUPERTECNICO** y **ADMIN**. La interfaz gráfica (cliente JavaFX) ya oculta o deshabilita las acciones que cada rol no puede realizar. Sin embargo, eso no es suficiente: cualquier usuario con un token JWT válido podría saltarse la UI y llamar directamente a la API con herramientas como Postman o curl.
+
+Este tipo de ataque se llama **privilege escalation** (escalada de privilegios): un TECNICO autenticado llama a un endpoint de SUPERTECNICO directamente, sin pasar por la UI que lo bloquearía.
+
+Para evitarlo, el servidor aplica una segunda capa de control usando `@PreAuthorize` de Spring Security — la autorización no solo vive en el cliente, sino también en el servidor.
+
+---
+
+## Cómo funciona `@PreAuthorize`
+
+`@PreAuthorize` es una anotación de Spring Security que se coloca encima de un método (o de una clase entera) en un controller. Antes de ejecutar el método, Spring comprueba si el usuario autenticado cumple la condición indicada. Si no la cumple, devuelve automáticamente un `403 Forbidden` sin llegar al DAO ni a la base de datos.
+
+```java
+// Solo SUPERTECNICO puede llamar a este endpoint
+@PreAuthorize("hasRole('SUPERTECNICO')")
+@PostMapping("/asignaciones")
+public Map<String, Object> insertarAsignacion(...) { ... }
+
+// SUPERTECNICO o ADMIN pueden llamar a este endpoint
+@PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
+@GetMapping("/cantidad-pendiente/{idCom}")
+public Map<String, Object> getCantidadPendiente(...) { ... }
+```
+
+El rol del usuario viene del token JWT — se incluye en el token al hacer login y Spring Security lo lee automáticamente en cada petición a través de `JwtAuthFilter`.
+
+Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@EnableMethodSecurity` (ya presente en `SecurityConfig.java`).
 
 ---
 
 ## Criterio general
 
-- **GET (lectura)**: accesibles a cualquier rol autenticado. No se restringe por rol porque los datos no son sensibles externamente y el atacante potencial ya es un empleado de confianza.
-- **Mutaciones (POST, PUT, PATCH, DELETE)**: restringidas por rol según la tabla de permisos.
+- **GET (lectura)**: accesibles a cualquier rol autenticado. No se restringe por rol porque los datos no son sensibles externamente y el atacante potencial ya es un empleado de confianza con credenciales válidas.
+- **Mutaciones (POST, PUT, PATCH, DELETE)**: restringidas por rol según la tabla de permisos. Aquí está el daño potencial real — crear, modificar o borrar datos sin autorización.
 
 ---
 
