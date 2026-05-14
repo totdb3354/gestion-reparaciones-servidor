@@ -44,6 +44,7 @@ public class ReparacionDAO {
             " COALESCE(rc.ES_RESUELTO, 0) AS ES_RESUELTO," +
             " rc.INCIDENCIA, r.ID_REP_ANTERIOR, r.ID_TEC," +
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
+            " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL," +
             " r.UPDATED_AT" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
@@ -58,6 +59,17 @@ public class ReparacionDAO {
             " (CASE WHEN r.ID_REP_ANTERIOR IS NOT NULL THEN 1 ELSE 0 END) AS ES_INCIDENCIA, 0 AS ES_RESUELTO, NULL AS INCIDENCIA," +
             " r.ID_REP_ANTERIOR, r.ID_TEC," +
             " COUNT(rc.ID_RC) AS ES_SOLICITUD, NULL AS DESC_SOL," +
+            " (SELECT rc2.ESTADO_SOLICITUD FROM Reparacion_componente rc2" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
+            "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS ESTADO_SOL," +
+            " (SELECT c2.TIPO FROM Reparacion_componente rc2" +
+            "  JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
+            "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS TIPO_SOL," +
+            " (SELECT c2.STOCK FROM Reparacion_componente rc2" +
+            "  JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
+            "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS STOCK_SOL," +
             " r.UPDATED_AT" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
@@ -81,6 +93,9 @@ public class ReparacionDAO {
                 rs.getInt("ID_TEC"),
                 rs.getInt("ES_SOLICITUD"),
                 rs.getString("DESC_SOL"),
+                rs.getString("ESTADO_SOL"),
+                rs.getString("TIPO_SOL"),
+                rs.getInt("STOCK_SOL"),
                 rs.getTimestamp("UPDATED_AT").toLocalDateTime()
         );
     };
