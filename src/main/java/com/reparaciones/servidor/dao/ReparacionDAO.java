@@ -44,7 +44,7 @@ public class ReparacionDAO {
             " COALESCE(rc.ES_RESUELTO, 0) AS ES_RESUELTO," +
             " rc.INCIDENCIA, r.ID_REP_ANTERIOR, r.ID_TEC," +
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
-            " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL," +
+            " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
@@ -74,6 +74,9 @@ public class ReparacionDAO {
             "  WHERE cc.ESTADO = 'pendiente' AND cc.ID_COM IN (" +
             "   SELECT rc2.ID_COM FROM Reparacion_componente rc2" +
             "   WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA')) AS EN_CAMINO_SOL," +
+            " (SELECT GROUP_CONCAT(c2.TIPO ORDER BY c2.TIPO SEPARATOR ', ')" +
+            "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
@@ -101,6 +104,7 @@ public class ReparacionDAO {
                 rs.getString("TIPO_SOL"),
                 rs.getInt("STOCK_SOL"),
                 rs.getBoolean("EN_CAMINO_SOL"),
+                rs.getString("TIPOS_SOL"),
                 rs.getTimestamp("UPDATED_AT").toLocalDateTime()
         );
     };
