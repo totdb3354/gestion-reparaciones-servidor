@@ -65,9 +65,11 @@ public class ReparacionComponenteDAO {
 
     public List<FilaReparacion> getSolicitudesPorAsignacion(String idAsignacion) {
         return jdbc.query(
-                "SELECT ID_COM, CANTIDAD, ES_REUTILIZADO, OBSERVACIONES," +
-                " ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD" +
-                " FROM Reparacion_componente WHERE ID_REP = ? AND ES_SOLICITUD = 1",
+                "SELECT rc.ID_COM, rc.CANTIDAD, rc.ES_REUTILIZADO, rc.OBSERVACIONES," +
+                " rc.ES_SOLICITUD, rc.DESCRIPCION_SOLICITUD, rc.ESTADO_SOLICITUD," +
+                " CASE WHEN EXISTS(SELECT 1 FROM Compra_componente cc" +
+                "  WHERE cc.ID_COM = rc.ID_COM AND cc.ESTADO = 'pendiente') THEN 1 ELSE 0 END AS EN_CAMINO" +
+                " FROM Reparacion_componente rc WHERE rc.ID_REP = ? AND rc.ES_SOLICITUD = 1",
                 (rs, row) -> {
                     FilaReparacion f = new FilaReparacion();
                     f.idCom                = rs.getInt("ID_COM");
@@ -77,6 +79,7 @@ public class ReparacionComponenteDAO {
                     f.esSolicitud          = rs.getBoolean("ES_SOLICITUD");
                     f.descripcionSolicitud = rs.getString("DESCRIPCION_SOLICITUD");
                     f.estadoSolicitud      = rs.getString("ESTADO_SOLICITUD");
+                    f.enCamino             = rs.getBoolean("EN_CAMINO");
                     return f;
                 },
                 idAsignacion);

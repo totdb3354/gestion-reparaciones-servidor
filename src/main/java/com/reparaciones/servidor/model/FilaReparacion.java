@@ -9,4 +9,5 @@ public class FilaReparacion {
     public boolean esSolicitud;
     public String  descripcionSolicitud;
     public String  estadoSolicitud;
+    public boolean enCamino;
 }
