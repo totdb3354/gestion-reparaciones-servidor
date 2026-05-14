@@ -17,6 +17,9 @@ public class ReparacionResumen {
     private int           idTec;
     private int           esSolicitud;
     private String        descripcionSolicitud;
+    private String        estadoSolicitud;
+    private String        tipoSolicitud;
+    private int           stockSolicitud;
     private LocalDateTime updatedAt;
 
     public ReparacionResumen() {}
@@ -27,6 +30,7 @@ public class ReparacionResumen {
                               boolean esIncidencia, boolean esResuelto,
                               String incidencia, String idRepAnterior, int idTec,
                               int esSolicitud, String descripcionSolicitud,
+                              String estadoSolicitud, String tipoSolicitud, int stockSolicitud,
                               LocalDateTime updatedAt) {
         this.idRep                = idRep;
         this.imei                 = imei;
@@ -42,6 +46,9 @@ public class ReparacionResumen {
         this.idTec                = idTec;
         this.esSolicitud          = esSolicitud;
         this.descripcionSolicitud = descripcionSolicitud;
+        this.estadoSolicitud      = estadoSolicitud;
+        this.tipoSolicitud        = tipoSolicitud;
+        this.stockSolicitud       = stockSolicitud;
         this.updatedAt            = updatedAt;
     }
 
@@ -59,5 +66,8 @@ public class ReparacionResumen {
     public int           getIdTec()                { return idTec; }
     public int           getEsSolicitud()          { return esSolicitud; }
     public String        getDescripcionSolicitud() { return descripcionSolicitud; }
+    public String        getEstadoSolicitud()      { return estadoSolicitud; }
+    public String        getTipoSolicitud()        { return tipoSolicitud; }
+    public int           getStockSolicitud()       { return stockSolicitud; }
     public LocalDateTime getUpdatedAt()            { return updatedAt; }
 }
