@@ -19,7 +19,7 @@ public class ProveedorController {
         this.dao = dao;
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
     @GetMapping
     public List<Proveedor> getAll() {
         return dao.getAll();
