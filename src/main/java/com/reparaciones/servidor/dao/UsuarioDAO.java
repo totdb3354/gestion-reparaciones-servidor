@@ -85,7 +85,7 @@ public class UsuarioDAO {
 
     @Transactional
     public void eliminarTecnico(int idTec, int idUsu) {
-        // Usuario primero (tiene FK → Tecnico), luego Tecnico
+        jdbc.update("DELETE FROM Log_Actividad WHERE ID_USU = ?", idUsu);
         jdbc.update("DELETE FROM Usuario WHERE ID_USU = ?", idUsu);
         jdbc.update("DELETE FROM Tecnico WHERE ID_TEC = ?", idTec);
     }
