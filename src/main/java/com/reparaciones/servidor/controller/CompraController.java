@@ -25,13 +25,13 @@ public class CompraController {
         this.logDao = logDao;
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
     @GetMapping
     public List<CompraComponente> getAll() {
         return dao.getAll();
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
     @GetMapping("/pendientes")
     public List<CompraComponente> getPendientes() {
         return dao.getPendientes();
