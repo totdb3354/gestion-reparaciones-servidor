@@ -16,7 +16,8 @@ public class ProveedorDAO {
             rs.getInt("ID_PROV"),
             rs.getString("NOMBRE"),
             rs.getBoolean("ACTIVO"),
-            rs.getString("DIVISA")
+            rs.getString("DIVISA"),
+            rs.getString("COMENTARIO")
     );
 
     public ProveedorDAO(JdbcTemplate jdbc) {
@@ -25,13 +26,13 @@ public class ProveedorDAO {
 
     public List<Proveedor> getAll() {
         return jdbc.query(
-                "SELECT ID_PROV, NOMBRE, ACTIVO, DIVISA FROM Proveedor ORDER BY NOMBRE",
+                "SELECT ID_PROV, NOMBRE, ACTIVO, DIVISA, COMENTARIO FROM Proveedor ORDER BY NOMBRE",
                 MAPPER);
     }
 
     public List<Proveedor> getActivos() {
         return jdbc.query(
-                "SELECT ID_PROV, NOMBRE, ACTIVO, DIVISA FROM Proveedor WHERE ACTIVO = 1 ORDER BY NOMBRE",
+                "SELECT ID_PROV, NOMBRE, ACTIVO, DIVISA, COMENTARIO FROM Proveedor WHERE ACTIVO = 1 ORDER BY NOMBRE",
                 MAPPER);
     }
 
@@ -50,8 +51,9 @@ public class ProveedorDAO {
         jdbc.update("UPDATE Proveedor SET ACTIVO = ? WHERE ID_PROV = ?", activo, idProv);
     }
 
-    public void setDivisa(int idProv, String divisa) {
-        jdbc.update("UPDATE Proveedor SET DIVISA = ? WHERE ID_PROV = ?", divisa, idProv);
+    public void editar(int idProv, String nombre, String divisa, String comentario) {
+        jdbc.update("UPDATE Proveedor SET NOMBRE = ?, DIVISA = ?, COMENTARIO = ? WHERE ID_PROV = ?",
+                nombre, divisa, comentario, idProv);
     }
 
     public void borrar(int idProv) {
