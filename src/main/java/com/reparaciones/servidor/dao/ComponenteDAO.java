@@ -45,7 +45,7 @@ public class ComponenteDAO {
     public List<Componente> getAllGestionados() {
         String sql = """
                 SELECT c.ID_COM, c.TIPO, c.FECHA_REGISTRO, c.STOCK, c.STOCK_MINIMO, c.ACTIVO, c.UPDATED_AT,
-                       COALESCE(SUM(CASE WHEN cc.ESTADO IN ('pendiente','parcial')
+                       COALESCE(SUM(CASE WHEN cc.ESTADO IN ('en_camino','parcial')
                                          THEN cc.CANTIDAD - COALESCE(cc.CANTIDAD_RECIBIDA, 0)
                                          ELSE 0 END), 0) AS EN_CAMINO,
                        MAX(cc.FECHA_PEDIDO) AS ULTIMO_PEDIDO

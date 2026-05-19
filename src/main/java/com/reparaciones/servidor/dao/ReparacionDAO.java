@@ -72,7 +72,7 @@ public class ReparacionDAO {
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
             "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS STOCK_SOL," +
             " (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM Compra_componente cc" +
-            "  WHERE cc.ESTADO = 'pendiente' AND cc.ID_COM IN (" +
+            "  WHERE cc.ESTADO = 'en_camino' AND cc.ID_COM IN (" +
             "   SELECT rc2.ID_COM FROM Reparacion_componente rc2" +
             "   WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA')) AS EN_CAMINO_SOL," +
             " (SELECT GROUP_CONCAT(c2.TIPO ORDER BY c2.TIPO SEPARATOR ', ')" +

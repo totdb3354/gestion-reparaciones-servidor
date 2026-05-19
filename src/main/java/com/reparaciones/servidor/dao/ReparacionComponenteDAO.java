@@ -68,7 +68,7 @@ public class ReparacionComponenteDAO {
                 "SELECT rc.ID_COM, rc.CANTIDAD, rc.ES_REUTILIZADO, rc.OBSERVACIONES," +
                 " rc.ES_SOLICITUD, rc.DESCRIPCION_SOLICITUD, rc.ESTADO_SOLICITUD," +
                 " CASE WHEN EXISTS(SELECT 1 FROM Compra_componente cc" +
-                "  WHERE cc.ID_COM = rc.ID_COM AND cc.ESTADO = 'pendiente') THEN 1 ELSE 0 END AS EN_CAMINO" +
+                "  WHERE cc.ID_COM = rc.ID_COM AND cc.ESTADO = 'en_camino') THEN 1 ELSE 0 END AS EN_CAMINO" +
                 " FROM Reparacion_componente rc WHERE rc.ID_REP = ? AND rc.ES_SOLICITUD = 1",
                 (rs, row) -> {
                     FilaReparacion f = new FilaReparacion();

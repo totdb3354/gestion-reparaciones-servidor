@@ -59,14 +59,14 @@ public class CompraComponenteDAO {
 
     public List<CompraComponente> getPendientes() {
         return jdbc.query(SELECT_BASE +
-                " WHERE cc.ESTADO = 'pendiente'" +
+                " WHERE cc.ESTADO = 'en_camino'" +
                 " ORDER BY cc.ES_URGENTE DESC, cc.FECHA_PEDIDO ASC", MAPPER);
     }
 
     public int getCantidadPendientePorComponente(int idCom) {
         return jdbc.queryForObject(
                 "SELECT COALESCE(SUM(CANTIDAD - COALESCE(CANTIDAD_RECIBIDA, 0)), 0)" +
-                " FROM Compra_componente WHERE ID_COM = ? AND ESTADO IN ('pendiente','parcial')",
+                " FROM Compra_componente WHERE ID_COM = ? AND ESTADO IN ('en_camino','parcial')",
                 Integer.class, idCom);
     }
 
@@ -75,7 +75,7 @@ public class CompraComponenteDAO {
         jdbc.update(
                 "INSERT INTO Compra_componente" +
                 " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
-                " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
+                " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'en_camino')",
                 idCom, idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur);
     }
 
@@ -151,7 +151,7 @@ public class CompraComponenteDAO {
                     "Stock insuficiente para deshacer la recepción (" +
                     "stock actual: " + stockActual + ", a descontar: " + cantidadARevertir + ")");
         }
-        jdbc.update("UPDATE Compra_componente SET ESTADO='pendiente', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL" +
+        jdbc.update("UPDATE Compra_componente SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL" +
                 " WHERE ID_COMPRA=?", idCompra);
         jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?",
                 cantidadARevertir, row.idCom());
