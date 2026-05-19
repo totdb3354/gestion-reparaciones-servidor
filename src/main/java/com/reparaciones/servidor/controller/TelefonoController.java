@@ -28,10 +28,15 @@ public class TelefonoController {
         return Map.of("value", dao.exists(imei));
     }
 
+    @GetMapping("/{imei}/modelo")
+    public Map<String, String> getModelo(@PathVariable String imei) {
+        return Map.of("value", String.valueOf(dao.getModelo(imei)));
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody ImeiRequest req) {
-        dao.insertar(req.imei());
+        dao.insertar(req.imei(), req.modelo());
     }
 
     @DeleteMapping("/{imei}")
@@ -40,5 +45,5 @@ public class TelefonoController {
         dao.eliminar(imei);
     }
 
-    private record ImeiRequest(String imei) {}
+    private record ImeiRequest(String imei, String modelo) {}
 }
