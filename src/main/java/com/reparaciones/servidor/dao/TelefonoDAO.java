@@ -1,10 +1,8 @@
 package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.Telefono;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -31,12 +29,9 @@ public class TelefonoDAO {
     }
 
     public void insertar(String imei) {
-        int filas = jdbc.update(
+        jdbc.update(
                 "INSERT INTO Telefono (IMEI) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM Telefono WHERE IMEI = ?)",
                 imei, imei);
-        if (filas == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El teléfono ya tiene historial");
-        }
     }
 
     public void eliminar(String imei) {

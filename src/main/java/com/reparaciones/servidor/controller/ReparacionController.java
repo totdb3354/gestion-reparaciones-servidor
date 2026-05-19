@@ -113,6 +113,11 @@ public class ReparacionController {
         return Map.of("value", dao.existeAsignacionParaTecnico(imei, tecnico));
     }
 
+    @GetMapping("/imei/{imei}/tecnicos-asignados")
+    public List<Integer> getTecnicosConAsignacionActiva(@PathVariable String imei) {
+        return dao.getTecnicosConAsignacionActiva(imei);
+    }
+
     @GetMapping("/estadisticas")
     public List<PuntoEstadistica> getEstadisticasPorTecnico(
             @RequestParam String granularidad,
