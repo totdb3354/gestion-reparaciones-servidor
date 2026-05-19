@@ -51,9 +51,9 @@ public class ProveedorController {
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
-    @PatchMapping("/{idProv}/divisa")
-    public void setDivisa(@PathVariable int idProv, @RequestBody DivisaRequest req) {
-        dao.setDivisa(idProv, req.divisa());
+    @PutMapping("/{idProv}")
+    public void editar(@PathVariable int idProv, @RequestBody EditarRequest req) {
+        dao.editar(idProv, req.nombre(), req.divisa(), req.comentario());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -65,5 +65,5 @@ public class ProveedorController {
 
     private record NombreRequest(String nombre) {}
     private record ActivoRequest(boolean activo) {}
-    private record DivisaRequest(String divisa) {}
+    private record EditarRequest(String nombre, String divisa, String comentario) {}
 }
