@@ -28,10 +28,22 @@ public class TelefonoDAO {
         return count != null && count > 0;
     }
 
-    public void insertar(String imei) {
+    public void insertar(String imei, String modelo) {
         jdbc.update(
-                "INSERT INTO Telefono (IMEI) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM Telefono WHERE IMEI = ?)",
-                imei, imei);
+                "INSERT INTO Telefono (IMEI, MODELO) VALUES (?, ?)" +
+                " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO)",
+                imei, modelo, modelo);
+    }
+
+    public void insertar(String imei) {
+        insertar(imei, null);
+    }
+
+    public String getModelo(String imei) {
+        List<String> result = jdbc.query(
+                "SELECT MODELO FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> rs.getString("MODELO"), imei);
+        return result.isEmpty() ? null : result.get(0);
     }
 
     public void eliminar(String imei) {

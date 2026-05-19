@@ -45,11 +45,12 @@ public class ReparacionDAO {
             " rc.INCIDENCIA, r.ID_REP_ANTERIOR, r.ID_TEC," +
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
-            " r.UPDATED_AT" +
+            " r.UPDATED_AT, tel.MODELO" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
             " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
+            " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
             " WHERE r.ID_REP LIKE 'R%'";
 
     private static final String ASIGNACION_SELECT =
@@ -77,10 +78,11 @@ public class ReparacionDAO {
             " (SELECT GROUP_CONCAT(c2.TIPO ORDER BY c2.TIPO SEPARATOR ', ')" +
             "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
-            " r.UPDATED_AT" +
+            " r.UPDATED_AT, tel.MODELO" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
+            " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
             " WHERE r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
@@ -105,7 +107,8 @@ public class ReparacionDAO {
                 rs.getInt("STOCK_SOL"),
                 rs.getBoolean("EN_CAMINO_SOL"),
                 rs.getString("TIPOS_SOL"),
-                rs.getTimestamp("UPDATED_AT").toLocalDateTime()
+                rs.getTimestamp("UPDATED_AT").toLocalDateTime(),
+                rs.getString("MODELO")
         );
     };
 
@@ -153,7 +156,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -163,7 +166,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
