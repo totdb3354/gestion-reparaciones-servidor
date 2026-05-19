@@ -223,6 +223,12 @@ public class ReparacionDAO {
         return count != null && count > 0;
     }
 
+    public List<Integer> getTecnicosConAsignacionActiva(String imei) {
+        return jdbc.queryForList(
+                "SELECT ID_TEC FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
+                Integer.class, imei);
+    }
+
     public List<PuntoEstadistica> getEstadisticasPorTecnico(
             String granularidad, LocalDate desde, LocalDate hasta) {
         record Fila(String tecnico, LocalDate fecha) {}
