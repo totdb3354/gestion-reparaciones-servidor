@@ -366,8 +366,9 @@ public class ReparacionDAO {
                 "UPDATE Reparacion SET ID_TEC = ?, COMENTARIO_ASIGNACION = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
                 idTec, comentarioAsignacion, idRep,
                 Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
-        if (filas == 0)
+        if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
     }
 
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {

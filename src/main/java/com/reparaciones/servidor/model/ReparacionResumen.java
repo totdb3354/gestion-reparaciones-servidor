@@ -24,6 +24,7 @@ public class ReparacionResumen {
     private String        tiposSolicitud;
     private LocalDateTime updatedAt;
     private String        modelo;
+    private String        comentarioAsignacion;
 
     public ReparacionResumen() {}
 
@@ -80,8 +81,6 @@ public class ReparacionResumen {
     public String        getTiposSolicitud()      { return tiposSolicitud; }
     public LocalDateTime getUpdatedAt()            { return updatedAt; }
     public String        getModelo()               { return modelo; }
-
-    private String comentarioAsignacion;
-    public String getComentarioAsignacion() { return comentarioAsignacion; }
-    public void setComentarioAsignacion(String c) { this.comentarioAsignacion = c; }
+    public String        getComentarioAsignacion() { return comentarioAsignacion; }
+    public void setComentarioAsignacion(String c)  { this.comentarioAsignacion = c; }
 }
