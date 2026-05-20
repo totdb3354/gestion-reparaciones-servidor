@@ -143,7 +143,7 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertarAsignacion(req.imei(), req.idTec());
+        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario());
         logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION",
                 "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
         return Map.of("value", idRep);
@@ -242,7 +242,7 @@ public class ReparacionController {
 
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
-    private record AsignacionRequest(String imei, int idTec) {}
+    private record AsignacionRequest(String imei, int idTec, String comentario) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion) {}
     private record TecnicoRequest(int idTec, LocalDateTime updatedAt) {}
