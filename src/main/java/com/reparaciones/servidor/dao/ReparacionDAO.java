@@ -272,11 +272,11 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacion(String imei, int idTec) {
+    public String insertarAsignacion(String imei, int idTec, String comentario) {
         ensureTelefono(imei);
         String idRep = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG) VALUES (?,?,?,NOW())",
-                idRep, imei, idTec);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,NOW(),?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null);
         return idRep;
     }
 
