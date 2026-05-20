@@ -45,7 +45,7 @@ public class ReparacionDAO {
             " rc.INCIDENCIA, r.ID_REP_ANTERIOR, r.ID_TEC," +
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
-            " r.UPDATED_AT, tel.MODELO" +
+            " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
@@ -78,7 +78,7 @@ public class ReparacionDAO {
             " (SELECT GROUP_CONCAT(c2.TIPO ORDER BY c2.TIPO SEPARATOR ', ')" +
             "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
-            " r.UPDATED_AT, tel.MODELO" +
+            " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
@@ -87,7 +87,7 @@ public class ReparacionDAO {
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
-        return new ReparacionResumen(
+        ReparacionResumen rr = new ReparacionResumen(
                 rs.getString("ID_REP"),
                 rs.getString("IMEI"),
                 rs.getString("NOMBRE_TEC"),
@@ -110,6 +110,8 @@ public class ReparacionDAO {
                 rs.getTimestamp("UPDATED_AT").toLocalDateTime(),
                 rs.getString("MODELO")
         );
+        rr.setComentarioAsignacion(rs.getString("COMENTARIO_ASIGNACION"));
+        return rr;
     };
 
     public ReparacionDAO(JdbcTemplate jdbc) {
@@ -156,7 +158,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -166,7 +168,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
@@ -359,6 +361,15 @@ public class ReparacionDAO {
         }
     }
 
+    public void actualizarAsignacion(String idRep, int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {
+        int filas = jdbc.update(
+                "UPDATE Reparacion SET ID_TEC = ?, COMENTARIO_ASIGNACION = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
+                idTec, comentarioAsignacion, idRep,
+                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+    }
+
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
         // UPDATE atómico: el WHERE con UPDATED_AT evita la ventana SELECT→UPDATE del patrón TOCTOU
         int filas = jdbc.update(
@@ -409,8 +420,8 @@ public class ReparacionDAO {
                 comentario, idRep);
         ensureTelefono(imei);
         String idAsig = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG) VALUES (?,?,?,?,NOW())",
-                idAsig, imei, idTec, idRep);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,?,NOW(),?)",
+                idAsig, imei, idTec, idRep, comentario);
     }
 
     @Transactional

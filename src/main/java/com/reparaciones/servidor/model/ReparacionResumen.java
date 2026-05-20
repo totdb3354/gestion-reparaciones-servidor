@@ -80,4 +80,8 @@ public class ReparacionResumen {
     public String        getTiposSolicitud()      { return tiposSolicitud; }
     public LocalDateTime getUpdatedAt()            { return updatedAt; }
     public String        getModelo()               { return modelo; }
+
+    private String comentarioAsignacion;
+    public String getComentarioAsignacion() { return comentarioAsignacion; }
+    public void setComentarioAsignacion(String c) { this.comentarioAsignacion = c; }
 }
