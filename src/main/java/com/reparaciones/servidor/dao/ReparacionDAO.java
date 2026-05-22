@@ -605,6 +605,14 @@ public class ReparacionDAO {
         jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL", idAP);
     }
 
+    @Transactional
+    public void eliminarPulido(String idP) {
+        String imei = jdbc.queryForObject(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NOT NULL", String.class, idP);
+        jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idP);
+        deleteIfLastReparacion(imei);
+    }
+
     public void actualizarAsignacionPulido(String idAP, int idTec, String comentario, LocalDateTime updatedAt) {
         int filas = jdbc.update(
                 "UPDATE Reparacion SET ID_TEC = ?, COMENTARIO_ASIGNACION = ? WHERE ID_REP = ? AND UPDATED_AT = ?",

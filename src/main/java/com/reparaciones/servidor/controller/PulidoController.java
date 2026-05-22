@@ -75,6 +75,15 @@ public class PulidoController {
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION_PULIDO", "ID_REP: " + idAP);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @DeleteMapping("/historial/{idP}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void eliminarPulido(@PathVariable String idP,
+                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.eliminarPulido(idP);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_PULIDO", "ID_REP: " + idP);
+    }
+
     // ── request records ───────────────────────────────────────────────────────
 
     private record AsignacionPulidoRequest(String imei, int idTec, String comentario) {}
