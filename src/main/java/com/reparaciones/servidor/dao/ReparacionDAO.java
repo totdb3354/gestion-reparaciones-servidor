@@ -83,7 +83,7 @@ public class ReparacionDAO {
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " WHERE r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL";
+            " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
@@ -524,6 +524,100 @@ public class ReparacionDAO {
                 " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
                 " VALUES (?,?,1,?,'PENDIENTE',1)",
                 idAsignacion, idCom, descripcion);
+    }
+
+    // ── pulido ────────────────────────────────────────────────────────────────
+
+    private static final String ASIGNACION_PULIDO_SELECT =
+            "SELECT r.ID_REP, r.IMEI, t.NOMBRE AS NOMBRE_TEC," +
+            " r.FECHA_ASIG, r.FECHA_FIN," +
+            " NULL AS TIPO_COM, NULL AS OBSERVACIONES," +
+            " 0 AS ES_INCIDENCIA, 0 AS ES_RESUELTO, NULL AS INCIDENCIA," +
+            " r.ID_REP_ANTERIOR, r.ID_TEC," +
+            " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
+            " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
+            " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION" +
+            " FROM Reparacion r" +
+            " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " WHERE r.ID_REP LIKE 'AP%' AND r.FECHA_FIN IS NULL";
+
+    private static final String HISTORIAL_PULIDO_SELECT =
+            "SELECT r.ID_REP, r.IMEI, t.NOMBRE AS NOMBRE_TEC," +
+            " r.FECHA_ASIG, r.FECHA_FIN," +
+            " NULL AS TIPO_COM, NULL AS OBSERVACIONES," +
+            " 0 AS ES_INCIDENCIA, 0 AS ES_RESUELTO, NULL AS INCIDENCIA," +
+            " r.ID_REP_ANTERIOR, r.ID_TEC," +
+            " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
+            " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
+            " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION" +
+            " FROM Reparacion r" +
+            " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " WHERE r.ID_REP LIKE 'P%'";
+
+    public List<ReparacionResumen> getAsignacionesPulido(Integer idTecFilter) {
+        String order = " ORDER BY r.FECHA_ASIG ASC";
+        if (idTecFilter != null) {
+            return jdbc.query(ASIGNACION_PULIDO_SELECT + " AND r.ID_TEC = ?" + order, RESUMEN_MAPPER, idTecFilter);
+        }
+        return jdbc.query(ASIGNACION_PULIDO_SELECT + order, RESUMEN_MAPPER);
+    }
+
+    public List<ReparacionResumen> getHistorialPulido(Integer idTecFilter) {
+        String order = " ORDER BY r.FECHA_ASIG DESC";
+        if (idTecFilter != null) {
+            return jdbc.query(HISTORIAL_PULIDO_SELECT + " AND r.ID_TEC = ?" + order, RESUMEN_MAPPER, idTecFilter);
+        }
+        return jdbc.query(HISTORIAL_PULIDO_SELECT + order, RESUMEN_MAPPER);
+    }
+
+    @Transactional
+    public String insertarAsignacionPulido(String imei, int idTec, String comentario) {
+        ensureTelefono(imei);
+        String idRep = nextId("AP");
+        jdbc.update(
+                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,NOW(),?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null);
+        return idRep;
+    }
+
+    @Transactional
+    public void completarPulido(String idAP) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT IMEI, ID_TEC FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE", idAP);
+        if (rows.isEmpty())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Pulido ya completado o no existe");
+        Map<String, Object> row = rows.get(0);
+        String idP = nextId("P");
+        jdbc.update(
+                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN) VALUES (?,?,?,?,NOW(),NOW())",
+                idP, row.get("IMEI"), row.get("ID_TEC"), idAP);
+        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAP);
+    }
+
+    @Transactional
+    public void completarPulidoLote(List<String> ids) {
+        for (String idAP : ids) completarPulido(idAP);
+    }
+
+    public void eliminarAsignacionPulido(String idAP) {
+        jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL", idAP);
+    }
+
+    @Transactional
+    public void eliminarPulido(String idP) {
+        String imei = jdbc.queryForObject(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NOT NULL", String.class, idP);
+        jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idP);
+        deleteIfLastReparacion(imei);
+    }
+
+    public void actualizarAsignacionPulido(String idAP, int idTec, String comentario, LocalDateTime updatedAt) {
+        int filas = jdbc.update(
+                "UPDATE Reparacion SET ID_TEC = ?, COMENTARIO_ASIGNACION = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
+                idTec, comentario, idAP, Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
