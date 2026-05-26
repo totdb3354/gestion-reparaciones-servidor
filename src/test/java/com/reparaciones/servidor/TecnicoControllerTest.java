@@ -1,12 +1,21 @@
 package com.reparaciones.servidor;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.MOCK;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@SpringBootTest(webEnvironment = MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
 public class TecnicoControllerTest extends BaseIntegrationTest {
 
     @Test
@@ -15,7 +24,6 @@ public class TecnicoControllerTest extends BaseIntegrationTest {
                         .header("Authorization", "Bearer " + tokenTecnico()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                // insertados en @BeforeEach: ID_TEC 100 y 101
                 .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(2))));
     }
 

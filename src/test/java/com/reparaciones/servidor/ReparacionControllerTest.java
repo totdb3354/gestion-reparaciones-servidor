@@ -1,17 +1,24 @@
 package com.reparaciones.servidor;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
 import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.MOCK;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@SpringBootTest(webEnvironment = MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
 public class ReparacionControllerTest extends BaseIntegrationTest {
-
-    // ── GET historial / asignaciones ─────────────────────────────────────────
 
     @Test
     void getHistorial_conSuperTecnico_devuelve200() throws Exception {
@@ -37,16 +44,12 @@ public class ReparacionControllerTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$").isArray());
     }
 
-    // ── GET asignacion por ID ─────────────────────────────────────────────────
-
     @Test
     void getAsignacionById_idInexistente_devuelve404() throws Exception {
         mockMvc.perform(get("/api/reparaciones/asignaciones/ID_QUE_NO_EXISTE")
                         .header("Authorization", "Bearer " + tokenSuperTecnico()))
                 .andExpect(status().isNotFound());
     }
-
-    // ── POST asignación ───────────────────────────────────────────────────────
 
     @Test
     void postAsignacion_superTecnico_devuelve201ConId() throws Exception {

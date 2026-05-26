@@ -1,17 +1,24 @@
 package com.reparaciones.servidor;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
 import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.MOCK;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@SpringBootTest(webEnvironment = MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
 public class PulidoControllerTest extends BaseIntegrationTest {
-
-    // ── GET ───────────────────────────────────────────────────────────────────
 
     @Test
     void getAsignaciones_conSuperTecnico_devuelve200() throws Exception {
@@ -28,8 +35,6 @@ public class PulidoControllerTest extends BaseIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }
-
-    // ── POST asignacion ───────────────────────────────────────────────────────
 
     @Test
     void postAsignacion_superTecnico_devuelve201ConId() throws Exception {
@@ -65,11 +70,8 @@ public class PulidoControllerTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    // ── DELETE asignacion inexistente ─────────────────────────────────────────
-
     @Test
     void deleteAsignacion_idInexistente_superTecnico_devuelve204() throws Exception {
-        // El controller no valida existencia — devuelve 204 aunque no exista
         mockMvc.perform(delete("/api/pulidos/asignaciones/ID_NO_EXISTE")
                         .header("Authorization", "Bearer " + tokenSuperTecnico()))
                 .andExpect(status().isNoContent());

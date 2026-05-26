@@ -1,18 +1,25 @@
 package com.reparaciones.servidor;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.MOCK;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@SpringBootTest(webEnvironment = MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
 public class ComponenteControllerTest extends BaseIntegrationTest {
-
-    // ── GET ───────────────────────────────────────────────────────────────────
 
     @Test
     void getGestionados_conToken_devuelve200YLista() throws Exception {
@@ -20,7 +27,6 @@ public class ComponenteControllerTest extends BaseIntegrationTest {
                         .header("Authorization", "Bearer " + tokenTecnico()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                // 'Pantalla Test' insertada en data-test.sql
                 .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(1))));
     }
 
@@ -31,8 +37,6 @@ public class ComponenteControllerTest extends BaseIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }
-
-    // ── POST ──────────────────────────────────────────────────────────────────
 
     @Test
     void postComponente_superTecnico_devuelve201() throws Exception {
@@ -67,11 +71,8 @@ public class ComponenteControllerTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    // ── PATCH stock ───────────────────────────────────────────────────────────
-
     @Test
     void patchStock_componente1_devuelve200() throws Exception {
-        // ID_COM=1 ('Pantalla Test') insertado en data-test.sql
         String body = objectMapper.writeValueAsString(Map.of("delta", 1));
         mockMvc.perform(patch("/api/componentes/1/stock")
                         .header("Authorization", "Bearer " + tokenTecnico())
