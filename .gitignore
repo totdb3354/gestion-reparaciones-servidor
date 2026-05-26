@@ -13,3 +13,4 @@ Thumbs.db
 # Credenciales — nunca subir al repo
 application-prod.properties
 src/main/resources/application.properties
+src/test/resources/application-test.properties
