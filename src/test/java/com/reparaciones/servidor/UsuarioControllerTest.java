@@ -10,7 +10,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class UsuarioControllerTest extends BaseIntegrationTest {
+public class UsuarioControllerTest extends BaseIntegrationTest {
 
     // ── GET /api/usuarios/tecnicos ────────────────────────────────────────────
 

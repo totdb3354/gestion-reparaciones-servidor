@@ -8,7 +8,7 @@ import java.util.Map;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-class SeguridadTest extends BaseIntegrationTest {
+public class SeguridadTest extends BaseIntegrationTest {
 
     // ── 401 sin token ─────────────────────────────────────────────────────────
 

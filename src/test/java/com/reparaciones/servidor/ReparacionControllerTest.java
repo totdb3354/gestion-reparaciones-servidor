@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class ReparacionControllerTest extends BaseIntegrationTest {
+public class ReparacionControllerTest extends BaseIntegrationTest {
 
     // ── GET historial / asignaciones ─────────────────────────────────────────
 

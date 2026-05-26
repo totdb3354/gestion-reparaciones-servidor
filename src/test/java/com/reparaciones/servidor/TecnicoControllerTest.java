@@ -7,7 +7,7 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class TecnicoControllerTest extends BaseIntegrationTest {
+public class TecnicoControllerTest extends BaseIntegrationTest {
 
     @Test
     void getTecnicos_conToken_devuelve200YLista() throws Exception {

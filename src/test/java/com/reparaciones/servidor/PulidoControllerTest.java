@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class PulidoControllerTest extends BaseIntegrationTest {
+public class PulidoControllerTest extends BaseIntegrationTest {
 
     // ── GET ───────────────────────────────────────────────────────────────────
 

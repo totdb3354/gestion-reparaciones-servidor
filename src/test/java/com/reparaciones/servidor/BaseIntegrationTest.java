@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-abstract class BaseIntegrationTest {
+public abstract class BaseIntegrationTest {
 
     @Autowired protected MockMvc       mockMvc;
     @Autowired protected ObjectMapper  objectMapper;

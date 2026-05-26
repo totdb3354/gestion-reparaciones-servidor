@@ -10,7 +10,7 @@ import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-class AuthControllerTest extends BaseIntegrationTest {
+public class AuthControllerTest extends BaseIntegrationTest {
 
     @Test
     void login_credencialesCorrectas_devuelve200ConToken() throws Exception {
