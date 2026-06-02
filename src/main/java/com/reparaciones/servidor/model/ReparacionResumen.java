@@ -26,6 +26,7 @@ public class ReparacionResumen {
     private LocalDateTime updatedAt;
     private String        modelo;
     private String        comentarioAsignacion;
+    private String        observacionTelefono;
 
     public ReparacionResumen() {}
 
@@ -84,6 +85,8 @@ public class ReparacionResumen {
     public String        getTiposSolicitud()      { return tiposSolicitud; }
     public LocalDateTime getUpdatedAt()            { return updatedAt; }
     public String        getModelo()               { return modelo; }
-    public String        getComentarioAsignacion() { return comentarioAsignacion; }
-    public void setComentarioAsignacion(String c)  { this.comentarioAsignacion = c; }
+    public String        getComentarioAsignacion()       { return comentarioAsignacion; }
+    public void          setComentarioAsignacion(String c) { this.comentarioAsignacion = c; }
+    public String        getObservacionTelefono()        { return observacionTelefono; }
+    public void          setObservacionTelefono(String o)  { this.observacionTelefono = o; }
 }

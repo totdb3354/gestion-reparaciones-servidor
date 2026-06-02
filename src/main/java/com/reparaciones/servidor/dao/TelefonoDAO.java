@@ -46,6 +46,10 @@ public class TelefonoDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    public void actualizarObservacion(String imei, String observacion) {
+        jdbc.update("UPDATE Telefono SET OBSERVACION = ? WHERE IMEI = ?", observacion, imei);
+    }
+
     public void eliminar(String imei) {
         jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
     }
