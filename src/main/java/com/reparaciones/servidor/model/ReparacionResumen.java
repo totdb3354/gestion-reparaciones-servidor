@@ -12,6 +12,7 @@ public class ReparacionResumen {
     private String        observaciones;
     private boolean       esIncidencia;
     private boolean       esResuelto;
+    private boolean       esReutilizado;
     private String        incidencia;
     private String        idRepAnterior;
     private int           idTec;
@@ -69,6 +70,8 @@ public class ReparacionResumen {
     public String        getObservaciones()        { return observaciones; }
     public boolean       isEsIncidencia()          { return esIncidencia; }
     public boolean       isEsResuelto()            { return esResuelto; }
+    public boolean       isEsReutilizado()         { return esReutilizado; }
+    public void          setEsReutilizado(boolean v) { this.esReutilizado = v; }
     public String        getIncidencia()           { return incidencia; }
     public String        getIdRepAnterior()        { return idRepAnterior; }
     public int           getIdTec()                { return idTec; }

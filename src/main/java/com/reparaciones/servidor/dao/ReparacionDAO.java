@@ -42,6 +42,7 @@ public class ReparacionDAO {
             " c.TIPO AS TIPO_COM, rc.OBSERVACIONES," +
             " COALESCE(rc.ES_INCIDENCIA, 0) AS ES_INCIDENCIA," +
             " COALESCE(rc.ES_RESUELTO, 0) AS ES_RESUELTO," +
+            " COALESCE(rc.ES_REUTILIZADO, 0) AS ES_REUTILIZADO," +
             " rc.INCIDENCIA, r.ID_REP_ANTERIOR, r.ID_TEC," +
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
@@ -111,6 +112,7 @@ public class ReparacionDAO {
                 rs.getString("MODELO")
         );
         rr.setComentarioAsignacion(rs.getString("COMENTARIO_ASIGNACION"));
+        rr.setEsReutilizado(rs.getBoolean("ES_REUTILIZADO"));
         return rr;
     };
 
