@@ -72,6 +72,7 @@ public class CompraComponenteDAO {
 
     public void insertar(int idCom, int idProv, int cantidad, boolean esUrgente,
                          double precioUnidad, String divisa, double precioEur) {
+        idCom = resolveToMasterId(idCom);
         jdbc.update(
                 "INSERT INTO Compra_componente" +
                 " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
@@ -158,6 +159,13 @@ public class CompraComponenteDAO {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private int resolveToMasterId(int idCom) {
+        Integer master = jdbc.queryForObject(
+                "SELECT COALESCE(ID_COM_MASTER, ID_COM) FROM Componente WHERE ID_COM = ?",
+                Integer.class, idCom);
+        return master != null ? master : idCom;
+    }
 
     private record CompraRow(int idCom, int cantidad, Integer cantidadRecibida, LocalDateTime updatedAt) {}
 
