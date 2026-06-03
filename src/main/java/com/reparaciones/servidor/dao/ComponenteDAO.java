@@ -44,19 +44,29 @@ public class ComponenteDAO {
 
     public List<Componente> getAllGestionados() {
         String sql = """
-                SELECT c.ID_COM, c.TIPO, c.FECHA_REGISTRO, c.STOCK, c.STOCK_MINIMO, c.ACTIVO, c.UPDATED_AT,
+                SELECT c.ID_COM, c.TIPO, c.FECHA_REGISTRO,
+                       COALESCE(master.STOCK, c.STOCK) AS STOCK,
+                       COALESCE(master.STOCK_MINIMO, c.STOCK_MINIMO) AS STOCK_MINIMO,
+                       c.ACTIVO, c.UPDATED_AT, c.ID_COM_MASTER,
                        COALESCE(SUM(CASE WHEN cc.ESTADO IN ('en_camino','parcial')
                                          THEN cc.CANTIDAD - COALESCE(cc.CANTIDAD_RECIBIDA, 0)
                                          ELSE 0 END), 0) AS EN_CAMINO,
                        MAX(cc.FECHA_PEDIDO) AS ULTIMO_PEDIDO
                 FROM Componente c
-                LEFT JOIN Compra_componente cc ON c.ID_COM = cc.ID_COM
+                LEFT JOIN Componente master ON c.ID_COM_MASTER = master.ID_COM
+                LEFT JOIN Compra_componente cc ON COALESCE(c.ID_COM_MASTER, c.ID_COM) = cc.ID_COM
                 WHERE c.TIPO NOT LIKE 'otro%'
-                GROUP BY c.ID_COM, c.TIPO, c.FECHA_REGISTRO, c.STOCK, c.STOCK_MINIMO, c.ACTIVO, c.UPDATED_AT
+                GROUP BY c.ID_COM, c.TIPO, c.FECHA_REGISTRO, c.STOCK, c.STOCK_MINIMO, c.ACTIVO, c.UPDATED_AT, c.ID_COM_MASTER
                 ORDER BY c.TIPO
                 """;
         return jdbc.query(sql, (rs, row) -> {
-            Componente c = BASE_MAPPER.mapRow(rs, row);
+            Componente c = new Componente(
+                    rs.getInt("ID_COM"), rs.getString("TIPO"),
+                    rs.getTimestamp("FECHA_REGISTRO").toLocalDateTime(),
+                    rs.getInt("STOCK"), rs.getInt("STOCK_MINIMO"),
+                    rs.getBoolean("ACTIVO"), rs.getTimestamp("UPDATED_AT").toLocalDateTime());
+            int masterId = rs.getInt("ID_COM_MASTER");
+            if (!rs.wasNull()) c.setIdComMaster(masterId);
             c.setEnCamino(rs.getInt("EN_CAMINO"));
             Timestamp up = rs.getTimestamp("ULTIMO_PEDIDO");
             c.setUltimoPedido(up != null ? up.toLocalDateTime() : null);
@@ -69,6 +79,7 @@ public class ComponenteDAO {
                 "SELECT ID_COM, TIPO, FECHA_REGISTRO, STOCK, STOCK_MINIMO, ACTIVO, UPDATED_AT" +
                 " FROM Componente" +
                 " WHERE ACTIVO = 1 AND STOCK <= STOCK_MINIMO AND TIPO NOT LIKE 'otro%'" +
+                " AND ID_COM_MASTER IS NULL" +
                 " ORDER BY TIPO",
                 BASE_MAPPER);
     }
@@ -84,9 +95,23 @@ public class ComponenteDAO {
 
     public Map<String, List<Componente>> getAgrupadosPorTipo() {
         List<Componente> todos = jdbc.query(
-                "SELECT ID_COM, TIPO, FECHA_REGISTRO, STOCK, STOCK_MINIMO, ACTIVO, UPDATED_AT" +
-                " FROM Componente ORDER BY TIPO",
-                BASE_MAPPER);
+                "SELECT c.ID_COM, c.TIPO, c.FECHA_REGISTRO," +
+                " COALESCE(master.STOCK, c.STOCK) AS STOCK," +
+                " COALESCE(master.STOCK_MINIMO, c.STOCK_MINIMO) AS STOCK_MINIMO," +
+                " c.ACTIVO, c.UPDATED_AT, c.ID_COM_MASTER" +
+                " FROM Componente c" +
+                " LEFT JOIN Componente master ON c.ID_COM_MASTER = master.ID_COM" +
+                " ORDER BY c.TIPO",
+                (rs, row) -> {
+                    Componente c = new Componente(
+                            rs.getInt("ID_COM"), rs.getString("TIPO"),
+                            rs.getTimestamp("FECHA_REGISTRO").toLocalDateTime(),
+                            rs.getInt("STOCK"), rs.getInt("STOCK_MINIMO"),
+                            rs.getBoolean("ACTIVO"), rs.getTimestamp("UPDATED_AT").toLocalDateTime());
+                    int masterId = rs.getInt("ID_COM_MASTER");
+                    if (!rs.wasNull()) c.setIdComMaster(masterId);
+                    return c;
+                });
         Map<String, List<Componente>> agrupados = new LinkedHashMap<>();
         for (Componente c : todos) {
             String prefijo = extraerPrefijo(c.getTipo());
@@ -147,13 +172,20 @@ public class ComponenteDAO {
     }
 
     public void actualizar(int idCom, String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {
-        // UPDATE atómico: elimina la ventana TOCTOU del patrón SELECT-luego-UPDATE
-        int filas = jdbc.update(
-                "UPDATE Componente SET TIPO = ?, STOCK = ?, STOCK_MINIMO = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
-                tipo, stock, stockMinimo, idCom,
-                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
-        if (filas == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        int masterIdCom = resolveToMasterId(idCom);
+        if (masterIdCom != idCom) {
+            // Slave: actualizar STOCK en el master; TIPO y STOCK_MINIMO en el propio slave
+            jdbc.update("UPDATE Componente SET STOCK = ? WHERE ID_COM = ?", stock, masterIdCom);
+            jdbc.update("UPDATE Componente SET TIPO = ?, STOCK_MINIMO = ? WHERE ID_COM = ?",
+                    tipo, stockMinimo, idCom);
+        } else {
+            int filas = jdbc.update(
+                    "UPDATE Componente SET TIPO = ?, STOCK = ?, STOCK_MINIMO = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
+                    tipo, stock, stockMinimo, idCom,
+                    Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+            if (filas == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+            }
         }
     }
 
@@ -162,6 +194,7 @@ public class ComponenteDAO {
     }
 
     public void actualizarStock(int idCom, int delta) {
+        idCom = resolveToMasterId(idCom);
         jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?", delta, idCom);
     }
 
@@ -174,6 +207,13 @@ public class ComponenteDAO {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    int resolveToMasterId(int idCom) {
+        Integer master = jdbc.queryForObject(
+                "SELECT COALESCE(ID_COM_MASTER, ID_COM) FROM Componente WHERE ID_COM = ?",
+                Integer.class, idCom);
+        return master != null ? master : idCom;
+    }
 
     private String extraerPrefijo(String tipo) {
         if (tipo.startsWith("otro")) return "otro";

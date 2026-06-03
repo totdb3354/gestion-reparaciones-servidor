@@ -12,6 +12,7 @@ public class Componente {
     private LocalDateTime updatedAt;
     private int           enCamino;
     private LocalDateTime ultimoPedido;
+    private Integer       idComMaster;
 
     public Componente() {}
 
@@ -38,4 +39,6 @@ public class Componente {
 
     public void setEnCamino(int enCamino)             { this.enCamino    = enCamino; }
     public void setUltimoPedido(LocalDateTime fecha)  { this.ultimoPedido = fecha; }
+    public Integer getIdComMaster()                   { return idComMaster; }
+    public void setIdComMaster(Integer idComMaster)   { this.idComMaster = idComMaster; }
 }

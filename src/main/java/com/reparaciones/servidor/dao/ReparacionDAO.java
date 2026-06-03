@@ -69,8 +69,10 @@ public class ReparacionDAO {
             "  JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
             "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS TIPO_SOL," +
-            " (SELECT c2.STOCK FROM Reparacion_componente rc2" +
+            " (SELECT COALESCE(master2.STOCK, c2.STOCK)" +
+            "  FROM Reparacion_componente rc2" +
             "  JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  LEFT JOIN Componente master2 ON c2.ID_COM_MASTER = master2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
             "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS STOCK_SOL," +
             " (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM Compra_componente cc" +
@@ -315,9 +317,10 @@ public class ReparacionDAO {
                         " VALUES (?,?,?,?,0,?)",
                         idRep, fila.idCom, fila.reutilizado, fila.observacion, fila.cantidad);
                 if (!fila.reutilizado) {
+                    int masterIdCom = resolveToMasterId(fila.idCom);
                     int rows = jdbc.update(
                             "UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND STOCK >= ?",
-                            fila.cantidad, fila.idCom, fila.cantidad);
+                            fila.cantidad, masterIdCom, fila.cantidad);
                     if (rows == 0)
                         throw new ResponseStatusException(HttpStatus.CONFLICT,
                                 "Stock insuficiente para el componente ID " + fila.idCom);
@@ -411,16 +414,18 @@ public class ReparacionDAO {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
         if (!vieja.esReutilizado()) {
+            int oldMasterIdCom = resolveToMasterId(vieja.idCom());
             jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
-                    vieja.cantidad(), vieja.idCom());
+                    vieja.cantidad(), oldMasterIdCom);
         }
         jdbc.update(
                 "UPDATE Reparacion_componente SET ID_COM=?, ES_REUTILIZADO=?, OBSERVACIONES=?, CANTIDAD=?" +
                 " WHERE ID_REP=?",
                 idComNuevo, esReutilizadoNuevo, observacionNueva, nNuevas, idRep);
         if (!esReutilizadoNuevo) {
+            int newMasterIdCom = resolveToMasterId(idComNuevo);
             jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?",
-                    nNuevas, idComNuevo);
+                    nNuevas, newMasterIdCom);
         }
     }
 
@@ -503,8 +508,9 @@ public class ReparacionDAO {
 
         for (RcRow rc : rows) {
             if (!rc.esReutilizado() && rc.idCom() > 0) {
+                int masterIdCom = resolveToMasterId(rc.idCom());
                 jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
-                        rc.cantidad(), rc.idCom());
+                        rc.cantidad(), masterIdCom);
             }
         }
         jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ?", idRep);
@@ -520,12 +526,13 @@ public class ReparacionDAO {
         if (existe == null || existe == 0)
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La asignación ya fue cerrada o no existe");
+        int masterIdCom = resolveToMasterId(idCom);
         int rows = jdbc.update(
                 "UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND STOCK >= ?",
-                cantidad, idCom, cantidad);
+                cantidad, masterIdCom, cantidad);
         if (rows == 0) {
             Integer stock = jdbc.queryForObject(
-                    "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, idCom);
+                    "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, masterIdCom);
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Stock insuficiente para descontar (stock actual: " + stock + ", a descontar: " + cantidad + ")");
         }
@@ -633,6 +640,13 @@ public class ReparacionDAO {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private int resolveToMasterId(int idCom) {
+        Integer master = jdbc.queryForObject(
+                "SELECT COALESCE(ID_COM_MASTER, ID_COM) FROM Componente WHERE ID_COM = ?",
+                Integer.class, idCom);
+        return master != null ? master : idCom;
+    }
 
     private String nextId(String prefijo) {
         String hoy  = LocalDate.now().format(FMT_ID);
