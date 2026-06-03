@@ -378,7 +378,7 @@ public class ReparacionDAO {
     }
 
     public void actualizarUrgente(String idRep, boolean urgente) {
-        jdbc.update("UPDATE Reparacion SET URGENTE = ? WHERE ID_REP = ?", urgente, idRep);
+        jdbc.update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", urgente, idRep);
     }
 
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
