@@ -12,6 +12,7 @@ public class ReparacionResumen {
     private String        observaciones;
     private boolean       esIncidencia;
     private boolean       esResuelto;
+    private boolean       esReutilizado;
     private String        incidencia;
     private String        idRepAnterior;
     private int           idTec;
@@ -25,6 +26,8 @@ public class ReparacionResumen {
     private LocalDateTime updatedAt;
     private String        modelo;
     private String        comentarioAsignacion;
+    private String        observacionTelefono;
+    private boolean       urgente;
 
     public ReparacionResumen() {}
 
@@ -69,6 +72,8 @@ public class ReparacionResumen {
     public String        getObservaciones()        { return observaciones; }
     public boolean       isEsIncidencia()          { return esIncidencia; }
     public boolean       isEsResuelto()            { return esResuelto; }
+    public boolean       isEsReutilizado()         { return esReutilizado; }
+    public void          setEsReutilizado(boolean v) { this.esReutilizado = v; }
     public String        getIncidencia()           { return incidencia; }
     public String        getIdRepAnterior()        { return idRepAnterior; }
     public int           getIdTec()                { return idTec; }
@@ -81,6 +86,10 @@ public class ReparacionResumen {
     public String        getTiposSolicitud()      { return tiposSolicitud; }
     public LocalDateTime getUpdatedAt()            { return updatedAt; }
     public String        getModelo()               { return modelo; }
-    public String        getComentarioAsignacion() { return comentarioAsignacion; }
-    public void setComentarioAsignacion(String c)  { this.comentarioAsignacion = c; }
+    public String        getComentarioAsignacion()       { return comentarioAsignacion; }
+    public void          setComentarioAsignacion(String c) { this.comentarioAsignacion = c; }
+    public String        getObservacionTelefono()        { return observacionTelefono; }
+    public void          setObservacionTelefono(String o)  { this.observacionTelefono = o; }
+    public boolean       isUrgente()                     { return urgente; }
+    public void          setUrgente(boolean urgente)     { this.urgente = urgente; }
 }

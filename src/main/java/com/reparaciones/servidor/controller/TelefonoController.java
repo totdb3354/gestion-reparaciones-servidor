@@ -3,6 +3,7 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -39,6 +40,14 @@ public class TelefonoController {
         dao.insertar(req.imei(), req.modelo());
     }
 
+    @PatchMapping("/{imei}/observacion")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void actualizarObservacion(@PathVariable String imei,
+                                      @RequestBody ObservacionRequest req) {
+        dao.actualizarObservacion(imei, req.observacion());
+    }
+
     @DeleteMapping("/{imei}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable String imei) {
@@ -46,4 +55,5 @@ public class TelefonoController {
     }
 
     private record ImeiRequest(String imei, String modelo) {}
+    private record ObservacionRequest(String observacion) {}
 }

@@ -167,6 +167,16 @@ public class ReparacionController {
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PatchMapping("/asignaciones/{idRep}/urgente")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void actualizarUrgente(@PathVariable String idRep, @RequestBody UrgenteRequest req,
+                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarUrgente(idRep, req.urgente());
+        logDao.insertar(principal.getIdUsu(), "MARCAR_URGENTE",
+                "ID_REP: " + idRep + ", URGENTE: " + req.urgente());
+    }
+
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/asignaciones/{idRep}/tecnico")
     public void actualizarTecnico(@PathVariable String idRep, @RequestBody TecnicoRequest req,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -252,4 +262,5 @@ public class ReparacionController {
                                  LocalDateTime updatedAt) {}
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
     private record AgotarRequest(int idCom, int cantidad, String descripcion) {}
+    private record UrgenteRequest(boolean urgente) {}
 }
