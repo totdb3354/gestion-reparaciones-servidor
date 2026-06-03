@@ -81,7 +81,7 @@ public class ReparacionDAO {
             "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO" +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, r.URGENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
@@ -116,6 +116,7 @@ public class ReparacionDAO {
         rr.setComentarioAsignacion(rs.getString("COMENTARIO_ASIGNACION"));
         rr.setEsReutilizado(rs.getBoolean("ES_REUTILIZADO"));
         rr.setObservacionTelefono(rs.getString("OBSERVACION_TELEFONO"));
+        try { rr.setUrgente(rs.getBoolean("URGENTE")); } catch (Exception ignored) {}
         return rr;
     };
 
@@ -163,7 +164,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, r.URGENTE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -173,7 +174,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, r.URGENTE";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
@@ -374,6 +375,10 @@ public class ReparacionDAO {
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
+    }
+
+    public void actualizarUrgente(String idRep, boolean urgente) {
+        jdbc.update("UPDATE Reparacion SET URGENTE = ? WHERE ID_REP = ?", urgente, idRep);
     }
 
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
