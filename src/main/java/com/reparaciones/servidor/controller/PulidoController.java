@@ -2,8 +2,10 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.ReparacionResumen;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.ImeiLookupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,10 +21,14 @@ public class PulidoController {
 
     private final ReparacionDAO dao;
     private final LogDAO        logDao;
+    private final TelefonoDAO   telefonoDAO;
+    private final ImeiLookupService imeiLookupService;
 
-    public PulidoController(ReparacionDAO dao, LogDAO logDao) {
+    public PulidoController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ImeiLookupService imeiLookupService) {
         this.dao    = dao;
         this.logDao = logDao;
+        this.telefonoDAO = telefonoDAO;
+        this.imeiLookupService = imeiLookupService;
     }
 
     @GetMapping("/asignaciones")
@@ -42,6 +48,12 @@ public class PulidoController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionPulidoRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (telefonoDAO.getModelo(req.imei()) == null) {
+            String modelo = imeiLookupService.lookupModeloInterno(req.imei());
+            if (modelo != null) {
+                telefonoDAO.insertar(req.imei(), modelo);
+            }
+        }
         String idRep = dao.insertarAsignacionPulido(req.imei(), req.idTec(), req.comentario());
         logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION_PULIDO",
                 "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());

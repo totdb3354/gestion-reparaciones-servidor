@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
+import com.reparaciones.servidor.service.ImeiLookupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +15,11 @@ import java.util.Map;
 public class TelefonoController {
 
     private final TelefonoDAO dao;
+    private final ImeiLookupService imeiLookupService;
 
-    public TelefonoController(TelefonoDAO dao) {
+    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService) {
         this.dao = dao;
+        this.imeiLookupService = imeiLookupService;
     }
 
     @GetMapping
@@ -31,7 +34,11 @@ public class TelefonoController {
 
     @GetMapping("/{imei}/modelo")
     public Map<String, String> getModelo(@PathVariable String imei) {
-        return Map.of("value", String.valueOf(dao.getModelo(imei)));
+        String modelo = dao.getModelo(imei);
+        if (modelo == null || modelo.isBlank()) {
+            modelo = imeiLookupService.lookupModeloInterno(imei);
+        }
+        return Map.of("value", modelo != null ? modelo : "");
     }
 
     @PostMapping
