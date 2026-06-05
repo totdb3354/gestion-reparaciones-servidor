@@ -48,7 +48,8 @@ public class PulidoController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionPulidoRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        if (telefonoDAO.getModelo(req.imei()) == null) {
+        String modeloExistente = telefonoDAO.getModelo(req.imei());
+        if (modeloExistente == null || modeloExistente.isBlank()) {
             String modelo = imeiLookupService.lookupModeloInterno(req.imei());
             if (modelo != null) {
                 telefonoDAO.insertar(req.imei(), modelo);

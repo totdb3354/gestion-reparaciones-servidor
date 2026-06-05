@@ -29,10 +29,11 @@ public class TelefonoDAO {
     }
 
     public void insertar(String imei, String modelo) {
+        String m = (modelo == null || modelo.isBlank()) ? null : modelo;
         jdbc.update(
                 "INSERT INTO Telefono (IMEI, MODELO) VALUES (?, ?)" +
                 " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO)",
-                imei, modelo, modelo);
+                imei, m, m);
     }
 
     public void insertar(String imei) {
