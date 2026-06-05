@@ -63,7 +63,10 @@ public class ImeiLookupService {
                     .build();
             HttpResponse<String> response = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) return null;
+            if (response.statusCode() != 200) {
+                log.warn("IMEI lookup status {} para {}", response.statusCode(), imei);
+                return null;
+            }
             JsonNode root = objectMapper.readTree(response.body());
             JsonNode obj = root.get("object");
             if (obj == null) return null;
