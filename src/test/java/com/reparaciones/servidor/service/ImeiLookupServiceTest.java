@@ -25,6 +25,12 @@ class ImeiLookupServiceTest {
     }
 
     @Test
+    void modelo_apple_desconocido_devuelve_null() {
+        assertThat(service.comercialACodigoInterno("iPhone 99")).isNull();
+        assertThat(service.comercialACodigoInterno("iPhone 99 Pro")).isNull();
+    }
+
+    @Test
     void key_vacia_no_llama_a_la_api() {
         assertThat(service.lookupModeloInterno("352322311421731")).isNull();
     }

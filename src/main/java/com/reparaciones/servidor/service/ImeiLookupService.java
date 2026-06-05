@@ -53,12 +53,14 @@ public class ImeiLookupService {
 
     public String lookupModeloInterno(String imei) {
         if (apiKey == null || apiKey.isBlank()) return null;
+        if (!imei.matches("\\d{15,17}")) return null;
         try {
             String url = URL_BASE + "?key=" + apiKey + "&imei=" + imei + "&format=json";
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(3))
                     .header("Accept", "application/json")
+                    .header("User-Agent", "gestion-reparaciones/1.0")
                     .GET()
                     .build();
             HttpResponse<String> response = httpClient.send(request,
