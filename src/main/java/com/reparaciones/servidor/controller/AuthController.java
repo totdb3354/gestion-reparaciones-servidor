@@ -57,12 +57,14 @@ public class AuthController {
     public ResponseEntity<?> cambiarPassword(
             @AuthenticationPrincipal UsuarioPrincipal principal,
             @RequestBody CambiarPasswordRequest req) {
+        if (req.passwordNueva() == null || req.passwordNueva().length() < 6)
+            return ResponseEntity.badRequest().build();
         try {
             usuarioDao.cambiarPassword(principal.getIdUsu(), req.passwordActual(), req.passwordNueva());
             logDao.insertar(principal.getIdUsu(), "CAMBIAR_PASSWORD", "");
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(401).build();
+            return ResponseEntity.unprocessableEntity().build();
         }
     }
 
