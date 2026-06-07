@@ -1,12 +1,14 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.dao.UsuarioDAO;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -19,11 +21,14 @@ public class AuthController {
     private final AuthenticationManager authManager;
     private final JwtUtil               jwtUtil;
     private final LogDAO                logDao;
+    private final UsuarioDAO            usuarioDao;
 
-    public AuthController(AuthenticationManager authManager, JwtUtil jwtUtil, LogDAO logDao) {
+    public AuthController(AuthenticationManager authManager, JwtUtil jwtUtil,
+                          LogDAO logDao, UsuarioDAO usuarioDao) {
         this.authManager = authManager;
         this.jwtUtil     = jwtUtil;
         this.logDao      = logDao;
+        this.usuarioDao  = usuarioDao;
     }
 
     @PostMapping("/login")
@@ -48,5 +53,19 @@ public class AuthController {
         }
     }
 
+    @PatchMapping("/cambiar-password")
+    public ResponseEntity<?> cambiarPassword(
+            @AuthenticationPrincipal UsuarioPrincipal principal,
+            @RequestBody CambiarPasswordRequest req) {
+        try {
+            usuarioDao.cambiarPassword(principal.getIdUsu(), req.passwordActual(), req.passwordNueva());
+            logDao.insertar(principal.getIdUsu(), "CAMBIAR_PASSWORD", "");
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(401).build();
+        }
+    }
+
     private record LoginRequest(String usuario, String password) {}
+    private record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
 }
