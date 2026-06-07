@@ -90,4 +90,13 @@ public class UsuarioDAO {
         jdbc.update("DELETE FROM Tecnico WHERE ID_TEC = ?", idTec);
     }
 
+    public void cambiarPassword(int idUsu, String passwordActual, String passwordNueva) {
+        String hashActual = jdbc.queryForObject(
+                "SELECT PASSWORD FROM Usuario WHERE ID_USU = ?", String.class, idUsu);
+        if (!passwordEncoder.matches(passwordActual, hashActual))
+            throw new IllegalArgumentException("Contraseña actual incorrecta");
+        String hashNuevo = passwordEncoder.encode(passwordNueva);
+        jdbc.update("UPDATE Usuario SET PASSWORD = ? WHERE ID_USU = ?", hashNuevo, idUsu);
+    }
+
 }
