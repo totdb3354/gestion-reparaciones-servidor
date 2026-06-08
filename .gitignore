@@ -10,6 +10,9 @@ target/
 .DS_Store
 Thumbs.db
 
+# Codegraph — índice generado automáticamente
+.codegraph/
+
 # Credenciales — nunca subir al repo
 application-prod.properties
 src/main/resources/application.properties
