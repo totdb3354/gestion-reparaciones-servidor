@@ -336,16 +336,28 @@ public class ReparacionDAO {
             }
         }
         if (idAsignacion != null && creoReparacion) {
-            // Solicitudes bloqueantes: PENDIENTE cuyo idCom no fue usado en esta llamada.
-            // Solicitudes de componente ya usado (o warnings acompañantes) no bloquean el cierre.
-            List<Integer> pendientes = jdbc.query(
-                    "SELECT COALESCE(ID_COM, 0) FROM Reparacion_componente" +
+            // Resolver las solicitudes PENDIENTE cuya pieza se ha reparado en esta entrega
+            // (componente usado, reutilizado o no): se dan por satisfechas, dejan de estar
+            // activas y de bloquear el cierre, y desaparecen del panel del admin. La resolución
+            // es permanente (ES_SOLICITUD = 0): no vuelven a bloquear en guardados posteriores.
+            if (!idComsUsados.isEmpty()) {
+                StringBuilder inClause = new StringBuilder();
+                for (Integer idCom : idComsUsados) {
+                    if (inClause.length() > 0) inClause.append(',');
+                    inClause.append(idCom);
+                }
+                jdbc.update(
+                        "UPDATE Reparacion_componente SET ES_SOLICITUD = 0" +
+                        " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'" +
+                        " AND ID_COM IN (" + inClause + ")",
+                        idAsignacion);
+            }
+            // Tras resolver, ¿queda alguna solicitud PENDIENTE? Si no, se cierra la asignación.
+            Integer bloqueantes = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Reparacion_componente" +
                     " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'",
-                    (rs, row) -> rs.getInt(1), idAsignacion);
-            long bloqueantes = pendientes.stream()
-                    .filter(idCom -> idCom == 0 || !idComsUsados.contains(idCom))
-                    .count();
-            if (bloqueantes == 0) {
+                    Integer.class, idAsignacion);
+            if (bloqueantes != null && bloqueantes == 0) {
                 jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAsignacion);
                 List<String> prevs = jdbc.query(
                         "SELECT ID_REP_ANTERIOR FROM Reparacion" +
