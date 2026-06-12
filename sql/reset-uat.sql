@@ -16,6 +16,9 @@ DELETE FROM Reparacion_componente;
 -- 4. Pedidos de compra
 DELETE FROM Compra_componente;
 
+-- 4b. Borradores de reparación (también caería por CASCADE, pero explícito)
+DELETE FROM Reparacion_borrador;
+
 -- 5. Romper auto-referencia y borrar reparaciones/pulidos
 UPDATE Reparacion SET ID_REP_ANTERIOR = NULL;
 DELETE FROM Reparacion;
