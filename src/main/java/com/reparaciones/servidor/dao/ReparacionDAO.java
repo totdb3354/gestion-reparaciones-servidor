@@ -21,6 +21,7 @@ import java.util.*;
 public class ReparacionDAO {
 
     private final JdbcTemplate jdbc;
+    private final BorradorDAO  borradorDao;
 
     private static final DateTimeFormatter FMT_ID = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -122,8 +123,9 @@ public class ReparacionDAO {
         return rr;
     };
 
-    public ReparacionDAO(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public ReparacionDAO(JdbcTemplate jdbc, BorradorDAO borradorDao) {
+        this.jdbc        = jdbc;
+        this.borradorDao = borradorDao;
     }
 
     // ── Lectura ───────────────────────────────────────────────────────────────
@@ -382,7 +384,10 @@ public class ReparacionDAO {
         }
     }
 
+    @Transactional
     public void actualizarAsignacion(String idRep, int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {
+        Integer idTecActual = jdbc.queryForObject(
+                "SELECT ID_TEC FROM Reparacion WHERE ID_REP = ?", Integer.class, idRep);
         int filas = jdbc.update(
                 "UPDATE Reparacion SET ID_TEC = ?, COMENTARIO_ASIGNACION = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
                 idTec, comentarioAsignacion, idRep,
@@ -390,13 +395,19 @@ public class ReparacionDAO {
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
+        if (idTecActual != null && idTecActual != idTec) {
+            borradorDao.eliminar(idRep);   // reasignada a otro técnico: el borrador del técnico anterior ya no aplica
+        }
     }
 
     public void actualizarUrgente(String idRep, boolean urgente) {
         jdbc.update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", urgente, idRep);
     }
 
+    @Transactional
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
+        Integer idTecActual = jdbc.queryForObject(
+                "SELECT ID_TEC FROM Reparacion WHERE ID_REP = ?", Integer.class, idRep);
         // UPDATE atómico: el WHERE con UPDATED_AT evita la ventana SELECT→UPDATE del patrón TOCTOU
         int filas = jdbc.update(
                 "UPDATE Reparacion SET ID_TEC = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
@@ -404,6 +415,9 @@ public class ReparacionDAO {
                 Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
+        if (idTecActual != null && idTecActual != idTec) {
+            borradorDao.eliminar(idRep);   // reasignada a otro técnico: el borrador del técnico anterior ya no aplica
         }
     }
 

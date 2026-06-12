@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS Log_Actividad;
 DROP TABLE IF EXISTS Solicitud_Stock;
 DROP TABLE IF EXISTS Reparacion_componente;
 DROP TABLE IF EXISTS Compra_componente;
+DROP TABLE IF EXISTS Reparacion_borrador;
 DROP TABLE IF EXISTS Reparacion;
 DROP TABLE IF EXISTS Usuario;
 DROP TABLE IF EXISTS TipoCambio;
@@ -80,6 +81,16 @@ CREATE TABLE Reparacion (
     CONSTRAINT Reparacion_ibfk_1 FOREIGN KEY (IMEI)            REFERENCES Telefono  (IMEI),
     CONSTRAINT fk_rep_tecnico    FOREIGN KEY (ID_TEC)          REFERENCES Tecnico   (ID_TEC),
     CONSTRAINT Reparacion_ibfk_3 FOREIGN KEY (ID_REP_ANTERIOR) REFERENCES Reparacion(ID_REP)
+);
+
+-- Borrador del modal de reparación por componente (1:0..1 con Reparacion, entidad débil).
+CREATE TABLE Reparacion_borrador (
+    ID_REP     VARCHAR(30) NOT NULL,
+    CONTENIDO  LONGTEXT    NOT NULL COMMENT 'Borrador del modal serializado en JSON',
+    UPDATED_AT TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ID_REP),
+    CONSTRAINT fk_borrador_reparacion FOREIGN KEY (ID_REP)
+        REFERENCES Reparacion (ID_REP) ON DELETE CASCADE
 );
 
 -- ── Tablas de stock ───────────────────────────────────────────────────────────
