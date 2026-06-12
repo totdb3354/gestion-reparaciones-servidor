@@ -23,11 +23,14 @@ public class ReparacionController {
     private final ReparacionDAO         dao;
     private final ReparacionComponenteDAO rcDao;
     private final LogDAO                logDao;
+    private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
 
-    public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao) {
-        this.dao    = dao;
-        this.rcDao  = rcDao;
-        this.logDao = logDao;
+    public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
+                                com.reparaciones.servidor.dao.BorradorDAO borradorDao) {
+        this.dao         = dao;
+        this.rcDao       = rcDao;
+        this.logDao      = logDao;
+        this.borradorDao = borradorDao;
     }
 
     // ── raw ──────────────────────────────────────────────────────────────────
@@ -248,8 +251,29 @@ public class ReparacionController {
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_REPARACION", "ID_REP: " + idRep);
     }
 
+    // ── borrador del modal ─────────────────────────────────────────────────────
+
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN','TECNICO')")
+    @GetMapping("/{idRep}/borrador")
+    public Map<String, String> getBorrador(@PathVariable String idRep) {
+        return java.util.Collections.singletonMap("contenido", borradorDao.get(idRep));
+    }
+
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN','TECNICO')")
+    @PutMapping("/{idRep}/borrador")
+    public void guardarBorrador(@PathVariable String idRep, @RequestBody BorradorRequest req) {
+        borradorDao.guardar(idRep, req.contenido());
+    }
+
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN','TECNICO')")
+    @DeleteMapping("/{idRep}/borrador")
+    public void eliminarBorrador(@PathVariable String idRep) {
+        borradorDao.eliminar(idRep);
+    }
+
     // ── request records ───────────────────────────────────────────────────────
 
+    private record BorradorRequest(String contenido) {}
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
     private record AsignacionRequest(String imei, int idTec, String comentario) {}
