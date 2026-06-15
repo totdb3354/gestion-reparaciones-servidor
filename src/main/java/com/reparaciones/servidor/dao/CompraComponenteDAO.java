@@ -57,13 +57,13 @@ public class CompraComponenteDAO {
         return jdbc.query(SELECT_BASE + " ORDER BY cc.FECHA_PEDIDO DESC", MAPPER);
     }
 
-    public List<CompraComponente> getPendientes() {
+    public List<CompraComponente> getEnCamino() {
         return jdbc.query(SELECT_BASE +
                 " WHERE cc.ESTADO = 'en_camino'" +
                 " ORDER BY cc.ES_URGENTE DESC, cc.FECHA_PEDIDO ASC", MAPPER);
     }
 
-    public int getCantidadPendientePorComponente(int idCom) {
+    public int getCantidadEnCaminoPorComponente(int idCom) {
         return jdbc.queryForObject(
                 "SELECT COALESCE(SUM(CANTIDAD - COALESCE(CANTIDAD_RECIBIDA, 0)), 0)" +
                 " FROM Compra_componente WHERE ID_COM = ? AND ESTADO IN ('en_camino','parcial')",
@@ -76,7 +76,7 @@ public class CompraComponenteDAO {
         jdbc.update(
                 "INSERT INTO Compra_componente" +
                 " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
-                " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'en_camino')",
+                " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
                 idCom, idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur);
     }
 
@@ -138,6 +138,28 @@ public class CompraComponenteDAO {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
         jdbc.update("UPDATE Compra_componente SET ESTADO='cancelado' WHERE ID_COMPRA=?", idCompra);
+    }
+
+    /** Confirma un pedido pendiente: pasa a 'en_camino' (entra en el flujo de recepción). */
+    public void confirmar(int idCompra, LocalDateTime updatedAt) {
+        CompraRow row = getCompraRow(idCompra);
+        checkUpdatedAt(row.updatedAt(), updatedAt);
+        int n = jdbc.update(
+                "UPDATE Compra_componente SET ESTADO='en_camino' WHERE ID_COMPRA=? AND ESTADO='pendiente'",
+                idCompra);
+        if (n == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente");
+        }
+    }
+
+    /** Borra un pedido en estado 'pendiente' (aún no se pidió nada). */
+    public void borrarPendiente(int idCompra) {
+        int n = jdbc.update(
+                "DELETE FROM Compra_componente WHERE ID_COMPRA=? AND ESTADO='pendiente'",
+                idCompra);
+        if (n == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente (no se puede borrar)");
+        }
     }
 
     @Transactional
