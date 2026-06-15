@@ -32,15 +32,15 @@ public class CompraController {
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
-    @GetMapping("/pendientes")
-    public List<CompraComponente> getPendientes() {
-        return dao.getPendientes();
+    @GetMapping("/en-camino")
+    public List<CompraComponente> getEnCamino() {
+        return dao.getEnCamino();
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
-    @GetMapping("/cantidad-pendiente/{idCom}")
-    public Map<String, Object> getCantidadPendiente(@PathVariable int idCom) {
-        return Map.of("value", dao.getCantidadPendientePorComponente(idCom));
+    @GetMapping("/cantidad-en-camino/{idCom}")
+    public Map<String, Object> getCantidadEnCamino(@PathVariable int idCom) {
+        return Map.of("value", dao.getCantidadEnCaminoPorComponente(idCom));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -100,6 +100,22 @@ public class CompraController {
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.cancelar(idCompra, req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "CANCELAR_PEDIDO", "ID_COMPRA: " + idCompra);
+    }
+
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PatchMapping("/{idCompra}/confirmar")
+    public void confirmar(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
+                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.confirmar(idCompra, req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "CONFIRMAR_PEDIDO", "ID_COMPRA: " + idCompra);
+    }
+
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @DeleteMapping("/{idCompra}")
+    public void borrar(@PathVariable int idCompra,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.borrarPendiente(idCompra);
+        logDao.insertar(principal.getIdUsu(), "BORRAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
