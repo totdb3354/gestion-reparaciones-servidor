@@ -375,6 +375,69 @@ public class ReparacionDAO {
         }
     }
 
+    @Transactional
+    public String guardarFilaIndividual(List<FilaReparacion> filas, String imei, int idTec,
+                                        String idRepAnterior, String idAsignacion) {
+        Integer existe = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE ID_REP = ? AND ID_TEC = ? AND FECHA_FIN IS NULL FOR UPDATE",
+                Integer.class, idAsignacion, idTec);
+        if (existe == null || existe == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "La asignación ya fue eliminada, completada o reasignada a otro técnico");
+        }
+        ensureTelefono(imei);
+        String idRepCreado = null;
+        Set<Integer> idComsUsados = new java.util.HashSet<>();
+        for (FilaReparacion fila : filas) {
+            if (!fila.esSolicitud) {
+                String idRep = nextId("R");
+                jdbc.update(
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN)" +
+                        " VALUES (?,?,?,?,NOW(),NOW())",
+                        idRep, imei, idTec, idRepAnterior);
+                jdbc.update(
+                        "INSERT INTO Reparacion_componente" +
+                        " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
+                        " VALUES (?,?,?,?,0,?)",
+                        idRep, fila.idCom, fila.reutilizado, fila.observacion, fila.cantidad);
+                if (!fila.reutilizado) {
+                    int masterIdCom = resolveToMasterId(fila.idCom);
+                    int rows = jdbc.update(
+                            "UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND STOCK >= ?",
+                            fila.cantidad, masterIdCom, fila.cantidad);
+                    if (rows == 0)
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                "Stock insuficiente para el componente ID " + fila.idCom);
+                }
+                idRepCreado = idRep;
+                idComsUsados.add(fila.idCom);
+            } else {
+                jdbc.update(
+                        "INSERT INTO Reparacion_componente" +
+                        " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
+                        " VALUES (?,?,1,?,'PENDIENTE',?)",
+                        idAsignacion, fila.idCom, fila.descripcionSolicitud, fila.cantidad);
+            }
+        }
+        if (idRepCreado == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "guardarFilaIndividual requiere al menos una fila con uso real");
+        }
+        if (!idComsUsados.isEmpty()) {
+            StringBuilder inClause = new StringBuilder();
+            for (Integer idCom : idComsUsados) {
+                if (inClause.length() > 0) inClause.append(',');
+                inClause.append(idCom);
+            }
+            jdbc.update(
+                    "UPDATE Reparacion_componente SET ES_SOLICITUD = 0" +
+                    " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'" +
+                    " AND ID_COM IN (" + inClause + ")",
+                    idAsignacion);
+        }
+        return idRepCreado;
+    }
+
     public void completar(String idRep) {
         int filas = jdbc.update(
                 "UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
