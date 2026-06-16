@@ -113,7 +113,8 @@ public class ReparacionComponenteDAO {
                 idRep, idCom, esReutilizado, esIncidencia, esResuelto,
                 incidencia, observaciones, esSolicitud, descripcionSolicitud, cantidad);
         if (!esReutilizado && !esSolicitud && idCom != null) {
-            jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?", cantidad, idCom);
+            jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND TIPO NOT LIKE 'otro%'",
+                    cantidad, idCom);
         }
     }
 
@@ -128,7 +129,8 @@ public class ReparacionComponenteDAO {
                 idRep, idCom);
         jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ? AND ID_COM = ?", idRep, idCom);
         if (rc != null && !rc.esReutilizado() && !rc.esSolicitud()) {
-            jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?", rc.cantidad(), idCom);
+            jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ? AND TIPO NOT LIKE 'otro%'",
+                    rc.cantidad(), idCom);
         }
     }
 
