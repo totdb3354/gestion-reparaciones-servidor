@@ -233,6 +233,18 @@ public class ReparacionController {
                 "ID_ASIG: " + idAsignacion + ", ID_COM: " + req.idCom() + ", CANT: " + req.cantidad());
     }
 
+    @PostMapping("/{idAsignacion}/filas")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Map<String, String> guardarFilaIndividual(@PathVariable String idAsignacion,
+                                                     @RequestBody GuardarFilaRequest req,
+                                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), req.idTec(),
+                req.idRepAnterior(), idAsignacion);
+        logDao.insertar(principal.getIdUsu(), "GUARDAR_FILA_INDIVIDUAL",
+                "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion + ", IMEI: " + req.imei());
+        return Map.of("value", idRep);
+    }
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/asignaciones/{idAsig}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -287,4 +299,6 @@ public class ReparacionController {
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
     private record AgotarRequest(int idCom, int cantidad, String descripcion) {}
     private record UrgenteRequest(boolean urgente) {}
+    private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
+                                      String idRepAnterior) {}
 }
