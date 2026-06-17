@@ -337,12 +337,10 @@ public class ReparacionDAO {
                         idAsignacion, fila.idCom, fila.descripcionSolicitud, fila.cantidad);
             }
         }
-        if (idAsignacion != null && creoReparacion) {
-            // Resolver las solicitudes PENDIENTE cuya pieza se ha reparado en esta entrega
-            // (componente usado, reutilizado o no): se dan por satisfechas, dejan de estar
-            // activas y de bloquear el cierre, y desaparecen del panel del admin. La resolución
-            // es permanente (ES_SOLICITUD = 0): no vuelven a bloquear en guardados posteriores.
-            if (!idComsUsados.isEmpty()) {
+        if (idAsignacion != null) {
+            // Resolver las solicitudes PENDIENTE cuya pieza se ha reparado en esta entrega.
+            // Solo tiene sentido si se insertó al menos una reparación nueva en esta llamada.
+            if (creoReparacion && !idComsUsados.isEmpty()) {
                 StringBuilder inClause = new StringBuilder();
                 for (Integer idCom : idComsUsados) {
                     if (inClause.length() > 0) inClause.append(',');
@@ -354,7 +352,9 @@ public class ReparacionDAO {
                         " AND ID_COM IN (" + inClause + ")",
                         idAsignacion);
             }
-            // Tras resolver, ¿queda alguna solicitud PENDIENTE? Si no, se cierra la asignación.
+            // Comprobar si queda alguna solicitud bloqueante y cerrar la asignación si no.
+            // Esto debe ejecutar siempre (incluso con lista vacía: todas las filas ya se
+            // guardaron individualmente y el técnico pulsa "Terminar asignación").
             Integer bloqueantes = jdbc.queryForObject(
                     "SELECT COUNT(*) FROM Reparacion_componente" +
                     " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'",
