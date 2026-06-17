@@ -183,6 +183,13 @@ public class ReparacionDAO {
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
 
+    public List<ReparacionResumen> getAsignacionesPorImei(String imei) {
+        String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, r.URGENTE" +
+                         " ORDER BY r.FECHA_ASIG ASC";
+        return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
+    }
+
     public record DetalleEdicion(String imei, int idTec, int idCom,
                                   boolean esReutilizado, String observacion, int cantidad,
                                   LocalDateTime updatedAt) {}
