@@ -71,6 +71,11 @@ public class ReparacionController {
         return dao.getAsignaciones(tecnico);
     }
 
+    @GetMapping("/asignaciones/imei/{imei}")
+    public List<ReparacionResumen> getAsignacionesPorImei(@PathVariable String imei) {
+        return dao.getAsignacionesPorImei(imei);
+    }
+
     @GetMapping("/asignaciones/{idRep}")
     public ReparacionResumen getAsignacionById(@PathVariable String idRep) {
         return dao.getAsignacionById(idRep)
