@@ -6,6 +6,7 @@ import com.reparaciones.servidor.service.ImeiLookupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,20 @@ public class TelefonoController {
         dao.eliminar(imei);
     }
 
+    @PutMapping("/{imei}/revision-logistica")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void actualizarRevisionLogistica(@PathVariable String imei,
+                                            @RequestBody RevisionLogisticaRequest req) {
+        if (req.revisado() && dao.tieneAsignacionesActivas(imei)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El IMEI tiene asignaciones activas");
+        }
+        dao.actualizarRevisionLogistica(imei, req.revisado());
+    }
+
     private record ImeiRequest(String imei, String modelo) {}
     private record ObservacionRequest(String observacion) {}
+    private record RevisionLogisticaRequest(boolean revisado) {}
 }
