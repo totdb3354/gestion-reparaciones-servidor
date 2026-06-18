@@ -541,6 +541,7 @@ public class ReparacionDAO {
         String idAsig = nextId("A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,?,NOW(),?)",
                 idAsig, imei, idTec, idRep, comentario);
+        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
     }
 
     @Transactional

@@ -67,7 +67,7 @@ public class TelefonoController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarRevisionLogistica(@PathVariable String imei,
                                             @RequestBody RevisionLogisticaRequest req) {
-        if (req.revisado() && dao.tieneAsignacionesActivas(imei)) {
+        if (dao.tieneAsignacionesActivas(imei)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "El IMEI tiene asignaciones activas");
