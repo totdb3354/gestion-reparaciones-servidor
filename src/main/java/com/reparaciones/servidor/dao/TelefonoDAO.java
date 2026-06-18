@@ -51,6 +51,19 @@ public class TelefonoDAO {
         jdbc.update("UPDATE Telefono SET OBSERVACION = ? WHERE IMEI = ?", observacion, imei);
     }
 
+    public boolean tieneAsignacionesActivas(String imei) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion" +
+                " WHERE IMEI = ? AND ID_REP LIKE 'A%' AND ID_REP NOT LIKE 'AP%' AND FECHA_FIN IS NULL",
+                Integer.class, imei);
+        return count != null && count > 0;
+    }
+
+    public void actualizarRevisionLogistica(String imei, boolean revisado) {
+        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = ? WHERE IMEI = ?",
+                revisado ? 1 : 0, imei);
+    }
+
     public void eliminar(String imei) {
         jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
     }
