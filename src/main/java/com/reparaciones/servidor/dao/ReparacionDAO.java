@@ -48,7 +48,11 @@ public class ReparacionDAO {
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO" +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
+            " COALESCE(tel.REVISION_LOGISTICA, 0) AS REVISION_LOGISTICA," +
+            " (SELECT COUNT(*) FROM Reparacion r2" +
+            "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
+            "  AND r2.ID_REP NOT LIKE 'AP%' AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
@@ -120,6 +124,8 @@ public class ReparacionDAO {
         rr.setEsReutilizado(rs.getBoolean("ES_REUTILIZADO"));
         rr.setObservacionTelefono(rs.getString("OBSERVACION_TELEFONO"));
         try { rr.setUrgente(rs.getBoolean("URGENTE")); } catch (Exception ignored) {}
+        try { rr.setRevisionLogistica(rs.getBoolean("REVISION_LOGISTICA")); } catch (Exception ignored) {}
+        try { rr.setTieneAsignaciones(rs.getInt("TIENE_ASIGNACIONES") > 0); } catch (Exception ignored) {}
         return rr;
     };
 
@@ -294,6 +300,7 @@ public class ReparacionDAO {
         String idRep = nextId("A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,NOW(),?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null);
+        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
         return idRep;
     }
 
