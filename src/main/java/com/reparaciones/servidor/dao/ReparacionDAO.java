@@ -12,6 +12,7 @@ import java.sql.Timestamp;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.WeekFields;
@@ -753,7 +754,7 @@ public class ReparacionDAO {
     }
 
     private String nextId(String prefijo) {
-        String hoy  = LocalDate.now().format(FMT_ID);
+        String hoy  = LocalDate.now(ZoneId.of("Europe/Madrid")).format(FMT_ID);
         String like = prefijo + hoy + "_%";
         // FOR UPDATE serializa lecturas concurrentes dentro de la transacción del caller:
         // dos threads leen el mismo MAX sin esto → mismo ID → PK violation
