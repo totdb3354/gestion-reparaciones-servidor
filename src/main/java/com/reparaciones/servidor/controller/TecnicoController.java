@@ -44,8 +44,10 @@ public class TecnicoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable int idTec,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = dao.getNombreById(idTec);
         dao.eliminar(idTec);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_TECNICO", "ID_TEC: " + idTec);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_TECNICO",
+                "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
     }
 
     private record NombreRequest(String nombre) {}

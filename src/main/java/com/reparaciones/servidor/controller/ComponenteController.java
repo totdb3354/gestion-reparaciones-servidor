@@ -74,8 +74,11 @@ public class ComponenteController {
     @PutMapping("/{idCom}")
     public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        int stockAnt = dao.getStockById(idCom);
         dao.actualizar(idCom, req.tipo(), req.stock(), req.stockMinimo(), req.updatedAt());
-        logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE", "ID_COM: " + idCom);
+        logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
+                "ID_COM: " + idCom + ", TIPO: " + req.tipo() +
+                ", STOCK_ANT: " + stockAnt + " → STOCK_NUE: " + req.stock());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -106,8 +109,10 @@ public class ComponenteController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable int idCom,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String tipo = dao.getTipoById(idCom);
         dao.eliminar(idCom);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_COMPONENTE", "ID_COM: " + idCom);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_COMPONENTE",
+                "ID_COM: " + idCom + ", TIPO: " + tipo);
     }
 
     private record InsertarRequest(String tipo, int stock, int stockMinimo) {}

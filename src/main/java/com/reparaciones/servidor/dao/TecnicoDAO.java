@@ -47,4 +47,9 @@ public class TecnicoDAO {
     public void eliminar(int idTec) {
         jdbc.update("DELETE FROM Tecnico WHERE ID_TEC = ?", idTec);
     }
+
+    public String getNombreById(int idTec) {
+        return jdbc.queryForObject(
+                "SELECT NOMBRE FROM Tecnico WHERE ID_TEC = ?", String.class, idTec);
+    }
 }

@@ -271,4 +271,14 @@ public class ComponenteDAO {
             default       -> fecha.toString();
         };
     }
+
+    public String getTipoById(int idCom) {
+        return jdbc.queryForObject(
+                "SELECT TIPO FROM Componente WHERE ID_COM = ?", String.class, idCom);
+    }
+
+    public int getStockById(int idCom) {
+        return jdbc.queryForObject(
+                "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, idCom);
+    }
 }

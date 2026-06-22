@@ -54,8 +54,10 @@ public class UsuarioController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activarTecnico(@PathVariable int idTec,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = dao.getNombreByIdTec(idTec);
         dao.activarTecnico(idTec);
-        logDao.insertar(principal.getIdUsu(), "ACTIVAR_USUARIO", "ID_TEC: " + idTec);
+        logDao.insertar(principal.getIdUsu(), "ACTIVAR_USUARIO",
+                "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
     }
 
     @PatchMapping("/tecnicos/{idTec}/desactivar")
@@ -63,8 +65,10 @@ public class UsuarioController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void desactivarTecnico(@PathVariable int idTec,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = dao.getNombreByIdTec(idTec);
         dao.desactivarTecnico(idTec);
-        logDao.insertar(principal.getIdUsu(), "DESACTIVAR_USUARIO", "ID_TEC: " + idTec);
+        logDao.insertar(principal.getIdUsu(), "DESACTIVAR_USUARIO",
+                "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
     }
 
     @GetMapping("/tecnicos/{idTec}/tiene-reparaciones")
@@ -78,9 +82,10 @@ public class UsuarioController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarTecnico(@PathVariable int idTec, @RequestParam int idUsu,
                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = dao.getNombreByIdTec(idTec);
         dao.eliminarTecnico(idTec, idUsu);
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_USUARIO",
-                "ID_TEC: " + idTec + ", ID_USU: " + idUsu);
+                "ID_TEC: " + idTec + ", ID_USU: " + idUsu + ", NOMBRE: " + nombre);
     }
 
     private record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String password, String rol) {}

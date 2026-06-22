@@ -106,4 +106,8 @@ public class UsuarioDAO {
         jdbc.update("UPDATE Usuario SET PASSWORD = ? WHERE ID_USU = ?", hashNuevo, idUsu);
     }
 
+    public String getNombreByIdTec(int idTec) {
+        return jdbc.queryForObject(
+                "SELECT NOMBRE FROM Tecnico WHERE ID_TEC = ?", String.class, idTec);
+    }
 }
