@@ -301,11 +301,11 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacion(String imei, int idTec, String comentario) {
+    public String insertarAsignacion(String imei, int idTec, String comentario, Integer idTecAsigna) {
         ensureTelefono(imei);
         String idRep = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,NOW(),?)",
-                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,NOW(),?,?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
         return idRep;
     }
@@ -468,7 +468,8 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public void actualizarAsignacion(String idRep, int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {
+    public void actualizarAsignacion(String idRep, int idTec, String comentarioAsignacion,
+                                     LocalDateTime updatedAt, Integer idTecAsigna) {
         Integer idTecActual = jdbc.queryForObject(
                 "SELECT ID_TEC FROM Reparacion WHERE ID_REP = ?", Integer.class, idRep);
         int filas = jdbc.update(
@@ -479,6 +480,7 @@ public class ReparacionDAO {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
         if (idTecActual != null && idTecActual != idTec) {
+            jdbc.update("UPDATE Reparacion SET ID_TEC_ASIGNA = ? WHERE ID_REP = ?", idTecAsigna, idRep);
             borradorDao.eliminar(idRep);   // reasignada a otro técnico: el borrador del técnico anterior ya no aplica
         }
     }
@@ -539,14 +541,14 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public void marcarIncidenciaYAsignar(String idRep, String comentario, String imei, int idTec) {
+    public void marcarIncidenciaYAsignar(String idRep, String comentario, String imei, int idTec, Integer idTecAsigna) {
         jdbc.update(
                 "UPDATE Reparacion_componente SET ES_INCIDENCIA = 1, INCIDENCIA = ? WHERE ID_REP = ?",
                 comentario, idRep);
         ensureTelefono(imei);
         String idAsig = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,?,NOW(),?)",
-                idAsig, imei, idTec, idRep, comentario);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),?,?)",
+                idAsig, imei, idTec, idRep, comentario, idTecAsigna);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
     }
 
