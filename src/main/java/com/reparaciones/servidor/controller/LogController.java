@@ -2,9 +2,11 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.LogActividad;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -19,7 +21,11 @@ public class LogController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public List<LogActividad> getAll() {
-        return logDao.getAll();
+    public List<LogActividad> getAll(
+            @RequestParam(required = false) String accion,
+            @RequestParam(required = false) String tecnico,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+        return logDao.getFiltered(accion, tecnico, desde, hasta);
     }
 }
