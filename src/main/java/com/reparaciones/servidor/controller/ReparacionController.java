@@ -185,15 +185,6 @@ public class ReparacionController {
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
-    @PatchMapping("/asignaciones/{idRep}/tecnico")
-    public void actualizarTecnico(@PathVariable String idRep, @RequestBody TecnicoRequest req,
-                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.actualizarTecnico(idRep, req.idTec(), req.updatedAt());
-        logDao.insertar(principal.getIdUsu(), "REASIGNAR_TECNICO",
-                "ID_REP: " + idRep + ", ID_TEC_NUEVO: " + req.idTec());
-    }
-
-    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/asignaciones/{idRep}")
     public void actualizarAsignacion(@PathVariable String idRep,
                                       @RequestBody ActualizarAsignacionRequest req,
@@ -296,8 +287,7 @@ public class ReparacionController {
     private record AsignacionRequest(String imei, int idTec, String comentario) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion) {}
-    private record TecnicoRequest(int idTec, LocalDateTime updatedAt) {}
-    private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}
+private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}
     private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
                                  String observacionNueva, int nNuevas,
                                  LocalDateTime updatedAt) {}
