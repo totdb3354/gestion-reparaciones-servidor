@@ -36,6 +36,14 @@ public class UsuarioController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> registrarTecnico(@RequestBody RegistrarTecnicoRequest req,
                                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (dao.existeNombreTecnico(req.nombreTecnico())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "Ya existe un técnico con ese nombre."));
+        }
+        if (dao.existeNombreUsuario(req.nombreUsuario())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "Ese nombre de usuario ya existe."));
+        }
         try {
             String rol = req.rol() != null ? req.rol() : "TECNICO";
             dao.registrarTecnico(req.nombreTecnico(), req.nombreUsuario(), req.password(), rol);
@@ -43,7 +51,8 @@ public class UsuarioController {
                     "NOMBRE_USUARIO: " + req.nombreUsuario() + ", ROL: " + rol + ", TECNICO: " + req.nombreTecnico());
             return ResponseEntity.status(HttpStatus.CREATED).build();
         } catch (DataIntegrityViolationException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "Ese nombre de usuario ya existe."));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

@@ -110,4 +110,18 @@ public class UsuarioDAO {
         return jdbc.queryForObject(
                 "SELECT NOMBRE FROM Tecnico WHERE ID_TEC = ?", String.class, idTec);
     }
+
+    public boolean existeNombreTecnico(String nombre) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Tecnico WHERE LOWER(TRIM(NOMBRE)) = LOWER(TRIM(?))",
+                Integer.class, nombre);
+        return n != null && n > 0;
+    }
+
+    public boolean existeNombreUsuario(String nombreUsuario) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Usuario WHERE LOWER(TRIM(NOMBRE_USUARIO)) = LOWER(TRIM(?))",
+                Integer.class, nombreUsuario);
+        return n != null && n > 0;
+    }
 }
