@@ -1,10 +1,13 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -17,10 +20,12 @@ public class TelefonoController {
 
     private final TelefonoDAO dao;
     private final ImeiLookupService imeiLookupService;
+    private final LogDAO logDao;
 
-    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService) {
+    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao) {
         this.dao = dao;
         this.imeiLookupService = imeiLookupService;
+        this.logDao = logDao;
     }
 
     @GetMapping
@@ -66,13 +71,18 @@ public class TelefonoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarRevisionLogistica(@PathVariable String imei,
-                                            @RequestBody RevisionLogisticaRequest req) {
+                                            @RequestBody RevisionLogisticaRequest req,
+                                            @AuthenticationPrincipal UsuarioPrincipal principal) {
         if (dao.tieneAsignacionesActivas(imei)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "El IMEI tiene asignaciones activas");
         }
         dao.actualizarRevisionLogistica(imei, req.revisado());
+        String modelo = dao.getModelo(imei);
+        logDao.insertar(principal.getIdUsu(),
+                req.revisado() ? "MARCAR_REVISION" : "QUITAR_REVISION",
+                "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
     }
 
     private record ImeiRequest(String imei, String modelo) {}
