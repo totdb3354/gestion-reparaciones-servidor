@@ -324,15 +324,20 @@ public class ReparacionDAO {
             }
         }
         ensureTelefono(imei);
+        Integer idTecAsigna = null;
+        if (idAsignacion != null) {
+            idTecAsigna = jdbc.queryForObject(
+                    "SELECT ID_TEC_ASIGNA FROM Reparacion WHERE ID_REP = ?", Integer.class, idAsignacion);
+        }
         boolean creoReparacion = false;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId("R");
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN)" +
-                        " VALUES (?,?,?,?,NOW(),NOW())",
-                        idRep, imei, idTec, idRepAnterior);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?)",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -406,15 +411,17 @@ public class ReparacionDAO {
                     "La asignación ya fue eliminada, completada o reasignada a otro técnico");
         }
         ensureTelefono(imei);
+        Integer idTecAsigna = jdbc.queryForObject(
+                "SELECT ID_TEC_ASIGNA FROM Reparacion WHERE ID_REP = ?", Integer.class, idAsignacion);
         String idRepCreado = null;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId("R");
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN)" +
-                        " VALUES (?,?,?,?,NOW(),NOW())",
-                        idRep, imei, idTec, idRepAnterior);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?)",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
