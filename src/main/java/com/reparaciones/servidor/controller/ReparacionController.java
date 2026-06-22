@@ -245,18 +245,34 @@ public class ReparacionController {
     @DeleteMapping("/asignaciones/{idAsig}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarAsignacion(@PathVariable String idAsig,
+                                   @RequestBody(required = false) MotivoRequest req,
                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ReparacionResumen rep = dao.getAsignacionById(idAsig).orElse(null);
         dao.eliminarAsignacion(idAsig);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION", "ID_REP: " + idAsig);
+        String detalle = rep != null
+                ? "ID_REP: " + idAsig + ", IMEI: " + rep.getImei() +
+                  ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
+                  ", TECNICO: " + rep.getNombreTecnico()
+                : "ID_REP: " + idAsig;
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION", detalle,
+                req != null ? req.motivo() : null);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/{idRep}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable String idRep,
+                         @RequestBody(required = false) MotivoRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ReparacionResumen rep = dao.getResumenById(idRep).orElse(null);
         dao.eliminar(idRep);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_REPARACION", "ID_REP: " + idRep);
+        String detalle = rep != null
+                ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
+                  ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
+                  ", TECNICO: " + rep.getNombreTecnico()
+                : "ID_REP: " + idRep;
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_REPARACION", detalle,
+                req != null ? req.motivo() : null);
     }
 
     // ── borrador del modal ─────────────────────────────────────────────────────
@@ -296,4 +312,5 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     private record UrgenteRequest(boolean urgente) {}
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
+    private record MotivoRequest(String motivo) {}
 }
