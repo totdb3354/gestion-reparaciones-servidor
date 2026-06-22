@@ -141,8 +141,11 @@ public class ReparacionController {
     public Map<String, Object> insertar(@RequestBody InsertarRequest req,
                                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         String idRep = dao.insertar(req.imei(), req.idTec(), req.fechaAsig(), req.fechaFin());
+        String modelo = dao.getModeloByImei(req.imei());
+        String tecnico = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "CREAR_REPARACION",
-                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
+                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
+                ", TECNICO: " + tecnico);
         return Map.of("value", idRep);
     }
 
@@ -152,8 +155,11 @@ public class ReparacionController {
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
         String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario());
+        String modelo = dao.getModeloByImei(req.imei());
+        String tecnico = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION",
-                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
+                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
+                ", TECNICO: " + tecnico);
         return Map.of("value", idRep);
     }
 
@@ -163,15 +169,24 @@ public class ReparacionController {
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertarCompleta(req.filas(), req.imei(), req.idTec(),
                 req.idRepAnterior(), req.idAsignacion());
+        String modelo = dao.getModeloByImei(req.imei());
+        String tecnico = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION",
-                "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
+                "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
+                ", MODELO: " + modelo + ", TECNICO: " + tecnico);
     }
 
     @PatchMapping("/{idRep}/completar")
     public void completar(@PathVariable String idRep,
                           @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ReparacionResumen rep = dao.getAsignacionById(idRep).orElse(null);
         dao.completar(idRep);
-        logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION", "ID_REP: " + idRep);
+        String detalle = rep != null
+                ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
+                  ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
+                  ", TECNICO: " + rep.getNombreTecnico()
+                : "ID_REP: " + idRep;
+        logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION", detalle);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -189,16 +204,50 @@ public class ReparacionController {
     public void actualizarAsignacion(@PathVariable String idRep,
                                       @RequestBody ActualizarAsignacionRequest req,
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ReparacionResumen ant = dao.getAsignacionById(idRep).orElse(null);
         dao.actualizarAsignacion(idRep, req.idTec(), req.comentarioAsignacion(), req.updatedAt());
-        logDao.insertar(principal.getIdUsu(), "ACTUALIZAR_ASIGNACION", "ID_REP: " + idRep);
+
+        List<String> cambios = new ArrayList<>();
+        cambios.add("ID_REP: " + idRep);
+        if (ant != null) {
+            if (ant.getIdTec() != req.idTec()) {
+                String nomAnt = dao.getNombreTecnicoById(ant.getIdTec());
+                String nomNue = dao.getNombreTecnicoById(req.idTec());
+                cambios.add("TEC_ANT: " + nomAnt + " → TEC_NUE: " + nomNue);
+            }
+            String comAnt = ant.getComentarioAsignacion() != null ? ant.getComentarioAsignacion() : "";
+            String comNue = req.comentarioAsignacion() != null ? req.comentarioAsignacion() : "";
+            if (!comAnt.equals(comNue)) {
+                cambios.add("COM_ANT: '" + comAnt + "' → COM_NUE: '" + comNue + "'");
+            }
+        }
+        logDao.insertar(principal.getIdUsu(), "ACTUALIZAR_ASIGNACION",
+                String.join(", ", cambios));
     }
 
     @PutMapping("/{idRep}")
     public void editarReparacion(@PathVariable String idRep, @RequestBody EditarRequest req,
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ReparacionResumen ant = dao.getResumenById(idRep).orElse(null);
         dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
                 req.observacionNueva(), req.nNuevas(), req.updatedAt());
-        logDao.insertar(principal.getIdUsu(), "EDITAR_REPARACION", "ID_REP: " + idRep);
+
+        List<String> cambios = new ArrayList<>();
+        cambios.add("ID_REP: " + idRep);
+        if (ant != null) {
+            String comAnt = ant.getTipoComponente() != null ? ant.getTipoComponente() : "";
+            String comNue = req.idComNuevo() > 0 ? dao.getTipoComponenteById(req.idComNuevo()) : comAnt;
+            if (!comAnt.equals(comNue)) {
+                cambios.add("COM_ANT: " + comAnt + " → COM_NUE: " + comNue);
+            }
+            String obsAnt = ant.getObservaciones() != null ? ant.getObservaciones() : "";
+            String obsNue = req.observacionNueva() != null ? req.observacionNueva() : "";
+            if (!obsAnt.equals(obsNue)) {
+                cambios.add("OBS_ANT: '" + obsAnt + "' → OBS_NUE: '" + obsNue + "'");
+            }
+        }
+        logDao.insertar(principal.getIdUsu(), "EDITAR_REPARACION",
+                String.join(", ", cambios));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -208,8 +257,11 @@ public class ReparacionController {
                                           @RequestBody IncidenciaRequest req,
                                           @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec());
+        String modelo = dao.getModeloByImei(req.imei());
+        String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "MARCAR_INCIDENCIA",
-                "ID_REP: " + idRep + ", IMEI: " + req.imei());
+                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
+                ", TECNICO_NUE: " + tecnicoNue);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -225,8 +277,9 @@ public class ReparacionController {
                                   @RequestBody AgotarRequest req,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
+        String tipo = dao.getTipoComponenteById(req.idCom());
         logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
-                "ID_ASIG: " + idAsignacion + ", ID_COM: " + req.idCom() + ", CANT: " + req.cantidad());
+                "ID_ASIG: " + idAsignacion + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
     }
 
     @PostMapping("/{idAsignacion}/filas")
@@ -236,8 +289,10 @@ public class ReparacionController {
                                                      @AuthenticationPrincipal UsuarioPrincipal principal) {
         String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), req.idTec(),
                 req.idRepAnterior(), idAsignacion);
+        String tecnico = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "GUARDAR_FILA_INDIVIDUAL",
-                "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion + ", IMEI: " + req.imei());
+                "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
+                ", IMEI: " + req.imei() + ", TECNICO: " + tecnico);
         return Map.of("value", idRep);
     }
 
