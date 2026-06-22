@@ -154,7 +154,7 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario());
+        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), principal.getIdTec());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION",
@@ -205,7 +205,7 @@ public class ReparacionController {
                                       @RequestBody ActualizarAsignacionRequest req,
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
         ReparacionResumen ant = dao.getAsignacionById(idRep).orElse(null);
-        dao.actualizarAsignacion(idRep, req.idTec(), req.comentarioAsignacion(), req.updatedAt());
+        dao.actualizarAsignacion(idRep, req.idTec(), req.comentarioAsignacion(), req.updatedAt(), principal.getIdTec());
 
         List<String> cambios = new ArrayList<>();
         cambios.add("ID_REP: " + idRep);
@@ -256,7 +256,7 @@ public class ReparacionController {
     public void marcarIncidenciaYAsignar(@PathVariable String idRep,
                                           @RequestBody IncidenciaRequest req,
                                           @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec());
+        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(), "MARCAR_INCIDENCIA",

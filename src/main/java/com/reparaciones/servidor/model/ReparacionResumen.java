@@ -30,6 +30,7 @@ public class ReparacionResumen {
     private boolean       urgente;
     private boolean       revisionLogistica;
     private boolean       tieneAsignaciones;
+    private String        nombreTecnicoAsigna;
 
     public ReparacionResumen() {}
 
@@ -98,4 +99,6 @@ public class ReparacionResumen {
     public void          setRevisionLogistica(boolean v) { this.revisionLogistica = v; }
     public boolean       isTieneAsignaciones()           { return tieneAsignaciones; }
     public void          setTieneAsignaciones(boolean v) { this.tieneAsignaciones = v; }
+    public String        getNombreTecnicoAsigna()             { return nombreTecnicoAsigna; }
+    public void          setNombreTecnicoAsigna(String v)     { this.nombreTecnicoAsigna = v; }
 }
