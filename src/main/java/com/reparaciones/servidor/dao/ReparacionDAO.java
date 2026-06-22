@@ -797,4 +797,32 @@ public class ReparacionDAO {
             default       -> fecha.toString();
         };
     }
+
+    public Optional<ReparacionResumen> getHistorialById(String idRep) {
+        List<ReparacionResumen> rows = jdbc.query(
+                HISTORIAL_SELECT + " AND r.ID_REP = ?" + ORDER_HISTORIAL,
+                RESUMEN_MAPPER, idRep);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    public Optional<ReparacionResumen> getResumenById(String idRep) {
+        return idRep.startsWith("A") ? getAsignacionById(idRep) : getHistorialById(idRep);
+    }
+
+    public String getNombreTecnicoById(int idTec) {
+        return jdbc.queryForObject(
+                "SELECT NOMBRE FROM Tecnico WHERE ID_TEC = ?", String.class, idTec);
+    }
+
+    public String getTipoComponenteById(int idCom) {
+        return jdbc.queryForObject(
+                "SELECT TIPO FROM Componente WHERE ID_COM = ?", String.class, idCom);
+    }
+
+    public String getModeloByImei(String imei) {
+        List<String> rows = jdbc.query(
+                "SELECT COALESCE(MODELO,'?') FROM Telefono WHERE IMEI = ?",
+                (rs, i) -> rs.getString(1), imei);
+        return rows.isEmpty() ? "?" : rows.get(0);
+    }
 }

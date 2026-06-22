@@ -208,4 +208,10 @@ public class CompraComponenteDAO {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }
     }
+
+    public java.util.Optional<CompraComponente> getById(int idCompra) {
+        List<CompraComponente> rows = jdbc.query(
+                SELECT_BASE + " WHERE cc.ID_COMPRA = ?", MAPPER, idCompra);
+        return rows.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(rows.get(0));
+    }
 }

@@ -5,6 +5,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Repository
@@ -17,7 +19,8 @@ public class LogDAO {
             rs.getTimestamp("FECHA").toLocalDateTime(),
             rs.getString("NOMBRE_USUARIO"),
             rs.getString("ACCION"),
-            rs.getString("DETALLE")
+            rs.getString("DETALLE"),
+            rs.getString("MOTIVO")
     );
 
     public LogDAO(JdbcTemplate jdbc) {
@@ -25,16 +28,39 @@ public class LogDAO {
     }
 
     public void insertar(int idUsu, String accion, String detalle) {
-        jdbc.update(
-                "INSERT INTO Log_Actividad (ID_USU, ACCION, DETALLE) VALUES (?, ?, ?)",
-                idUsu, accion, detalle);
+        insertar(idUsu, accion, detalle, null);
     }
 
-    public List<LogActividad> getAll() {
-        return jdbc.query(
-                "SELECT l.ID_LOG, l.FECHA, u.NOMBRE_USUARIO, l.ACCION, l.DETALLE " +
-                "FROM Log_Actividad l JOIN Usuario u ON l.ID_USU = u.ID_USU " +
-                "ORDER BY l.FECHA DESC",
-                MAPPER);
+    public void insertar(int idUsu, String accion, String detalle, String motivo) {
+        jdbc.update(
+                "INSERT INTO Log_Actividad (ID_USU, ACCION, DETALLE, MOTIVO) VALUES (?, ?, ?, ?)",
+                idUsu, accion, detalle, motivo);
+    }
+
+    public List<LogActividad> getFiltered(String accion, String tecnico,
+                                          LocalDate desde, LocalDate hasta) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT l.ID_LOG, l.FECHA, u.NOMBRE_USUARIO, l.ACCION, l.DETALLE, l.MOTIVO " +
+                "FROM Log_Actividad l JOIN Usuario u ON l.ID_USU = u.ID_USU WHERE 1=1");
+        List<Object> params = new ArrayList<>();
+
+        if (accion != null && !accion.isBlank()) {
+            sql.append(" AND l.ACCION = ?");
+            params.add(accion);
+        }
+        if (tecnico != null && !tecnico.isBlank()) {
+            sql.append(" AND u.NOMBRE_USUARIO = ?");
+            params.add(tecnico);
+        }
+        if (desde != null) {
+            sql.append(" AND DATE(l.FECHA) >= ?");
+            params.add(desde.toString());
+        }
+        if (hasta != null) {
+            sql.append(" AND DATE(l.FECHA) <= ?");
+            params.add(hasta.toString());
+        }
+        sql.append(" ORDER BY l.FECHA DESC");
+        return jdbc.query(sql.toString(), MAPPER, params.toArray());
     }
 }

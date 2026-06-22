@@ -59,4 +59,9 @@ public class ProveedorDAO {
     public void borrar(int idProv) {
         jdbc.update("DELETE FROM Proveedor WHERE ID_PROV = ?", idProv);
     }
+
+    public String getNombreById(int idProv) {
+        return jdbc.queryForObject(
+                "SELECT NOMBRE FROM Proveedor WHERE ID_PROV = ?", String.class, idProv);
+    }
 }

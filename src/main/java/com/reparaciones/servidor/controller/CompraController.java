@@ -1,7 +1,9 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
+import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
@@ -19,10 +21,15 @@ public class CompraController {
 
     private final CompraComponenteDAO dao;
     private final LogDAO              logDao;
+    private final ComponenteDAO       componenteDao;
+    private final ProveedorDAO        proveedorDao;
 
-    public CompraController(CompraComponenteDAO dao, LogDAO logDao) {
-        this.dao    = dao;
-        this.logDao = logDao;
+    public CompraController(CompraComponenteDAO dao, LogDAO logDao,
+                            ComponenteDAO componenteDao, ProveedorDAO proveedorDao) {
+        this.dao           = dao;
+        this.logDao        = logDao;
+        this.componenteDao = componenteDao;
+        this.proveedorDao  = proveedorDao;
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
@@ -50,8 +57,10 @@ public class CompraController {
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertar(req.idCom(), req.idProv(), req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), req.divisa(), req.precioEur());
+        String tipo = componenteDao.getTipoById(req.idCom());
+        String proveedor = proveedorDao.getNombreById(req.idProv());
         logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO",
-                "ID_COM: " + req.idCom() + ", ID_PROV: " + req.idProv() + ", CANTIDAD: " + req.cantidad());
+                "COMPONENTE: " + tipo + ", PROVEEDOR: " + proveedor + ", CANT: " + req.cantidad());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -67,8 +76,13 @@ public class CompraController {
     @PatchMapping("/{idCompra}/confirmar-recibido")
     public void confirmarRecibido(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
+        CompraComponente compra = dao.getById(idCompra).orElse(null);
         dao.confirmarRecibido(idCompra, req.updatedAt());
-        logDao.insertar(principal.getIdUsu(), "RECIBIR_PEDIDO", "ID_COMPRA: " + idCompra);
+        String detalle = compra != null
+                ? "ID_COMPRA: " + idCompra + ", COMPONENTE: " + compra.getTipoComponente() +
+                  ", CANT: " + compra.getCantidad()
+                : "ID_COMPRA: " + idCompra;
+        logDao.insertar(principal.getIdUsu(), "RECIBIR_PEDIDO", detalle);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -77,7 +91,7 @@ public class CompraController {
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.confirmarParcial(idCompra, req.cantidadRecibida(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "RECIBIR_PARCIAL",
-                "ID_COMPRA: " + idCompra + ", CANTIDAD: " + req.cantidadRecibida());
+                "ID_COMPRA: " + idCompra + ", CANT_RECIBIDA: " + req.cantidadRecibida());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
