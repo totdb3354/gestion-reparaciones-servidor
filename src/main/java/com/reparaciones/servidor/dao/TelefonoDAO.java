@@ -33,12 +33,16 @@ public class TelefonoDAO {
         return count != null && count > 0;
     }
 
-    public void insertar(String imei, String modelo) {
+    public void insertar(String imei, String modelo, Integer idCli) {
         String m = (modelo == null || modelo.isBlank()) ? null : modelo;
         jdbc.update(
-                "INSERT INTO Telefono (IMEI, MODELO) VALUES (?, ?)" +
-                " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO)",
-                imei, m, m);
+                "INSERT INTO Telefono (IMEI, MODELO, ID_CLI) VALUES (?, ?, ?)" +
+                " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO), ID_CLI = COALESCE(?, ID_CLI)",
+                imei, m, idCli, m, idCli);
+    }
+
+    public void insertar(String imei, String modelo) {
+        insertar(imei, modelo, null);
     }
 
     public void insertar(String imei) {
@@ -81,6 +85,15 @@ public class TelefonoDAO {
                 "UPDATE Telefono SET REVISION_LOGISTICA = ? WHERE IMEI = ? AND UPDATED_AT = ?",
                 revisado ? 1 : 0, imei,
                 Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
+    }
+
+    public void actualizarCliente(String imei, Integer idCli, LocalDateTime updatedAt) {
+        int filas = jdbc.update(
+                "UPDATE Telefono SET ID_CLI = ? WHERE IMEI = ? AND UPDATED_AT = ?",
+                idCli, imei, Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
         }

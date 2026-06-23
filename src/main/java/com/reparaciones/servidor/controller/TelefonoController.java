@@ -49,8 +49,13 @@ public class TelefonoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody ImeiRequest req) {
-        dao.insertar(req.imei(), req.modelo());
+    public void insertar(@RequestBody ImeiRequest req,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.insertar(req.imei(), req.modelo(), req.idCli());
+        if (req.idCli() != null) {
+            logDao.insertar(principal.getIdUsu(), "ASIGNAR_CLIENTE",
+                    "IMEI: " + req.imei() + ", ID_CLI: " + req.idCli());
+        }
     }
 
     @PatchMapping("/{imei}/observacion")
@@ -61,6 +66,17 @@ public class TelefonoController {
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.actualizarObservacion(imei, req.observacion(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_OBSERVACION", "IMEI: " + imei);
+    }
+
+    @PatchMapping("/{imei}/cliente")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    public void actualizarCliente(@PathVariable String imei,
+                                  @RequestBody ClienteRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarCliente(imei, req.idCli(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "CAMBIAR_CLIENTE",
+                "IMEI: " + imei + ", ID_CLI: " + (req.idCli() == null ? "—" : req.idCli()));
     }
 
     @DeleteMapping("/{imei}")
@@ -87,7 +103,8 @@ public class TelefonoController {
                 "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
     }
 
-    private record ImeiRequest(String imei, String modelo) {}
+    private record ImeiRequest(String imei, String modelo, Integer idCli) {}
     private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
+    private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
     private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
 }
