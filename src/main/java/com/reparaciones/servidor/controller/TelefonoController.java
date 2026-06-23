@@ -51,6 +51,9 @@ public class TelefonoController {
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody ImeiRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (req.idCli() != null && !"SUPERTECNICO".equals(principal.getRol())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo SUPERTECNICO puede asignar cliente");
+        }
         dao.insertar(req.imei(), req.modelo(), req.idCli());
         if (req.idCli() != null) {
             logDao.insertar(principal.getIdUsu(), "ASIGNAR_CLIENTE",
@@ -60,7 +63,7 @@ public class TelefonoController {
 
     @PatchMapping("/{imei}/observacion")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarObservacion(@PathVariable String imei,
                                       @RequestBody ObservacionRequest req,
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -70,7 +73,7 @@ public class TelefonoController {
 
     @PatchMapping("/{imei}/cliente")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarCliente(@PathVariable String imei,
                                   @RequestBody ClienteRequest req,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {

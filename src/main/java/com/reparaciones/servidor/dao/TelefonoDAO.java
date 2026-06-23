@@ -56,12 +56,6 @@ public class TelefonoDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
-    public LocalDateTime getUpdatedAt(String imei) {
-        return jdbc.queryForObject(
-                "SELECT UPDATED_AT FROM Telefono WHERE IMEI = ?",
-                (rs, row) -> rs.getTimestamp("UPDATED_AT").toLocalDateTime(), imei);
-    }
-
     public void actualizarObservacion(String imei, String observacion, LocalDateTime updatedAt) {
         int filas = jdbc.update(
                 "UPDATE Telefono SET OBSERVACION = ? WHERE IMEI = ? AND UPDATED_AT = ?",

@@ -38,7 +38,7 @@ public class ClienteController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public void insertar(@RequestBody NombreRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertar(req.nombre());
@@ -47,7 +47,7 @@ public class ClienteController {
 
     @PutMapping("/{idCli}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public void editar(@PathVariable int idCli, @RequestBody EditarRequest req,
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
         String anterior = dao.getNombreById(idCli);
@@ -58,7 +58,7 @@ public class ClienteController {
 
     @PatchMapping("/{idCli}/activo")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public void setActivo(@PathVariable int idCli, @RequestBody ActivoRequest req,
                           @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.setActivo(idCli, req.activo(), req.updatedAt());
