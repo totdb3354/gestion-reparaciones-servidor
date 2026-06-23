@@ -304,11 +304,11 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacion(String imei, int idTec, String comentario, Integer idTecAsigna) {
+    public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, Integer idTecAsigna) {
         ensureTelefono(imei);
         String idRep = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,NOW(),?,?)",
-                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE) VALUES (?,?,?,NOW(),?,?,?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgente);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
         return idRep;
     }
