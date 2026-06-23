@@ -55,13 +55,15 @@ public class ReparacionDAO {
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
-            "  AND r2.ID_REP NOT LIKE 'AP%' AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES" +
+            "  AND r2.ID_REP NOT LIKE 'AP%' AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
+            " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
             " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'R%'";
 
     private static final String ASIGNACION_SELECT =
@@ -93,12 +95,14 @@ public class ReparacionDAO {
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
-            " ta.NOMBRE AS NOMBRE_TEC_ASIGNA" +
+            " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
+            " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
@@ -135,6 +139,7 @@ public class ReparacionDAO {
         try { rr.setRevisionLogistica(rs.getBoolean("REVISION_LOGISTICA")); } catch (Exception ignored) {}
         try { rr.setTieneAsignaciones(rs.getInt("TIENE_ASIGNACIONES") > 0); } catch (Exception ignored) {}
         try { rr.setNombreTecnicoAsigna(rs.getString("NOMBRE_TEC_ASIGNA")); } catch (Exception ignored) {}
+        rr.setCliente(rs.getString("CLIENTE"));
         return rr;
     };
 
@@ -183,7 +188,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -193,14 +198,14 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
 
     public List<ReparacionResumen> getAsignacionesPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE" +
                          " ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
@@ -676,10 +681,12 @@ public class ReparacionDAO {
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT" +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'AP%' AND r.FECHA_FIN IS NULL";
 
     private static final String HISTORIAL_PULIDO_SELECT =
@@ -691,10 +698,12 @@ public class ReparacionDAO {
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT" +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'P%'";
 
     public List<ReparacionResumen> getAsignacionesPulido(Integer idTecFilter) {
