@@ -49,16 +49,37 @@ public class TelefonoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody ImeiRequest req) {
-        dao.insertar(req.imei(), req.modelo());
+    public void insertar(@RequestBody ImeiRequest req,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (req.idCli() != null && !"SUPERTECNICO".equals(principal.getRol())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo SUPERTECNICO puede asignar cliente");
+        }
+        dao.insertar(req.imei(), req.modelo(), req.idCli());
+        if (req.idCli() != null) {
+            logDao.insertar(principal.getIdUsu(), "ASIGNAR_CLIENTE",
+                    "IMEI: " + req.imei() + ", ID_CLI: " + req.idCli());
+        }
     }
 
     @PatchMapping("/{imei}/observacion")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarObservacion(@PathVariable String imei,
-                                      @RequestBody ObservacionRequest req) {
-        dao.actualizarObservacion(imei, req.observacion());
+                                      @RequestBody ObservacionRequest req,
+                                      @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarObservacion(imei, req.observacion(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_OBSERVACION", "IMEI: " + imei);
+    }
+
+    @PatchMapping("/{imei}/cliente")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void actualizarCliente(@PathVariable String imei,
+                                  @RequestBody ClienteRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarCliente(imei, req.idCli(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "CAMBIAR_CLIENTE",
+                "IMEI: " + imei + ", ID_CLI: " + (req.idCli() == null ? "—" : req.idCli()));
     }
 
     @DeleteMapping("/{imei}")
@@ -78,14 +99,15 @@ public class TelefonoController {
                     HttpStatus.CONFLICT,
                     "El IMEI tiene asignaciones activas");
         }
-        dao.actualizarRevisionLogistica(imei, req.revisado());
+        dao.actualizarRevisionLogistica(imei, req.revisado(), req.updatedAt());
         String modelo = dao.getModelo(imei);
         logDao.insertar(principal.getIdUsu(),
                 req.revisado() ? "MARCAR_REVISION" : "QUITAR_REVISION",
                 "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
     }
 
-    private record ImeiRequest(String imei, String modelo) {}
-    private record ObservacionRequest(String observacion) {}
-    private record RevisionLogisticaRequest(boolean revisado) {}
+    private record ImeiRequest(String imei, String modelo, Integer idCli) {}
+    private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
+    private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
+    private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
 }

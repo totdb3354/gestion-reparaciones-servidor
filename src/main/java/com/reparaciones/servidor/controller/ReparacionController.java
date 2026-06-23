@@ -154,12 +154,13 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), principal.getIdTec());
+        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), principal.getIdTec());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION",
-                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
-                ", TECNICO: " + tecnico);
+        String detalleLog = "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
+                ", TECNICO: " + tecnico;
+        if (req.urgente()) detalleLog += ", URGENTE: true";
+        logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION", detalleLog);
         return Map.of("value", idRep);
     }
 
@@ -355,7 +356,7 @@ public class ReparacionController {
     private record BorradorRequest(String contenido) {}
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
-    private record AsignacionRequest(String imei, int idTec, String comentario) {}
+    private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion) {}
 private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}

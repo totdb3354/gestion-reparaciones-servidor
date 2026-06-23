@@ -22,6 +22,7 @@ DROP TABLE IF EXISTS TipoCambio;
 DROP TABLE IF EXISTS Proveedor;
 DROP TABLE IF EXISTS Componente;
 DROP TABLE IF EXISTS Telefono;
+DROP TABLE IF EXISTS Cliente;
 DROP TABLE IF EXISTS Tecnico;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -48,11 +49,22 @@ CREATE TABLE Tecnico (
     PRIMARY KEY (ID_TEC)
 );
 
+CREATE TABLE Cliente (
+    ID_CLI     INT          NOT NULL AUTO_INCREMENT,
+    NOMBRE     VARCHAR(150) NOT NULL,
+    ACTIVO     BOOLEAN      NOT NULL DEFAULT TRUE,
+    UPDATED_AT TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ID_CLI)
+);
+
 CREATE TABLE Telefono (
     IMEI        VARCHAR(15)  NOT NULL,
     MODELO      VARCHAR(100),
     OBSERVACION TEXT,
-    PRIMARY KEY (IMEI)
+    ID_CLI      INT          NULL,
+    UPDATED_AT  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (IMEI),
+    CONSTRAINT fk_telefono_cliente FOREIGN KEY (ID_CLI) REFERENCES Cliente (ID_CLI)
 );
 
 -- ── Tablas con dependencias ────────────────────────────────────────────────────
@@ -176,3 +188,7 @@ CREATE TABLE Log_Actividad (
     PRIMARY KEY (ID_LOG),
     CONSTRAINT fk_log_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU)
 );
+
+-- ── Seed data ─────────────────────────────────────────────────────────────────
+
+INSERT INTO Cliente (NOMBRE, ACTIVO) VALUES ('WEB', TRUE), ('OTRO', TRUE);
