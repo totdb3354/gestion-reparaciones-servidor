@@ -55,10 +55,12 @@ public class TelefonoController {
 
     @PatchMapping("/{imei}/observacion")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
     public void actualizarObservacion(@PathVariable String imei,
-                                      @RequestBody ObservacionRequest req) {
-        dao.actualizarObservacion(imei, req.observacion());
+                                      @RequestBody ObservacionRequest req,
+                                      @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarObservacion(imei, req.observacion(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_OBSERVACION", "IMEI: " + imei);
     }
 
     @DeleteMapping("/{imei}")
@@ -78,7 +80,7 @@ public class TelefonoController {
                     HttpStatus.CONFLICT,
                     "El IMEI tiene asignaciones activas");
         }
-        dao.actualizarRevisionLogistica(imei, req.revisado());
+        dao.actualizarRevisionLogistica(imei, req.revisado(), req.updatedAt());
         String modelo = dao.getModelo(imei);
         logDao.insertar(principal.getIdUsu(),
                 req.revisado() ? "MARCAR_REVISION" : "QUITAR_REVISION",
@@ -86,6 +88,6 @@ public class TelefonoController {
     }
 
     private record ImeiRequest(String imei, String modelo) {}
-    private record ObservacionRequest(String observacion) {}
-    private record RevisionLogisticaRequest(boolean revisado) {}
+    private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
+    private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
 }

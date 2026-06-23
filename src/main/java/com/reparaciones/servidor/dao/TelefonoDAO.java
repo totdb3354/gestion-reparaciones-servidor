@@ -1,9 +1,14 @@
 package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.Telefono;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Repository
@@ -47,8 +52,20 @@ public class TelefonoDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
-    public void actualizarObservacion(String imei, String observacion) {
-        jdbc.update("UPDATE Telefono SET OBSERVACION = ? WHERE IMEI = ?", observacion, imei);
+    public LocalDateTime getUpdatedAt(String imei) {
+        return jdbc.queryForObject(
+                "SELECT UPDATED_AT FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> rs.getTimestamp("UPDATED_AT").toLocalDateTime(), imei);
+    }
+
+    public void actualizarObservacion(String imei, String observacion, LocalDateTime updatedAt) {
+        int filas = jdbc.update(
+                "UPDATE Telefono SET OBSERVACION = ? WHERE IMEI = ? AND UPDATED_AT = ?",
+                observacion, imei,
+                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
     }
 
     public boolean tieneAsignacionesActivas(String imei) {
@@ -59,9 +76,14 @@ public class TelefonoDAO {
         return count != null && count > 0;
     }
 
-    public void actualizarRevisionLogistica(String imei, boolean revisado) {
-        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = ? WHERE IMEI = ?",
-                revisado ? 1 : 0, imei);
+    public void actualizarRevisionLogistica(String imei, boolean revisado, LocalDateTime updatedAt) {
+        int filas = jdbc.update(
+                "UPDATE Telefono SET REVISION_LOGISTICA = ? WHERE IMEI = ? AND UPDATED_AT = ?",
+                revisado ? 1 : 0, imei,
+                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
     }
 
     public void eliminar(String imei) {
