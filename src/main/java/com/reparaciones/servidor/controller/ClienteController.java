@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -64,6 +65,21 @@ public class ClienteController {
         dao.setActivo(idCli, req.activo(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(),
                 req.activo() ? "ALTA_CLIENTE" : "BAJA_CLIENTE", "ID_CLI: " + idCli);
+    }
+
+    @DeleteMapping("/{idCli}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void borrar(@PathVariable int idCli,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (dao.tieneTelefonos(idCli)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El cliente tiene teléfonos asociados; desactívalo en lugar de borrarlo");
+        }
+        String nombre = dao.getNombreById(idCli);
+        dao.borrar(idCli);
+        logDao.insertar(principal.getIdUsu(), "BORRAR_CLIENTE",
+                "ID_CLI: " + idCli + ", NOMBRE: " + nombre);
     }
 
     private record NombreRequest(String nombre) {}
