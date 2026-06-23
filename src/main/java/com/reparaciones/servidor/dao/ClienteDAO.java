@@ -68,4 +68,8 @@ public class ClienteDAO {
         return jdbc.queryForObject(
                 "SELECT NOMBRE FROM Cliente WHERE ID_CLI = ?", String.class, idCli);
     }
+
+    public void borrar(int idCli) {
+        jdbc.update("DELETE FROM Cliente WHERE ID_CLI = ?", idCli);
+    }
 }
