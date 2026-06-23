@@ -31,6 +31,7 @@ public class ReparacionResumen {
     private boolean       revisionLogistica;
     private boolean       tieneAsignaciones;
     private String        nombreTecnicoAsigna;
+    private LocalDateTime telefonoUpdatedAt;
 
     public ReparacionResumen() {}
 
@@ -101,4 +102,6 @@ public class ReparacionResumen {
     public void          setTieneAsignaciones(boolean v) { this.tieneAsignaciones = v; }
     public String        getNombreTecnicoAsigna()             { return nombreTecnicoAsigna; }
     public void          setNombreTecnicoAsigna(String v)     { this.nombreTecnicoAsigna = v; }
+    public LocalDateTime getTelefonoUpdatedAt()               { return telefonoUpdatedAt; }
+    public void          setTelefonoUpdatedAt(LocalDateTime v){ this.telefonoUpdatedAt = v; }
 }
