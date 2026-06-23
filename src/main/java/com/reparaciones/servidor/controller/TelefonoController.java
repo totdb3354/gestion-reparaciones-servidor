@@ -38,6 +38,12 @@ public class TelefonoController {
         return Map.of("value", dao.exists(imei));
     }
 
+    @GetMapping("/{imei}/cliente")
+    public Map<String, String> getClienteId(@PathVariable String imei) {
+        Integer id = dao.getClienteId(imei);
+        return Map.of("value", id == null ? "" : id.toString());
+    }
+
     @GetMapping("/{imei}/modelo")
     public Map<String, String> getModelo(@PathVariable String imei) {
         String modelo = dao.getModelo(imei);

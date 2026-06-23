@@ -56,6 +56,13 @@ public class TelefonoDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    public Integer getClienteId(String imei) {
+        List<Integer> result = jdbc.query(
+                "SELECT ID_CLI FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> (Integer) rs.getObject("ID_CLI"), imei);
+        return result.isEmpty() ? null : result.get(0);
+    }
+
     public void actualizarObservacion(String imei, String observacion, LocalDateTime updatedAt) {
         int filas = jdbc.update(
                 "UPDATE Telefono SET OBSERVACION = ? WHERE IMEI = ? AND UPDATED_AT = ?",
