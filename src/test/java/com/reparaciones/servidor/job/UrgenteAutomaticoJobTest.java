@@ -20,11 +20,15 @@ class UrgenteAutomaticoJobTest {
     }
 
     @Test
-    void ejecutar_llamaAlDaoConElCutoff() {
+    void ejecutar_llamaAlDaoConElCutoffExacto() {
+        // 2026-06-24 09:30 Madrid (verano = UTC+2) -> inicio de hoy Madrid = 2026-06-23 22:00 UTC
+        Clock fixed = Clock.fixed(Instant.parse("2026-06-24T07:30:00Z"), ZoneId.of("Europe/Madrid"));
+        Timestamp expected = Timestamp.from(Instant.parse("2026-06-23T22:00:00Z"));
+
         ReparacionDAO dao = mock(ReparacionDAO.class);
         when(dao.marcarUrgentesClienteVencidas(any())).thenReturn(3);
-        UrgenteAutomaticoJob job = new UrgenteAutomaticoJob(dao);
+        UrgenteAutomaticoJob job = new UrgenteAutomaticoJob(dao, fixed);
         job.ejecutar();
-        verify(dao, times(1)).marcarUrgentesClienteVencidas(any(Timestamp.class));
+        verify(dao, times(1)).marcarUrgentesClienteVencidas(eq(expected));
     }
 }

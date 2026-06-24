@@ -18,9 +18,15 @@ public class UrgenteAutomaticoJob {
     private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
 
     private final ReparacionDAO reparacionDAO;
+    private final Clock clock;
 
     public UrgenteAutomaticoJob(ReparacionDAO reparacionDAO) {
+        this(reparacionDAO, Clock.system(MADRID));
+    }
+
+    UrgenteAutomaticoJob(ReparacionDAO reparacionDAO, Clock clock) {
         this.reparacionDAO = reparacionDAO;
+        this.clock = clock;
     }
 
     /** Inicio del día de hoy en Madrid, como Timestamp del instante UTC equivalente. */
@@ -32,7 +38,7 @@ public class UrgenteAutomaticoJob {
      *  pendientes con cliente cuya fecha de asignación es de un día anterior a hoy. */
     @Scheduled(cron = "0 0 0 * * *", zone = "Europe/Madrid")
     public void ejecutar() {
-        Timestamp cutoff = cutoffInicioDeHoyMadrid(Clock.system(MADRID));
+        Timestamp cutoff = cutoffInicioDeHoyMadrid(clock);
         int n = reparacionDAO.marcarUrgentesClienteVencidas(cutoff);
         if (n > 0) log.info("AUTO_URGENTE: {} asignaciones marcadas como urgentes", n);
     }
