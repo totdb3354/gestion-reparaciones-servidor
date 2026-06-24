@@ -199,7 +199,10 @@ public class ComponenteDAO {
     }
 
     public void setActivo(int idCom, boolean activo) {
-        jdbc.update("UPDATE Componente SET ACTIVO = ? WHERE ID_COM = ?", activo, idCom);
+        // Activar/desactivar afecta a todo el grupo compartido: master + todos sus slaves
+        int masterId = resolveToMasterId(idCom);
+        jdbc.update("UPDATE Componente SET ACTIVO = ? WHERE ID_COM = ? OR ID_COM_MASTER = ?",
+                activo, masterId, masterId);
     }
 
     public void eliminar(int idCom) {
