@@ -3,6 +3,7 @@ package com.reparaciones.servidor.job;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +21,7 @@ public class UrgenteAutomaticoJob {
     private final ReparacionDAO reparacionDAO;
     private final Clock clock;
 
+    @Autowired
     public UrgenteAutomaticoJob(ReparacionDAO reparacionDAO) {
         this(reparacionDAO, Clock.system(MADRID));
     }

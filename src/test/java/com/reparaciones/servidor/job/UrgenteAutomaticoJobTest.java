@@ -2,11 +2,12 @@ package com.reparaciones.servidor.job;
 
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.sql.Timestamp;
 import java.time.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class UrgenteAutomaticoJobTest {
@@ -30,5 +31,18 @@ class UrgenteAutomaticoJobTest {
         UrgenteAutomaticoJob job = new UrgenteAutomaticoJob(dao, fixed);
         job.ejecutar();
         verify(dao, times(1)).marcarUrgentesClienteVencidas(eq(expected));
+    }
+
+    @Test
+    void spring_puedeInstanciarElJobComoBean() {
+        // Reproduce el arranque real: un @Component con varios constructores necesita
+        // uno marcado @Autowired; si no, Spring intenta el constructor por defecto
+        // (inexistente) y el contexto no arranca.
+        try (AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext()) {
+            ctx.registerBean(ReparacionDAO.class, () -> mock(ReparacionDAO.class));
+            ctx.register(UrgenteAutomaticoJob.class);
+            ctx.refresh();
+            assertNotNull(ctx.getBean(UrgenteAutomaticoJob.class));
+        }
     }
 }
