@@ -504,6 +504,20 @@ public class ReparacionDAO {
         jdbc.update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", urgente, idRep);
     }
 
+    /** Marca URGENTE=true en asignaciones de reparación pendientes, con cliente,
+     *  cuya FECHA_ASIG es anterior al cutoff (inicio de hoy en Madrid). Devuelve nº de filas. */
+    public int marcarUrgentesClienteVencidas(java.sql.Timestamp cutoffUtc) {
+        return jdbc.update(
+            "UPDATE Reparacion r JOIN Telefono t ON t.IMEI = r.IMEI " +
+            "SET r.URGENTE = TRUE, r.UPDATED_AT = r.UPDATED_AT " +
+            "WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' " +
+            "  AND r.FECHA_FIN IS NULL " +
+            "  AND t.ID_CLI IS NOT NULL " +
+            "  AND r.URGENTE = FALSE " +
+            "  AND r.FECHA_ASIG < ?",
+            cutoffUtc);
+    }
+
     @Transactional
     public void actualizarTecnico(String idRep, int idTec, LocalDateTime updatedAt) {
         Integer idTecActual = jdbc.queryForObject(
