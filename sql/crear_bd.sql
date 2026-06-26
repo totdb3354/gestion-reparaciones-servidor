@@ -14,6 +14,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS Log_Actividad;
 DROP TABLE IF EXISTS Solicitud_Stock;
 DROP TABLE IF EXISTS Reparacion_componente;
+DROP TABLE IF EXISTS Compra_otro;
 DROP TABLE IF EXISTS Compra_componente;
 DROP TABLE IF EXISTS Reparacion_borrador;
 DROP TABLE IF EXISTS Reparacion;
@@ -139,6 +140,24 @@ CREATE TABLE Compra_componente (
     PRIMARY KEY (ID_COMPRA),
     CONSTRAINT fk_compra_componente FOREIGN KEY (ID_COM)  REFERENCES Componente (ID_COM),
     CONSTRAINT fk_compra_proveedor  FOREIGN KEY (ID_PROV) REFERENCES Proveedor  (ID_PROV)
+);
+
+CREATE TABLE Compra_otro (
+    ID_COMPRA_OTRO       INT           NOT NULL AUTO_INCREMENT,
+    ID_PROV              INT           NOT NULL,
+    CONCEPTO             VARCHAR(255)  NOT NULL,
+    CANTIDAD             INT           NOT NULL,
+    CANTIDAD_RECIBIDA    INT,
+    ES_URGENTE           BOOLEAN       NOT NULL DEFAULT FALSE,
+    FECHA_PEDIDO         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FECHA_LLEGADA        DATETIME,
+    PRECIO_UNIDAD_PEDIDO DECIMAL(10,2) NOT NULL DEFAULT 0,
+    DIVISA               VARCHAR(3)    NOT NULL DEFAULT 'EUR',
+    PRECIO_EUR           DECIMAL(10,2) NOT NULL DEFAULT 0,
+    ESTADO               ENUM('pendiente','en_camino','parcial','recibido','cancelado') NOT NULL DEFAULT 'pendiente',
+    UPDATED_AT           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ID_COMPRA_OTRO),
+    CONSTRAINT fk_compra_otro_proveedor FOREIGN KEY (ID_PROV) REFERENCES Proveedor (ID_PROV)
 );
 
 -- ── Tablas de reparaciones ────────────────────────────────────────────────────
