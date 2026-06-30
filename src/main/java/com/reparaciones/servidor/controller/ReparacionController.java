@@ -33,6 +33,11 @@ public class ReparacionController {
         this.borradorDao = borradorDao;
     }
 
+    // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
+    // se distingue por el prefijo del ID (G = glass terminado, AG = asignación de glass).
+    private static boolean esGlass(String idRep)      { return idRep != null && idRep.startsWith("G"); }
+    private static boolean esGlassAsig(String idAsig) { return idAsig != null && idAsig.startsWith("AG"); }
+
     // ── raw ──────────────────────────────────────────────────────────────────
 
     @GetMapping
@@ -78,7 +83,7 @@ public class ReparacionController {
 
     @GetMapping("/asignaciones/{idRep}")
     public ReparacionResumen getAsignacionById(@PathVariable String idRep) {
-        return dao.getAsignacionById(idRep)
+        return dao.getAsignacionAnyById(idRep)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
     }
@@ -109,16 +114,18 @@ public class ReparacionController {
     }
 
     @GetMapping("/imei/{imei}/incidencia-activa")
-    public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei) {
+    public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei,
+            @RequestParam(defaultValue = "R") String tipo) {
         Map<String, Object> resp = new HashMap<>();
-        resp.put("value", dao.getIncidenciaActivaPorImei(imei));
+        resp.put("value", dao.getIncidenciaActivaPorImei(imei, tipo));
         return resp;
     }
 
     @GetMapping("/imei/{imei}/tiene-asignacion")
     public Map<String, Object> existeAsignacionParaTecnico(
-            @PathVariable String imei, @RequestParam int tecnico) {
-        return Map.of("value", dao.existeAsignacionParaTecnico(imei, tecnico));
+            @PathVariable String imei, @RequestParam int tecnico,
+            @RequestParam(defaultValue = "R") String tipo) {
+        return Map.of("value", dao.existeAsignacionParaTecnico(imei, tecnico, tipo));
     }
 
     @GetMapping("/imei/{imei}/tecnicos-asignados")
@@ -172,7 +179,8 @@ public class ReparacionController {
                 req.idRepAnterior(), req.idAsignacion());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION",
+        logDao.insertar(principal.getIdUsu(),
+                esGlassAsig(req.idAsignacion()) ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
                 "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
                 ", MODELO: " + modelo + ", TECNICO: " + tecnico);
     }
@@ -180,14 +188,15 @@ public class ReparacionController {
     @PatchMapping("/{idRep}/completar")
     public void completar(@PathVariable String idRep,
                           @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen rep = dao.getAsignacionById(idRep).orElse(null);
+        ReparacionResumen rep = dao.getAsignacionAnyById(idRep).orElse(null);
         dao.completar(idRep);
         String detalle = rep != null
                 ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
                   ", TECNICO: " + rep.getNombreTecnico()
                 : "ID_REP: " + idRep;
-        logDao.insertar(principal.getIdUsu(), "COMPLETAR_REPARACION", detalle);
+        logDao.insertar(principal.getIdUsu(),
+                esGlassAsig(idRep) ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION", detalle);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -206,7 +215,7 @@ public class ReparacionController {
     public void actualizarAsignacion(@PathVariable String idRep,
                                       @RequestBody ActualizarAsignacionRequest req,
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen ant = dao.getAsignacionById(idRep).orElse(null);
+        ReparacionResumen ant = dao.getAsignacionAnyById(idRep).orElse(null);
         dao.actualizarAsignacion(idRep, req.idTec(), req.comentarioAsignacion(), req.updatedAt(), principal.getIdTec());
 
         List<String> cambios = new ArrayList<>();
@@ -224,7 +233,8 @@ public class ReparacionController {
                 cambios.add("COM_ANT: '" + comAnt + "' → COM_NUE: '" + comNue + "'");
             }
         }
-        logDao.insertar(principal.getIdUsu(), "ACTUALIZAR_ASIGNACION",
+        logDao.insertar(principal.getIdUsu(),
+                esGlassAsig(idRep) ? "ACTUALIZAR_ASIGNACION_GLASS" : "ACTUALIZAR_ASIGNACION",
                 String.join(", ", cambios));
     }
 
@@ -250,7 +260,8 @@ public class ReparacionController {
                 cambios.add("OBS_ANT: '" + obsAnt + "' → OBS_NUE: '" + obsNue + "'");
             }
         }
-        logDao.insertar(principal.getIdUsu(), "EDITAR_REPARACION",
+        logDao.insertar(principal.getIdUsu(),
+                esGlass(idRep) ? "EDITAR_GLASS" : "EDITAR_REPARACION",
                 String.join(", ", cambios));
     }
 
@@ -263,7 +274,8 @@ public class ReparacionController {
         dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(), "MARCAR_INCIDENCIA",
+        logDao.insertar(principal.getIdUsu(),
+                esGlass(idRep) ? "MARCAR_INCIDENCIA_GLASS" : "MARCAR_INCIDENCIA",
                 "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
                 ", TECNICO_NUE: " + tecnicoNue);
     }
@@ -271,8 +283,9 @@ public class ReparacionController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/imei/{imei}/incidencia-activa")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void borrarIncidenciaPorImei(@PathVariable String imei) {
-        dao.borrarIncidenciaPorImei(imei);
+    public void borrarIncidenciaPorImei(@PathVariable String imei,
+            @RequestParam(defaultValue = "R") String tipo) {
+        dao.borrarIncidenciaPorImei(imei, tipo);
     }
 
     @PostMapping("/{idAsignacion}/agotar-componente")
@@ -295,7 +308,8 @@ public class ReparacionController {
         String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), req.idTec(),
                 req.idRepAnterior(), idAsignacion);
         String tecnico = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(), "GUARDAR_FILA_INDIVIDUAL",
+        logDao.insertar(principal.getIdUsu(),
+                esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
                 "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
                 ", IMEI: " + req.imei() + ", TECNICO: " + tecnico);
         return Map.of("value", idRep);
@@ -307,14 +321,15 @@ public class ReparacionController {
     public void eliminarAsignacion(@PathVariable String idAsig,
                                    @RequestBody(required = false) MotivoRequest req,
                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen rep = dao.getAsignacionById(idAsig).orElse(null);
+        ReparacionResumen rep = dao.getAsignacionAnyById(idAsig).orElse(null);
         dao.eliminarAsignacion(idAsig);
         String detalle = rep != null
                 ? "ID_REP: " + idAsig + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
                   ", TECNICO: " + rep.getNombreTecnico()
                 : "ID_REP: " + idAsig;
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION", detalle,
+        logDao.insertar(principal.getIdUsu(),
+                esGlassAsig(idAsig) ? "ELIMINAR_ASIGNACION_GLASS" : "ELIMINAR_ASIGNACION", detalle,
                 req != null ? req.motivo() : null);
     }
 
@@ -331,7 +346,8 @@ public class ReparacionController {
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
                   ", TECNICO: " + rep.getNombreTecnico()
                 : "ID_REP: " + idRep;
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_REPARACION", detalle,
+        logDao.insertar(principal.getIdUsu(),
+                esGlass(idRep) ? "ELIMINAR_GLASS" : "ELIMINAR_REPARACION", detalle,
                 req != null ? req.motivo() : null);
     }
 
