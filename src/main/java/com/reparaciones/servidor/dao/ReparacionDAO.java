@@ -237,6 +237,15 @@ public class ReparacionDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    /** IMEI del dispositivo de una reparación/asignación/pulido por su ID_REP, o {@code null} si no existe.
+     *  Reparaciones y pulidos comparten la tabla {@code Reparacion}. Usado para enriquecer logs. */
+    public String getImeiByIdRep(String idRep) {
+        List<String> result = jdbc.query(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ?",
+                (rs, row) -> rs.getString(1), idRep);
+        return result.isEmpty() ? null : result.get(0);
+    }
+
     public Set<Integer> getIdComsYaReparados(String imei, String idRepExcluir) {
         List<Integer> list = jdbc.query(
                 "SELECT DISTINCT rc.ID_COM FROM Reparacion r" +
