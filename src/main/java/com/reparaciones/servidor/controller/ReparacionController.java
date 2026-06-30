@@ -117,8 +117,9 @@ public class ReparacionController {
 
     @GetMapping("/imei/{imei}/tiene-asignacion")
     public Map<String, Object> existeAsignacionParaTecnico(
-            @PathVariable String imei, @RequestParam int tecnico) {
-        return Map.of("value", dao.existeAsignacionParaTecnico(imei, tecnico));
+            @PathVariable String imei, @RequestParam int tecnico,
+            @RequestParam(defaultValue = "R") String tipo) {
+        return Map.of("value", dao.existeAsignacionParaTecnico(imei, tecnico, tipo));
     }
 
     @GetMapping("/imei/{imei}/tecnicos-asignados")

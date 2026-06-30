@@ -55,7 +55,7 @@ public class ReparacionDAO {
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
-            "  AND r2.ID_REP NOT LIKE 'AP%' AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
+            "  AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
@@ -103,7 +103,7 @@ public class ReparacionDAO {
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
             " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
-            " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' AND r.FECHA_FIN IS NULL";
+            " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' AND r.ID_REP NOT LIKE 'AG%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
@@ -266,10 +266,19 @@ public class ReparacionDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
-    public boolean existeAsignacionParaTecnico(String imei, int idTec) {
+    /** ¿El IMEI ya está asignado al técnico en esa categoría? La validación es por
+     *  categoría: el mismo IMEI puede asignarse al mismo técnico una vez en cada
+     *  categoría (reparación + glass + pulido), pero no dos veces en la misma.
+     *  @param categoria "R" = reparación (A, no AP/AG), "G" = glass (AG), "P" = pulido (AP). */
+    public boolean existeAsignacionParaTecnico(String imei, int idTec, String categoria) {
+        String filtro = switch (categoria) {
+            case "G" -> " AND ID_REP LIKE 'AG%'";
+            case "P" -> " AND ID_REP LIKE 'AP%'";
+            default  -> " AND ID_REP LIKE 'A%' AND ID_REP NOT LIKE 'AP%' AND ID_REP NOT LIKE 'AG%'";
+        };
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND ID_TEC = ?" +
-                " AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
+                filtro + " AND FECHA_FIN IS NULL",
                 Integer.class, imei, idTec);
         return count != null && count > 0;
     }
