@@ -109,9 +109,10 @@ public class ReparacionController {
     }
 
     @GetMapping("/imei/{imei}/incidencia-activa")
-    public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei) {
+    public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei,
+            @RequestParam(defaultValue = "R") String tipo) {
         Map<String, Object> resp = new HashMap<>();
-        resp.put("value", dao.getIncidenciaActivaPorImei(imei));
+        resp.put("value", dao.getIncidenciaActivaPorImei(imei, tipo));
         return resp;
     }
 
@@ -272,8 +273,9 @@ public class ReparacionController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/imei/{imei}/incidencia-activa")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void borrarIncidenciaPorImei(@PathVariable String imei) {
-        dao.borrarIncidenciaPorImei(imei);
+    public void borrarIncidenciaPorImei(@PathVariable String imei,
+            @RequestParam(defaultValue = "R") String tipo) {
+        dao.borrarIncidenciaPorImei(imei, tipo);
     }
 
     @PostMapping("/{idAsignacion}/agotar-componente")
