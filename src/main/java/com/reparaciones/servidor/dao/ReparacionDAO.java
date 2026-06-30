@@ -729,6 +729,103 @@ public class ReparacionDAO {
             " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'P%'";
 
+    // ── glass ─────────────────────────────────────────────────────────────────
+    // Glass ≈ reparación: mismas columnas y JOINs que reparación (consume pieza,
+    // solicitudes, incidencias), solo cambia el espacio de IDs (AG/G).
+
+    private static final String GLASS_ASIGNACION_SELECT =
+            "SELECT r.ID_REP, r.IMEI, t.NOMBRE AS NOMBRE_TEC," +
+            " r.FECHA_ASIG, r.FECHA_FIN," +
+            " NULL AS TIPO_COM, NULL AS OBSERVACIONES," +
+            " (CASE WHEN r.ID_REP_ANTERIOR IS NOT NULL THEN 1 ELSE 0 END) AS ES_INCIDENCIA, 0 AS ES_RESUELTO, 0 AS ES_REUTILIZADO, NULL AS INCIDENCIA," +
+            " r.ID_REP_ANTERIOR, r.ID_TEC," +
+            " COUNT(rc.ID_RC) AS ES_SOLICITUD, NULL AS DESC_SOL," +
+            " (SELECT rc2.ESTADO_SOLICITUD FROM Reparacion_componente rc2" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
+            "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS ESTADO_SOL," +
+            " (SELECT c2.TIPO FROM Reparacion_componente rc2" +
+            "  JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
+            "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS TIPO_SOL," +
+            " (SELECT COALESCE(master2.STOCK, c2.STOCK)" +
+            "  FROM Reparacion_componente rc2" +
+            "  JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  LEFT JOIN Componente master2 ON c2.ID_COM_MASTER = master2.ID_COM" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1" +
+            "  ORDER BY CASE rc2.ESTADO_SOLICITUD WHEN 'PENDIENTE' THEN 0 WHEN 'RECHAZADA' THEN 1 ELSE 2 END LIMIT 1) AS STOCK_SOL," +
+            " (SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM Compra_componente cc" +
+            "  WHERE cc.ESTADO = 'en_camino' AND cc.ID_COM IN (" +
+            "   SELECT rc2.ID_COM FROM Reparacion_componente rc2" +
+            "   WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA')) AS EN_CAMINO_SOL," +
+            " (SELECT GROUP_CONCAT(c2.TIPO ORDER BY c2.TIPO SEPARATOR ', ')" +
+            "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
+            "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
+            " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
+            " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
+            " cli.NOMBRE AS CLIENTE" +
+            " FROM Reparacion r" +
+            " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
+            " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
+            " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            " WHERE r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL";
+
+    private static final String GLASS_HISTORIAL_SELECT =
+            "SELECT r.ID_REP, r.IMEI, t.NOMBRE AS NOMBRE_TEC," +
+            " r.FECHA_ASIG, r.FECHA_FIN," +
+            " c.TIPO AS TIPO_COM, rc.OBSERVACIONES," +
+            " COALESCE(rc.ES_INCIDENCIA, 0) AS ES_INCIDENCIA," +
+            " COALESCE(rc.ES_RESUELTO, 0) AS ES_RESUELTO," +
+            " COALESCE(rc.ES_REUTILIZADO, 0) AS ES_REUTILIZADO," +
+            " rc.INCIDENCIA, r.ID_REP_ANTERIOR, r.ID_TEC," +
+            " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
+            " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
+            " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
+            " tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " COALESCE(tel.REVISION_LOGISTICA, 0) AS REVISION_LOGISTICA," +
+            " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
+            " (SELECT COUNT(*) FROM Reparacion r2" +
+            "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
+            "  AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
+            " cli.NOMBRE AS CLIENTE" +
+            " FROM Reparacion r" +
+            " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
+            " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
+            " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
+            " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
+            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            " WHERE r.ID_REP LIKE 'G%'";
+
+    public List<ReparacionResumen> getAsignacionesGlass(Integer idTecFilter) {
+        String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+        if (idTecFilter != null)
+            return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
+        return jdbc.query(GLASS_ASIGNACION_SELECT + groupBy, RESUMEN_MAPPER);
+    }
+
+    public List<ReparacionResumen> getHistorialGlass(Integer idTecFilter) {
+        if (idTecFilter != null)
+            return jdbc.query(GLASS_HISTORIAL_SELECT + " AND r.ID_TEC = ?" + ORDER_HISTORIAL, RESUMEN_MAPPER, idTecFilter);
+        return jdbc.query(GLASS_HISTORIAL_SELECT + ORDER_HISTORIAL, RESUMEN_MAPPER);
+    }
+
+    public List<ReparacionResumen> getAsignacionesGlassPorImei(String imei) {
+        String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+        return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
+    }
+
+    public List<ReparacionResumen> getHistorialGlassPorImei(String imei) {
+        return jdbc.query(GLASS_HISTORIAL_SELECT + " AND r.IMEI = ?" + ORDER_HISTORIAL, RESUMEN_MAPPER, imei);
+    }
+
     public List<ReparacionResumen> getAsignacionesPulido(Integer idTecFilter) {
         String order = " ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
