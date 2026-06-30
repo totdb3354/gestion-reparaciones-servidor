@@ -336,6 +336,17 @@ public class ReparacionDAO {
         return idRep;
     }
 
+    /** Alta de asignación de glass (prefijo AG). Espejo de {@link #insertarAsignacion}. */
+    @Transactional
+    public String insertarAsignacionGlass(String imei, int idTec, String comentario, boolean urgente, Integer idTecAsigna) {
+        ensureTelefono(imei);
+        String idRep = nextId("AG");
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE) VALUES (?,?,?,NOW(),?,?,?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgente);
+        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        return idRep;
+    }
+
     @Transactional
     public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion) {
@@ -858,6 +869,7 @@ public class ReparacionDAO {
         jdbc.update(
                 "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,NOW(),?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null);
+        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
         return idRep;
     }
 
