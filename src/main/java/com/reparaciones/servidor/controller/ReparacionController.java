@@ -196,8 +196,9 @@ public class ReparacionController {
     public void actualizarUrgente(@PathVariable String idRep, @RequestBody UrgenteRequest req,
                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.actualizarUrgente(idRep, req.urgente());
+        String imei = dao.getImeiByIdRep(idRep);
         logDao.insertar(principal.getIdUsu(), "MARCAR_URGENTE",
-                "ID_REP: " + idRep + ", URGENTE: " + req.urgente());
+                "ID_REP: " + idRep + (imei != null ? ", IMEI: " + imei : "") + ", URGENTE: " + req.urgente());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -211,6 +212,7 @@ public class ReparacionController {
         List<String> cambios = new ArrayList<>();
         cambios.add("ID_REP: " + idRep);
         if (ant != null) {
+            cambios.add("IMEI: " + ant.getImei());
             if (ant.getIdTec() != req.idTec()) {
                 String nomAnt = dao.getNombreTecnicoById(ant.getIdTec());
                 String nomNue = dao.getNombreTecnicoById(req.idTec());
@@ -236,6 +238,7 @@ public class ReparacionController {
         List<String> cambios = new ArrayList<>();
         cambios.add("ID_REP: " + idRep);
         if (ant != null) {
+            cambios.add("IMEI: " + ant.getImei());
             String comAnt = ant.getTipoComponente() != null ? ant.getTipoComponente() : "";
             String comNue = req.idComNuevo() > 0 ? dao.getTipoComponenteById(req.idComNuevo()) : comAnt;
             if (!comAnt.equals(comNue)) {
@@ -279,8 +282,9 @@ public class ReparacionController {
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
         String tipo = dao.getTipoComponenteById(req.idCom());
+        String imei = dao.getImeiByIdRep(idAsignacion);
         logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
-                "ID_ASIG: " + idAsignacion + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
+                "ID_ASIG: " + idAsignacion + (imei != null ? ", IMEI: " + imei : "") + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
     }
 
     @PostMapping("/{idAsignacion}/filas")

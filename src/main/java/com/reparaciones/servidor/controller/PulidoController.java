@@ -76,7 +76,9 @@ public class PulidoController {
                                       @RequestBody ActualizarPulidoRequest req,
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.actualizarAsignacionPulido(idAP, req.idTec(), req.comentario(), req.updatedAt());
-        logDao.insertar(principal.getIdUsu(), "ACTUALIZAR_ASIGNACION_PULIDO", "ID_REP: " + idAP);
+        String imei = dao.getImeiByIdRep(idAP);
+        logDao.insertar(principal.getIdUsu(), "ACTUALIZAR_ASIGNACION_PULIDO",
+                "ID_REP: " + idAP + (imei != null ? ", IMEI: " + imei : ""));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -84,8 +86,10 @@ public class PulidoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarAsignacion(@PathVariable String idAP,
                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String imei = dao.getImeiByIdRep(idAP);   // antes del borrado: luego la fila ya no existe
         dao.eliminarAsignacionPulido(idAP);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION_PULIDO", "ID_REP: " + idAP);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_ASIGNACION_PULIDO",
+                "ID_REP: " + idAP + (imei != null ? ", IMEI: " + imei : ""));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -93,8 +97,10 @@ public class PulidoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarPulido(@PathVariable String idP,
                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String imei = dao.getImeiByIdRep(idP);   // antes del borrado: luego la fila ya no existe
         dao.eliminarPulido(idP);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_PULIDO", "ID_REP: " + idP);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_PULIDO",
+                "ID_REP: " + idP + (imei != null ? ", IMEI: " + imei : ""));
     }
 
     // ── request records ───────────────────────────────────────────────────────
