@@ -298,7 +298,7 @@ public class ReparacionDAO {
         List<Fila> filas = jdbc.query(
                 "SELECT t.NOMBRE, DATE(r.FECHA_FIN) AS FD" +
                 " FROM Reparacion r JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
-                " WHERE r.ID_REP LIKE 'R%' AND r.FECHA_FIN IS NOT NULL" +
+                " WHERE (r.ID_REP LIKE 'R%' OR r.ID_REP LIKE 'G%') AND r.FECHA_FIN IS NOT NULL" +
                 " AND DATE(r.FECHA_FIN) BETWEEN ? AND ?",
                 (rs, row) -> new Fila(rs.getString("NOMBRE"),
                         rs.getDate("FD").toLocalDate()),
