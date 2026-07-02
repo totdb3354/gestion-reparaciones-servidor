@@ -748,9 +748,11 @@ public class ReparacionDAO {
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
             " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'AP%' AND r.FECHA_FIN IS NULL";
@@ -765,9 +767,11 @@ public class ReparacionDAO {
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
             " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
             " WHERE r.ID_REP LIKE 'P%'";
@@ -927,11 +931,19 @@ public class ReparacionDAO {
         deleteIfLastReparacion(imei);
     }
 
-    public void actualizarAsignacionPulido(String idAP, int idTec, String comentario, LocalDateTime updatedAt) {
+    @Transactional
+    public void actualizarAsignacionPulido(String idAP, int idTec, String comentario, LocalDateTime updatedAt,
+                                           Integer idTecAsigna) {
+        Integer idTecActual = jdbc.queryForObject(
+                "SELECT ID_TEC FROM Reparacion WHERE ID_REP = ?", Integer.class, idAP);
         int filas = jdbc.update(
                 "UPDATE Reparacion SET ID_TEC = ?, COMENTARIO_ASIGNACION = ? WHERE ID_REP = ? AND UPDATED_AT = ?",
                 idTec, comentario, idAP, Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
         if (filas == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        // Reasignación a otro técnico: "asignado por" pasa a ser el SuperTécnico que reasigna.
+        if (idTecAsigna != null && idTecActual != null && idTecActual != idTec) {
+            jdbc.update("UPDATE Reparacion SET ID_TEC_ASIGNA = ? WHERE ID_REP = ?", idTecAsigna, idAP);
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
