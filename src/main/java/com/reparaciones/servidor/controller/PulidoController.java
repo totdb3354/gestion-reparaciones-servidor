@@ -75,7 +75,7 @@ public class PulidoController {
     public void actualizarAsignacion(@PathVariable String idAP,
                                       @RequestBody ActualizarPulidoRequest req,
                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.actualizarAsignacionPulido(idAP, req.idTec(), req.comentario(), req.updatedAt());
+        dao.actualizarAsignacionPulido(idAP, req.idTec(), req.comentario(), req.updatedAt(), principal.getIdTec());
         String imei = dao.getImeiByIdRep(idAP);
         logDao.insertar(principal.getIdUsu(), "ACTUALIZAR_ASIGNACION_PULIDO",
                 "ID_REP: " + idAP + (imei != null ? ", IMEI: " + imei : ""));
