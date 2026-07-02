@@ -292,6 +292,20 @@ public class ReparacionDAO {
                 Integer.class, imei);
     }
 
+    /** Asignación activa mínima para el aviso de asignación cruzada. */
+    public record AsignacionActiva(String idRep, String nombreTecnico, int idTec) {}
+
+    /** Asignaciones activas de un IMEI en las 3 categorías (A=rep, AG=glass, AP=pulido);
+     *  la categoría la deriva el cliente del prefijo de idRep. */
+    public List<AsignacionActiva> getAsignacionesActivasPorImei(String imei) {
+        return jdbc.query(
+                "SELECT r.ID_REP, t.NOMBRE, r.ID_TEC FROM Reparacion r" +
+                " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+                " WHERE r.IMEI = ? AND r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL",
+                (rs, row) -> new AsignacionActiva(rs.getString("ID_REP"), rs.getString("NOMBRE"), rs.getInt("ID_TEC")),
+                imei);
+    }
+
     public List<PuntoEstadistica> getEstadisticasPorTecnico(
             String granularidad, LocalDate desde, LocalDate hasta) {
         record Fila(String tecnico, LocalDate fecha) {}
