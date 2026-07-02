@@ -57,13 +57,17 @@ public class TelefonoController {
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody ImeiRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        if (req.idCli() != null && !"SUPERTECNICO".equals(principal.getRol())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo SUPERTECNICO puede asignar cliente");
+        boolean explicito = Boolean.TRUE.equals(req.clienteExplicito());
+        boolean cambiaCliente = req.idCli() != null || explicito;   // asignar o quitar
+        if (cambiaCliente && !"SUPERTECNICO".equals(principal.getRol())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo SUPERTECNICO puede cambiar cliente");
         }
-        dao.insertar(req.imei(), req.modelo(), req.idCli());
+        dao.insertar(req.imei(), req.modelo(), req.idCli(), explicito);
         if (req.idCli() != null) {
             logDao.insertar(principal.getIdUsu(), "ASIGNAR_CLIENTE",
                     "IMEI: " + req.imei() + ", ID_CLI: " + req.idCli());
+        } else if (explicito) {
+            logDao.insertar(principal.getIdUsu(), "QUITAR_CLIENTE", "IMEI: " + req.imei());
         }
     }
 
@@ -112,7 +116,7 @@ public class TelefonoController {
                 "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
     }
 
-    private record ImeiRequest(String imei, String modelo, Integer idCli) {}
+    private record ImeiRequest(String imei, String modelo, Integer idCli, Boolean clienteExplicito) {}
     private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
     private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
     private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
