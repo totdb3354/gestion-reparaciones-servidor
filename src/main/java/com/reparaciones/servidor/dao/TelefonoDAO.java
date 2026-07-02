@@ -34,11 +34,22 @@ public class TelefonoDAO {
     }
 
     public void insertar(String imei, String modelo, Integer idCli) {
+        insertar(imei, modelo, idCli, false);
+    }
+
+    /**
+     * Upsert de teléfono. Si {@code clienteExplicito} es true, fija ID_CLI al valor
+     * dado (incluido NULL → deja el IMEI sin cliente); si es false, usa COALESCE
+     * (un idCli null preserva el cliente actual). MODELO siempre con COALESCE.
+     */
+    public void insertar(String imei, String modelo, Integer idCli, boolean clienteExplicito) {
         String m = (modelo == null || modelo.isBlank()) ? null : modelo;
-        jdbc.update(
-                "INSERT INTO Telefono (IMEI, MODELO, ID_CLI) VALUES (?, ?, ?)" +
-                " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO), ID_CLI = COALESCE(?, ID_CLI)",
-                imei, m, idCli, m, idCli);
+        String sql = clienteExplicito
+                ? "INSERT INTO Telefono (IMEI, MODELO, ID_CLI) VALUES (?, ?, ?)" +
+                  " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO), ID_CLI = ?"
+                : "INSERT INTO Telefono (IMEI, MODELO, ID_CLI) VALUES (?, ?, ?)" +
+                  " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO), ID_CLI = COALESCE(?, ID_CLI)";
+        jdbc.update(sql, imei, m, idCli, m, idCli);
     }
 
     public void insertar(String imei, String modelo) {
