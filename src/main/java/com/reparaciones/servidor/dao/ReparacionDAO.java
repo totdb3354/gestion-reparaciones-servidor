@@ -890,12 +890,12 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacionPulido(String imei, int idTec, String comentario) {
+    public String insertarAsignacionPulido(String imei, int idTec, String comentario, Integer idTecAsigna) {
         ensureTelefono(imei);
         String idRep = nextId("AP");
         jdbc.update(
-                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION) VALUES (?,?,?,NOW(),?)",
-                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null);
+                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,NOW(),?,?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
         return idRep;
     }
@@ -903,14 +903,14 @@ public class ReparacionDAO {
     @Transactional
     public void completarPulido(String idAP) {
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT IMEI, ID_TEC, COMENTARIO_ASIGNACION FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE", idAP);
+                "SELECT IMEI, ID_TEC, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NULL FOR UPDATE", idAP);
         if (rows.isEmpty())
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Pulido ya completado o no existe");
         Map<String, Object> row = rows.get(0);
         String idP = nextId("P");
         jdbc.update(
-                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, COMENTARIO_ASIGNACION) VALUES (?,?,?,?,NOW(),NOW(),?)",
-                idP, row.get("IMEI"), row.get("ID_TEC"), idAP, row.get("COMENTARIO_ASIGNACION"));
+                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),NOW(),?,?)",
+                idP, row.get("IMEI"), row.get("ID_TEC"), idAP, row.get("COMENTARIO_ASIGNACION"), row.get("ID_TEC_ASIGNA"));
         jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAP);
     }
 
