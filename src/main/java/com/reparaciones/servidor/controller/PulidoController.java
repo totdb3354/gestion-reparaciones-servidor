@@ -55,7 +55,7 @@ public class PulidoController {
                 telefonoDAO.insertar(req.imei(), modelo);
             }
         }
-        String idRep = dao.insertarAsignacionPulido(req.imei(), req.idTec(), req.comentario());
+        String idRep = dao.insertarAsignacionPulido(req.imei(), req.idTec(), req.comentario(), principal.getIdTec());
         logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION_PULIDO",
                 "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_TEC: " + req.idTec());
         return Map.of("value", idRep);
