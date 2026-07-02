@@ -133,6 +133,11 @@ public class ReparacionController {
         return dao.getTecnicosConAsignacionActiva(imei);
     }
 
+    @GetMapping("/imei/{imei}/asignaciones-activas")
+    public List<ReparacionDAO.AsignacionActiva> getAsignacionesActivasPorImei(@PathVariable String imei) {
+        return dao.getAsignacionesActivasPorImei(imei);
+    }
+
     @GetMapping("/estadisticas")
     public List<PuntoEstadistica> getEstadisticasPorTecnico(
             @RequestParam String granularidad,
