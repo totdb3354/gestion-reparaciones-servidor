@@ -96,15 +96,19 @@ public class PulidoController {
     @DeleteMapping("/historial/{idP}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminarPulido(@PathVariable String idP,
+                                @RequestBody(required = false) MotivoRequest req,
                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
         String imei = dao.getImeiByIdRep(idP);   // antes del borrado: luego la fila ya no existe
         dao.eliminarPulido(idP);
+        String motivo = req != null ? req.motivo() : null;
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_PULIDO",
-                "ID_REP: " + idP + (imei != null ? ", IMEI: " + imei : ""));
+                "ID_REP: " + idP + (imei != null ? ", IMEI: " + imei : "")
+                + (motivo != null && !motivo.isBlank() ? ", MOTIVO: " + motivo : ""));
     }
 
     // ── request records ───────────────────────────────────────────────────────
 
+    private record MotivoRequest(String motivo) {}
     private record AsignacionPulidoRequest(String imei, int idTec, String comentario) {}
     private record LoteRequest(List<String> ids) {}
     private record ActualizarPulidoRequest(int idTec, String comentario, LocalDateTime updatedAt) {}
