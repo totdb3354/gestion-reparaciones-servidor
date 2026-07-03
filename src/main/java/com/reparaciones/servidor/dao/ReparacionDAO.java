@@ -247,13 +247,30 @@ public class ReparacionDAO {
     }
 
     public Set<Integer> getIdComsYaReparados(String imei, String idRepExcluir) {
+        // Categoría derivada de la reparación en edición: G% para glass, R% para el resto
+        // (antes estaba cableado a R% y las ediciones de glass no marcaban "ya reparado").
+        String like = (idRepExcluir != null && idRepExcluir.startsWith("G")) ? "G%" : "R%";
         List<Integer> list = jdbc.query(
                 "SELECT DISTINCT rc.ID_COM FROM Reparacion r" +
                 " JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
-                " WHERE r.IMEI = ? AND r.ID_REP LIKE 'R%' AND r.ID_REP != ?" +
+                " WHERE r.IMEI = ? AND r.ID_REP LIKE ? AND r.ID_REP != ?" +
                 " AND rc.ID_COM IS NOT NULL",
-                (rs, row) -> rs.getInt(1), imei, idRepExcluir);
+                (rs, row) -> rs.getInt(1), imei, like, idRepExcluir);
         return new HashSet<>(list);
+    }
+
+    /** Descripciones de las acciones "otro" ya guardadas del IMEI en la categoría (R/G),
+     *  excluyendo una reparación (la que se edita). Se precargan bloqueadas al editar. */
+    public List<String> getAccionesOtro(String imei, String categoria, String excluir) {
+        String like = "G".equals(categoria) ? "G%" : "R%";
+        return jdbc.query(
+                "SELECT rc.OBSERVACIONES FROM Reparacion r" +
+                " JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
+                " JOIN Componente c ON rc.ID_COM = c.ID_COM" +
+                " WHERE r.IMEI = ? AND r.ID_REP LIKE ? AND r.ID_REP != ?" +
+                " AND c.TIPO LIKE 'otro%' AND rc.OBSERVACIONES IS NOT NULL" +
+                " ORDER BY r.FECHA_FIN",
+                (rs, row) -> rs.getString(1), imei, like, excluir != null ? excluir : "");
     }
 
     /** Incidencia abierta del IMEI por categoría ("G" = glass, resto = reparación);

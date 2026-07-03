@@ -113,6 +113,14 @@ public class ReparacionController {
         return dao.getIdComsYaReparados(imei, excluir);
     }
 
+    /** Acciones "otro" ya guardadas del IMEI (se precargan bloqueadas al editar). */
+    @GetMapping("/imei/{imei}/acciones")
+    public List<String> getAccionesOtro(@PathVariable String imei,
+                                        @RequestParam(required = false) String categoria,
+                                        @RequestParam(required = false) String excluir) {
+        return dao.getAccionesOtro(imei, categoria, excluir);
+    }
+
     @GetMapping("/imei/{imei}/incidencia-activa")
     public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei,
             @RequestParam(defaultValue = "R") String tipo) {
