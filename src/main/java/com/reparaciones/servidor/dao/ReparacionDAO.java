@@ -367,6 +367,16 @@ public class ReparacionDAO {
     @Transactional
     public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion) {
+        insertarCompleta(filas, imei, idTec, idRepAnterior, idAsignacion, null);
+    }
+
+    /**
+     * Variante con categoría explícita ("G"/"R"). Con asignación manda su prefijo (AG→G);
+     * sin asignación (p.ej. altas desde la edición de un glass) decide {@code categoria}.
+     */
+    @Transactional
+    public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
+                                  String idRepAnterior, String idAsignacion, String categoria) {
         if (idAsignacion != null) {
             // Bloquear la fila para que un DELETE concurrente (eliminarAsignacion) espere
             Integer existe = jdbc.queryForObject(
@@ -387,7 +397,8 @@ public class ReparacionDAO {
         Set<Integer> idComsUsados = new java.util.HashSet<>();
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
-                String idRep = nextId(resultPrefix(idAsignacion));
+                String idRep = nextId(idAsignacion == null && "G".equals(categoria)
+                        ? "G" : resultPrefix(idAsignacion));
                 jdbc.update(
                         "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA)" +
                         " VALUES (?,?,?,?,NOW(),NOW(),?)",

@@ -181,11 +181,12 @@ public class ReparacionController {
     public void insertarCompleta(@RequestBody InsertarCompletaRequest req,
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.insertarCompleta(req.filas(), req.imei(), req.idTec(),
-                req.idRepAnterior(), req.idAsignacion());
+                req.idRepAnterior(), req.idAsignacion(), req.categoria());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(),
-                esGlassAsig(req.idAsignacion()) ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
+                esGlassAsig(req.idAsignacion()) || "G".equals(req.categoria())
+                        ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
                 "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
                 ", MODELO: " + modelo + ", TECNICO: " + tecnico);
     }
@@ -383,7 +384,7 @@ public class ReparacionController {
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
     private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
-                                           String idRepAnterior, String idAsignacion) {}
+                                           String idRepAnterior, String idAsignacion, String categoria) {}
 private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}
     private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
                                  String observacionNueva, int nNuevas,
