@@ -174,12 +174,13 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), principal.getIdTec());
+        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), req.esChasis(), principal.getIdTec());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
         String detalleLog = "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
                 ", TECNICO: " + tecnico;
         if (req.urgente()) detalleLog += ", URGENTE: true";
+        if (req.esChasis()) detalleLog += ", CHASIS: true";
         logDao.insertar(principal.getIdUsu(), "CREAR_ASIGNACION", detalleLog);
         return Map.of("value", idRep);
     }
@@ -222,6 +223,17 @@ public class ReparacionController {
         String imei = dao.getImeiByIdRep(idRep);
         logDao.insertar(principal.getIdUsu(), "MARCAR_URGENTE",
                 "ID_REP: " + idRep + (imei != null ? ", IMEI: " + imei : "") + ", URGENTE: " + req.urgente());
+    }
+
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PatchMapping("/asignaciones/{idRep}/chasis")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void actualizarChasis(@PathVariable String idRep, @RequestBody ChasisRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarChasis(idRep, req.esChasis());
+        String imei = dao.getImeiByIdRep(idRep);
+        logDao.insertar(principal.getIdUsu(), "MARCAR_CHASIS",
+                "ID_REP: " + idRep + (imei != null ? ", IMEI: " + imei : "") + ", CHASIS: " + req.esChasis());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -390,7 +402,7 @@ public class ReparacionController {
     private record BorradorRequest(String contenido) {}
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
-    private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente) {}
+    private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente, boolean esChasis) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion, String categoria) {}
 private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}
@@ -400,6 +412,7 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
     private record AgotarRequest(int idCom, int cantidad, String descripcion) {}
     private record UrgenteRequest(boolean urgente) {}
+    private record ChasisRequest(boolean esChasis) {}
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
     private record MotivoRequest(String motivo) {}

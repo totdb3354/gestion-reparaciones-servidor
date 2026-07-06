@@ -94,7 +94,7 @@ public class ReparacionDAO {
             "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE, r.ES_CHASIS," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
@@ -136,6 +136,7 @@ public class ReparacionDAO {
         java.sql.Timestamp tuAt = rs.getTimestamp("TELEFONO_UPDATED_AT");
         rr.setTelefonoUpdatedAt(tuAt != null ? tuAt.toLocalDateTime() : null);
         try { rr.setUrgente(rs.getBoolean("URGENTE")); } catch (Exception ignored) {}
+        try { rr.setEsChasis(rs.getBoolean("ES_CHASIS")); } catch (Exception ignored) {}
         try { rr.setRevisionLogistica(rs.getBoolean("REVISION_LOGISTICA")); } catch (Exception ignored) {}
         try { rr.setTieneAsignaciones(rs.getInt("TIENE_ASIGNACIONES") > 0); } catch (Exception ignored) {}
         try { rr.setNombreTecnicoAsigna(rs.getString("NOMBRE_TEC_ASIGNA")); } catch (Exception ignored) {}
@@ -188,7 +189,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -198,14 +199,14 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
 
     public List<ReparacionResumen> getAsignacionesPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE" +
                          " ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
@@ -361,11 +362,11 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, Integer idTecAsigna) {
+    public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, boolean esChasis, Integer idTecAsigna) {
         ensureTelefono(imei);
         String idRep = nextId("A");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE) VALUES (?,?,?,NOW(),?,?,?)",
-                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgente);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE, ES_CHASIS) VALUES (?,?,?,NOW(),?,?,?,?)",
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgente, esChasis);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
         return idRep;
     }
@@ -576,6 +577,10 @@ public class ReparacionDAO {
 
     public void actualizarUrgente(String idRep, boolean urgente) {
         jdbc.update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", urgente, idRep);
+    }
+
+    public void actualizarChasis(String idRep, boolean esChasis) {
+        jdbc.update("UPDATE Reparacion SET ES_CHASIS = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", esChasis, idRep);
     }
 
     /** Marca URGENTE=true en asignaciones de reparación pendientes, con cliente,
@@ -836,7 +841,7 @@ public class ReparacionDAO {
             "  FROM Reparacion_componente rc2 JOIN Componente c2 ON rc2.ID_COM = c2.ID_COM" +
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE, r.ES_CHASIS," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
@@ -878,7 +883,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignacionesGlass(Integer idTecFilter) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null)
             return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         return jdbc.query(GLASS_ASIGNACION_SELECT + groupBy, RESUMEN_MAPPER);
@@ -893,7 +898,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignacionesGlassPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
 
@@ -1054,7 +1059,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionGlassById(String idRep) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, ta.NOMBRE, cli.NOMBRE";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_REP = ?" + groupBy, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
