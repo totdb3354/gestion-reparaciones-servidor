@@ -236,7 +236,7 @@ public class ReparacionController {
                 "ID_REP: " + idRep + (imei != null ? ", IMEI: " + imei : "") + ", CHASIS: " + req.esChasis());
     }
 
-    /** Marca "por cerrar": técnico solo SUS asignaciones de reparación normal; supertécnico cualquiera. */
+    /** Marca "por cerrar": solo el dueño de la asignación (técnico o supertécnico); nunca ajenas. */
     @PatchMapping("/asignaciones/{idRep}/por-cerrar")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void actualizarPorCerrar(@PathVariable String idRep, @RequestBody PorCerrarRequest req,
@@ -250,9 +250,9 @@ public class ReparacionController {
         ReparacionResumen asig = dao.getAsignacionAnyById(idRep)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
-        boolean esSuper = "SUPERTECNICO".equals(principal.getRol());
-        boolean esSuya  = principal.getIdTec() != null && asig.getIdTec() == principal.getIdTec();
-        if (!esSuper && !esSuya) {
+        // Solo el dueño: es algo que solo sabe el que repara (spec por-cerrar-carga §2, ajuste smoke 2026-07-08)
+        boolean esSuya = principal.getIdTec() != null && asig.getIdTec() == principal.getIdTec();
+        if (!esSuya) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Solo puedes marcar tus propias asignaciones");
         }
