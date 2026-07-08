@@ -585,7 +585,7 @@ public class ReparacionDAO {
     }
 
     public void actualizarPorCerrar(String idRep, boolean porCerrar) {
-        jdbc.update("UPDATE Reparacion SET POR_CERRAR = ? WHERE ID_REP = ?", porCerrar, idRep);
+        jdbc.update("UPDATE Reparacion SET POR_CERRAR = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", porCerrar, idRep);
     }
 
     /** Marca URGENTE=true en asignaciones de reparación pendientes, con cliente,
