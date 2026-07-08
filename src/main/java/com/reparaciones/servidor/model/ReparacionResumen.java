@@ -29,6 +29,7 @@ public class ReparacionResumen {
     private String        observacionTelefono;
     private boolean       urgente;
     private boolean       esChasis;
+    private boolean       porCerrar;
     private boolean       revisionLogistica;
     private boolean       tieneAsignaciones;
     private String        nombreTecnicoAsigna;
@@ -100,6 +101,8 @@ public class ReparacionResumen {
     public void          setUrgente(boolean urgente)     { this.urgente = urgente; }
     public boolean       isEsChasis()                    { return esChasis; }
     public void          setEsChasis(boolean esChasis)   { this.esChasis = esChasis; }
+    public boolean       isPorCerrar()                   { return porCerrar; }
+    public void          setPorCerrar(boolean v)          { this.porCerrar = v; }
     public boolean       isRevisionLogistica()           { return revisionLogistica; }
     public void          setRevisionLogistica(boolean v) { this.revisionLogistica = v; }
     public boolean       isTieneAsignaciones()           { return tieneAsignaciones; }
