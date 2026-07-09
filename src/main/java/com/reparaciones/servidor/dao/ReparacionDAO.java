@@ -199,7 +199,8 @@ public class ReparacionDAO {
 
     /** Asignaciones (A/AG) COMPLETADAS desde el corte dado (inicio de hoy en Madrid):
      *  la unidad de "hecho hoy" de la carga por capacidad — conservan ES_CHASIS,
-     *  POR_CERRAR y cliente, cosa que las filas R% no hacen. */
+     *  POR_CERRAR y cliente, cosa que las filas R% no hacen. Incluye tanto reparación (A%)
+     *  como glass (AG%), ya que un técnico solo-glass debe poder cerrar su "hecho hoy". */
     public List<ReparacionResumen> getAsignacionesCompletadasHoy(java.sql.Timestamp cutoff) {
         String sql = ASIGNACION_SELECT.replace("r.FECHA_FIN IS NULL", "r.FECHA_FIN >= ?");
         if (!sql.contains("r.FECHA_FIN >= ?"))
@@ -207,7 +208,17 @@ public class ReparacionDAO {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                          " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE" +
                          " ORDER BY r.FECHA_FIN ASC";
-        return jdbc.query(sql + groupBy, RESUMEN_MAPPER, cutoff);
+        List<ReparacionResumen> result = new ArrayList<>(jdbc.query(sql + groupBy, RESUMEN_MAPPER, cutoff));
+
+        String sqlGlass = GLASS_ASIGNACION_SELECT.replace("r.FECHA_FIN IS NULL", "r.FECHA_FIN >= ?");
+        if (!sqlGlass.contains("r.FECHA_FIN >= ?"))
+            throw new IllegalStateException("GLASS_ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
+        String groupByGlass = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE" +
+                         " ORDER BY r.FECHA_FIN ASC";
+        result.addAll(jdbc.query(sqlGlass + groupByGlass, RESUMEN_MAPPER, cutoff));
+
+        return result;
     }
 
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
