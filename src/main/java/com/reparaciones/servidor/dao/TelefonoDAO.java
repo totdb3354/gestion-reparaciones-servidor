@@ -192,6 +192,21 @@ public class TelefonoDAO {
         });
     }
 
+    /** Alta/re-entrada de un teléfono de lote: fija lote, atributos del fichero y ESTADO=RECIBIDO. */
+    public void upsertImportacion(String imei, String modelo, Integer idLote, Integer storageGb,
+                                  String color, String gradoProveedor,
+                                  java.math.BigDecimal precioCompra, String divisa,
+                                  java.math.BigDecimal precioCompraEur) {
+        jdbc.update(
+            "INSERT INTO Telefono (IMEI, MODELO, ID_LOTE, ESTADO, STORAGE_GB, COLOR, GRADO_PROVEEDOR," +
+            "                      PRECIO_COMPRA, DIVISA, PRECIO_COMPRA_EUR)" +
+            " VALUES (?, ?, ?, 'RECIBIDO', ?, ?, ?, ?, ?, ?)" +
+            " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO), ID_LOTE = ?, ESTADO = 'RECIBIDO'," +
+            "  STORAGE_GB = ?, COLOR = ?, GRADO_PROVEEDOR = ?, PRECIO_COMPRA = ?, DIVISA = ?, PRECIO_COMPRA_EUR = ?",
+            imei, modelo, idLote, storageGb, color, gradoProveedor, precioCompra, divisa, precioCompraEur,
+            modelo, idLote, storageGb, color, gradoProveedor, precioCompra, divisa, precioCompraEur);
+    }
+
     public List<VerificacionImei> verificar(List<String> imeis) {
         if (imeis == null || imeis.isEmpty()) return List.of();
         String placeholders = String.join(",", java.util.Collections.nCopies(imeis.size(), "?"));
