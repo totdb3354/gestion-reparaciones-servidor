@@ -76,6 +76,14 @@ public class ReparacionController {
         return dao.getAsignaciones(tecnico);
     }
 
+    /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */
+    @GetMapping("/asignaciones/completadas-hoy")
+    public List<ReparacionResumen> getAsignacionesCompletadasHoy() {
+        return dao.getAsignacionesCompletadasHoy(
+                com.reparaciones.servidor.job.UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(
+                        java.time.Clock.system(java.time.ZoneId.of("Europe/Madrid"))));
+    }
+
     @GetMapping("/asignaciones/imei/{imei}")
     public List<ReparacionResumen> getAsignacionesPorImei(@PathVariable String imei) {
         return dao.getAsignacionesPorImei(imei);

@@ -197,6 +197,19 @@ public class ReparacionDAO {
         return jdbc.query(sql + groupBy, RESUMEN_MAPPER);
     }
 
+    /** Asignaciones (A/AG) COMPLETADAS desde el corte dado (inicio de hoy en Madrid):
+     *  la unidad de "hecho hoy" de la carga por capacidad — conservan ES_CHASIS,
+     *  POR_CERRAR y cliente, cosa que las filas R% no hacen. */
+    public List<ReparacionResumen> getAsignacionesCompletadasHoy(java.sql.Timestamp cutoff) {
+        String sql = ASIGNACION_SELECT.replace("r.FECHA_FIN IS NULL", "r.FECHA_FIN >= ?");
+        if (!sql.contains("r.FECHA_FIN >= ?"))
+            throw new IllegalStateException("ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
+        String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE" +
+                         " ORDER BY r.FECHA_FIN ASC";
+        return jdbc.query(sql + groupBy, RESUMEN_MAPPER, cutoff);
+    }
+
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
