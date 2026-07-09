@@ -236,6 +236,32 @@ public class ReparacionController {
                 "ID_REP: " + idRep + (imei != null ? ", IMEI: " + imei : "") + ", CHASIS: " + req.esChasis());
     }
 
+    /** Marca "por cerrar": solo el dueño de la asignación (técnico o supertécnico); nunca ajenas. */
+    @PatchMapping("/asignaciones/{idRep}/por-cerrar")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void actualizarPorCerrar(@PathVariable String idRep, @RequestBody PorCerrarRequest req,
+                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+        boolean esRepNormal = idRep != null && idRep.startsWith("A")
+                && !idRep.startsWith("AG") && !idRep.startsWith("AP");
+        if (!esRepNormal) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Solo aplica a asignaciones de reparación");
+        }
+        ReparacionResumen asig = dao.getAsignacionAnyById(idRep)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
+        // Solo el dueño: es algo que solo sabe el que repara (spec por-cerrar-carga §2, ajuste smoke 2026-07-08)
+        boolean esSuya = principal.getIdTec() != null && asig.getIdTec() == principal.getIdTec();
+        if (!esSuya) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Solo puedes marcar tus propias asignaciones");
+        }
+        dao.actualizarPorCerrar(idRep, req.porCerrar());
+        logDao.insertar(principal.getIdUsu(),
+                req.porCerrar() ? "MARCAR_POR_CERRAR" : "QUITAR_POR_CERRAR",
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei());
+    }
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/asignaciones/{idRep}")
     public void actualizarAsignacion(@PathVariable String idRep,
@@ -413,6 +439,7 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     private record AgotarRequest(int idCom, int cantidad, String descripcion) {}
     private record UrgenteRequest(boolean urgente) {}
     private record ChasisRequest(boolean esChasis) {}
+    private record PorCerrarRequest(boolean porCerrar) {}
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
     private record MotivoRequest(String motivo) {}
