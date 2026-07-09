@@ -3,6 +3,7 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
+import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,11 @@ public class TelefonoController {
     @GetMapping
     public List<Telefono> getAll() {
         return dao.getAll();
+    }
+
+    @GetMapping("/inventario")
+    public List<TelefonoInventario> getInventario() {
+        return dao.getInventario();
     }
 
     @GetMapping("/{imei}/exists")
