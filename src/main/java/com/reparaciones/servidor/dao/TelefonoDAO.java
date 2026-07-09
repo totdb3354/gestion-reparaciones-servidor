@@ -2,6 +2,7 @@ package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
+import com.reparaciones.servidor.model.VerificacionImei;
 import com.reparaciones.servidor.service.UbicacionDerivador;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -189,5 +190,20 @@ public class TelefonoDAO {
             inv.setSubUbicaciones(d.subUbicaciones());
             return inv;
         });
+    }
+
+    public List<VerificacionImei> verificar(List<String> imeis) {
+        if (imeis == null || imeis.isEmpty()) return List.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(imeis.size(), "?"));
+        String sql =
+            "SELECT t.IMEI, t.ESTADO, t.MODELO, COALESCE(w.ABIERTOS,0) AS ABIERTOS" +
+            " FROM Telefono t" +
+            " LEFT JOIN (SELECT IMEI, COUNT(*) AS ABIERTOS FROM Reparacion" +
+            "            WHERE ID_REP LIKE 'A%' AND FECHA_FIN IS NULL GROUP BY IMEI) w ON w.IMEI = t.IMEI" +
+            " WHERE t.IMEI IN (" + placeholders + ")";
+        return jdbc.query(sql, (rs, row) -> new VerificacionImei(
+                rs.getString("IMEI"), true, rs.getString("ESTADO"),
+                rs.getInt("ABIERTOS"), rs.getString("MODELO")),
+            imeis.toArray());
     }
 }
