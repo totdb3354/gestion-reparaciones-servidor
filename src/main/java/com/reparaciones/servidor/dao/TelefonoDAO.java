@@ -114,6 +114,18 @@ public class TelefonoDAO {
         }
     }
 
+    public void actualizarAtributos(String imei, String modelo, Integer storageGb, String color,
+                                    String gradoProveedor, String gradoPropio, LocalDateTime updatedAt) {
+        int filas = jdbc.update(
+            "UPDATE Telefono SET MODELO = ?, STORAGE_GB = ?, COLOR = ?, GRADO_PROVEEDOR = ?, GRADO_PROPIO = ?" +
+            " WHERE IMEI = ? AND UPDATED_AT = ?",
+            modelo, storageGb, color, gradoProveedor, gradoPropio, imei,
+            Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
+    }
+
     public void eliminar(String imei) {
         jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
     }

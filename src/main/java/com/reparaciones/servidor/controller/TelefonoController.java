@@ -98,6 +98,18 @@ public class TelefonoController {
                 "IMEI: " + imei + ", ID_CLI: " + (req.idCli() == null ? "—" : req.idCli()));
     }
 
+    @PatchMapping("/{imei}/atributos")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void actualizarAtributos(@PathVariable String imei,
+                                    @RequestBody AtributosRequest req,
+                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.actualizarAtributos(imei, req.modelo(), req.storageGb(), req.color(),
+                req.gradoProveedor(), req.gradoPropio(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_ATRIBUTOS",
+                "IMEI: " + imei + ", MODELO: " + req.modelo());
+    }
+
     @DeleteMapping("/{imei}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable String imei) {
@@ -126,4 +138,7 @@ public class TelefonoController {
     private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
     private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
     private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
+    private record AtributosRequest(String modelo, Integer storageGb, String color,
+                                    String gradoProveedor, String gradoPropio,
+                                    java.time.LocalDateTime updatedAt) {}
 }
