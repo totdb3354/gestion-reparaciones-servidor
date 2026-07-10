@@ -32,7 +32,7 @@ public class UrgenteAutomaticoJob {
     }
 
     /** Inicio del día de hoy en Madrid, como Timestamp del instante UTC equivalente. */
-    static Timestamp cutoffInicioDeHoyMadrid(Clock clock) {
+    public static Timestamp cutoffInicioDeHoyMadrid(Clock clock) {
         return Timestamp.from(LocalDate.now(clock).atStartOfDay(MADRID).toInstant());
     }
 
