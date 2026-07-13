@@ -100,6 +100,7 @@ CREATE TABLE Reparacion (
     FECHA_FIN            DATETIME,
     IMEI                 VARCHAR(15)  NOT NULL,
     ID_TEC               INT          NOT NULL,
+    ID_TEC_ASIGNA        INT          NULL,
     ID_REP_ANTERIOR      VARCHAR(30),
     COMENTARIO_ASIGNACION TEXT,
     URGENTE              BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -109,7 +110,8 @@ CREATE TABLE Reparacion (
     PRIMARY KEY (ID_REP),
     CONSTRAINT Reparacion_ibfk_1 FOREIGN KEY (IMEI)            REFERENCES Telefono  (IMEI),
     CONSTRAINT fk_rep_tecnico    FOREIGN KEY (ID_TEC)          REFERENCES Tecnico   (ID_TEC),
-    CONSTRAINT Reparacion_ibfk_3 FOREIGN KEY (ID_REP_ANTERIOR) REFERENCES Reparacion(ID_REP)
+    CONSTRAINT Reparacion_ibfk_3 FOREIGN KEY (ID_REP_ANTERIOR) REFERENCES Reparacion(ID_REP),
+    CONSTRAINT fk_rep_tec_asigna FOREIGN KEY (ID_TEC_ASIGNA)   REFERENCES Tecnico   (ID_TEC)
 );
 
 -- Borrador del modal de reparación por componente (1:0..1 con Reparacion, entidad débil).
@@ -125,10 +127,11 @@ CREATE TABLE Reparacion_borrador (
 -- ── Tablas de stock ───────────────────────────────────────────────────────────
 
 CREATE TABLE Proveedor (
-    ID_PROV  INT          NOT NULL AUTO_INCREMENT,
-    NOMBRE   VARCHAR(100) NOT NULL,
-    ACTIVO   BOOLEAN      NOT NULL DEFAULT TRUE,
-    DIVISA   VARCHAR(3)   NOT NULL DEFAULT 'EUR',
+    ID_PROV    INT          NOT NULL AUTO_INCREMENT,
+    NOMBRE     VARCHAR(100) NOT NULL,
+    ACTIVO     BOOLEAN      NOT NULL DEFAULT TRUE,
+    DIVISA     VARCHAR(3)   NOT NULL DEFAULT 'EUR',
+    COMENTARIO TEXT,
     PRIMARY KEY (ID_PROV)
 );
 
@@ -234,6 +237,7 @@ CREATE TABLE Log_Actividad (
     ID_USU  INT          NOT NULL,
     ACCION  VARCHAR(50)  NOT NULL,
     DETALLE TEXT,
+    MOTIVO  TEXT,
     PRIMARY KEY (ID_LOG),
     CONSTRAINT fk_log_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU)
 );
