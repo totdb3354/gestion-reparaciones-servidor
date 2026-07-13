@@ -11,6 +11,9 @@ USE gestion_reparaciones;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Movimiento_telefono;
+DROP TABLE IF EXISTS Modelo_equivalencia;
+DROP TABLE IF EXISTS Lote;
 DROP TABLE IF EXISTS Log_Actividad;
 DROP TABLE IF EXISTS Solicitud_Stock;
 DROP TABLE IF EXISTS Reparacion_componente;
@@ -63,6 +66,16 @@ CREATE TABLE Telefono (
     MODELO              VARCHAR(100),
     OBSERVACION         TEXT,
     ID_CLI              INT          NULL,
+    ID_LOTE             INT          NULL,
+    ESTADO              ENUM('RECIBIDO','EN_REVISION','BLOQUEADO','OK','ENVIADO','DESGUACE') NULL,
+    STORAGE_GB          INT          NULL,
+    COLOR               VARCHAR(50)  NULL,
+    GRADO_PROVEEDOR     VARCHAR(20)  NULL,
+    GRADO_PROPIO        ENUM('C','B','A-','A','A+') NULL,
+    PRECIO_COMPRA       DECIMAL(10,2) NULL,
+    DIVISA              VARCHAR(3)   NULL,
+    PRECIO_COMPRA_EUR   DECIMAL(10,2) NULL,
+    ES_DEVOLUCION       BOOLEAN      NOT NULL DEFAULT FALSE,
     REVISION_LOGISTICA  BOOLEAN      NOT NULL DEFAULT FALSE,
     UPDATED_AT          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (IMEI),
@@ -118,6 +131,20 @@ CREATE TABLE Proveedor (
     DIVISA   VARCHAR(3)   NOT NULL DEFAULT 'EUR',
     PRIMARY KEY (ID_PROV)
 );
+
+CREATE TABLE Lote (
+    ID_LOTE      INT          NOT NULL AUTO_INCREMENT,
+    BATCH_NUMBER VARCHAR(100) NOT NULL,
+    ID_PROV      INT          NOT NULL,
+    FECHA_IMPORT DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    NOTA         TEXT,
+    UPDATED_AT   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ID_LOTE),
+    UNIQUE KEY uq_lote_batch_prov (BATCH_NUMBER, ID_PROV),
+    CONSTRAINT fk_lote_proveedor FOREIGN KEY (ID_PROV) REFERENCES Proveedor (ID_PROV)
+);
+
+ALTER TABLE Telefono ADD CONSTRAINT fk_telefono_lote FOREIGN KEY (ID_LOTE) REFERENCES Lote (ID_LOTE);
 
 CREATE TABLE TipoCambio (
     DIVISA   VARCHAR(3)    NOT NULL,
@@ -209,6 +236,32 @@ CREATE TABLE Log_Actividad (
     DETALLE TEXT,
     PRIMARY KEY (ID_LOG),
     CONSTRAINT fk_log_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU)
+);
+
+-- ── Trazabilidad de movimientos telefónicos ────────────────────────────────────
+
+CREATE TABLE Movimiento_telefono (
+    ID_MOV            INT          NOT NULL AUTO_INCREMENT,
+    IMEI              VARCHAR(15)  NOT NULL,
+    UBICACION_ORIGEN  VARCHAR(30)  NULL,
+    UBICACION_DESTINO VARCHAR(30)  NOT NULL,
+    FECHA             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ID_USU            INT          NOT NULL,
+    MOTIVO            VARCHAR(255) NULL,
+    REFERENCIA        VARCHAR(100) NULL,
+    PRIMARY KEY (ID_MOV),
+    KEY idx_mov_imei (IMEI),
+    CONSTRAINT fk_mov_telefono FOREIGN KEY (IMEI)   REFERENCES Telefono (IMEI),
+    CONSTRAINT fk_mov_usuario  FOREIGN KEY (ID_USU) REFERENCES Usuario  (ID_USU)
+);
+
+-- ── Equivalencias de modelos ──────────────────────────────────────────────────
+
+CREATE TABLE Modelo_equivalencia (
+    TEXTO_EXTERNO  VARCHAR(100) NOT NULL,
+    MODELO_INTERNO VARCHAR(100) NOT NULL,
+    UPDATED_AT     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (TEXTO_EXTERNO)
 );
 
 -- ── Seed data ─────────────────────────────────────────────────────────────────
