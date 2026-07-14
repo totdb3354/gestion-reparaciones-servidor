@@ -115,11 +115,13 @@ public class TelefonoDAO {
     }
 
     public void actualizarAtributos(String imei, String modelo, Integer storageGb, String color,
-                                    String gradoProveedor, String gradoPropio, LocalDateTime updatedAt) {
+                                    String gradoProveedor, String gradoPropio, Boolean esEsim,
+                                    LocalDateTime updatedAt) {
         int filas = jdbc.update(
-            "UPDATE Telefono SET MODELO = ?, STORAGE_GB = ?, COLOR = ?, GRADO_PROVEEDOR = ?, GRADO_PROPIO = ?" +
+            "UPDATE Telefono SET MODELO = ?, STORAGE_GB = ?, COLOR = ?, GRADO_PROVEEDOR = ?, GRADO_PROPIO = ?," +
+            " ES_ESIM = COALESCE(?, ES_ESIM)" +
             " WHERE IMEI = ? AND UPDATED_AT = ?",
-            modelo, storageGb, color, gradoProveedor, gradoPropio, imei,
+            modelo, storageGb, color, gradoProveedor, gradoPropio, esEsim, imei,
             Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
@@ -132,7 +134,7 @@ public class TelefonoDAO {
 
     public List<TelefonoInventario> getInventario() {
         String sql =
-            "SELECT t.IMEI, t.MODELO, t.STORAGE_GB, t.COLOR, t.GRADO_PROVEEDOR, t.GRADO_PROPIO," +
+            "SELECT t.IMEI, t.MODELO, t.STORAGE_GB, t.COLOR, t.GRADO_PROVEEDOR, t.GRADO_PROPIO, t.ES_ESIM," +
             "       t.ESTADO, t.ES_DEVOLUCION, t.OBSERVACION, t.REVISION_LOGISTICA, t.UPDATED_AT," +
             "       t.ID_CLI, c.NOMBRE AS CLIENTE, t.ID_LOTE, l.BATCH_NUMBER, l.FECHA_IMPORT, p.NOMBRE AS PROVEEDOR," +
             "       COALESCE(w.PUL_ABIERTOS,0) PUL_ABIERTOS, COALESCE(w.GLASS_ABIERTOS,0) GLASS_ABIERTOS," +
@@ -169,6 +171,7 @@ public class TelefonoDAO {
             inv.setColor(rs.getString("COLOR"));
             inv.setGradoProveedor(rs.getString("GRADO_PROVEEDOR"));
             inv.setGradoPropio(rs.getString("GRADO_PROPIO"));
+            inv.setEsEsim(rs.getBoolean("ES_ESIM"));
             inv.setEstado(rs.getString("ESTADO"));
             inv.setEsDevolucion(rs.getBoolean("ES_DEVOLUCION"));
             inv.setObservacion(rs.getString("OBSERVACION"));
@@ -206,17 +209,17 @@ public class TelefonoDAO {
 
     /** Alta/re-entrada de un teléfono de lote: fija lote, atributos del fichero y ESTADO=RECIBIDO. */
     public void upsertImportacion(String imei, String modelo, Integer idLote, Integer storageGb,
-                                  String color, String gradoProveedor,
+                                  String color, String gradoProveedor, boolean esEsim,
                                   java.math.BigDecimal precioCompra, String divisa,
                                   java.math.BigDecimal precioCompraEur) {
         jdbc.update(
-            "INSERT INTO Telefono (IMEI, MODELO, ID_LOTE, ESTADO, STORAGE_GB, COLOR, GRADO_PROVEEDOR," +
+            "INSERT INTO Telefono (IMEI, MODELO, ID_LOTE, ESTADO, STORAGE_GB, COLOR, GRADO_PROVEEDOR, ES_ESIM," +
             "                      PRECIO_COMPRA, DIVISA, PRECIO_COMPRA_EUR)" +
-            " VALUES (?, ?, ?, 'RECIBIDO', ?, ?, ?, ?, ?, ?)" +
+            " VALUES (?, ?, ?, 'RECIBIDO', ?, ?, ?, ?, ?, ?, ?)" +
             " ON DUPLICATE KEY UPDATE MODELO = COALESCE(?, MODELO), ID_LOTE = ?, ESTADO = 'RECIBIDO'," +
-            "  STORAGE_GB = ?, COLOR = ?, GRADO_PROVEEDOR = ?, PRECIO_COMPRA = ?, DIVISA = ?, PRECIO_COMPRA_EUR = ?",
-            imei, modelo, idLote, storageGb, color, gradoProveedor, precioCompra, divisa, precioCompraEur,
-            modelo, idLote, storageGb, color, gradoProveedor, precioCompra, divisa, precioCompraEur);
+            "  STORAGE_GB = ?, COLOR = ?, GRADO_PROVEEDOR = ?, ES_ESIM = ?, PRECIO_COMPRA = ?, DIVISA = ?, PRECIO_COMPRA_EUR = ?",
+            imei, modelo, idLote, storageGb, color, gradoProveedor, esEsim, precioCompra, divisa, precioCompraEur,
+            modelo, idLote, storageGb, color, gradoProveedor, esEsim, precioCompra, divisa, precioCompraEur);
     }
 
     public List<VerificacionImei> verificar(List<String> imeis) {

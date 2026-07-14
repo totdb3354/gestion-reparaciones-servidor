@@ -11,6 +11,7 @@ public class TelefonoInventario {
     private String color;
     private String gradoProveedor;
     private String gradoPropio;
+    private boolean esEsim;
     private String estado;           // almacenado (null = histórico)
     private String estadoEfectivo;   // derivado (EN_REPARACION si trabajo abierto)
     private String ubicacion;        // derivada; null = fuera del ciclo
@@ -53,6 +54,9 @@ public class TelefonoInventario {
 
     public String getGradoPropio() { return gradoPropio; }
     public void setGradoPropio(String gradoPropio) { this.gradoPropio = gradoPropio; }
+
+    public boolean isEsEsim() { return esEsim; }
+    public void setEsEsim(boolean esEsim) { this.esEsim = esEsim; }
 
     public String getEstado() { return estado; }
     public void setEstado(String estado) { this.estado = estado; }
