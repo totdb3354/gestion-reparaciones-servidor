@@ -11,7 +11,7 @@ USE gestion_reparaciones;
 -- Vista previa (no modifica nada)
 SELECT ID_COM, TIPO,
        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-           TIPO, 'negro', 'Black'), 'blanco', 'White'), 'rojo', '(PRODUCT)RED'),
+           TIPO, 'negro', 'Black'), 'blanco', 'White'), 'rojo', 'Red'),
            'azul', 'Blue'), 'verde', 'Green'), 'amarillo', 'Yellow'),
            'rosa', 'Pink'), 'morado', 'Purple') AS PROPUESTO
   FROM Componente
@@ -20,7 +20,7 @@ SELECT ID_COM, TIPO,
 -- UPDATEs (mismos reemplazos; ejecutar tras validar la vista previa)
 UPDATE Componente SET TIPO = REPLACE(TIPO, 'negro',    'Black')        WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%negro%';
 UPDATE Componente SET TIPO = REPLACE(TIPO, 'blanco',   'White')        WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%blanco%';
-UPDATE Componente SET TIPO = REPLACE(TIPO, 'rojo',     '(PRODUCT)RED') WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%rojo%';
+UPDATE Componente SET TIPO = REPLACE(TIPO, 'rojo',     'Red')          WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%rojo%';
 UPDATE Componente SET TIPO = REPLACE(TIPO, 'azul',     'Blue')         WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%azul%';
 UPDATE Componente SET TIPO = REPLACE(TIPO, 'verde',    'Green')        WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%verde%';
 UPDATE Componente SET TIPO = REPLACE(TIPO, 'amarillo', 'Yellow')       WHERE TIPO LIKE 'cha%' AND TIPO LIKE '%amarillo%';
@@ -36,3 +36,8 @@ SELECT ID_COM, TIPO FROM Componente
 -- NOTA: los colores multi-palabra oficiales (Sierra Blue, Titanium…) probablemente no
 -- existan en castellano en los TIPO actuales; los casos que la vista previa no cubra
 -- se corrigen a mano en la UI de SKUs. El usuario decide en la vista previa.
+-- NOTA vocabulario (decisión usuario 2026-07-15): los COMPONENTES usan el color BASE
+-- simplificado ('Red', 'Blue', 'Black'…), nunca el oficial completo del teléfono
+-- ('(PRODUCT)RED', 'Blue Titanium'…, que quedan solo para el SKU del teléfono).
+-- El color del teléfono NO se deriva del chasis: a futuro habrá una comprobación de
+-- consistencia teléfono↔chasis vía mapa oficial→base (dato de negocio, ver spec §2.4).
