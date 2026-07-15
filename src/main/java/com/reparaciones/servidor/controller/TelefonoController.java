@@ -105,7 +105,7 @@ public class TelefonoController {
                                     @RequestBody AtributosRequest req,
                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.actualizarAtributos(imei, req.modelo(), req.storageGb(), req.color(),
-                req.gradoProveedor(), req.gradoPropio(), req.updatedAt());
+                req.gradoProveedor(), req.gradoPropio(), req.esEsim(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_ATRIBUTOS",
                 "IMEI: " + imei + ", MODELO: " + req.modelo());
     }
@@ -139,6 +139,6 @@ public class TelefonoController {
     private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
     private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
     private record AtributosRequest(String modelo, Integer storageGb, String color,
-                                    String gradoProveedor, String gradoPropio,
+                                    String gradoProveedor, String gradoPropio, Boolean esEsim,
                                     java.time.LocalDateTime updatedAt) {}
 }

@@ -10,7 +10,7 @@ public record ImportacionRequest(List<LoteImport> lotes) {
 
     public record TelefonoImport(String imei, String modelo, Integer storageGb, String color,
                                  String gradoProveedor, BigDecimal precioCompra, String divisa,
-                                 BigDecimal precioCompraEur) {}
+                                 BigDecimal precioCompraEur, boolean esEsim) {}
 
     public record Respuesta(int lotes, int telefonos, List<String> conflictosOmitidos) {}
 }

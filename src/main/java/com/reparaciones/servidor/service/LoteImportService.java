@@ -56,7 +56,7 @@ public class LoteImportService {
                 if (activo) { conflictos.add(t.imei()); continue; }
                 boolean reentrada = v != null;
                 telefonoDao.upsertImportacion(t.imei(), t.modelo(), idLote, t.storageGb(), t.color(),
-                        t.gradoProveedor(), t.precioCompra(), t.divisa(), t.precioCompraEur());
+                        t.gradoProveedor(), t.esEsim(), t.precioCompra(), t.divisa(), t.precioCompraEur());
                 movimientoDao.insertar(t.imei(), null, "ALMACEN", idUsu,
                         reentrada ? "Re-entrada por importación" : "Importación",
                         "LOTE:" + lote.batchNumber());
