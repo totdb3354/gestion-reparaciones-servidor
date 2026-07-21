@@ -789,6 +789,10 @@ public class ReparacionDAO {
                         "UPDATE Reparacion SET FECHA_FIN = NULL" +
                         " WHERE ID_REP_ANTERIOR = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NOT NULL",
                         idRepOrig);
+                // Reconciliar urgencia: la fila reabierta conserva su URGENTE congelado;
+                // si alguna asignación abierta del teléfono (incluida esta) es urgente,
+                // propagar a todas (invariante: un solo estado de urgencia por teléfono).
+                if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
             }
         }
 
@@ -840,7 +844,7 @@ public class ReparacionDAO {
             " 0 AS ES_SOLICITUD, NULL AS DESC_SOL," +
             " NULL AS ESTADO_SOL, NULL AS TIPO_SOL, 0 AS STOCK_SOL, 0 AS EN_CAMINO_SOL, NULL AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +

@@ -45,6 +45,34 @@ class ReparacionDAOUrgenteTest {
         verify(jdbc).update(contains("WHERE IMEI = ? AND FECHA_FIN IS NULL"), eq(false), eq(IMEI));
     }
 
+    @SuppressWarnings("unchecked")
+    @Test void eliminarReabreAsignacionYReconciliaUrgenciaSiQuedaAbiertaUrgente() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        String idRep = "R20260721_1";
+        String idRepOrig = "A20260721_1";
+
+        // rows de componentes: por defecto Mockito devuelve lista vacía para jdbc.query(...)
+        when(jdbc.queryForObject(eq("SELECT IMEI FROM Reparacion WHERE ID_REP = ?"), eq(String.class), eq(idRep)))
+                .thenReturn(IMEI);
+        // esta R* resolvía una incidencia de idRepOrig
+        when(jdbc.query(contains("ID_REP_ANTERIOR IS NOT NULL"), any(RowMapper.class), eq(idRep)))
+                .thenReturn(List.of(idRepOrig));
+        // no quedan otras R* que la resuelvan -> se reabre la A*
+        when(jdbc.queryForObject(contains("ID_REP_ANTERIOR = ? AND ID_REP LIKE ?"), eq(Integer.class),
+                eq(idRepOrig), eq("R%"), eq(idRep)))
+                .thenReturn(0);
+        // tras reabrir, el teléfono tiene alguna asignación abierta urgente (la propia reabierta)
+        when(jdbc.queryForObject(contains("FECHA_FIN IS NULL AND URGENTE = TRUE"), eq(Integer.class), eq(IMEI)))
+                .thenReturn(1);
+
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        dao.eliminar(idRep);
+
+        verify(jdbc).update(
+                eq("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE IMEI = ? AND FECHA_FIN IS NULL"),
+                eq(true), eq(IMEI));
+    }
+
     @Test void marcarUrgentesClienteVencidasMarcaTodoElTelefono() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
