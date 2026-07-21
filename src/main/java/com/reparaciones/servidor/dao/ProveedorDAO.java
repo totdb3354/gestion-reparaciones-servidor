@@ -48,8 +48,9 @@ public class ProveedorDAO {
     public boolean tienePedidos(int idProv) {
         Integer count = jdbc.queryForObject(
                 "SELECT (SELECT COUNT(*) FROM Compra_componente WHERE ID_PROV = ?)" +
-                "     + (SELECT COUNT(*) FROM Compra_otro       WHERE ID_PROV = ?)",
-                Integer.class, idProv, idProv);
+                "     + (SELECT COUNT(*) FROM Compra_otro       WHERE ID_PROV = ?)" +
+                "     + (SELECT COUNT(*) FROM Lote              WHERE ID_PROV = ?)",
+                Integer.class, idProv, idProv, idProv);
         return count != null && count > 0;
     }
 
