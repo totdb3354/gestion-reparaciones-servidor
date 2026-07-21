@@ -1,0 +1,89 @@
+package com.reparaciones.servidor.dao;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+class ReparacionDAOUrgenteTest {
+
+    private static final String IMEI = "351111112222333";
+
+    @Test void propagarUrgenteActualizaTodasLasAbiertasDelImei() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        dao.propagarUrgente(IMEI, true);
+        verify(jdbc).update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE IMEI = ? AND FECHA_FIN IS NULL",
+                true, IMEI);
+    }
+
+    @Test void tieneAbiertaUrgenteConsultaSoloAbiertasUrgentes() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(contains("FECHA_FIN IS NULL AND URGENTE = TRUE"), eq(Integer.class), eq(IMEI)))
+                .thenReturn(2);
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        assertTrue(dao.tieneAbiertaUrgente(IMEI));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void actualizarUrgenteResuelveElImeiYPropaga() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        // getImeiByIdRep usa jdbc.query(...) con RowMapper (no queryForObject); se mockea
+        // el método realmente invocado, el SQL sigue conteniendo "SELECT IMEI" literal.
+        when(jdbc.query(contains("SELECT IMEI"), any(RowMapper.class), eq("A20260721_1")))
+                .thenReturn(List.of(IMEI));
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        dao.actualizarUrgente("A20260721_1", false);
+        verify(jdbc).update(contains("WHERE IMEI = ? AND FECHA_FIN IS NULL"), eq(false), eq(IMEI));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void eliminarReabreAsignacionYReconciliaUrgenciaSiQuedaAbiertaUrgente() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        String idRep = "R20260721_1";
+        String idRepOrig = "A20260721_1";
+
+        // rows de componentes: por defecto Mockito devuelve lista vacía para jdbc.query(...)
+        when(jdbc.queryForObject(eq("SELECT IMEI FROM Reparacion WHERE ID_REP = ?"), eq(String.class), eq(idRep)))
+                .thenReturn(IMEI);
+        // esta R* resolvía una incidencia de idRepOrig
+        when(jdbc.query(contains("ID_REP_ANTERIOR IS NOT NULL"), any(RowMapper.class), eq(idRep)))
+                .thenReturn(List.of(idRepOrig));
+        // no quedan otras R* que la resuelvan -> se reabre la A*
+        when(jdbc.queryForObject(contains("ID_REP_ANTERIOR = ? AND ID_REP LIKE ?"), eq(Integer.class),
+                eq(idRepOrig), eq("R%"), eq(idRep)))
+                .thenReturn(0);
+        // tras reabrir, el teléfono tiene alguna asignación abierta urgente (la propia reabierta)
+        when(jdbc.queryForObject(contains("FECHA_FIN IS NULL AND URGENTE = TRUE"), eq(Integer.class), eq(IMEI)))
+                .thenReturn(1);
+
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        dao.eliminar(idRep);
+
+        verify(jdbc).update(
+                eq("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE IMEI = ? AND FECHA_FIN IS NULL"),
+                eq(true), eq(IMEI));
+    }
+
+    @Test void marcarUrgentesClienteVencidasMarcaTodoElTelefono() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        java.sql.Timestamp cutoff = java.sql.Timestamp.valueOf("2026-07-21 00:00:00");
+        dao.marcarUrgentesClienteVencidas(cutoff);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).update(sql.capture(), eq(cutoff));
+        String s = sql.getValue();
+        assertTrue(s.contains("SELECT DISTINCT r2.IMEI"));                       // cualifica por teléfono
+        assertTrue(s.contains("r2.ID_REP LIKE 'A%' AND r2.ID_REP NOT LIKE 'AP%'")); // disparador: rep/glass
+        assertTrue(s.contains("t.ID_CLI IS NOT NULL"));
+        assertTrue(s.contains("WHERE r.FECHA_FIN IS NULL AND r.URGENTE = FALSE"));  // marca TODAS las abiertas
+    }
+}
