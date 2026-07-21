@@ -389,10 +389,12 @@ public class ReparacionDAO {
     @Transactional
     public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, boolean esChasis, Integer idTecAsigna) {
         ensureTelefono(imei);
+        boolean urgenteFinal = urgente || tieneAbiertaUrgente(imei);
         String idRep = nextId("A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE, ES_CHASIS) VALUES (?,?,?,NOW(),?,?,?,?)",
-                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgente, esChasis);
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgenteFinal, esChasis);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
     }
 
@@ -400,10 +402,12 @@ public class ReparacionDAO {
     @Transactional
     public String insertarAsignacionGlass(String imei, int idTec, String comentario, boolean urgente, Integer idTecAsigna) {
         ensureTelefono(imei);
+        boolean urgenteFinal = urgente || tieneAbiertaUrgente(imei);
         String idRep = nextId("AG");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE) VALUES (?,?,?,NOW(),?,?,?)",
-                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgente);
+                idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgenteFinal);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
     }
 
@@ -600,8 +604,29 @@ public class ReparacionDAO {
         }
     }
 
+    /** ¿Tiene el IMEI alguna asignación abierta marcada urgente? */
+    boolean tieneAbiertaUrgente(String imei) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND FECHA_FIN IS NULL AND URGENTE = TRUE",
+                Integer.class, imei);
+        return n != null && n > 0;
+    }
+
+    /** Fija URGENTE en TODAS las asignaciones abiertas del IMEI (invariante: un estado por teléfono). */
+    int propagarUrgente(String imei, boolean urgente) {
+        return jdbc.update(
+                "UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE IMEI = ? AND FECHA_FIN IS NULL",
+                urgente, imei);
+    }
+
+    /** Marca URGENTE en la asignación dada y propaga el mismo estado a todas las demás
+     *  asignaciones abiertas del mismo IMEI (invariante: un estado de urgencia por
+     *  teléfono, no por fila). */
+    @Transactional
     public void actualizarUrgente(String idRep, boolean urgente) {
-        jdbc.update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", urgente, idRep);
+        String imei = getImeiByIdRep(idRep);
+        if (imei == null) return;   // id inexistente: no-op (hoy, 0 filas actualizadas)
+        propagarUrgente(imei, urgente);
     }
 
     public void actualizarChasis(String idRep, boolean esChasis) {
@@ -612,17 +637,20 @@ public class ReparacionDAO {
         jdbc.update("UPDATE Reparacion SET POR_CERRAR = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", porCerrar, idRep);
     }
 
-    /** Marca URGENTE=true en asignaciones de reparación pendientes, con cliente,
+    /** Marca URGENTE=true en TODAS las asignaciones abiertas (pulido incluido) de los
+     *  teléfonos que cualifican: alguna rep/glass pendiente no urgente, con cliente,
      *  cuya FECHA_ASIG es anterior al cutoff (inicio de hoy en Madrid). Devuelve nº de filas. */
     public int marcarUrgentesClienteVencidas(java.sql.Timestamp cutoffUtc) {
         return jdbc.update(
-            "UPDATE Reparacion r JOIN Telefono t ON t.IMEI = r.IMEI " +
+            "UPDATE Reparacion r JOIN (" +
+            "  SELECT DISTINCT r2.IMEI FROM Reparacion r2" +
+            "  JOIN Telefono t ON t.IMEI = r2.IMEI" +
+            "  WHERE r2.ID_REP LIKE 'A%' AND r2.ID_REP NOT LIKE 'AP%'" +
+            "    AND r2.FECHA_FIN IS NULL AND t.ID_CLI IS NOT NULL" +
+            "    AND r2.URGENTE = FALSE AND r2.FECHA_ASIG < ?" +
+            ") q ON q.IMEI = r.IMEI " +
             "SET r.URGENTE = TRUE, r.UPDATED_AT = r.UPDATED_AT " +
-            "WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' " +
-            "  AND r.FECHA_FIN IS NULL " +
-            "  AND t.ID_CLI IS NOT NULL " +
-            "  AND r.URGENTE = FALSE " +
-            "  AND r.FECHA_ASIG < ?",
+            "WHERE r.FECHA_FIN IS NULL AND r.URGENTE = FALSE",
             cutoffUtc);
     }
 
@@ -688,6 +716,9 @@ public class ReparacionDAO {
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),?,?)",
                 idAsig, imei, idTec, idRep, comentario, idTecAsigna);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        // Sin checkbox de urgente: hereda en silencio si el teléfono ya lo estaba
+        // (la propagación incluye esta fila recién creada).
+        if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
     }
 
     @Transactional
@@ -959,6 +990,9 @@ public class ReparacionDAO {
                 "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,NOW(),?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna);
         jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        // Pulido no tiene checkbox de urgente: hereda en silencio si el teléfono ya lo estaba
+        // (la propagación incluye esta fila recién creada, que nació con URGENTE = 0).
+        if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
         return idRep;
     }
 
