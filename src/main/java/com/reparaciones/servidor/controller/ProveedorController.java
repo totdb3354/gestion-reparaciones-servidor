@@ -21,14 +21,14 @@ public class ProveedorController {
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
     @GetMapping
-    public List<Proveedor> getAll() {
-        return dao.getAll();
+    public List<Proveedor> getAll(@RequestParam(required = false) String tipo) {
+        return dao.getAll(tipo);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @GetMapping("/activos")
-    public List<Proveedor> getActivos() {
-        return dao.getActivos();
+    public List<Proveedor> getActivos(@RequestParam(required = false) String tipo) {
+        return dao.getActivos(tipo);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -40,8 +40,8 @@ public class ProveedorController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody NombreRequest req) {
-        dao.insertar(req.nombre());
+    public void insertar(@RequestBody AltaRequest req) {
+        dao.insertar(req.nombre(), req.divisa(), req.tipo());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -63,7 +63,7 @@ public class ProveedorController {
         dao.borrar(idProv);
     }
 
-    private record NombreRequest(String nombre) {}
+    private record AltaRequest(String nombre, String divisa, String tipo) {}
     private record ActivoRequest(boolean activo) {}
     private record EditarRequest(String nombre, String divisa, String comentario) {}
 }
