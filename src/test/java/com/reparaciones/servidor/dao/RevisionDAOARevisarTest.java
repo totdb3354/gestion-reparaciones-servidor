@@ -49,6 +49,7 @@ class RevisionDAOARevisarTest {
     @Test void okPasaConAvisoYCreaRevisionNueva() {
         JdbcTemplate jdbc = conTelefono("OK", 0);
         assertEquals(RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK, new RevisionDAO(jdbc).pasarARevisar(IMEI));
+        verify(jdbc).update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ?", IMEI);
         verify(jdbc).update("INSERT INTO Revision (IMEI, FECHA_CREACION) VALUES (?, NOW())", IMEI);
     }
 
