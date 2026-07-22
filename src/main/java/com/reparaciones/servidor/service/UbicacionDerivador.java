@@ -19,6 +19,18 @@ public final class UbicacionDerivador {
 
     public static Resultado derivar(String estado, int pulAbiertos, int glassAbiertos,
                                     int normalAbiertos, Integer idCli) {
+        return derivar(estado, pulAbiertos, glassAbiertos, normalAbiertos, idCli, false, false);
+    }
+
+    /**
+     * @param revisionCompleta true si la revisión vigente tiene ambas partes guardadas
+     *                         (estética + funcional).
+     * @param repTrasRevision  true si además hubo un trabajo de reparación cerrado
+     *                         después de crearse la pasada de revisión vigente.
+     */
+    public static Resultado derivar(String estado, int pulAbiertos, int glassAbiertos,
+                                    int normalAbiertos, Integer idCli,
+                                    boolean revisionCompleta, boolean repTrasRevision) {
         if ("BLOQUEADO".equals(estado)) return new Resultado("BLOQUEADO", "BLOQUEO", List.of());
         if ("ENVIADO".equals(estado))   return new Resultado("ENVIADO", null, List.of());
         if ("DESGUACE".equals(estado))  return new Resultado("DESGUACE", null, List.of());
@@ -33,7 +45,12 @@ public final class UbicacionDerivador {
         if (estado == null) return new Resultado(null, null, List.of()); // histórico fuera del ciclo
         return switch (estado) {
             case "RECIBIDO"    -> new Resultado("RECIBIDO", "ALMACEN", List.of());
-            case "EN_REVISION" -> new Resultado("EN_REVISION", "PARA_REVISAR", List.of());
+            // REVISADO = las dos partes guardadas, esperando decisión humana; REPARADO =
+            // además hubo un trabajo de reparación cerrado tras crear la pasada, también
+            // esperando el OK humano.
+            case "EN_REVISION" -> new Resultado(
+                    revisionCompleta ? (repTrasRevision ? "REPARADO" : "REVISADO") : "EN_REVISION",
+                    "PARA_REVISAR", List.of());
             case "OK"          -> new Resultado("OK", idCli != null ? "PEDIDOS" : "LISTOS", List.of());
             default            -> new Resultado(estado, null, List.of());
         };
