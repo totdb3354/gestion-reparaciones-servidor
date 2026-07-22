@@ -21,6 +21,40 @@ public class RevisionDAO {
 
     public RevisionDAO(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
+    /** Resultado del escaneo "a revisar" (tabla de reglas spec F2b §4). */
+    public enum ResultadoARevisar { PASADO, PASADO_ESTABA_OK, YA_ESTABA, EN_REPARACION, BLOQUEADO, FUERA, HISTORICO, NO_EXISTE }
+
+    /**
+     * Procesa UN IMEI del escaneo masivo: clasifica según su estado y, si procede,
+     * lo pasa a EN_REVISION creando la fila de revisión de la pasada nueva.
+     * Transaccional por IMEI: un fallo no tumba el resto del lote escaneado.
+     */
+    @Transactional
+    public ResultadoARevisar pasarARevisar(String imei) {
+        List<String> fila = jdbc.query(
+                "SELECT ESTADO FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> rs.getString("ESTADO"),
+                imei);
+        if (fila.isEmpty()) return ResultadoARevisar.NO_EXISTE;
+        String estado = fila.get(0);
+        if (estado == null) return ResultadoARevisar.HISTORICO;   // fuera del ciclo (decisión 15)
+        Integer abiertos = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
+                Integer.class, imei);
+        if (abiertos != null && abiertos > 0) return ResultadoARevisar.EN_REPARACION;
+        return switch (estado) {
+            case "EN_REVISION" -> ResultadoARevisar.YA_ESTABA;
+            case "BLOQUEADO"   -> ResultadoARevisar.BLOQUEADO;
+            case "ENVIADO", "DESGUACE" -> ResultadoARevisar.FUERA;
+            case "RECIBIDO", "OK" -> {
+                jdbc.update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ?", imei);
+                jdbc.update("INSERT INTO Revision (IMEI, FECHA_CREACION) VALUES (?, NOW())", imei);
+                yield "OK".equals(estado) ? ResultadoARevisar.PASADO_ESTABA_OK : ResultadoARevisar.PASADO;
+            }
+            default -> ResultadoARevisar.FUERA;
+        };
+    }
+
     /** ID de la revisión vigente, o null si el teléfono nunca pasó por revisión. */
     private Integer idVigente(String imei) {
         return jdbc.queryForObject("SELECT MAX(ID_REVISION) FROM Revision WHERE IMEI = ?", Integer.class, imei);

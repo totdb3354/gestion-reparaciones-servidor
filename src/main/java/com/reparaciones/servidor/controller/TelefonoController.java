@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.dao.RevisionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
@@ -22,11 +23,13 @@ public class TelefonoController {
     private final TelefonoDAO dao;
     private final ImeiLookupService imeiLookupService;
     private final LogDAO logDao;
+    private final RevisionDAO revisionDao;
 
-    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao) {
+    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao) {
         this.dao = dao;
         this.imeiLookupService = imeiLookupService;
         this.logDao = logDao;
+        this.revisionDao = revisionDao;
     }
 
     @GetMapping
@@ -134,6 +137,25 @@ public class TelefonoController {
                 "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
     }
 
+    /** F2b: escaneo masivo "a revisar" — clasifica cada IMEI y pasa a EN_REVISION los que tocan. */
+    @PostMapping("/a-revisar")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public List<ResultadoARevisarResponse> aRevisar(@RequestBody ImeisRequest req,
+                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        List<ResultadoARevisarResponse> out = new java.util.ArrayList<>();
+        for (String imei : new java.util.LinkedHashSet<>(req.imeis())) {
+            RevisionDAO.ResultadoARevisar r = revisionDao.pasarARevisar(imei);
+            if (r == RevisionDAO.ResultadoARevisar.PASADO || r == RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK) {
+                logDao.insertar(principal.getIdUsu(), "A_REVISAR", "IMEI: " + imei
+                        + (r == RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK ? ", ESTABA_OK" : ""));
+            }
+            out.add(new ResultadoARevisarResponse(imei, r.name()));
+        }
+        return out;
+    }
+
+    private record ImeisRequest(java.util.List<String> imeis) {}
+    private record ResultadoARevisarResponse(String imei, String resultado) {}
     private record ImeiRequest(String imei, String modelo, Integer idCli, Boolean clienteExplicito) {}
     private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
     private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
