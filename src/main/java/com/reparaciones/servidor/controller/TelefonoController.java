@@ -154,6 +154,43 @@ public class TelefonoController {
         return out;
     }
 
+    /** F2b: guarda la parte estética de la revisión vigente (sella autor+fecha, espeja grado). */
+    @PatchMapping("/{imei}/revision/estetica")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void guardarRevisionEstetica(@PathVariable String imei, @RequestBody EsteticaRequest req,
+                                        @AuthenticationPrincipal UsuarioPrincipal principal) {
+        revisionDao.guardarEstetica(imei, req.grado(), req.pant(), principal.getIdUsu());
+        logDao.insertar(principal.getIdUsu(), "GUARDAR_REVISION", "IMEI: " + imei + ", PARTE: ESTETICA");
+    }
+
+    /** F2b: guarda la parte funcional; con bloqueo de operador marcado, el teléfono pasa a BLOQUEADO. */
+    @PatchMapping("/{imei}/revision/funcional")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public void guardarRevisionFuncional(@PathVariable String imei, @RequestBody FuncionalRequest req,
+                                         @AuthenticationPrincipal UsuarioPrincipal principal) {
+        com.reparaciones.servidor.model.RevisionFuncional f = new com.reparaciones.servidor.model.RevisionFuncional(
+                req.bateriaPct(), b(req.pantTactil()), b(req.pantQuemada()), b(req.pantMal()),
+                b(req.camMancha()), b(req.camLente()), b(req.altSup()), b(req.altInf()), b(req.mic()),
+                b(req.faceId()), b(req.ms()), req.msTexto(), b(req.bloqueoOp()), req.observacion());
+        revisionDao.guardarFuncional(imei, f, principal.getIdUsu());
+        logDao.insertar(principal.getIdUsu(), "GUARDAR_REVISION", "IMEI: " + imei + ", PARTE: FUNCIONAL");
+        if (f.bloqueoOp() && revisionDao.bloquearPorRevision(imei)) {
+            logDao.insertar(principal.getIdUsu(), "BLOQUEAR_TELEFONO", "IMEI: " + imei,
+                    "Bloqueo de operador detectado en revisión");
+        }
+    }
+
+    /** F2b: revisión vigente (última pasada) para la ficha; existe=false si nunca hubo. */
+    @GetMapping("/{imei}/revision")
+    public RevisionResponse getRevision(@PathVariable String imei) {
+        com.reparaciones.servidor.model.Revision r = revisionDao.getVigente(imei);
+        return new RevisionResponse(r != null, r);
+    }
+
+    private static boolean b(Boolean v) { return Boolean.TRUE.equals(v); }
+
     private record ImeisRequest(java.util.List<String> imeis) {}
     private record ResultadoARevisarResponse(String imei, String resultado) {}
     private record ImeiRequest(String imei, String modelo, Integer idCli, Boolean clienteExplicito) {}
@@ -163,4 +200,10 @@ public class TelefonoController {
     private record AtributosRequest(String modelo, Integer storageGb, String color,
                                     String gradoProveedor, String gradoPropio, Boolean esEsim,
                                     java.time.LocalDateTime updatedAt) {}
+    private record EsteticaRequest(String grado, String pant) {}
+    private record FuncionalRequest(Integer bateriaPct, Boolean pantTactil, Boolean pantQuemada, Boolean pantMal,
+                                    Boolean camMancha, Boolean camLente, Boolean altSup, Boolean altInf,
+                                    Boolean mic, Boolean faceId, Boolean ms, String msTexto,
+                                    Boolean bloqueoOp, String observacion) {}
+    private record RevisionResponse(boolean existe, com.reparaciones.servidor.model.Revision revision) {}
 }

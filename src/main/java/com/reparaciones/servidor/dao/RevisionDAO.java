@@ -92,6 +92,11 @@ public class RevisionDAO {
                 f.observacion(), idUsu, id);
     }
 
+    /** Bloqueo automático al guardar la funcional con "bloqueo operador". @return true si cambió el estado. */
+    public boolean bloquearPorRevision(String imei) {
+        return jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", imei) > 0;
+    }
+
     /** Revisión vigente con nombres de usuario por parte, o null si nunca hubo. */
     public Revision getVigente(String imei) {
         List<Revision> filas = jdbc.query(

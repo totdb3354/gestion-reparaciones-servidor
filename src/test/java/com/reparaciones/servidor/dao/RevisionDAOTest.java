@@ -59,4 +59,13 @@ class RevisionDAOTest {
         when(jdbc.query(contains("FROM Revision r"), any(RowMapper.class), eq(IMEI))).thenReturn(List.of());
         assertNull(dao.getVigente(IMEI));
     }
+
+    @Test void bloquearPorRevisionSoloDesdeEnRevision() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        RevisionDAO dao = new RevisionDAO(jdbc);
+        when(jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", IMEI)).thenReturn(1);
+        assertTrue(dao.bloquearPorRevision(IMEI));
+        when(jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", IMEI)).thenReturn(0);
+        assertFalse(dao.bloquearPorRevision(IMEI));
+    }
 }
