@@ -136,4 +136,38 @@ public class RevisionDAO {
                 }, imei);
         return filas.isEmpty() ? null : filas.get(0);
     }
+
+    /** OK humano: exige revisión vigente completa, batería ≥ 85 y sin trabajos abiertos (veto duro en servidor). */
+    @Transactional
+    public void marcarOk(String imei) {
+        Revision v = getVigente(imei);
+        if (v == null || v.getEstFecha() == null || v.getFunFecha() == null)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Revisión incompleta: faltan partes por guardar");
+        if (v.getFunBateriaPct() == null || v.getFunBateriaPct() < 85)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Batería < 85: reparación obligatoria antes del OK");
+        Integer abiertos = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
+                Integer.class, imei);
+        if (abiertos != null && abiertos > 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tiene trabajos abiertos");
+        transicion(imei, "UPDATE Telefono SET ESTADO = 'OK' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'");
+    }
+
+    public void bloquear(String imei) {
+        transicion(imei, "UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'");
+    }
+
+    /** Desbloquear devuelve a EN_REVISION; la derivación decide el resto (§2.1 spec canónica). */
+    public void desbloquear(String imei) {
+        transicion(imei, "UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'BLOQUEADO'");
+    }
+
+    public void desguace(String imei) {
+        transicion(imei, "UPDATE Telefono SET ESTADO = 'DESGUACE' WHERE IMEI = ? AND ESTADO IN ('EN_REVISION','BLOQUEADO')");
+    }
+
+    private void transicion(String imei, String sql) {
+        if (jdbc.update(sql, imei) == 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El estado del teléfono cambió: recarga y reintenta");
+    }
 }

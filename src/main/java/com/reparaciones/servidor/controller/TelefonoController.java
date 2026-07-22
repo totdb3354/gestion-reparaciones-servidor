@@ -189,6 +189,35 @@ public class TelefonoController {
         return new RevisionResponse(r != null, r);
     }
 
+    /** F2b: acciones de estado de la revisión. OK/BLOQUEAR/DESBLOQUEAR/DESGUACE (motivo obligatorio). */
+    @PostMapping("/{imei}/estado")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void accionEstado(@PathVariable String imei, @RequestBody EstadoRequest req,
+                             @AuthenticationPrincipal UsuarioPrincipal principal) {
+        switch (req.accion() == null ? "" : req.accion()) {
+            case "OK" -> {
+                revisionDao.marcarOk(imei);
+                logDao.insertar(principal.getIdUsu(), "TELEFONO_OK", "IMEI: " + imei);
+            }
+            case "BLOQUEAR" -> {
+                revisionDao.bloquear(imei);
+                logDao.insertar(principal.getIdUsu(), "BLOQUEAR_TELEFONO", "IMEI: " + imei, req.motivo());
+            }
+            case "DESBLOQUEAR" -> {
+                revisionDao.desbloquear(imei);
+                logDao.insertar(principal.getIdUsu(), "DESBLOQUEAR_TELEFONO", "IMEI: " + imei);
+            }
+            case "DESGUACE" -> {
+                if (req.motivo() == null || req.motivo().isBlank())
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El desguace requiere motivo");
+                revisionDao.desguace(imei);
+                logDao.insertar(principal.getIdUsu(), "DESGUACE_TELEFONO", "IMEI: " + imei, req.motivo());
+            }
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Acción desconocida");
+        }
+    }
+
     private static boolean b(Boolean v) { return Boolean.TRUE.equals(v); }
 
     private record ImeisRequest(java.util.List<String> imeis) {}
@@ -206,4 +235,5 @@ public class TelefonoController {
                                     Boolean mic, Boolean faceId, Boolean ms, String msTexto,
                                     Boolean bloqueoOp, String observacion) {}
     private record RevisionResponse(boolean existe, com.reparaciones.servidor.model.Revision revision) {}
+    private record EstadoRequest(String accion, String motivo) {}
 }

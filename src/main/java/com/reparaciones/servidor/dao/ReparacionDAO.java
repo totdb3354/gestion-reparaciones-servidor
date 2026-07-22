@@ -393,7 +393,7 @@ public class ReparacionDAO {
         String idRep = nextId("A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE, ES_CHASIS) VALUES (?,?,?,NOW(),?,?,?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgenteFinal, esChasis);
-        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        resetRevisionAlAsignar(imei);
         if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
     }
@@ -406,7 +406,7 @@ public class ReparacionDAO {
         String idRep = nextId("AG");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE) VALUES (?,?,?,NOW(),?,?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgenteFinal);
-        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        resetRevisionAlAsignar(imei);
         if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
     }
@@ -715,7 +715,7 @@ public class ReparacionDAO {
         String idAsig = nextId(idRep.startsWith("G") ? "AG" : "A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),?,?)",
                 idAsig, imei, idTec, idRep, comentario, idTecAsigna);
-        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        resetRevisionAlAsignar(imei);
         // Sin checkbox de urgente: hereda en silencio si el teléfono ya lo estaba
         // (la propagación incluye esta fila recién creada).
         if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
@@ -993,7 +993,7 @@ public class ReparacionDAO {
         jdbc.update(
                 "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,NOW(),?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna);
-        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        resetRevisionAlAsignar(imei);
         // Pulido no tiene checkbox de urgente: hereda en silencio si el teléfono ya lo estaba
         // (la propagación incluye esta fila recién creada, que nació con URGENTE = 0).
         if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
@@ -1074,6 +1074,12 @@ public class ReparacionDAO {
 
     private void ensureTelefono(String imei) {
         jdbc.update("INSERT IGNORE INTO Telefono (IMEI) VALUES (?)", imei);
+    }
+
+    /** Al asignar trabajo caducan el check antiguo y el OK nuevo (se ponen a mano, se quitan solos). */
+    private void resetRevisionAlAsignar(String imei) {
+        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
+        jdbc.update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'OK'", imei);
     }
 
     private void deleteIfLastReparacion(String imei) {
