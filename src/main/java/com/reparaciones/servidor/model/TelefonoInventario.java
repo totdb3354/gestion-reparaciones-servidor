@@ -34,6 +34,12 @@ public class TelefonoInventario {
     private int incAbiertas;
     private int solicitudesPendientes;
     private LocalDateTime ultimaActividad;
+    private LocalDateTime revDesde;
+    private LocalDateTime estFecha;
+    private String estUsuario;
+    private LocalDateTime funFecha;
+    private String funUsuario;
+    private Integer funBateriaPct;
 
     public TelefonoInventario() {}
 
@@ -123,4 +129,22 @@ public class TelefonoInventario {
 
     public LocalDateTime getUltimaActividad() { return ultimaActividad; }
     public void setUltimaActividad(LocalDateTime ultimaActividad) { this.ultimaActividad = ultimaActividad; }
+
+    public LocalDateTime getRevDesde() { return revDesde; }
+    public void setRevDesde(LocalDateTime revDesde) { this.revDesde = revDesde; }
+
+    public LocalDateTime getEstFecha() { return estFecha; }
+    public void setEstFecha(LocalDateTime estFecha) { this.estFecha = estFecha; }
+
+    public String getEstUsuario() { return estUsuario; }
+    public void setEstUsuario(String estUsuario) { this.estUsuario = estUsuario; }
+
+    public LocalDateTime getFunFecha() { return funFecha; }
+    public void setFunFecha(LocalDateTime funFecha) { this.funFecha = funFecha; }
+
+    public String getFunUsuario() { return funUsuario; }
+    public void setFunUsuario(String funUsuario) { this.funUsuario = funUsuario; }
+
+    public Integer getFunBateriaPct() { return funBateriaPct; }
+    public void setFunBateriaPct(Integer funBateriaPct) { this.funBateriaPct = funBateriaPct; }
 }

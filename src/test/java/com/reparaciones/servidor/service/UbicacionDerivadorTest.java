@@ -70,4 +70,28 @@ class UbicacionDerivadorTest {
         assertEquals("EN_REPARACION", r.estadoEfectivo());
         assertEquals("REPARACIONES", r.ubicacion());
     }
+
+    @Test void enRevisionConFichaCompletaEsRevisado() {
+        var d = UbicacionDerivador.derivar("EN_REVISION", 0, 0, 0, null, true, false);
+        assertEquals("REVISADO", d.estadoEfectivo());
+        assertEquals("PARA_REVISAR", d.ubicacion());
+    }
+
+    @Test void enRevisionConFichaCompletaYRepCerradaEsReparado() {
+        var d = UbicacionDerivador.derivar("EN_REVISION", 0, 0, 0, null, true, true);
+        assertEquals("REPARADO", d.estadoEfectivo());
+        assertEquals("PARA_REVISAR", d.ubicacion());
+    }
+
+    @Test void enRevisionSinFichaCompletaSigueSiendoEnRevision() {
+        assertEquals("EN_REVISION", UbicacionDerivador.derivar("EN_REVISION", 0, 0, 0, null, false, true).estadoEfectivo());
+    }
+
+    @Test void trabajoAbiertoMandaSobreRevisado() {
+        assertEquals("EN_REPARACION", UbicacionDerivador.derivar("EN_REVISION", 1, 0, 0, null, true, false).estadoEfectivo());
+    }
+
+    @Test void sobrecargaViejaEquivaleASinRevision() {
+        assertEquals("EN_REVISION", UbicacionDerivador.derivar("EN_REVISION", 0, 0, 0, null).estadoEfectivo());
+    }
 }

@@ -142,10 +142,18 @@ public class TelefonoDAO {
             "       COALESCE(w.GLASS_HECHAS,0) GLASS_HECHAS, COALESCE(w.PUL_HECHOS,0) PUL_HECHOS," +
             "       w.ULTIMO_TRABAJO," +
             "       COALESCE(i.INC_ABIERTAS,0) INC_ABIERTAS, COALESCE(s.SOL_PENDIENTES,0) SOL_PENDIENTES" +
+            "       , rv.FECHA_CREACION AS REV_DESDE, rv.EST_FECHA, ue.NOMBRE_USUARIO AS EST_USUARIO," +
+            "       rv.FUN_FECHA, uf.NOMBRE_USUARIO AS FUN_USUARIO, rv.FUN_BATERIA_PCT," +
+            "       (rv.ID_REVISION IS NOT NULL AND EXISTS (SELECT 1 FROM Reparacion rr" +
+            "           WHERE rr.IMEI = t.IMEI AND rr.FECHA_FIN IS NOT NULL" +
+            "             AND rr.FECHA_FIN >= rv.FECHA_CREACION)) AS REP_TRAS_REVISION" +
             " FROM Telefono t" +
             " LEFT JOIN Cliente c   ON c.ID_CLI  = t.ID_CLI" +
             " LEFT JOIN Lote l      ON l.ID_LOTE = t.ID_LOTE" +
             " LEFT JOIN Proveedor p ON p.ID_PROV = l.ID_PROV" +
+            " LEFT JOIN Revision rv ON rv.ID_REVISION = (SELECT MAX(r0.ID_REVISION) FROM Revision r0 WHERE r0.IMEI = t.IMEI)" +
+            " LEFT JOIN Usuario ue ON ue.ID_USU = rv.EST_ID_USU" +
+            " LEFT JOIN Usuario uf ON uf.ID_USU = rv.FUN_ID_USU" +
             " LEFT JOIN (SELECT r.IMEI," +
             "        SUM(r.ID_REP LIKE 'AP%' AND r.FECHA_FIN IS NULL) AS PUL_ABIERTOS," +
             "        SUM(r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL) AS GLASS_ABIERTOS," +
@@ -197,9 +205,20 @@ public class TelefonoDAO {
             if (fechaImport != null && (ultima == null || fechaImport.toLocalDateTime().isAfter(ultima)))
                 ultima = fechaImport.toLocalDateTime();
             inv.setUltimaActividad(ultima);
+            Timestamp revDesde = rs.getTimestamp("REV_DESDE");
+            inv.setRevDesde(revDesde == null ? null : revDesde.toLocalDateTime());
+            Timestamp estFecha = rs.getTimestamp("EST_FECHA");
+            inv.setEstFecha(estFecha == null ? null : estFecha.toLocalDateTime());
+            inv.setEstUsuario(rs.getString("EST_USUARIO"));
+            Timestamp funFecha = rs.getTimestamp("FUN_FECHA");
+            inv.setFunFecha(funFecha == null ? null : funFecha.toLocalDateTime());
+            inv.setFunUsuario(rs.getString("FUN_USUARIO"));
+            inv.setFunBateriaPct((Integer) rs.getObject("FUN_BATERIA_PCT"));
             var d = UbicacionDerivador.derivar(
                     inv.getEstado(), inv.getPulAbiertos(), inv.getGlassAbiertos(),
-                    inv.getNormalAbiertos(), inv.getIdCli());
+                    inv.getNormalAbiertos(), inv.getIdCli(),
+                    inv.getEstFecha() != null && inv.getFunFecha() != null,
+                    rs.getBoolean("REP_TRAS_REVISION"));
             inv.setEstadoEfectivo(d.estadoEfectivo());
             inv.setUbicacion(d.ubicacion());
             inv.setSubUbicaciones(d.subUbicaciones());
