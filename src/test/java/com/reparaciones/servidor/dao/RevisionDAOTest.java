@@ -68,4 +68,20 @@ class RevisionDAOTest {
         when(jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", IMEI)).thenReturn(0);
         assertFalse(dao.bloquearPorRevision(IMEI, 3));
     }
+
+    @Test void bloquearPorRevisionEscribeMovimientoConMotivoFijo() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", IMEI)).thenReturn(1);
+        MovimientoDAO mov = mock(MovimientoDAO.class);
+        new RevisionDAO(jdbc, mov).bloquearPorRevision(IMEI, 3);
+        verify(mov).registrar(IMEI, "PARA_REVISAR", "BLOQUEO", 3, "Bloqueo de operador detectado en revisión", null);
+    }
+
+    @Test void bloquearPorRevisionNoEscribeMovimientoSiNoCambiaEstado() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", IMEI)).thenReturn(0);
+        MovimientoDAO mov = mock(MovimientoDAO.class);
+        new RevisionDAO(jdbc, mov).bloquearPorRevision(IMEI, 3);
+        verifyNoInteractions(mov);
+    }
 }

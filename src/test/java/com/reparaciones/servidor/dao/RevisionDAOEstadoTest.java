@@ -72,8 +72,10 @@ class RevisionDAOEstadoTest {
     @Test void desbloquearVuelveAEnRevision() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'BLOQUEADO'", IMEI)).thenReturn(1);
-        new RevisionDAO(jdbc, mock(MovimientoDAO.class)).desbloquear(IMEI, 7);
+        MovimientoDAO mov = mock(MovimientoDAO.class);
+        new RevisionDAO(jdbc, mov).desbloquear(IMEI, 7);
         verify(jdbc).update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'BLOQUEADO'", IMEI);
+        verify(mov).registrar(IMEI, "BLOQUEO", "PARA_REVISAR", 7, null, null);
     }
 
     @Test void bloquearEscribeMovimientoConMotivo() {
