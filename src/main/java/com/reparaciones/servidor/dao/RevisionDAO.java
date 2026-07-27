@@ -157,6 +157,8 @@ public class RevisionDAO {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Revisión incompleta: faltan partes por guardar");
         if (v.getFunBateriaPct() == null || v.getFunBateriaPct() < 85)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Batería < 85: reparación obligatoria antes del OK");
+        if (v.isFunBloqueoOp())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bloqueo de operador marcado en la revisión");
         Integer abiertos = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
                 Integer.class, imei);

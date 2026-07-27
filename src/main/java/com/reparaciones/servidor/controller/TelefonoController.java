@@ -126,22 +126,17 @@ public class TelefonoController {
         dao.eliminar(imei);
     }
 
+    /**
+     * F2c: el check antiguo de revisión ya no existe (lo sustituye el ciclo de F2b).
+     * Se mantiene como no-op tolerante para clientes ≤v0.16 durante la ventana de
+     * actualización; ELIMINAR en F3 (pasada de autorización).
+     */
     @PutMapping("/{imei}/revision-logistica")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarRevisionLogistica(@PathVariable String imei,
-                                            @RequestBody RevisionLogisticaRequest req,
-                                            @AuthenticationPrincipal UsuarioPrincipal principal) {
-        if (dao.tieneAsignacionesActivas(imei)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "El IMEI tiene asignaciones activas");
-        }
-        dao.actualizarRevisionLogistica(imei, req.revisado(), req.updatedAt());
-        String modelo = dao.getModelo(imei);
-        logDao.insertar(principal.getIdUsu(),
-                req.revisado() ? "MARCAR_REVISION" : "QUITAR_REVISION",
-                "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
+                                            @RequestBody RevisionLogisticaRequest req) {
+        // no-op
     }
 
     /** F2b: escaneo masivo "a revisar" — clasifica cada IMEI y pasa a EN_REVISION los que tocan. */

@@ -21,11 +21,17 @@ class RevisionDAOEstadoTest {
 
     /** Revision vigente completa (dos partes) con la batería indicada, servida vía el SELECT de getVigente. */
     private JdbcTemplate conVigente(Integer bateria, boolean ambasPartes, int abiertos) {
+        return conVigente(bateria, ambasPartes, abiertos, false);
+    }
+
+    /** Igual que {@link #conVigente(Integer, boolean, int)} pero fijando también FUN_BLOQUEO_OP. */
+    private JdbcTemplate conVigente(Integer bateria, boolean ambasPartes, int abiertos, boolean bloqueoOp) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         Revision r = new Revision();
         r.setEstFecha(ambasPartes ? LocalDateTime.now() : null);
         r.setFunFecha(ambasPartes ? LocalDateTime.now() : null);
         r.setFunBateriaPct(bateria);
+        r.setFunBloqueoOp(bloqueoOp);
         when(jdbc.query(contains("FROM Revision r"), any(RowMapper.class), eq(IMEI))).thenReturn(List.of(r));
         when(jdbc.queryForObject(contains("COUNT(*) FROM Reparacion"), eq(Integer.class), eq(IMEI))).thenReturn(abiertos);
         return jdbc;
@@ -67,6 +73,12 @@ class RevisionDAOEstadoTest {
     @Test void okVetadoConTrabajosAbiertos() {
         assertThrows(ResponseStatusException.class,
                 () -> new RevisionDAO(conVigente(92, true, 2), mock(MovimientoDAO.class)).marcarOk(IMEI, 7));
+    }
+
+    @Test void okVetadoConBloqueoOperadorMarcado() {
+        RevisionDAO dao = new RevisionDAO(conVigente(92, true, 0, true), mock(MovimientoDAO.class));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> dao.marcarOk(IMEI, 3));
+        assertTrue(ex.getReason().contains("operador"));
     }
 
     @Test void desbloquearVuelveAEnRevision() {

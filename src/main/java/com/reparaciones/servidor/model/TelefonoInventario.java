@@ -23,7 +23,6 @@ public class TelefonoInventario {
     private Integer idLote;
     private String batchNumber;
     private String proveedor;
-    private boolean revisionLogistica;
     private LocalDateTime telefonoUpdatedAt;
     private int repHechas;
     private int glassHechas;
@@ -96,9 +95,6 @@ public class TelefonoInventario {
 
     public String getProveedor() { return proveedor; }
     public void setProveedor(String proveedor) { this.proveedor = proveedor; }
-
-    public boolean isRevisionLogistica() { return revisionLogistica; }
-    public void setRevisionLogistica(boolean revisionLogistica) { this.revisionLogistica = revisionLogistica; }
 
     public LocalDateTime getTelefonoUpdatedAt() { return telefonoUpdatedAt; }
     public void setTelefonoUpdatedAt(LocalDateTime telefonoUpdatedAt) { this.telefonoUpdatedAt = telefonoUpdatedAt; }

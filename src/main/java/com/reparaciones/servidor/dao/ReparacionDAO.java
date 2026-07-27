@@ -52,7 +52,6 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
             " tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
-            " COALESCE(tel.REVISION_LOGISTICA, 0) AS REVISION_LOGISTICA," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
@@ -139,7 +138,6 @@ public class ReparacionDAO {
         try { rr.setUrgente(rs.getBoolean("URGENTE")); } catch (Exception ignored) {}
         try { rr.setEsChasis(rs.getBoolean("ES_CHASIS")); } catch (Exception ignored) {}
         try { rr.setPorCerrar(rs.getBoolean("POR_CERRAR")); } catch (Exception ignored) {}
-        try { rr.setRevisionLogistica(rs.getBoolean("REVISION_LOGISTICA")); } catch (Exception ignored) {}
         try { rr.setTieneAsignaciones(rs.getInt("TIENE_ASIGNACIONES") > 0); } catch (Exception ignored) {}
         try { rr.setNombreTecnicoAsigna(rs.getString("NOMBRE_TEC_ASIGNA")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
@@ -931,7 +929,6 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
             " tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
-            " COALESCE(tel.REVISION_LOGISTICA, 0) AS REVISION_LOGISTICA," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +

@@ -87,24 +87,6 @@ public class TelefonoDAO {
         }
     }
 
-    public boolean tieneAsignacionesActivas(String imei) {
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM Reparacion" +
-                " WHERE IMEI = ? AND ID_REP LIKE 'A%' AND ID_REP NOT LIKE 'AP%' AND FECHA_FIN IS NULL",
-                Integer.class, imei);
-        return count != null && count > 0;
-    }
-
-    public void actualizarRevisionLogistica(String imei, boolean revisado, LocalDateTime updatedAt) {
-        int filas = jdbc.update(
-                "UPDATE Telefono SET REVISION_LOGISTICA = ? WHERE IMEI = ? AND UPDATED_AT = ?",
-                revisado ? 1 : 0, imei,
-                Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
-        if (filas == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
-        }
-    }
-
     public void actualizarCliente(String imei, Integer idCli, LocalDateTime updatedAt) {
         int filas = jdbc.update(
                 "UPDATE Telefono SET ID_CLI = ? WHERE IMEI = ? AND UPDATED_AT = ?",
@@ -135,7 +117,7 @@ public class TelefonoDAO {
     public List<TelefonoInventario> getInventario() {
         String sql =
             "SELECT t.IMEI, t.MODELO, t.STORAGE_GB, t.COLOR, t.GRADO_PROVEEDOR, t.GRADO_PROPIO, t.ES_ESIM," +
-            "       t.ESTADO, t.ES_DEVOLUCION, t.OBSERVACION, t.REVISION_LOGISTICA, t.UPDATED_AT," +
+            "       t.ESTADO, t.ES_DEVOLUCION, t.OBSERVACION, t.UPDATED_AT," +
             "       t.ID_CLI, c.NOMBRE AS CLIENTE, t.ID_LOTE, l.BATCH_NUMBER, l.FECHA_IMPORT, p.NOMBRE AS PROVEEDOR," +
             "       COALESCE(w.PUL_ABIERTOS,0) PUL_ABIERTOS, COALESCE(w.GLASS_ABIERTOS,0) GLASS_ABIERTOS," +
             "       COALESCE(w.NORMAL_ABIERTOS,0) NORMAL_ABIERTOS, COALESCE(w.REP_HECHAS,0) REP_HECHAS," +
@@ -183,7 +165,6 @@ public class TelefonoDAO {
             inv.setEstado(rs.getString("ESTADO"));
             inv.setEsDevolucion(rs.getBoolean("ES_DEVOLUCION"));
             inv.setObservacion(rs.getString("OBSERVACION"));
-            inv.setRevisionLogistica(rs.getBoolean("REVISION_LOGISTICA"));
             inv.setTelefonoUpdatedAt(rs.getTimestamp("UPDATED_AT").toLocalDateTime());
             inv.setIdCli((Integer) rs.getObject("ID_CLI"));
             inv.setCliente(rs.getString("CLIENTE"));
