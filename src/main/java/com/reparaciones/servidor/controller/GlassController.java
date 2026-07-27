@@ -55,7 +55,7 @@ public class GlassController {
             String modelo = imeiLookupService.lookupModeloInterno(req.imei());
             if (modelo != null) telefonoDAO.insertar(req.imei(), modelo);
         }
-        String idRep = dao.insertarAsignacionGlass(req.imei(), req.idTec(), req.comentario(), req.urgente(), principal.getIdTec());
+        String idRep = dao.insertarAsignacionGlass(req.imei(), req.idTec(), req.comentario(), req.urgente(), principal.getIdTec(), principal.getIdUsu());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
         String detalleLog = "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo + ", TECNICO: " + tecnico;

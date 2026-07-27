@@ -182,7 +182,7 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), req.esChasis(), principal.getIdTec());
+        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), req.esChasis(), principal.getIdTec(), principal.getIdUsu());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
         String detalleLog = "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
@@ -331,7 +331,7 @@ public class ReparacionController {
     public void marcarIncidenciaYAsignar(@PathVariable String idRep,
                                           @RequestBody IncidenciaRequest req,
                                           @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec());
+        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec(), principal.getIdUsu());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(),

@@ -144,7 +144,7 @@ public class TelefonoController {
                                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
         List<ResultadoARevisarResponse> out = new java.util.ArrayList<>();
         for (String imei : new java.util.LinkedHashSet<>(req.imeis())) {
-            RevisionDAO.ResultadoARevisar r = revisionDao.pasarARevisar(imei);
+            RevisionDAO.ResultadoARevisar r = revisionDao.pasarARevisar(imei, principal.getIdUsu());
             if (r == RevisionDAO.ResultadoARevisar.PASADO || r == RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK) {
                 logDao.insertar(principal.getIdUsu(), "A_REVISAR", "IMEI: " + imei
                         + (r == RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK ? ", ESTABA_OK" : ""));
@@ -176,7 +176,7 @@ public class TelefonoController {
                 b(req.faceId()), b(req.ms()), req.msTexto(), b(req.bloqueoOp()), req.observacion());
         revisionDao.guardarFuncional(imei, f, principal.getIdUsu());
         logDao.insertar(principal.getIdUsu(), "GUARDAR_REVISION", "IMEI: " + imei + ", PARTE: FUNCIONAL");
-        if (f.bloqueoOp() && revisionDao.bloquearPorRevision(imei)) {
+        if (f.bloqueoOp() && revisionDao.bloquearPorRevision(imei, principal.getIdUsu())) {
             logDao.insertar(principal.getIdUsu(), "BLOQUEAR_TELEFONO", "IMEI: " + imei,
                     "Bloqueo de operador detectado en revisión");
         }
@@ -197,21 +197,21 @@ public class TelefonoController {
                              @AuthenticationPrincipal UsuarioPrincipal principal) {
         switch (req.accion() == null ? "" : req.accion()) {
             case "OK" -> {
-                revisionDao.marcarOk(imei);
+                revisionDao.marcarOk(imei, principal.getIdUsu());
                 logDao.insertar(principal.getIdUsu(), "TELEFONO_OK", "IMEI: " + imei);
             }
             case "BLOQUEAR" -> {
-                revisionDao.bloquear(imei);
+                revisionDao.bloquear(imei, principal.getIdUsu(), req.motivo());
                 logDao.insertar(principal.getIdUsu(), "BLOQUEAR_TELEFONO", "IMEI: " + imei, req.motivo());
             }
             case "DESBLOQUEAR" -> {
-                revisionDao.desbloquear(imei);
+                revisionDao.desbloquear(imei, principal.getIdUsu());
                 logDao.insertar(principal.getIdUsu(), "DESBLOQUEAR_TELEFONO", "IMEI: " + imei);
             }
             case "DESGUACE" -> {
                 if (req.motivo() == null || req.motivo().isBlank())
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El desguace requiere motivo");
-                revisionDao.desguace(imei);
+                revisionDao.desguace(imei, principal.getIdUsu(), req.motivo());
                 logDao.insertar(principal.getIdUsu(), "DESGUACE_TELEFONO", "IMEI: " + imei, req.motivo());
             }
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Acción desconocida");
