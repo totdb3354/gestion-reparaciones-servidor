@@ -65,4 +65,13 @@ class EnvioDAOTest {
         assertEquals("NO_EXISTE", new EnvioDAO(sin, mock(MovimientoDAO.class))
                 .enviarLote(null, "X", null, List.of(IMEI), 3).items().get(0).resultado());
     }
+
+    @Test void imeiDuplicadoSeDeduplicaEnvioPuente() {
+        JdbcTemplate jdbc = conTelefono("OK", null);
+        MovimientoDAO mov = mock(MovimientoDAO.class);
+        EnvioDAO.ResultadoLote r = new EnvioDAO(jdbc, mov).enviarLote(null, "X", null, List.of(IMEI, IMEI), 3);
+        assertEquals(1, r.items().size());
+        assertEquals("ENVIADO", r.items().get(0).resultado());
+        verify(jdbc, times(1)).update("INSERT INTO Envio_Telefono (ID_ENVIO, IMEI) VALUES (?, ?)", 7, IMEI);
+    }
 }
