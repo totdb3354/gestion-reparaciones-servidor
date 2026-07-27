@@ -74,4 +74,41 @@ class EnvioDAOTest {
         assertEquals("ENVIADO", r.items().get(0).resultado());
         verify(jdbc, times(1)).update("INSERT INTO Envio_Telefono (ID_ENVIO, IMEI) VALUES (?, ?)", 7, IMEI);
     }
+
+    @Test void devolucionMarcaPuenteYVuelveAlAlmacen() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.update("UPDATE Telefono SET ESTADO = 'RECIBIDO', ES_DEVOLUCION = 1 WHERE IMEI = ? AND ESTADO = 'ENVIADO'", IMEI)).thenReturn(1);
+        when(jdbc.query(contains("FROM Envio_Telefono"), any(RowMapper.class), eq(IMEI)))
+                .thenReturn(Collections.singletonList(new Object[]{ 42, 9 }));   // ID_ET, ID_ENVIO
+        MovimientoDAO mov = mock(MovimientoDAO.class);
+        EnvioDAO.ItemDevolucion r = new EnvioDAO(jdbc, mov).devolver(IMEI, "pantalla amarilla", 3);
+        assertEquals("DEVUELTO", r.resultado());
+        assertEquals(9, r.envio());
+        verify(jdbc).update("UPDATE Envio_Telefono SET DEVUELTO = 1, MOTIVO_DEVOLUCION = ?, FECHA_DEVOLUCION = NOW(), ID_USU_DEVOLUCION = ? WHERE ID_ET = ?",
+                "pantalla amarilla", 3, 42);
+        verify(mov).registrar(IMEI, "ENVIADO", "ALMACEN", 3, "pantalla amarilla", "ENVIO 9");
+    }
+
+    @Test void devolucionSinPuenteActivaSeProcesaConEnvioVacio() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.update("UPDATE Telefono SET ESTADO = 'RECIBIDO', ES_DEVOLUCION = 1 WHERE IMEI = ? AND ESTADO = 'ENVIADO'", IMEI)).thenReturn(1);
+        when(jdbc.query(contains("FROM Envio_Telefono"), any(RowMapper.class), eq(IMEI))).thenReturn(List.of());
+        MovimientoDAO mov = mock(MovimientoDAO.class);
+        EnvioDAO.ItemDevolucion r = new EnvioDAO(jdbc, mov).devolver(IMEI, "sin caja", 3);
+        assertEquals("DEVUELTO", r.resultado());
+        assertNull(r.envio());
+        verify(mov).registrar(IMEI, "ENVIADO", "ALMACEN", 3, "sin caja", null);
+    }
+
+    @Test void noEnviadoYNoExistente() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.update(contains("SET ESTADO = 'RECIBIDO'"), eq(IMEI))).thenReturn(0);
+        when(jdbc.query(contains("SELECT ESTADO, ID_CLI FROM Telefono"), any(RowMapper.class), eq(IMEI)))
+                .thenReturn(Collections.singletonList(new Object[]{ "OK", null }));
+        assertEquals("NO_ENVIADO", new EnvioDAO(jdbc, mock(MovimientoDAO.class)).devolver(IMEI, "x", 3).resultado());
+        JdbcTemplate sin = mock(JdbcTemplate.class);
+        when(sin.update(contains("SET ESTADO = 'RECIBIDO'"), eq(IMEI))).thenReturn(0);
+        when(sin.query(contains("SELECT ESTADO, ID_CLI FROM Telefono"), any(RowMapper.class), eq(IMEI))).thenReturn(List.of());
+        assertEquals("NO_EXISTE", new EnvioDAO(sin, mock(MovimientoDAO.class)).devolver(IMEI, "x", 3).resultado());
+    }
 }

@@ -1,6 +1,8 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.EnvioDAO;
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.dao.MovimientoDAO;
 import com.reparaciones.servidor.dao.RevisionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
@@ -24,12 +26,17 @@ public class TelefonoController {
     private final ImeiLookupService imeiLookupService;
     private final LogDAO logDao;
     private final RevisionDAO revisionDao;
+    private final EnvioDAO envioDao;
+    private final MovimientoDAO movimientoDao;
 
-    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao) {
+    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao,
+                             EnvioDAO envioDao, MovimientoDAO movimientoDao) {
         this.dao = dao;
         this.imeiLookupService = imeiLookupService;
         this.logDao = logDao;
         this.revisionDao = revisionDao;
+        this.envioDao = envioDao;
+        this.movimientoDao = movimientoDao;
     }
 
     @GetMapping
@@ -189,6 +196,29 @@ public class TelefonoController {
         return new RevisionResponse(r != null, r);
     }
 
+    /** F2c: registro masivo de devoluciones — cada teléfono vuelve al almacén marcado. */
+    @PostMapping("/devoluciones")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public List<com.reparaciones.servidor.dao.EnvioDAO.ItemDevolucion> devoluciones(
+            @RequestBody DevolucionesRequest req, @AuthenticationPrincipal UsuarioPrincipal principal) {
+        List<com.reparaciones.servidor.dao.EnvioDAO.ItemDevolucion> out = new java.util.ArrayList<>();
+        for (DevolucionItem item : req.items()) {
+            com.reparaciones.servidor.dao.EnvioDAO.ItemDevolucion r = envioDao.devolver(item.imei(), item.motivo(), principal.getIdUsu());
+            if ("DEVUELTO".equals(r.resultado())) {
+                logDao.insertar(principal.getIdUsu(), "DEVOLUCION_TELEFONO",
+                        "IMEI: " + item.imei() + (r.envio() != null ? ", ENVIO: " + r.envio() : ""), item.motivo());
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
+    /** F2c: línea de vida del teléfono para el historial de la ficha. */
+    @GetMapping("/{imei}/movimientos")
+    public List<com.reparaciones.servidor.model.MovimientoTelefono> getMovimientos(@PathVariable String imei) {
+        return movimientoDao.getPorImei(imei);
+    }
+
     /** F2b: acciones de estado de la revisión. OK/BLOQUEAR/DESBLOQUEAR/DESGUACE (motivo obligatorio). */
     @PostMapping("/{imei}/estado")
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -236,4 +266,6 @@ public class TelefonoController {
                                     Boolean bloqueoOp, String observacion) {}
     private record RevisionResponse(boolean existe, com.reparaciones.servidor.model.Revision revision) {}
     private record EstadoRequest(String accion, String motivo) {}
+    private record DevolucionesRequest(java.util.List<DevolucionItem> items) {}
+    private record DevolucionItem(String imei, String motivo) {}
 }
