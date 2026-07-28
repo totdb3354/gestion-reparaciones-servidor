@@ -100,6 +100,7 @@ public class RevisionDAO {
     }
 
     /** Bloqueo automático al guardar la funcional con "bloqueo operador". @return true si cambió el estado. */
+    @Transactional
     public boolean bloquearPorRevision(String imei, int idUsu) {
         boolean cambio = jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", imei) > 0;
         if (cambio) {
@@ -170,17 +171,20 @@ public class RevisionDAO {
         movimientoDao.registrar(imei, "PARA_REVISAR", MovimientoDAO.ubicacionDe("OK", idCli), idUsu, null, null);
     }
 
+    @Transactional
     public void bloquear(String imei, int idUsu, String motivo) {
         transicion(imei, "UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'");
         movimientoDao.registrar(imei, "PARA_REVISAR", "BLOQUEO", idUsu, motivo, null);
     }
 
     /** Desbloquear devuelve a EN_REVISION; la derivación decide el resto (§2.1 spec canónica). */
+    @Transactional
     public void desbloquear(String imei, int idUsu) {
         transicion(imei, "UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'BLOQUEADO'");
         movimientoDao.registrar(imei, "BLOQUEO", "PARA_REVISAR", idUsu, null, null);
     }
 
+    @Transactional
     public void desguace(String imei, int idUsu, String motivo) {
         String estadoPrevio = primeraFila(jdbc.query("SELECT ESTADO FROM Telefono WHERE IMEI = ?",
                 (rs, row) -> rs.getString("ESTADO"), imei));
