@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
@@ -24,13 +25,15 @@ public class ReparacionController {
     private final ReparacionComponenteDAO rcDao;
     private final LogDAO                logDao;
     private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
+    private final ComponenteDAO         componenteDao;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
-                                com.reparaciones.servidor.dao.BorradorDAO borradorDao) {
+                                com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
         this.borradorDao = borradorDao;
+        this.componenteDao = componenteDao;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -182,7 +185,7 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> insertarAsignacion(@RequestBody AsignacionRequest req,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), req.esChasis(), principal.getIdTec());
+        String idRep = dao.insertarAsignacion(req.imei(), req.idTec(), req.comentario(), req.urgente(), req.esChasis(), principal.getIdTec(), principal.getIdUsu());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnico = dao.getNombreTecnicoById(req.idTec());
         String detalleLog = "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
@@ -205,7 +208,7 @@ public class ReparacionController {
                 esGlassAsig(req.idAsignacion()) || "G".equals(req.categoria())
                         ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
                 "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
-                ", MODELO: " + modelo + ", TECNICO: " + tecnico);
+                ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
     }
 
     @PatchMapping("/{idRep}/completar")
@@ -331,7 +334,7 @@ public class ReparacionController {
     public void marcarIncidenciaYAsignar(@PathVariable String idRep,
                                           @RequestBody IncidenciaRequest req,
                                           @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec());
+        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec(), principal.getIdUsu());
         String modelo = dao.getModeloByImei(req.imei());
         String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
         logDao.insertar(principal.getIdUsu(),
@@ -371,7 +374,7 @@ public class ReparacionController {
         logDao.insertar(principal.getIdUsu(),
                 esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
                 "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
-                ", IMEI: " + req.imei() + ", TECNICO: " + tecnico);
+                ", IMEI: " + req.imei() + ", TECNICO: " + tecnico + componentesDe(req.filas()));
         return Map.of("value", idRep);
     }
 
@@ -451,4 +454,14 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
     private record MotivoRequest(String motivo) {}
+
+    /** Tipos de los componentes consumidos, para el detalle del log ("" si no hay filas con pieza). */
+    private String componentesDe(List<FilaReparacion> filas) {
+        if (filas == null) return "";
+        String tipos = filas.stream()
+                .filter(f -> f.idCom > 0)
+                .map(f -> { try { return componenteDao.getTipoById(f.idCom); } catch (Exception e) { return "?"; } })
+                .collect(java.util.stream.Collectors.joining(", "));
+        return tipos.isEmpty() ? "" : ", COMPONENTES: " + tipos;
+    }
 }

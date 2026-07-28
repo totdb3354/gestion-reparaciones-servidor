@@ -1,6 +1,8 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.EnvioDAO;
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.dao.MovimientoDAO;
 import com.reparaciones.servidor.dao.RevisionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
@@ -24,12 +26,17 @@ public class TelefonoController {
     private final ImeiLookupService imeiLookupService;
     private final LogDAO logDao;
     private final RevisionDAO revisionDao;
+    private final EnvioDAO envioDao;
+    private final MovimientoDAO movimientoDao;
 
-    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao) {
+    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao,
+                             EnvioDAO envioDao, MovimientoDAO movimientoDao) {
         this.dao = dao;
         this.imeiLookupService = imeiLookupService;
         this.logDao = logDao;
         this.revisionDao = revisionDao;
+        this.envioDao = envioDao;
+        this.movimientoDao = movimientoDao;
     }
 
     @GetMapping
@@ -119,22 +126,17 @@ public class TelefonoController {
         dao.eliminar(imei);
     }
 
+    /**
+     * F2c: el check antiguo de revisión ya no existe (lo sustituye el ciclo de F2b).
+     * Se mantiene como no-op tolerante para clientes ≤v0.16 durante la ventana de
+     * actualización; ELIMINAR en F3 (pasada de autorización).
+     */
     @PutMapping("/{imei}/revision-logistica")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public void actualizarRevisionLogistica(@PathVariable String imei,
-                                            @RequestBody RevisionLogisticaRequest req,
-                                            @AuthenticationPrincipal UsuarioPrincipal principal) {
-        if (dao.tieneAsignacionesActivas(imei)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "El IMEI tiene asignaciones activas");
-        }
-        dao.actualizarRevisionLogistica(imei, req.revisado(), req.updatedAt());
-        String modelo = dao.getModelo(imei);
-        logDao.insertar(principal.getIdUsu(),
-                req.revisado() ? "MARCAR_REVISION" : "QUITAR_REVISION",
-                "IMEI: " + imei + ", MODELO: " + (modelo != null ? modelo : "?"));
+                                            @RequestBody RevisionLogisticaRequest req) {
+        // no-op
     }
 
     /** F2b: escaneo masivo "a revisar" — clasifica cada IMEI y pasa a EN_REVISION los que tocan. */
@@ -144,7 +146,7 @@ public class TelefonoController {
                                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
         List<ResultadoARevisarResponse> out = new java.util.ArrayList<>();
         for (String imei : new java.util.LinkedHashSet<>(req.imeis())) {
-            RevisionDAO.ResultadoARevisar r = revisionDao.pasarARevisar(imei);
+            RevisionDAO.ResultadoARevisar r = revisionDao.pasarARevisar(imei, principal.getIdUsu());
             if (r == RevisionDAO.ResultadoARevisar.PASADO || r == RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK) {
                 logDao.insertar(principal.getIdUsu(), "A_REVISAR", "IMEI: " + imei
                         + (r == RevisionDAO.ResultadoARevisar.PASADO_ESTABA_OK ? ", ESTABA_OK" : ""));
@@ -176,7 +178,7 @@ public class TelefonoController {
                 b(req.faceId()), b(req.ms()), req.msTexto(), b(req.bloqueoOp()), req.observacion());
         revisionDao.guardarFuncional(imei, f, principal.getIdUsu());
         logDao.insertar(principal.getIdUsu(), "GUARDAR_REVISION", "IMEI: " + imei + ", PARTE: FUNCIONAL");
-        if (f.bloqueoOp() && revisionDao.bloquearPorRevision(imei)) {
+        if (f.bloqueoOp() && revisionDao.bloquearPorRevision(imei, principal.getIdUsu())) {
             logDao.insertar(principal.getIdUsu(), "BLOQUEAR_TELEFONO", "IMEI: " + imei,
                     "Bloqueo de operador detectado en revisión");
         }
@@ -189,6 +191,29 @@ public class TelefonoController {
         return new RevisionResponse(r != null, r);
     }
 
+    /** F2c: registro masivo de devoluciones — cada teléfono vuelve al almacén marcado. */
+    @PostMapping("/devoluciones")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    public List<com.reparaciones.servidor.dao.EnvioDAO.ItemDevolucion> devoluciones(
+            @RequestBody DevolucionesRequest req, @AuthenticationPrincipal UsuarioPrincipal principal) {
+        List<com.reparaciones.servidor.dao.EnvioDAO.ItemDevolucion> out = new java.util.ArrayList<>();
+        for (DevolucionItem item : req.items()) {
+            com.reparaciones.servidor.dao.EnvioDAO.ItemDevolucion r = envioDao.devolver(item.imei(), item.motivo(), principal.getIdUsu());
+            if ("DEVUELTO".equals(r.resultado())) {
+                logDao.insertar(principal.getIdUsu(), "DEVOLUCION_TELEFONO",
+                        "IMEI: " + item.imei() + (r.envio() != null ? ", ENVIO: " + r.envio() : ""), item.motivo());
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
+    /** F2c: línea de vida del teléfono para el historial de la ficha. */
+    @GetMapping("/{imei}/movimientos")
+    public List<com.reparaciones.servidor.model.MovimientoTelefono> getMovimientos(@PathVariable String imei) {
+        return movimientoDao.getPorImei(imei);
+    }
+
     /** F2b: acciones de estado de la revisión. OK/BLOQUEAR/DESBLOQUEAR/DESGUACE (motivo obligatorio). */
     @PostMapping("/{imei}/estado")
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -197,21 +222,21 @@ public class TelefonoController {
                              @AuthenticationPrincipal UsuarioPrincipal principal) {
         switch (req.accion() == null ? "" : req.accion()) {
             case "OK" -> {
-                revisionDao.marcarOk(imei);
+                revisionDao.marcarOk(imei, principal.getIdUsu());
                 logDao.insertar(principal.getIdUsu(), "TELEFONO_OK", "IMEI: " + imei);
             }
             case "BLOQUEAR" -> {
-                revisionDao.bloquear(imei);
+                revisionDao.bloquear(imei, principal.getIdUsu(), req.motivo());
                 logDao.insertar(principal.getIdUsu(), "BLOQUEAR_TELEFONO", "IMEI: " + imei, req.motivo());
             }
             case "DESBLOQUEAR" -> {
-                revisionDao.desbloquear(imei);
+                revisionDao.desbloquear(imei, principal.getIdUsu());
                 logDao.insertar(principal.getIdUsu(), "DESBLOQUEAR_TELEFONO", "IMEI: " + imei);
             }
             case "DESGUACE" -> {
                 if (req.motivo() == null || req.motivo().isBlank())
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El desguace requiere motivo");
-                revisionDao.desguace(imei);
+                revisionDao.desguace(imei, principal.getIdUsu(), req.motivo());
                 logDao.insertar(principal.getIdUsu(), "DESGUACE_TELEFONO", "IMEI: " + imei, req.motivo());
             }
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Acción desconocida");
@@ -236,4 +261,6 @@ public class TelefonoController {
                                     Boolean bloqueoOp, String observacion) {}
     private record RevisionResponse(boolean existe, com.reparaciones.servidor.model.Revision revision) {}
     private record EstadoRequest(String accion, String motivo) {}
+    private record DevolucionesRequest(java.util.List<DevolucionItem> items) {}
+    private record DevolucionItem(String imei, String motivo) {}
 }

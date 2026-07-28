@@ -23,6 +23,7 @@ public class ReparacionDAO {
 
     private final JdbcTemplate jdbc;
     private final BorradorDAO  borradorDao;
+    private final MovimientoDAO movimientoDao;
 
     private static final DateTimeFormatter FMT_ID = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -51,7 +52,6 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
             " tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
-            " COALESCE(tel.REVISION_LOGISTICA, 0) AS REVISION_LOGISTICA," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
@@ -138,16 +138,16 @@ public class ReparacionDAO {
         try { rr.setUrgente(rs.getBoolean("URGENTE")); } catch (Exception ignored) {}
         try { rr.setEsChasis(rs.getBoolean("ES_CHASIS")); } catch (Exception ignored) {}
         try { rr.setPorCerrar(rs.getBoolean("POR_CERRAR")); } catch (Exception ignored) {}
-        try { rr.setRevisionLogistica(rs.getBoolean("REVISION_LOGISTICA")); } catch (Exception ignored) {}
         try { rr.setTieneAsignaciones(rs.getInt("TIENE_ASIGNACIONES") > 0); } catch (Exception ignored) {}
         try { rr.setNombreTecnicoAsigna(rs.getString("NOMBRE_TEC_ASIGNA")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
         return rr;
     };
 
-    public ReparacionDAO(JdbcTemplate jdbc, BorradorDAO borradorDao) {
+    public ReparacionDAO(JdbcTemplate jdbc, BorradorDAO borradorDao, MovimientoDAO movimientoDao) {
         this.jdbc        = jdbc;
         this.borradorDao = borradorDao;
+        this.movimientoDao = movimientoDao;
     }
 
     // ── Lectura ───────────────────────────────────────────────────────────────
@@ -387,26 +387,26 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, boolean esChasis, Integer idTecAsigna) {
+    public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, boolean esChasis, Integer idTecAsigna, int idUsu) {
         ensureTelefono(imei);
         boolean urgenteFinal = urgente || tieneAbiertaUrgente(imei);
         String idRep = nextId("A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE, ES_CHASIS) VALUES (?,?,?,NOW(),?,?,?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgenteFinal, esChasis);
-        resetRevisionAlAsignar(imei);
+        resetRevisionAlAsignar(imei, idUsu);
         if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
     }
 
     /** Alta de asignación de glass (prefijo AG). Espejo de {@link #insertarAsignacion}. */
     @Transactional
-    public String insertarAsignacionGlass(String imei, int idTec, String comentario, boolean urgente, Integer idTecAsigna) {
+    public String insertarAsignacionGlass(String imei, int idTec, String comentario, boolean urgente, Integer idTecAsigna, int idUsu) {
         ensureTelefono(imei);
         boolean urgenteFinal = urgente || tieneAbiertaUrgente(imei);
         String idRep = nextId("AG");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, URGENTE) VALUES (?,?,?,NOW(),?,?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna, urgenteFinal);
-        resetRevisionAlAsignar(imei);
+        resetRevisionAlAsignar(imei, idUsu);
         if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
     }
@@ -706,7 +706,7 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public void marcarIncidenciaYAsignar(String idRep, String comentario, String imei, int idTec, Integer idTecAsigna) {
+    public void marcarIncidenciaYAsignar(String idRep, String comentario, String imei, int idTec, Integer idTecAsigna, int idUsu) {
         jdbc.update(
                 "UPDATE Reparacion_componente SET ES_INCIDENCIA = 1, INCIDENCIA = ? WHERE ID_REP = ?",
                 comentario, idRep);
@@ -715,7 +715,7 @@ public class ReparacionDAO {
         String idAsig = nextId(idRep.startsWith("G") ? "AG" : "A");
         jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),?,?)",
                 idAsig, imei, idTec, idRep, comentario, idTecAsigna);
-        resetRevisionAlAsignar(imei);
+        resetRevisionAlAsignar(imei, idUsu);
         // Sin checkbox de urgente: hereda en silencio si el teléfono ya lo estaba
         // (la propagación incluye esta fila recién creada).
         if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
@@ -929,7 +929,6 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
             " tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
-            " COALESCE(tel.REVISION_LOGISTICA, 0) AS REVISION_LOGISTICA," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
@@ -987,13 +986,13 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public String insertarAsignacionPulido(String imei, int idTec, String comentario, Integer idTecAsigna) {
+    public String insertarAsignacionPulido(String imei, int idTec, String comentario, Integer idTecAsigna, int idUsu) {
         ensureTelefono(imei);
         String idRep = nextId("AP");
         jdbc.update(
                 "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,NOW(),?,?)",
                 idRep, imei, idTec, (comentario != null && !comentario.isBlank()) ? comentario : null, idTecAsigna);
-        resetRevisionAlAsignar(imei);
+        resetRevisionAlAsignar(imei, idUsu);
         // Pulido no tiene checkbox de urgente: hereda en silencio si el teléfono ya lo estaba
         // (la propagación incluye esta fila recién creada, que nació con URGENTE = 0).
         if (tieneAbiertaUrgente(imei)) propagarUrgente(imei, true);
@@ -1076,10 +1075,14 @@ public class ReparacionDAO {
         jdbc.update("INSERT IGNORE INTO Telefono (IMEI) VALUES (?)", imei);
     }
 
-    /** Al asignar trabajo caducan el check antiguo y el OK nuevo (se ponen a mano, se quitan solos). */
-    private void resetRevisionAlAsignar(String imei) {
-        jdbc.update("UPDATE Telefono SET REVISION_LOGISTICA = 0 WHERE IMEI = ?", imei);
-        jdbc.update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'OK'", imei);
+    /** Al asignar trabajo, un teléfono OK vuelve solo al ciclo de revisión (pasada nueva NO: misma pasada). */
+    private void resetRevisionAlAsignar(String imei, int idUsu) {
+        List<Integer> filasIdCli = jdbc.query("SELECT ID_CLI FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> (Integer) rs.getObject("ID_CLI"), imei);
+        Integer idCli = filasIdCli.isEmpty() ? null : filasIdCli.get(0);
+        if (jdbc.update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'OK'", imei) > 0) {
+            movimientoDao.registrar(imei, MovimientoDAO.ubicacionDe("OK", idCli), "PARA_REVISAR", idUsu, "Trabajo asignado", null);
+        }
     }
 
     private void deleteIfLastReparacion(String imei) {

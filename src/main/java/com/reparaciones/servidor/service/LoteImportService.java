@@ -2,7 +2,7 @@ package com.reparaciones.servidor.service;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.LoteDAO;
-import com.reparaciones.servidor.dao.MovimientoTelefonoDAO;
+import com.reparaciones.servidor.dao.MovimientoDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.ImportacionRequest;
 import com.reparaciones.servidor.model.VerificacionImei;
@@ -28,11 +28,11 @@ public class LoteImportService {
 
     private final LoteDAO loteDao;
     private final TelefonoDAO telefonoDao;
-    private final MovimientoTelefonoDAO movimientoDao;
+    private final MovimientoDAO movimientoDao;
     private final LogDAO logDao;
 
     public LoteImportService(LoteDAO loteDao, TelefonoDAO telefonoDao,
-                             MovimientoTelefonoDAO movimientoDao, LogDAO logDao) {
+                             MovimientoDAO movimientoDao, LogDAO logDao) {
         this.loteDao = loteDao; this.telefonoDao = telefonoDao;
         this.movimientoDao = movimientoDao; this.logDao = logDao;
     }
@@ -57,7 +57,7 @@ public class LoteImportService {
                 boolean reentrada = v != null;
                 telefonoDao.upsertImportacion(t.imei(), t.modelo(), idLote, t.storageGb(), t.color(),
                         t.gradoProveedor(), t.esEsim(), t.precioCompra(), t.divisa(), t.precioCompraEur());
-                movimientoDao.insertar(t.imei(), null, "ALMACEN", idUsu,
+                movimientoDao.registrar(t.imei(), null, "ALMACEN", idUsu,
                         reentrada ? "Re-entrada por importación" : "Importación",
                         "LOTE:" + lote.batchNumber());
                 nLote++; telefonos++;

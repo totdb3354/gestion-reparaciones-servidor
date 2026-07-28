@@ -19,7 +19,7 @@ class ReparacionDAOUrgenteTest {
 
     @Test void propagarUrgenteActualizaTodasLasAbiertasDelImei() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class), mock(MovimientoDAO.class));
         dao.propagarUrgente(IMEI, true);
         verify(jdbc).update("UPDATE Reparacion SET URGENTE = ?, UPDATED_AT = UPDATED_AT WHERE IMEI = ? AND FECHA_FIN IS NULL",
                 true, IMEI);
@@ -29,7 +29,7 @@ class ReparacionDAOUrgenteTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForObject(contains("FECHA_FIN IS NULL AND URGENTE = TRUE"), eq(Integer.class), eq(IMEI)))
                 .thenReturn(2);
-        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class), mock(MovimientoDAO.class));
         assertTrue(dao.tieneAbiertaUrgente(IMEI));
     }
 
@@ -40,7 +40,7 @@ class ReparacionDAOUrgenteTest {
         // el método realmente invocado, el SQL sigue conteniendo "SELECT IMEI" literal.
         when(jdbc.query(contains("SELECT IMEI"), any(RowMapper.class), eq("A20260721_1")))
                 .thenReturn(List.of(IMEI));
-        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class), mock(MovimientoDAO.class));
         dao.actualizarUrgente("A20260721_1", false);
         verify(jdbc).update(contains("WHERE IMEI = ? AND FECHA_FIN IS NULL"), eq(false), eq(IMEI));
     }
@@ -65,7 +65,7 @@ class ReparacionDAOUrgenteTest {
         when(jdbc.queryForObject(contains("FECHA_FIN IS NULL AND URGENTE = TRUE"), eq(Integer.class), eq(IMEI)))
                 .thenReturn(1);
 
-        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class), mock(MovimientoDAO.class));
         dao.eliminar(idRep);
 
         verify(jdbc).update(
@@ -75,7 +75,7 @@ class ReparacionDAOUrgenteTest {
 
     @Test void marcarUrgentesClienteVencidasMarcaTodoElTelefono() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class));
+        ReparacionDAO dao = new ReparacionDAO(jdbc, mock(BorradorDAO.class), mock(MovimientoDAO.class));
         java.sql.Timestamp cutoff = java.sql.Timestamp.valueOf("2026-07-21 00:00:00");
         dao.marcarUrgentesClienteVencidas(cutoff);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);

@@ -18,8 +18,12 @@ import java.util.List;
 public class RevisionDAO {
 
     private final JdbcTemplate jdbc;
+    private final MovimientoDAO movimientoDao;
 
-    public RevisionDAO(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public RevisionDAO(JdbcTemplate jdbc, MovimientoDAO movimientoDao) {
+        this.jdbc = jdbc;
+        this.movimientoDao = movimientoDao;
+    }
 
     /** Resultado del escaneo "a revisar" (tabla de reglas spec F2b §4). */
     public enum ResultadoARevisar { PASADO, PASADO_ESTABA_OK, YA_ESTABA, EN_REPARACION, BLOQUEADO, FUERA, HISTORICO, NO_EXISTE }
@@ -30,13 +34,15 @@ public class RevisionDAO {
      * Transaccional por IMEI: un fallo no tumba el resto del lote escaneado.
      */
     @Transactional
-    public ResultadoARevisar pasarARevisar(String imei) {
-        List<String> fila = jdbc.query(
-                "SELECT ESTADO FROM Telefono WHERE IMEI = ?",
-                (rs, row) -> rs.getString("ESTADO"),
+    public ResultadoARevisar pasarARevisar(String imei, int idUsu) {
+        List<Object[]> filas = jdbc.query(
+                "SELECT ESTADO, ID_CLI FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> new Object[]{ rs.getString("ESTADO"), (Integer) rs.getObject("ID_CLI") },
                 imei);
-        if (fila.isEmpty()) return ResultadoARevisar.NO_EXISTE;
-        String estado = fila.get(0);
+        if (filas.isEmpty()) return ResultadoARevisar.NO_EXISTE;
+        Object[] fila = filas.get(0);
+        String estado = (String) fila[0];
+        Integer idCli = (Integer) fila[1];
         if (estado == null) return ResultadoARevisar.HISTORICO;   // fuera del ciclo (decisión 15)
         Integer abiertos = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
@@ -49,6 +55,7 @@ public class RevisionDAO {
             case "RECIBIDO", "OK" -> {
                 jdbc.update("UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ?", imei);
                 jdbc.update("INSERT INTO Revision (IMEI, FECHA_CREACION) VALUES (?, NOW())", imei);
+                movimientoDao.registrar(imei, MovimientoDAO.ubicacionDe(estado, idCli), "PARA_REVISAR", idUsu, null, null);
                 yield "OK".equals(estado) ? ResultadoARevisar.PASADO_ESTABA_OK : ResultadoARevisar.PASADO;
             }
             default -> ResultadoARevisar.FUERA;
@@ -93,8 +100,14 @@ public class RevisionDAO {
     }
 
     /** Bloqueo automático al guardar la funcional con "bloqueo operador". @return true si cambió el estado. */
-    public boolean bloquearPorRevision(String imei) {
-        return jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", imei) > 0;
+    @Transactional
+    public boolean bloquearPorRevision(String imei, int idUsu) {
+        boolean cambio = jdbc.update("UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'", imei) > 0;
+        if (cambio) {
+            movimientoDao.registrar(imei, "PARA_REVISAR", "BLOQUEO", idUsu,
+                    "Bloqueo de operador detectado en revisión", null);
+        }
+        return cambio;
     }
 
     /** Revisión vigente con nombres de usuario por parte, o null si nunca hubo. */
@@ -139,35 +152,55 @@ public class RevisionDAO {
 
     /** OK humano: exige revisión vigente completa, batería ≥ 85 y sin trabajos abiertos (veto duro en servidor). */
     @Transactional
-    public void marcarOk(String imei) {
+    public void marcarOk(String imei, int idUsu) {
         Revision v = getVigente(imei);
         if (v == null || v.getEstFecha() == null || v.getFunFecha() == null)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Revisión incompleta: faltan partes por guardar");
         if (v.getFunBateriaPct() == null || v.getFunBateriaPct() < 85)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Batería < 85: reparación obligatoria antes del OK");
+        if (v.isFunBloqueoOp())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bloqueo de operador marcado en la revisión");
         Integer abiertos = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
                 Integer.class, imei);
         if (abiertos != null && abiertos > 0)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Tiene trabajos abiertos");
         transicion(imei, "UPDATE Telefono SET ESTADO = 'OK' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'");
+        Integer idCli = primeraFila(jdbc.query("SELECT ID_CLI FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> (Integer) rs.getObject("ID_CLI"), imei));
+        movimientoDao.registrar(imei, "PARA_REVISAR", MovimientoDAO.ubicacionDe("OK", idCli), idUsu, null, null);
     }
 
-    public void bloquear(String imei) {
+    @Transactional
+    public void bloquear(String imei, int idUsu, String motivo) {
         transicion(imei, "UPDATE Telefono SET ESTADO = 'BLOQUEADO' WHERE IMEI = ? AND ESTADO = 'EN_REVISION'");
+        movimientoDao.registrar(imei, "PARA_REVISAR", "BLOQUEO", idUsu, motivo, null);
     }
 
     /** Desbloquear devuelve a EN_REVISION; la derivación decide el resto (§2.1 spec canónica). */
-    public void desbloquear(String imei) {
+    @Transactional
+    public void desbloquear(String imei, int idUsu) {
         transicion(imei, "UPDATE Telefono SET ESTADO = 'EN_REVISION' WHERE IMEI = ? AND ESTADO = 'BLOQUEADO'");
+        movimientoDao.registrar(imei, "BLOQUEO", "PARA_REVISAR", idUsu, null, null);
     }
 
-    public void desguace(String imei) {
+    @Transactional
+    public void desguace(String imei, int idUsu, String motivo) {
+        String estadoPrevio = primeraFila(jdbc.query("SELECT ESTADO FROM Telefono WHERE IMEI = ?",
+                (rs, row) -> rs.getString("ESTADO"), imei));
         transicion(imei, "UPDATE Telefono SET ESTADO = 'DESGUACE' WHERE IMEI = ? AND ESTADO IN ('EN_REVISION','BLOQUEADO')");
+        movimientoDao.registrar(imei, MovimientoDAO.ubicacionDe(estadoPrevio, null), "DESGUACE", idUsu, motivo, null);
     }
 
     private void transicion(String imei, String sql) {
         if (jdbc.update(sql, imei) == 0)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El estado del teléfono cambió: recarga y reintenta");
+    }
+
+    /** Primera fila de una consulta o {@code null} si no hay filas; a diferencia de
+     *  {@code Stream.findFirst()}, tolera que la propia fila encontrada sea {@code null}
+     *  (p.ej. ID_CLI sin asignar) sin lanzar NullPointerException (Optional no admite null). */
+    private static <T> T primeraFila(List<T> filas) {
+        return filas.isEmpty() ? null : filas.get(0);
     }
 }
