@@ -159,6 +159,8 @@ public class ReparacionDAO {
         try { Timestamp ge = rs.getTimestamp("GLASS_ENTREGADO_AT"); rr.setGlassEntregadoAt(ge != null ? ge.toLocalDateTime() : null); } catch (Exception ignored) {}
         try { rr.setGlassEntregadoPorNombre(rs.getString("GLASS_ENTREGADO_POR_NOMBRE")); } catch (Exception ignored) {}
         try { rr.setGlassTecnicoNombre(rs.getString("GLASS_TECNICO_NOMBRE")); } catch (Exception ignored) {}
+        try { rr.setNormalAbierta(rs.getInt("NORMAL_ABIERTAS") > 0); } catch (Exception ignored) {}
+        try { rr.setNormalTecnicoNombre(rs.getString("NORMAL_TECNICO_NOMBRE")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
         return rr;
     };
@@ -965,6 +967,12 @@ public class ReparacionDAO {
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE, r.ES_CHASIS," +
             " r.ENTREGADO_AT," +
             " (SELECT te.NOMBRE FROM Tecnico te WHERE te.ID_TEC = r.ENTREGADO_POR) AS ENTREGADO_POR_NOMBRE," +
+            // Sin teléfono no hay glass: ¿hay una reparación normal abierta arriba que deba entregarlo? (Task 12)
+            " (SELECT COUNT(*) FROM Reparacion n" +
+            "  WHERE n.IMEI = r.IMEI AND n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL) AS NORMAL_ABIERTAS," +
+            " (SELECT tn.NOMBRE FROM Reparacion n JOIN Tecnico tn ON n.ID_TEC = tn.ID_TEC" +
+            "  WHERE n.IMEI = r.IMEI AND n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL" +
+            "  ORDER BY n.FECHA_ASIG ASC LIMIT 1) AS NORMAL_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +

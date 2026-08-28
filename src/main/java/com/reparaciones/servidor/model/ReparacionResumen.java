@@ -42,6 +42,8 @@ public class ReparacionResumen {
     private LocalDateTime glassEntregadoAt;         // A: entrega sellada en esa AG
     private String        glassEntregadoPorNombre;  // A: quién la selló
     private String        glassTecnicoNombre;       // A: dueño actual de esa AG
+    private boolean       normalAbierta;            // AG: hay reparación normal abierta en el IMEI (alguien arriba debe entregar)
+    private String        normalTecnicoNombre;      // AG: dueño de esa normal (la más antigua)
 
     public ReparacionResumen() {}
 
@@ -130,4 +132,8 @@ public class ReparacionResumen {
     public void          setGlassEntregadoPorNombre(String v)      { this.glassEntregadoPorNombre = v; }
     public String        getGlassTecnicoNombre()                   { return glassTecnicoNombre; }
     public void          setGlassTecnicoNombre(String v)           { this.glassTecnicoNombre = v; }
+    public boolean       isNormalAbierta()                         { return normalAbierta; }
+    public void          setNormalAbierta(boolean v)               { this.normalAbierta = v; }
+    public String        getNormalTecnicoNombre()                  { return normalTecnicoNombre; }
+    public void          setNormalTecnicoNombre(String v)          { this.normalTecnicoNombre = v; }
 }

@@ -94,6 +94,19 @@ class ReparacionDAOEntregaGlassTest {
     }
 
     @SuppressWarnings("unchecked")
+    @Test void asignacionesGlassDicenSiHayNormalAbiertaEnElImei() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        dao(jdbc).getAsignacionesGlass(null);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class));
+        String q = sql.getValue();
+        assertTrue(q.contains("AS NORMAL_ABIERTAS"), "NORMAL_ABIERTAS");
+        assertTrue(q.contains("AS NORMAL_TECNICO_NOMBRE"), "NORMAL_TECNICO_NOMBRE");
+        assertTrue(q.contains("n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL"),
+                "solo reparaciones normales abiertas");
+    }
+
+    @SuppressWarnings("unchecked")
     @Test void historialGlassDevuelveLaEntregaHeredada() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         dao(jdbc).getHistorialGlass(null);
