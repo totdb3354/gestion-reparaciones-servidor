@@ -461,14 +461,15 @@ public class ReparacionDAO {
         }
         boolean creoReparacion = false;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
+        Object[] entrega = entregaHeredable(idAsignacion);
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId(idAsignacion == null && "G".equals(categoria)
                         ? "G" : resultPrefix(idAsignacion));
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA)" +
-                        " VALUES (?,?,?,?,NOW(),NOW(),?)",
-                        idRep, imei, idTec, idRepAnterior, idTecAsigna);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?)",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1]);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -546,13 +547,14 @@ public class ReparacionDAO {
                 "SELECT ID_TEC_ASIGNA FROM Reparacion WHERE ID_REP = ?", Integer.class, idAsignacion);
         String idRepCreado = null;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
+        Object[] entrega = entregaHeredable(idAsignacion);
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId(resultPrefix(idAsignacion));
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA)" +
-                        " VALUES (?,?,?,?,NOW(),NOW(),?)",
-                        idRep, imei, idTec, idRepAnterior, idTecAsigna);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?)",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1]);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -682,6 +684,14 @@ public class ReparacionDAO {
                 "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, UPDATED_AT = UPDATED_AT" +
                 " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
                 imei);
+    }
+
+    /** Entrega sellada en una AG (o {ts, id} nulos si no es AG o no hay entrega): la hereda la G al completar. */
+    private Object[] entregaHeredable(String idAsignacion) {
+        if (idAsignacion == null || !idAsignacion.startsWith("AG")) return new Object[] {null, null};
+        java.util.Map<String, Object> e = jdbc.queryForMap(
+                "SELECT ENTREGADO_AT, ENTREGADO_POR FROM Reparacion WHERE ID_REP = ?", idAsignacion);
+        return new Object[] {e.get("ENTREGADO_AT"), e.get("ENTREGADO_POR")};
     }
 
     /** Marca URGENTE=true en TODAS las asignaciones abiertas (pulido incluido) de los
@@ -978,6 +988,8 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, NULL AS COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO," +
             " tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
+            " r.ENTREGADO_AT," +
+            " (SELECT te.NOMBRE FROM Tecnico te WHERE te.ID_TEC = r.ENTREGADO_POR) AS ENTREGADO_POR_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
