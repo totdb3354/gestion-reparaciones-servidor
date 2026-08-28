@@ -64,7 +64,7 @@ public class AuthController {
             logDao.insertar(principal.getIdUsu(), "CAMBIAR_PASSWORD", "");
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.unprocessableEntity().build();
+            return ResponseEntity.unprocessableEntity().body(Map.of("message", e.getMessage()));
         }
     }
 
