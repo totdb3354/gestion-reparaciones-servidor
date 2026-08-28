@@ -35,6 +35,14 @@ public class ReparacionResumen {
     private LocalDateTime telefonoUpdatedAt;
     private String        cliente;
 
+    // Entrega a glass (spec 2026-08-28): reales en filas AG, derivados en filas A.
+    private LocalDateTime entregadoAt;              // AG: cuándo bajó el teléfono
+    private String        entregadoPorNombre;       // AG: quién lo bajó
+    private boolean       glassAbierta;             // A: hay AG abierta en el IMEI
+    private LocalDateTime glassEntregadoAt;         // A: entrega sellada en esa AG
+    private String        glassEntregadoPorNombre;  // A: quién la selló
+    private String        glassTecnicoNombre;       // A: dueño actual de esa AG
+
     public ReparacionResumen() {}
 
     public ReparacionResumen(String idRep, String imei, String nombreTecnico,
@@ -110,4 +118,16 @@ public class ReparacionResumen {
     public void          setTelefonoUpdatedAt(LocalDateTime v){ this.telefonoUpdatedAt = v; }
     public String        getCliente()                         { return cliente; }
     public void          setCliente(String cliente)           { this.cliente = cliente; }
+    public LocalDateTime getEntregadoAt()                          { return entregadoAt; }
+    public void          setEntregadoAt(LocalDateTime v)           { this.entregadoAt = v; }
+    public String        getEntregadoPorNombre()                   { return entregadoPorNombre; }
+    public void          setEntregadoPorNombre(String v)           { this.entregadoPorNombre = v; }
+    public boolean       isGlassAbierta()                          { return glassAbierta; }
+    public void          setGlassAbierta(boolean v)                { this.glassAbierta = v; }
+    public LocalDateTime getGlassEntregadoAt()                     { return glassEntregadoAt; }
+    public void          setGlassEntregadoAt(LocalDateTime v)      { this.glassEntregadoAt = v; }
+    public String        getGlassEntregadoPorNombre()              { return glassEntregadoPorNombre; }
+    public void          setGlassEntregadoPorNombre(String v)      { this.glassEntregadoPorNombre = v; }
+    public String        getGlassTecnicoNombre()                   { return glassTecnicoNombre; }
+    public void          setGlassTecnicoNombre(String v)           { this.glassTecnicoNombre = v; }
 }

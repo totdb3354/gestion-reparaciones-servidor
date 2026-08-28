@@ -273,6 +273,46 @@ public class ReparacionController {
                 "ID_REP: " + idRep + ", IMEI: " + asig.getImei());
     }
 
+    /**
+     * Entrega del teléfono a la glass abierta del IMEI (spec entrega-glass 2026-08-28 §4).
+     * Solo el dueño de la reparación normal; sella (o limpia) ENTREGADO_AT/ENTREGADO_POR en
+     * TODAS las AG abiertas del IMEI. Sin lock optimista (toggle, último gana).
+     */
+    @PatchMapping("/asignaciones/{idRep}/entrega-glass")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void actualizarEntregaGlass(@PathVariable String idRep, @RequestBody EntregaGlassRequest req,
+                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        boolean esRepNormal = idRep != null && idRep.startsWith("A")
+                && !idRep.startsWith("AG") && !idRep.startsWith("AP");
+        if (!esRepNormal) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Solo aplica a asignaciones de reparación");
+        }
+        ReparacionResumen asig = dao.getAsignacionAnyById(idRep)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
+        boolean esSuya = principal.getIdTec() != null && asig.getIdTec() == principal.getIdTec();
+        if (!esSuya) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Solo puedes entregar tus propias asignaciones");
+        }
+        List<ReparacionDAO.GlassAbierta> glass = dao.getGlassAbiertas(asig.getImei());
+        if (glass.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Sin glass abierta para este IMEI");
+        }
+        if (req.entregado()) dao.entregarGlass(asig.getImei(), principal.getIdTec());
+        else                 dao.deshacerEntregaGlass(asig.getImei());
+
+        String ids  = glass.stream().map(ReparacionDAO.GlassAbierta::idRep)
+                .collect(java.util.stream.Collectors.joining(","));
+        String tecs = glass.stream().map(ReparacionDAO.GlassAbierta::nombreTecnico).distinct()
+                .collect(java.util.stream.Collectors.joining(","));
+        logDao.insertar(principal.getIdUsu(),
+                req.entregado() ? "ENTREGAR_GLASS" : "DESHACER_ENTREGA_GLASS",
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", GLASS: " + ids + ", TECNICO_GLASS: " + tecs);
+    }
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/asignaciones/{idRep}")
     public void actualizarAsignacion(@PathVariable String idRep,
@@ -451,6 +491,7 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     private record UrgenteRequest(boolean urgente) {}
     private record ChasisRequest(boolean esChasis) {}
     private record PorCerrarRequest(boolean porCerrar) {}
+    record EntregaGlassRequest(boolean entregado) {}   // package-private: lo construye el test
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
     private record MotivoRequest(String motivo) {}

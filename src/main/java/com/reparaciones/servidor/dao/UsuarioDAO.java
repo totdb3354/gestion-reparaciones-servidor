@@ -98,10 +98,10 @@ public class UsuarioDAO {
                     "SELECT PASSWORD FROM Usuario WHERE ID_USU = ?", String.class, idUsu);
         } catch (org.springframework.dao.EmptyResultDataAccessException e) {
             // Mismo mensaje que contraseña incorrecta para no revelar si el usuario existe
-            throw new IllegalArgumentException("Contraseña actual incorrecta");
+            throw new IllegalArgumentException("Contraseña actual incorrecta.");
         }
         if (!passwordEncoder.matches(passwordActual, hashActual))
-            throw new IllegalArgumentException("Contraseña actual incorrecta");
+            throw new IllegalArgumentException("Contraseña actual incorrecta.");
         String hashNuevo = passwordEncoder.encode(passwordNueva);
         jdbc.update("UPDATE Usuario SET PASSWORD = ? WHERE ID_USU = ?", hashNuevo, idUsu);
     }

@@ -95,6 +95,18 @@ public class ReparacionDAO {
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR," +
+            // Entrega a glass, derivada de la AG abierta más antigua del mismo IMEI (spec 2026-08-28 §4)
+            " (SELECT COUNT(*) FROM Reparacion g" +
+            "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL) AS GLASS_ABIERTAS," +
+            " (SELECT g.ENTREGADO_AT FROM Reparacion g" +
+            "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
+            "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_ENTREGADO_AT," +
+            " (SELECT tg.NOMBRE FROM Reparacion g LEFT JOIN Tecnico tg ON g.ENTREGADO_POR = tg.ID_TEC" +
+            "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
+            "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_ENTREGADO_POR_NOMBRE," +
+            " (SELECT tg.NOMBRE FROM Reparacion g JOIN Tecnico tg ON g.ID_TEC = tg.ID_TEC" +
+            "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
+            "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
@@ -140,6 +152,13 @@ public class ReparacionDAO {
         try { rr.setPorCerrar(rs.getBoolean("POR_CERRAR")); } catch (Exception ignored) {}
         try { rr.setTieneAsignaciones(rs.getInt("TIENE_ASIGNACIONES") > 0); } catch (Exception ignored) {}
         try { rr.setNombreTecnicoAsigna(rs.getString("NOMBRE_TEC_ASIGNA")); } catch (Exception ignored) {}
+        // Entrega a glass: AG lleva las reales, A las derivadas; el resto de queries no las traen.
+        try { Timestamp e = rs.getTimestamp("ENTREGADO_AT"); rr.setEntregadoAt(e != null ? e.toLocalDateTime() : null); } catch (Exception ignored) {}
+        try { rr.setEntregadoPorNombre(rs.getString("ENTREGADO_POR_NOMBRE")); } catch (Exception ignored) {}
+        try { rr.setGlassAbierta(rs.getInt("GLASS_ABIERTAS") > 0); } catch (Exception ignored) {}
+        try { Timestamp ge = rs.getTimestamp("GLASS_ENTREGADO_AT"); rr.setGlassEntregadoAt(ge != null ? ge.toLocalDateTime() : null); } catch (Exception ignored) {}
+        try { rr.setGlassEntregadoPorNombre(rs.getString("GLASS_ENTREGADO_POR_NOMBRE")); } catch (Exception ignored) {}
+        try { rr.setGlassTecnicoNombre(rs.getString("GLASS_TECNICO_NOMBRE")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
         return rr;
     };
@@ -214,7 +233,7 @@ public class ReparacionDAO {
         if (!sqlGlass.contains("r.FECHA_FIN >= ?"))
             throw new IllegalStateException("GLASS_ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
         String groupByGlass = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE" +
                          " ORDER BY r.FECHA_FIN ASC";
         result.addAll(jdbc.query(sqlGlass + groupByGlass, RESUMEN_MAPPER, cutoff));
 
@@ -637,6 +656,34 @@ public class ReparacionDAO {
         jdbc.update("UPDATE Reparacion SET POR_CERRAR = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", porCerrar, idRep);
     }
 
+    /** Asignación de glass abierta de un IMEI (id + dueño actual), la más antigua primero. */
+    public record GlassAbierta(String idRep, String nombreTecnico) {}
+
+    /** AG abiertas del IMEI: destinatarias de la entrega (spec entrega-glass §2). */
+    public List<GlassAbierta> getGlassAbiertas(String imei) {
+        return jdbc.query(
+                "SELECT r.ID_REP, t.NOMBRE FROM Reparacion r JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+                " WHERE r.IMEI = ? AND r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL ORDER BY r.FECHA_ASIG ASC",
+                (rs, i) -> new GlassAbierta(rs.getString("ID_REP"), rs.getString("NOMBRE")),
+                imei);
+    }
+
+    /** Sella la entrega (ahora, por idTecEntrega) en TODAS las AG abiertas del IMEI. Volver a entregar sobrescribe. */
+    public void entregarGlass(String imei, int idTecEntrega) {
+        jdbc.update(
+                "UPDATE Reparacion SET ENTREGADO_AT = NOW(), ENTREGADO_POR = ?, UPDATED_AT = UPDATED_AT" +
+                " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
+                idTecEntrega, imei);
+    }
+
+    /** Deshace la entrega en TODAS las AG abiertas del IMEI. */
+    public void deshacerEntregaGlass(String imei) {
+        jdbc.update(
+                "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, UPDATED_AT = UPDATED_AT" +
+                " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
+                imei);
+    }
+
     /** Marca URGENTE=true en TODAS las asignaciones abiertas (pulido incluido) de los
      *  teléfonos que cualifican: alguna rep/glass pendiente no urgente, con cliente,
      *  cuya FECHA_ASIG es anterior al cutoff (inicio de hoy en Madrid). Devuelve nº de filas. */
@@ -906,6 +953,8 @@ public class ReparacionDAO {
             "  WHERE rc2.ID_REP = r.ID_REP AND rc2.ES_SOLICITUD = 1 AND rc2.ESTADO_SOLICITUD != 'RECHAZADA') AS TIPOS_SOL," +
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE, r.ES_CHASIS," +
+            " r.ENTREGADO_AT," +
+            " (SELECT te.NOMBRE FROM Tecnico te WHERE te.ID_TEC = r.ENTREGADO_POR) AS ENTREGADO_POR_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             " cli.NOMBRE AS CLIENTE" +
             " FROM Reparacion r" +
@@ -946,7 +995,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignacionesGlass(Integer idTecFilter) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null)
             return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         return jdbc.query(GLASS_ASIGNACION_SELECT + groupBy, RESUMEN_MAPPER);
@@ -961,7 +1010,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignacionesGlassPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
 
@@ -1135,7 +1184,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionGlassById(String idRep) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, ta.NOMBRE, cli.NOMBRE";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_REP = ?" + groupBy, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }

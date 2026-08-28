@@ -170,12 +170,15 @@ CREATE TABLE Reparacion (
     URGENTE              BOOLEAN      NOT NULL DEFAULT FALSE,
     ES_CHASIS            BOOLEAN      NOT NULL DEFAULT FALSE,
     POR_CERRAR           BOOLEAN      NOT NULL DEFAULT FALSE,
+    ENTREGADO_AT         DATETIME     NULL,
+    ENTREGADO_POR        INT          NULL,
     UPDATED_AT           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (ID_REP),
     CONSTRAINT Reparacion_ibfk_1 FOREIGN KEY (IMEI)            REFERENCES Telefono  (IMEI),
     CONSTRAINT fk_rep_tecnico    FOREIGN KEY (ID_TEC)          REFERENCES Tecnico   (ID_TEC),
     CONSTRAINT Reparacion_ibfk_3 FOREIGN KEY (ID_REP_ANTERIOR) REFERENCES Reparacion(ID_REP),
-    CONSTRAINT fk_rep_tec_asigna FOREIGN KEY (ID_TEC_ASIGNA)   REFERENCES Tecnico   (ID_TEC)
+    CONSTRAINT fk_rep_tec_asigna FOREIGN KEY (ID_TEC_ASIGNA)   REFERENCES Tecnico   (ID_TEC),
+    CONSTRAINT fk_rep_entregado_por FOREIGN KEY (ENTREGADO_POR) REFERENCES Tecnico  (ID_TEC)
 );
 
 -- Borrador del modal de reparación por componente (1:0..1 con Reparacion, entidad débil).
