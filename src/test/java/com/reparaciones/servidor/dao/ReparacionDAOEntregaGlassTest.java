@@ -92,4 +92,14 @@ class ReparacionDAOEntregaGlassTest {
         verify(jdbc).query(sql.capture(), any(RowMapper.class), org.mockito.ArgumentMatchers.eq(IMEI));
         assertTrue(sql.getValue().contains("WHERE r.IMEI = ? AND r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL"));
     }
+
+    @SuppressWarnings("unchecked")
+    @Test void historialGlassDevuelveLaEntregaHeredada() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        dao(jdbc).getHistorialGlass(null);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class));
+        assertTrue(sql.getValue().contains(" r.ENTREGADO_AT,"), "columna ENTREGADO_AT en historial glass");
+        assertTrue(sql.getValue().contains("AS ENTREGADO_POR_NOMBRE"), "ENTREGADO_POR_NOMBRE en historial glass");
+    }
 }
