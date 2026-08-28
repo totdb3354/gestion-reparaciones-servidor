@@ -656,6 +656,34 @@ public class ReparacionDAO {
         jdbc.update("UPDATE Reparacion SET POR_CERRAR = ?, UPDATED_AT = UPDATED_AT WHERE ID_REP = ?", porCerrar, idRep);
     }
 
+    /** Asignación de glass abierta de un IMEI (id + dueño actual), la más antigua primero. */
+    public record GlassAbierta(String idRep, String nombreTecnico) {}
+
+    /** AG abiertas del IMEI: destinatarias de la entrega (spec entrega-glass §2). */
+    public List<GlassAbierta> getGlassAbiertas(String imei) {
+        return jdbc.query(
+                "SELECT r.ID_REP, t.NOMBRE FROM Reparacion r JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+                " WHERE r.IMEI = ? AND r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL ORDER BY r.FECHA_ASIG ASC",
+                (rs, i) -> new GlassAbierta(rs.getString("ID_REP"), rs.getString("NOMBRE")),
+                imei);
+    }
+
+    /** Sella la entrega (ahora, por idTecEntrega) en TODAS las AG abiertas del IMEI. Volver a entregar sobrescribe. */
+    public void entregarGlass(String imei, int idTecEntrega) {
+        jdbc.update(
+                "UPDATE Reparacion SET ENTREGADO_AT = NOW(), ENTREGADO_POR = ?, UPDATED_AT = UPDATED_AT" +
+                " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
+                idTecEntrega, imei);
+    }
+
+    /** Deshace la entrega en TODAS las AG abiertas del IMEI. */
+    public void deshacerEntregaGlass(String imei) {
+        jdbc.update(
+                "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, UPDATED_AT = UPDATED_AT" +
+                " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
+                imei);
+    }
+
     /** Marca URGENTE=true en TODAS las asignaciones abiertas (pulido incluido) de los
      *  teléfonos que cualifican: alguna rep/glass pendiente no urgente, con cliente,
      *  cuya FECHA_ASIG es anterior al cutoff (inicio de hoy en Madrid). Devuelve nº de filas. */
