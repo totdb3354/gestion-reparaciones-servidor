@@ -104,6 +104,9 @@ public class ReparacionDAO {
             " (SELECT tg.NOMBRE FROM Reparacion g LEFT JOIN Tecnico tg ON g.ENTREGADO_POR = tg.ID_TEC" +
             "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
             "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_ENTREGADO_POR_NOMBRE," +
+            " (SELECT g.ENTREGADO_POR FROM Reparacion g" +
+            "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
+            "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_ENTREGADO_POR," +
             " (SELECT tg.NOMBRE FROM Reparacion g JOIN Tecnico tg ON g.ID_TEC = tg.ID_TEC" +
             "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
             "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_TECNICO_NOMBRE," +
@@ -159,6 +162,8 @@ public class ReparacionDAO {
         try { Timestamp ge = rs.getTimestamp("GLASS_ENTREGADO_AT"); rr.setGlassEntregadoAt(ge != null ? ge.toLocalDateTime() : null); } catch (Exception ignored) {}
         try { rr.setGlassEntregadoPorNombre(rs.getString("GLASS_ENTREGADO_POR_NOMBRE")); } catch (Exception ignored) {}
         try { rr.setGlassTecnicoNombre(rs.getString("GLASS_TECNICO_NOMBRE")); } catch (Exception ignored) {}
+        try { rr.setEntregadoPor((Integer) rs.getObject("ENTREGADO_POR")); } catch (Exception ignored) {}
+        try { rr.setGlassEntregadoPor((Integer) rs.getObject("GLASS_ENTREGADO_POR")); } catch (Exception ignored) {}
         try { rr.setNormalAbierta(rs.getInt("NORMAL_ABIERTAS") > 0); } catch (Exception ignored) {}
         try { rr.setNormalTecnicoNombre(rs.getString("NORMAL_TECNICO_NOMBRE")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
@@ -966,6 +971,7 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE, r.ES_CHASIS," +
             " r.ENTREGADO_AT," +
+            " r.ENTREGADO_POR," +
             " (SELECT te.NOMBRE FROM Tecnico te WHERE te.ID_TEC = r.ENTREGADO_POR) AS ENTREGADO_POR_NOMBRE," +
             // Sin teléfono no hay glass: ¿hay una reparación normal abierta arriba que deba entregarlo? (Task 12)
             " (SELECT COUNT(*) FROM Reparacion n" +

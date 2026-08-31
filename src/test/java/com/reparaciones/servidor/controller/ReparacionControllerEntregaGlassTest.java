@@ -78,14 +78,60 @@ class ReparacionControllerEntregaGlassTest {
     }
 
     @Test void deshacerLimpiaYRegistraEnElLog() {
-        ReparacionResumen asig = asigDe(7);
-        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(asig));
+        ReparacionResumen propia = asigDe(7);
+        when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        when(propia.getGlassEntregadoPor()).thenReturn(7);
+        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(propia));
         when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Jhona")));
         ctl.actualizarEntregaGlass("A20260828_1", req(false), manu);
         verify(dao).deshacerEntregaGlass(IMEI);
         verify(dao, never()).entregarGlass(anyString(), anyInt());
         verify(logDao).insertar(42, "DESHACER_ENTREGA_GLASS",
                 "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Jhona");
+    }
+
+    @Test void deshacerConFirmaAjenaEs403() {
+        ReparacionResumen propia = asigDe(7);
+        when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        when(propia.getGlassEntregadoPor()).thenReturn(9);   // la marco el de glass
+        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(propia));
+        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Jhona")));
+        assertEquals(403, statusDe(() -> ctl.actualizarEntregaGlass("A20260828_1", req(false), manu)));
+        verify(dao, never()).deshacerEntregaGlass(anyString());
+    }
+
+    @Test void deshacerSinEntregaEs422() {
+        ReparacionResumen propia = asigDe(7);
+        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(propia));
+        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Jhona")));
+        assertEquals(422, statusDe(() -> ctl.actualizarEntregaGlass("A20260828_1", req(false), manu)));
+        verify(dao, never()).deshacerEntregaGlass(anyString());
+    }
+
+    @Test void deshacerLlegadaSoloConFirmaPropia() {
+        ReparacionResumen propia = asigDe(7);
+        when(propia.getEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        when(propia.getEntregadoPor()).thenReturn(7);
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
+        ctl.deshacerLlegadaGlass("AG20260828_3", manu);
+        verify(dao).deshacerEntregaGlass(IMEI);
+        verify(logDao).insertar(42, "DESHACER_ENTREGA_GLASS",
+                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA deshecha por el tecnico de glass");
+    }
+
+    @Test void deshacerLlegadaConFirmaAjenaEs403() {
+        ReparacionResumen propia = asigDe(7);
+        when(propia.getEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        when(propia.getEntregadoPor()).thenReturn(3);   // la entrego el de rep
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
+        assertEquals(403, statusDe(() -> ctl.deshacerLlegadaGlass("AG20260828_3", manu)));
+        verify(dao, never()).deshacerEntregaGlass(anyString());
+    }
+
+    @Test void deshacerLlegadaValidaTipoYExistencia() {
+        assertEquals(422, statusDe(() -> ctl.deshacerLlegadaGlass("A20260828_1", manu)));
+        when(dao.getAsignacionAnyById("AG20260828_9")).thenReturn(Optional.empty());
+        assertEquals(404, statusDe(() -> ctl.deshacerLlegadaGlass("AG20260828_9", manu)));
     }
 
     private static ReparacionController.EntregaGlassRequest req(boolean entregado) {

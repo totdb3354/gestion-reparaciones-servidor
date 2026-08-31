@@ -28,6 +28,7 @@ class ReparacionDAOEntregaGlassTest {
         assertTrue(q.contains("AS GLASS_ABIERTAS"), "GLASS_ABIERTAS");
         assertTrue(q.contains("AS GLASS_ENTREGADO_AT"), "GLASS_ENTREGADO_AT");
         assertTrue(q.contains("AS GLASS_ENTREGADO_POR_NOMBRE"), "GLASS_ENTREGADO_POR_NOMBRE");
+        assertTrue(q.contains("AS GLASS_ENTREGADO_POR,"), "id del firmante en filas A");
         assertTrue(q.contains("AS GLASS_TECNICO_NOMBRE"), "GLASS_TECNICO_NOMBRE");
         // las subconsultas miran solo AG abiertas del mismo IMEI
         assertTrue(q.contains("g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL"));
@@ -47,6 +48,7 @@ class ReparacionDAOEntregaGlassTest {
         verify(jdbc).query(sql.capture(), any(RowMapper.class));
         String q = sql.getValue();
         assertTrue(q.contains(" r.ENTREGADO_AT,"), "columna ENTREGADO_AT");
+        assertTrue(q.contains(" r.ENTREGADO_POR,"), "id del firmante en filas AG");
         assertTrue(q.contains("AS ENTREGADO_POR_NOMBRE"), "ENTREGADO_POR_NOMBRE");
         assertTrue(q.contains("r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE"), "GROUP BY con columnas nuevas");
     }
