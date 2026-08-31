@@ -313,6 +313,36 @@ public class ReparacionController {
                 "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", GLASS: " + ids + ", TECNICO_GLASS: " + tecs);
     }
 
+    /**
+     * Llegada registrada por el propio técnico de glass (válvula de escape del gate "sin teléfono
+     * no hay glass" — spec 2026-08-28 §2): sella la entrega en TODAS las AG abiertas del IMEI con
+     * él como ENTREGADO_POR. Solo el dueño de la AG y solo si aún no hay entrega registrada.
+     */
+    @PatchMapping("/asignaciones/{idRep}/llegada")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void marcarLlegadaGlass(@PathVariable String idRep,
+                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (idRep == null || !idRep.startsWith("AG")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Solo aplica a asignaciones de glass");
+        }
+        ReparacionResumen asig = dao.getAsignacionAnyById(idRep)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
+        boolean esSuya = principal.getIdTec() != null && asig.getIdTec() == principal.getIdTec();
+        if (!esSuya) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Solo puedes registrar la llegada de tus propias asignaciones");
+        }
+        if (asig.getEntregadoAt() != null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "La entrega ya está registrada");
+        }
+        dao.entregarGlass(asig.getImei(), principal.getIdTec());
+        logDao.insertar(principal.getIdUsu(), "ENTREGAR_GLASS",
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA registrada por el tecnico de glass");
+    }
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/asignaciones/{idRep}")
     public void actualizarAsignacion(@PathVariable String idRep,
