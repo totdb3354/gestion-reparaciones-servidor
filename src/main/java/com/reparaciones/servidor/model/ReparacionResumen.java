@@ -38,9 +38,11 @@ public class ReparacionResumen {
     // Entrega a glass (spec 2026-08-28): reales en filas AG, derivados en filas A.
     private LocalDateTime entregadoAt;              // AG: cuándo bajó el teléfono
     private String        entregadoPorNombre;       // AG: quién lo bajó
+    private Integer       entregadoPor;             // AG: id de quién lo bajó (firma)
     private boolean       glassAbierta;             // A: hay AG abierta en el IMEI
     private LocalDateTime glassEntregadoAt;         // A: entrega sellada en esa AG
     private String        glassEntregadoPorNombre;  // A: quién la selló
+    private Integer       glassEntregadoPor;        // A: id de quién la selló (firma)
     private String        glassTecnicoNombre;       // A: dueño actual de esa AG
     private boolean       normalAbierta;            // AG: hay reparación normal abierta en el IMEI (alguien arriba debe entregar)
     private String        normalTecnicoNombre;      // AG: dueño de esa normal (la más antigua)
@@ -124,12 +126,16 @@ public class ReparacionResumen {
     public void          setEntregadoAt(LocalDateTime v)           { this.entregadoAt = v; }
     public String        getEntregadoPorNombre()                   { return entregadoPorNombre; }
     public void          setEntregadoPorNombre(String v)           { this.entregadoPorNombre = v; }
+    public Integer       getEntregadoPor()                         { return entregadoPor; }
+    public void          setEntregadoPor(Integer v)                { this.entregadoPor = v; }
     public boolean       isGlassAbierta()                          { return glassAbierta; }
     public void          setGlassAbierta(boolean v)                { this.glassAbierta = v; }
     public LocalDateTime getGlassEntregadoAt()                     { return glassEntregadoAt; }
     public void          setGlassEntregadoAt(LocalDateTime v)      { this.glassEntregadoAt = v; }
     public String        getGlassEntregadoPorNombre()              { return glassEntregadoPorNombre; }
     public void          setGlassEntregadoPorNombre(String v)      { this.glassEntregadoPorNombre = v; }
+    public Integer       getGlassEntregadoPor()                    { return glassEntregadoPor; }
+    public void          setGlassEntregadoPor(Integer v)           { this.glassEntregadoPor = v; }
     public String        getGlassTecnicoNombre()                   { return glassTecnicoNombre; }
     public void          setGlassTecnicoNombre(String v)           { this.glassTecnicoNombre = v; }
     public boolean       isNormalAbierta()                         { return normalAbierta; }

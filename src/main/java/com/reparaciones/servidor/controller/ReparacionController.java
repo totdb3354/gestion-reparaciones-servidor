@@ -301,6 +301,17 @@ public class ReparacionController {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Sin glass abierta para este IMEI");
         }
+        if (!req.entregado()) {
+            // Quien marca, desmarca (decisión 2026-08-31): la firma ENTREGADO_POR manda.
+            if (asig.getGlassEntregadoAt() == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "No hay entrega que deshacer");
+            }
+            if (!principal.getIdTec().equals(asig.getGlassEntregadoPor())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Solo quien registró la entrega puede deshacerla");
+            }
+        }
         if (req.entregado()) dao.entregarGlass(asig.getImei(), principal.getIdTec());
         else                 dao.deshacerEntregaGlass(asig.getImei());
 
@@ -341,6 +352,36 @@ public class ReparacionController {
         dao.entregarGlass(asig.getImei(), principal.getIdTec());
         logDao.insertar(principal.getIdUsu(), "ENTREGAR_GLASS",
                 "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA registrada por el tecnico de glass");
+    }
+
+    /** Deshacer la llegada: solo el dueño de la AG y solo si la firma (ENTREGADO_POR) es suya. */
+    @DeleteMapping("/asignaciones/{idRep}/llegada")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deshacerLlegadaGlass(@PathVariable String idRep,
+                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (idRep == null || !idRep.startsWith("AG")) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Solo aplica a asignaciones de glass");
+        }
+        ReparacionResumen asig = dao.getAsignacionAnyById(idRep)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
+        boolean esSuya = principal.getIdTec() != null && asig.getIdTec() == principal.getIdTec();
+        if (!esSuya) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Solo puedes deshacer la llegada de tus propias asignaciones");
+        }
+        if (asig.getEntregadoAt() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "No hay entrega que deshacer");
+        }
+        if (!principal.getIdTec().equals(asig.getEntregadoPor())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Solo quien registró la entrega puede deshacerla");
+        }
+        dao.deshacerEntregaGlass(asig.getImei());
+        logDao.insertar(principal.getIdUsu(), "DESHACER_ENTREGA_GLASS",
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA deshecha por el tecnico de glass");
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
