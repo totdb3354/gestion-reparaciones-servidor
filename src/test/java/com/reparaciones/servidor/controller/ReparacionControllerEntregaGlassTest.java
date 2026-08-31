@@ -91,4 +91,41 @@ class ReparacionControllerEntregaGlassTest {
     private static ReparacionController.EntregaGlassRequest req(boolean entregado) {
         return new ReparacionController.EntregaGlassRequest(entregado);
     }
+
+    @Test void llegadaRechazaIdsQueNoSonGlass() {
+        assertEquals(422, statusDe(() -> ctl.marcarLlegadaGlass("A20260828_1", manu)));
+        verifyNoInteractions(logDao);
+    }
+
+    @Test void llegadaInexistenteEs404() {
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.empty());
+        assertEquals(404, statusDe(() -> ctl.marcarLlegadaGlass("AG20260828_3", manu)));
+    }
+
+    @Test void llegadaSoloDelDueno() {
+        ReparacionResumen ajena = asigDe(99);
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(ajena));
+        assertEquals(403, statusDe(() -> ctl.marcarLlegadaGlass("AG20260828_3", manu)));
+        verify(dao, never()).entregarGlass(anyString(), anyInt());
+    }
+
+    @Test void llegadaYaEntregadaEs422() {
+        ReparacionResumen propia = asigDe(7);
+        when(propia.getEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> ctl.marcarLlegadaGlass("AG20260828_3", manu));
+        assertEquals(422, ex.getStatusCode().value());
+        assertEquals("La entrega ya está registrada", ex.getReason());
+        verify(dao, never()).entregarGlass(anyString(), anyInt());
+    }
+
+    @Test void llegadaSellaYFirmaElPropioTecnico() {
+        ReparacionResumen propia = asigDe(7);
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
+        ctl.marcarLlegadaGlass("AG20260828_3", manu);
+        verify(dao).entregarGlass(IMEI, 7);
+        verify(logDao).insertar(42, "ENTREGAR_GLASS",
+                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA registrada por el tecnico de glass");
+    }
 }
