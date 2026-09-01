@@ -52,4 +52,11 @@ class DificultadControllerTest {
         assertEquals(422, ex.getStatusCode().value());
         verify(dao, never()).actualizar(anyString(), anyDouble());
     }
+
+    @Test void putConservaDosDecimalesEnElLog() {
+        when(dao.getValores()).thenReturn(Map.of("pulido", 0.25));
+        when(dao.actualizar("pulido", 0.75)).thenReturn(1);
+        ctl.actualizarValores(List.of(new ValorDificultad("pulido", 0.75)), admin);
+        verify(logDao).insertar(eq(1), eq("EDITAR_PUNTOS"), contains("pulido: 0,25 -> 0,75"));
+    }
 }

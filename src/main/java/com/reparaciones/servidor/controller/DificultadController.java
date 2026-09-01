@@ -32,6 +32,7 @@ public class DificultadController {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    @org.springframework.transaction.annotation.Transactional
     @PutMapping
     public void actualizarValores(@RequestBody List<ValorDificultad> valores,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -59,6 +60,9 @@ public class DificultadController {
     }
 
     private static String formatear(double v) {
-        return String.format(java.util.Locale.ROOT, "%.1f", v).replace('.', ',');
+        String s = java.math.BigDecimal.valueOf(v).setScale(2, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros().toPlainString();
+        if (!s.contains(".")) s += ".0";
+        return s.replace('.', ',');
     }
 }

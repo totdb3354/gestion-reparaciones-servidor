@@ -1,4 +1,6 @@
 -- Migración estadísticas por puntos (spec 2026-09-01-estadisticas-puntos-design).
+USE gestion_reparaciones;
+
 -- Vista previa antes de aplicar:
 --   SELECT COUNT(*) FROM information_schema.TABLES
 --    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Dificultad_puntos';  -- esperado: 0

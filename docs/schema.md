@@ -170,6 +170,19 @@ Pedidos de reposición de stock.
 
 ---
 
+### `Dificultad_puntos`
+Valores de dificultad (en puntos) usados por las estadísticas por puntos (spec 2026-09-01).
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| CLAVE | VARCHAR(20) | PK. Identificador del tipo de acción (`bateria`, `camara`, `chasis`, `marco`, `pantalla`, `glass`, `otro`, `pulido`) |
+| PUNTOS | DECIMAL(4,2) | Puntos que vale esa acción |
+| UPDATED_AT | TIMESTAMP | Gestión de concurrencia (optimistic lock) |
+
+**Seed (8 filas):** `bateria`=1.00, `camara`=0.70, `chasis`=2.00, `marco`=0.50, `pantalla`=1.00, `glass`=0.50, `otro`=0.50, `pulido`=0.25.
+
+---
+
 ## Convenciones del esquema
 
 **Soft delete:** `Tecnico`, `Componente` y `Proveedor` tienen columna `ACTIVO`. No se borran si tienen historial — se desactivan.

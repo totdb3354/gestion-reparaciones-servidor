@@ -298,6 +298,26 @@ Comprueba si el técnico tiene ya una asignación abierta para ese IMEI.
 Estadísticas de reparaciones por técnico en el rango.  
 **Response:** `[{ "etiqueta": "2025-01", "tecnico": "Juan", "valor": 12 }, ...]`
 
+### GET `/api/reparaciones/estadisticas/puntos?granularidad={dia|semana|mes}&desde={YYYY-MM-DD}&hasta={YYYY-MM-DD}`
+Estadísticas por puntos de dificultad por técnico en el rango (spec 2026-09-01).  
+**Response:**
+```json
+[
+  {
+    "nombreTecnico": "Juan",
+    "periodo": "2025-01",
+    "puntos": 12.5,
+    "puntosNormales": 9.0,
+    "puntosGlass": 2.5,
+    "puntosPulidos": 1.0,
+    "nNormales": 8,
+    "nGlass": 5,
+    "nPulidos": 4,
+    "nSinPiezas": 2
+  }
+]
+```
+
 ### POST `/api/reparaciones`
 Inserta una reparación básica.  
 **Request:**
@@ -391,6 +411,25 @@ Componentes de una reparación.
 ### DELETE `/api/reparacion-componentes/{idRep}/incidencia`
 Borra la incidencia de todos los componentes de la reparación.  
 **Response:** 204 No Content
+
+---
+
+## `/api/valores-dificultad`
+
+### GET `/api/valores-dificultad`
+Valores de dificultad (en puntos) usados por las estadísticas por puntos.  
+**Response:** `[{ "clave": "bateria", "puntos": 1.0 }, ...]`
+
+### PUT `/api/valores-dificultad`
+> Requiere rol `ADMIN`.
+
+Actualiza uno o varios valores. Valida todo antes de escribir nada; solo escribe (y loguea) las claves cuyo valor realmente cambia.  
+**Request:**
+```json
+[{ "clave": "pulido", "puntos": 0.75 }]
+```
+**Response:** 200 OK  
+**Response 422:** clave desconocida, o `puntos` fuera de rango (`< 0` o `> 99.99`).
 
 ---
 
