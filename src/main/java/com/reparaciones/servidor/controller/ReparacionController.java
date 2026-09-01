@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.ComponenteDAO;
+import com.reparaciones.servidor.dao.DificultadPuntosDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
@@ -26,14 +27,17 @@ public class ReparacionController {
     private final LogDAO                logDao;
     private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
     private final ComponenteDAO         componenteDao;
+    private final DificultadPuntosDAO   dificultadDao;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
-                                com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao) {
+                                com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
+                                DificultadPuntosDAO dificultadDao) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
         this.borradorDao = borradorDao;
         this.componenteDao = componenteDao;
+        this.dificultadDao = dificultadDao;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -163,6 +167,14 @@ public class ReparacionController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
         return dao.getEstadisticasPorTecnico(granularidad, desde, hasta);
+    }
+
+    @GetMapping("/estadisticas/puntos")
+    public List<PuntoEstadisticaPuntos> getEstadisticasPuntos(
+            @RequestParam String granularidad,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+        return dao.getEstadisticasPuntos(granularidad, desde, hasta, dificultadDao.getValores());
     }
 
     // ── escritura ─────────────────────────────────────────────────────────────
