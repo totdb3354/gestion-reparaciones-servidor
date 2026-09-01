@@ -18,7 +18,8 @@ class ReparacionControllerEntregaGlassTest {
     private final ReparacionDAO dao = mock(ReparacionDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
     private final ReparacionController ctl = new ReparacionController(
-            dao, mock(ReparacionComponenteDAO.class), logDao, mock(BorradorDAO.class), mock(ComponenteDAO.class));
+            dao, mock(ReparacionComponenteDAO.class), logDao, mock(BorradorDAO.class), mock(ComponenteDAO.class),
+            mock(DificultadPuntosDAO.class));
     private final UsuarioPrincipal manu = new UsuarioPrincipal(42, "manu", "x", "TECNICO", 7);
 
     private ReparacionResumen asigDe(int idTec) {

@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.*;
+import com.reparaciones.servidor.util.PuntosCalculo;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -399,6 +400,33 @@ public class ReparacionDAO {
         resultado.sort(Comparator.comparing(PuntoEstadistica::getPeriodo)
                                   .thenComparing(PuntoEstadistica::getNombreTecnico));
         return resultado;
+    }
+
+    /**
+     * Estadísticas por puntos de dificultad (spec 2026-09-01). Una fila por pieza usada
+     * (ES_SOLICITUD = 0; reutilizadas e incidencias SÍ puntúan — pieza puesta es trabajo
+     * hecho, criterio distinto al descuento de stock que excluye reutilizadas).
+     * Reparación sin piezas llega como una única fila con TIPO/CANTIDAD null.
+     */
+    public List<PuntoEstadisticaPuntos> getEstadisticasPuntos(
+            String granularidad, LocalDate desde, LocalDate hasta, Map<String, Double> valores) {
+        List<PuntosCalculo.FilaPuntos> filas = jdbc.query(
+                "SELECT t.NOMBRE, DATE(r.FECHA_FIN) AS FD, r.ID_REP, c.TIPO, rc.CANTIDAD" +
+                " FROM Reparacion r" +
+                " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+                " LEFT JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0" +
+                " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
+                " WHERE (r.ID_REP LIKE 'R%' OR r.ID_REP LIKE 'G%' OR r.ID_REP LIKE 'P%')" +
+                " AND r.FECHA_FIN IS NOT NULL AND DATE(r.FECHA_FIN) BETWEEN ? AND ?",
+                (rs, row) -> new PuntosCalculo.FilaPuntos(
+                        rs.getString("NOMBRE"),
+                        rs.getDate("FD").toLocalDate(),
+                        rs.getString("ID_REP"),
+                        rs.getString("TIPO"),
+                        (Integer) rs.getObject("CANTIDAD")),
+                desde, hasta);
+        return PuntosCalculo.agregar(filas, valores,
+                fecha -> formatearPeriodo(inicioPeriodo(fecha, granularidad), granularidad));
     }
 
     // ── Escritura ─────────────────────────────────────────────────────────────

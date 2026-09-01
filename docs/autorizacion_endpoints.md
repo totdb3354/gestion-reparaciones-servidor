@@ -160,6 +160,7 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 | `/imei/{imei}/incidencia-activa` | GET | cualquiera | — |
 | `/imei/{imei}/tiene-asignacion` | GET | cualquiera | — |
 | `/estadisticas` | GET | cualquiera | Filtrado por idTec en DAO para TECNICO |
+| `/estadisticas/puntos` | GET | cualquiera | — |
 | `/` | POST | cualquiera | TECNICO crea sus propias reparaciones |
 | `/asignaciones` | POST | SUPERTECNICO | — |
 | `/completa` | POST | cualquiera | TECNICO completa su reparación |
@@ -183,6 +184,15 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 | `/{idRep}/{idCom}` | DELETE | cualquiera | TECNICO elimina componente de su reparación |
 | `/{idRep}/incidencia` | PATCH | SUPERTECNICO | — |
 | `/{idRep}/incidencia` | DELETE | SUPERTECNICO | — |
+
+---
+
+## DificultadController — `/api/valores-dificultad`
+
+| Endpoint | Método | Rol requerido |
+|---|---|---|
+| `/` | GET | cualquiera |
+| `/` | PUT | ADMIN |
 
 ---
 
