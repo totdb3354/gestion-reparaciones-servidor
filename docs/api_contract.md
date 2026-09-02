@@ -47,7 +47,7 @@ Sin autenticación requerida.
 
 ### GET `/api/tecnicos`
 Devuelve todos los técnicos (activos e inactivos).  
-**Response:** `[{ "idTec": 1, "nombre": "Juan", "activo": true }, ...]`
+**Response:** `[{ "idTec": 1, "nombre": "Juan", "activo": true, "esEstadistica": true }, ...]`
 
 ### GET `/api/tecnicos/activos`
 Solo técnicos con `ACTIVO = true`.
@@ -66,7 +66,7 @@ Solo técnicos con `ACTIVO = true`.
 
 ### GET `/api/usuarios/tecnicos`
 Devuelve usuarios con rol TECNICO incluyendo datos del técnico asociado.  
-**Response:** `[{ "idUsu": 2, "nombreUsuario": "juan", "rol": "TECNICO", "idTec": 1, "nombreTecnico": "Juan García", "activo": true, "esEstadistica": true }, ...]`
+**Response:** `[{ "idUsu": 2, "nombreUsuario": "juan", "rol": "TECNICO", "idTec": 1, "nombreTecnico": "Juan García", "activo": true }, ...]`
 
 ### POST `/api/usuarios/tecnicos`
 Crea técnico + usuario en una transacción.  
