@@ -80,6 +80,28 @@ public class UsuarioController {
                 "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
     }
 
+    @PatchMapping("/tecnicos/{idTec}/excluir-estadisticas")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void excluirEstadisticas(@PathVariable int idTec,
+                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = dao.getNombreByIdTec(idTec);
+        dao.excluirEstadisticas(idTec);
+        logDao.insertar(principal.getIdUsu(), "EXCLUIR_ESTADISTICAS",
+                "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
+    }
+
+    @PatchMapping("/tecnicos/{idTec}/incluir-estadisticas")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void incluirEstadisticas(@PathVariable int idTec,
+                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = dao.getNombreByIdTec(idTec);
+        dao.incluirEstadisticas(idTec);
+        logDao.insertar(principal.getIdUsu(), "INCLUIR_ESTADISTICAS",
+                "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
+    }
+
     @GetMapping("/tecnicos/{idTec}/tiene-reparaciones")
     @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Boolean> tieneReparaciones(@PathVariable int idTec) {

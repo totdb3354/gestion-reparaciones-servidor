@@ -59,6 +59,8 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 | `/registrar` | POST | ADMIN |
 | `/activar/{id}` | PATCH | ADMIN |
 | `/desactivar/{id}` | PATCH | ADMIN |
+| `/excluir-estadisticas/{id}` | PATCH | ADMIN |
+| `/incluir-estadisticas/{id}` | PATCH | ADMIN |
 | `/rol/{id}` | PATCH | ADMIN |
 | `/{id}` | DELETE | ADMIN |
 

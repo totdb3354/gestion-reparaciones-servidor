@@ -66,7 +66,7 @@ Solo técnicos con `ACTIVO = true`.
 
 ### GET `/api/usuarios/tecnicos`
 Devuelve usuarios con rol TECNICO incluyendo datos del técnico asociado.  
-**Response:** `[{ "idUsu": 2, "nombreUsuario": "juan", "rol": "TECNICO", "idTec": 1, "nombreTecnico": "Juan García", "activo": true }, ...]`
+**Response:** `[{ "idUsu": 2, "nombreUsuario": "juan", "rol": "TECNICO", "idTec": 1, "nombreTecnico": "Juan García", "activo": true, "esEstadistica": true }, ...]`
 
 ### POST `/api/usuarios/tecnicos`
 Crea técnico + usuario en una transacción.  
@@ -80,6 +80,12 @@ Crea técnico + usuario en una transacción.
 **Response:** 204 No Content
 
 ### PATCH `/api/usuarios/tecnicos/{idTec}/desactivar`
+**Response:** 204 No Content
+
+### PATCH `/api/usuarios/tecnicos/{idTec}/excluir-estadisticas`
+**Response:** 204 No Content
+
+### PATCH `/api/usuarios/tecnicos/{idTec}/incluir-estadisticas`
 **Response:** 204 No Content
 
 ### GET `/api/usuarios/tecnicos/{idTec}/tiene-reparaciones`
