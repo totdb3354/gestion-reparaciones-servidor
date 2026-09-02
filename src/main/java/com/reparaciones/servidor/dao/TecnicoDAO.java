@@ -15,7 +15,8 @@ public class TecnicoDAO {
     private static final RowMapper<Tecnico> MAPPER = (rs, row) -> new Tecnico(
             rs.getInt("ID_TEC"),
             rs.getString("NOMBRE"),
-            rs.getBoolean("ACTIVO")
+            rs.getBoolean("ACTIVO"),
+            rs.getBoolean("ES_ESTADISTICA")
     );
 
     public TecnicoDAO(JdbcTemplate jdbc) {
@@ -24,7 +25,7 @@ public class TecnicoDAO {
 
     public List<Tecnico> getAll() {
         return jdbc.query("""
-                SELECT t.ID_TEC, t.NOMBRE, t.ACTIVO FROM Tecnico t
+                SELECT t.ID_TEC, t.NOMBRE, t.ACTIVO, t.ES_ESTADISTICA FROM Tecnico t
                 JOIN Usuario u ON t.ID_TEC = u.ID_TEC
                 WHERE u.ROL IN ('TECNICO','SUPERTECNICO')
                 ORDER BY t.NOMBRE
@@ -33,7 +34,7 @@ public class TecnicoDAO {
 
     public List<Tecnico> getAllActivos() {
         return jdbc.query("""
-                SELECT t.ID_TEC, t.NOMBRE, t.ACTIVO FROM Tecnico t
+                SELECT t.ID_TEC, t.NOMBRE, t.ACTIVO, t.ES_ESTADISTICA FROM Tecnico t
                 JOIN Usuario u ON t.ID_TEC = u.ID_TEC
                 WHERE u.ROL IN ('TECNICO','SUPERTECNICO') AND t.ACTIVO = 1
                 ORDER BY t.NOMBRE
