@@ -38,6 +38,7 @@ Persona física que trabaja en el taller.
 | ID_TEC | INT AUTO_INCREMENT | PK |
 | NOMBRE | VARCHAR(100) | Nombre completo |
 | ACTIVO | BOOLEAN | Desactivar en lugar de borrar si tiene historial |
+| ES_ESTADISTICA | BOOLEAN | si cuenta en la vista de estadísticas (exclusión ronda 2, spec 2026-09-02) |
 
 ---
 

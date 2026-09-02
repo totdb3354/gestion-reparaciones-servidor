@@ -76,6 +76,15 @@ public class UsuarioDAO {
         jdbc.update("UPDATE Tecnico SET ACTIVO = 0 WHERE ID_TEC = ?", idTec);
     }
 
+    // Solo actualiza Tecnico.ES_ESTADISTICA — espejo de activar/desactivar
+    public void excluirEstadisticas(int idTec) {
+        jdbc.update("UPDATE Tecnico SET ES_ESTADISTICA = 0 WHERE ID_TEC = ?", idTec);
+    }
+
+    public void incluirEstadisticas(int idTec) {
+        jdbc.update("UPDATE Tecnico SET ES_ESTADISTICA = 1 WHERE ID_TEC = ?", idTec);
+    }
+
     public boolean tieneReparaciones(int idTec) {
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM Reparacion WHERE ID_TEC = ?",

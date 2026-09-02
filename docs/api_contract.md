@@ -47,7 +47,7 @@ Sin autenticación requerida.
 
 ### GET `/api/tecnicos`
 Devuelve todos los técnicos (activos e inactivos).  
-**Response:** `[{ "idTec": 1, "nombre": "Juan", "activo": true }, ...]`
+**Response:** `[{ "idTec": 1, "nombre": "Juan", "activo": true, "esEstadistica": true }, ...]`
 
 ### GET `/api/tecnicos/activos`
 Solo técnicos con `ACTIVO = true`.
@@ -80,6 +80,12 @@ Crea técnico + usuario en una transacción.
 **Response:** 204 No Content
 
 ### PATCH `/api/usuarios/tecnicos/{idTec}/desactivar`
+**Response:** 204 No Content
+
+### PATCH `/api/usuarios/tecnicos/{idTec}/excluir-estadisticas`
+**Response:** 204 No Content
+
+### PATCH `/api/usuarios/tecnicos/{idTec}/incluir-estadisticas`
 **Response:** 204 No Content
 
 ### GET `/api/usuarios/tecnicos/{idTec}/tiene-reparaciones`
