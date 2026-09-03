@@ -58,6 +58,15 @@ class PuntosCalculoTest {
         assertEquals(0.50, p, 0.001);
     }
 
+    @Test void filaConCantidadCeroPuntuaComoUnaUnidad() {
+        // Las "otras acciones" del formulario se guardan como fila real con CANTIDAD=0
+        // (neutras en stock): son trabajo hecho y puntúan como una unidad, no como cero
+        // (bug cazado en smoke 2026-09-03: bajar el valor 'otro' no movía nada).
+        double p = PuntosCalculo.puntosDeReparacion("R20260901_4",
+                List.of(new PuntosCalculo.Pieza("otro tornilleria", 0)), VALORES);
+        assertEquals(0.50, p, 0.001);
+    }
+
     @Test void pulidoEsFijoAunqueTuvieraPiezas() {
         assertEquals(0.25, PuntosCalculo.puntosDeReparacion("P20260901_1", List.of(), VALORES), 0.001);
         assertEquals(0.25, PuntosCalculo.puntosDeReparacion("P20260901_2",

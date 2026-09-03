@@ -47,7 +47,9 @@ public final class PuntosCalculo {
         if (idRep.startsWith("P")) return valor(valores, "pulido");
         if (piezas.isEmpty())      return valor(valores, "otro");
         return piezas.stream()
-                .mapToDouble(p -> valor(valores, claveDeTipo(p.tipo())) * p.cantidad())
+                // CANTIDAD=0 = fila real sin descuento de stock (las acciones "otro" se
+                // guardan así): es trabajo hecho y puntúa como una unidad, no como cero.
+                .mapToDouble(p -> valor(valores, claveDeTipo(p.tipo())) * Math.max(1, p.cantidad()))
                 .sum();
     }
 
