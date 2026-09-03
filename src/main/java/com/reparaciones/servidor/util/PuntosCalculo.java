@@ -8,7 +8,8 @@ import java.util.function.Function;
 
 /**
  * Cálculo puro de puntos de dificultad (spec 2026-09-01-estadisticas-puntos-design §2).
- * R/G = suma de piezas × cantidad; sin piezas → 'otro'; P = 'pulido' fijo.
+ * R/G = suma de sus piezas, cada fila UNA vez (la cantidad no multiplica — ajuste smoke
+ * 2026-09-03); sin piezas → 'otro'; P = 'pulido' fijo.
  */
 public final class PuntosCalculo {
 
@@ -47,9 +48,11 @@ public final class PuntosCalculo {
         if (idRep.startsWith("P")) return valor(valores, "pulido");
         if (piezas.isEmpty())      return valor(valores, "otro");
         return piezas.stream()
-                // CANTIDAD=0 = fila real sin descuento de stock (las acciones "otro" se
-                // guardan así): es trabajo hecho y puntúa como una unidad, no como cero.
-                .mapToDouble(p -> valor(valores, claveDeTipo(p.tipo())) * Math.max(1, p.cantidad()))
+                // Cada fila de pieza puntúa UNA vez, ignorando CANTIDAD (decisión smoke
+                // 2026-09-03): cantidad>1 suele ser pieza rota o venida defectuosa, y
+                // multiplicar premiaba la rotura. Cubre también las acciones "otro",
+                // guardadas con CANTIDAD=0 (stock neutro), que antes puntuaban cero.
+                .mapToDouble(p -> valor(valores, claveDeTipo(p.tipo())))
                 .sum();
     }
 

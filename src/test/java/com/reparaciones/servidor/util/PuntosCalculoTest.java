@@ -36,10 +36,12 @@ class PuntosCalculoTest {
     }
 
     // ── puntosDeReparacion ────────────────────────────────────────────────────
-    @Test void sumaPiezasPorCantidad() {
+    @Test void cadaPiezaPuntuaUnaVezSinMultiplicarPorCantidad() {
+        // Decisión smoke 2026-09-03: cantidad>1 suele ser pieza rota o venida defectuosa —
+        // multiplicar premiaba la rotura. Cada fila de pieza puntúa una sola vez.
         double p = PuntosCalculo.puntosDeReparacion("R20260901_1",
                 List.of(new PuntosCalculo.Pieza("lcd14", 1), new PuntosCalculo.Pieza("bat14", 2)), VALORES);
-        assertEquals(3.00, p, 0.001); // pantalla 1,00 + bateria 1,00 × 2
+        assertEquals(2.00, p, 0.001); // pantalla 1,00 + bateria 1,00 (la cantidad 2 no multiplica)
     }
 
     @Test void glassConPiezasSumaIgualQueNormal() {
