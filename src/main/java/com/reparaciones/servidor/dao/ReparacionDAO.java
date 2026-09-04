@@ -411,7 +411,7 @@ public class ReparacionDAO {
     public List<PuntoEstadisticaPuntos> getEstadisticasPuntos(
             String granularidad, LocalDate desde, LocalDate hasta, Map<String, Double> valores) {
         List<PuntosCalculo.FilaPuntos> filas = jdbc.query(
-                "SELECT t.NOMBRE, DATE(r.FECHA_FIN) AS FD, r.ID_REP, c.TIPO, rc.CANTIDAD" +
+                "SELECT t.NOMBRE, DATE(r.FECHA_FIN) AS FD, r.ID_REP, r.IMEI, c.TIPO, rc.CANTIDAD" +
                 " FROM Reparacion r" +
                 " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
                 " LEFT JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0" +
@@ -422,6 +422,7 @@ public class ReparacionDAO {
                         rs.getString("NOMBRE"),
                         rs.getDate("FD").toLocalDate(),
                         rs.getString("ID_REP"),
+                        rs.getString("IMEI"),
                         rs.getString("TIPO"),
                         (Integer) rs.getObject("CANTIDAD")),
                 desde, hasta);

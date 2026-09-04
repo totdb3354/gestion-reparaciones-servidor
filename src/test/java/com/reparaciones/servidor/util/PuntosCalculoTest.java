@@ -79,12 +79,12 @@ class PuntosCalculoTest {
     @Test void agregaPorTecnicoYPeriodoConDesglose() {
         LocalDate d = LocalDate.of(2026, 9, 1);
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_1", "lcd14", 1),
-                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_1", "bat14", 1),
-                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_2", null,    null), // sin piezas
-                new PuntosCalculo.FilaPuntos("Marcos", d, "G20260901_1", "g14",   1),
-                new PuntosCalculo.FilaPuntos("Marcos", d, "P20260901_1", null,    null),
-                new PuntosCalculo.FilaPuntos("Zara",   d, "R20260901_3", "cha12", 1));
+                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_1", "111", "lcd14", 1),
+                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_1", "111", "bat14", 1),
+                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_2", "222", null,    null), // sin piezas
+                new PuntosCalculo.FilaPuntos("Marcos", d, "G20260901_1", "111", "g14",   1),
+                new PuntosCalculo.FilaPuntos("Marcos", d, "P20260901_1", "333", null,    null),
+                new PuntosCalculo.FilaPuntos("Zara",   d, "R20260901_3", "444", "cha12", 1));
         List<PuntoEstadisticaPuntos> out = PuntosCalculo.agregar(filas, VALORES, f -> "2026-09");
 
         assertEquals(2, out.size());
@@ -99,19 +99,37 @@ class PuntosCalculoTest {
         assertEquals(1, marcos.getnGlass());
         assertEquals(1, marcos.getnPulidos());
         assertEquals(1, marcos.getnSinPiezas());
+        assertEquals(3, marcos.getnImeis());                   // 111 (R+G), 222, 333
         PuntoEstadisticaPuntos zara = out.stream()
                 .filter(p -> p.getNombreTecnico().equals("Zara")).findFirst().orElseThrow();
         assertEquals(2.00, zara.getPuntos(), 0.001);
+        assertEquals(1, zara.getnImeis());
+    }
+
+    @Test void cuentaImeisDistintosPorPeriodo() {
+        // Mismo IMEI con dos trabajos el mismo día cuenta 1; en otro periodo cuenta en el suyo
+        LocalDate d1 = LocalDate.of(2026, 9, 1), d2 = LocalDate.of(2026, 9, 2);
+        List<PuntosCalculo.FilaPuntos> filas = List.of(
+                new PuntosCalculo.FilaPuntos("Marcos", d1, "G20260901_1", "111", "g14",  1),
+                new PuntosCalculo.FilaPuntos("Marcos", d1, "G20260901_2", "111", "mc14", 1),
+                new PuntosCalculo.FilaPuntos("Marcos", d1, "G20260901_3", "222", "g14",  1),
+                new PuntosCalculo.FilaPuntos("Marcos", d2, "G20260902_1", "111", "g14",  1));
+        List<PuntoEstadisticaPuntos> out = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString);
+        assertEquals(2, out.stream().filter(p -> p.getPeriodo().equals("2026-09-01"))
+                .findFirst().orElseThrow().getnImeis());
+        assertEquals(1, out.stream().filter(p -> p.getPeriodo().equals("2026-09-02"))
+                .findFirst().orElseThrow().getnImeis());
     }
 
     @Test void unaFilaSinPiezaNoDuplicaLaReparacion() {
         // La query trae UNA fila por reparación sin piezas (LEFT JOIN con NULL):
         // no debe contarse como pieza Y como reparación aparte.
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Marcos", LocalDate.of(2026, 9, 1), "R20260901_9", null, null));
+                new PuntosCalculo.FilaPuntos("Marcos", LocalDate.of(2026, 9, 1), "R20260901_9", "999", null, null));
         List<PuntoEstadisticaPuntos> out = PuntosCalculo.agregar(filas, VALORES, f -> "2026-09");
         assertEquals(0.50, out.get(0).getPuntos(), 0.001);
         assertEquals(1, out.get(0).getnSinPiezas());
+        assertEquals(1, out.get(0).getnImeis());
     }
 
     @Test void valoresQueFaltanCaenAlValorPorDefecto() {

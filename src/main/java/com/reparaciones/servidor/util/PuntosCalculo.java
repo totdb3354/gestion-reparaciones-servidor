@@ -29,7 +29,7 @@ public final class PuntosCalculo {
     public record Pieza(String tipo, int cantidad) {}
 
     /** Fila cruda de la query (una por pieza; reparación sin piezas = una fila con tipoPieza null). */
-    public record FilaPuntos(String tecnico, LocalDate fecha, String idRep,
+    public record FilaPuntos(String tecnico, LocalDate fecha, String idRep, String imei,
                              String tipoPieza, Integer cantidad) {}
 
     public static String claveDeTipo(String tipo) {
@@ -59,23 +59,23 @@ public final class PuntosCalculo {
     public static List<PuntoEstadisticaPuntos> agregar(List<FilaPuntos> filas,
                                                        Map<String, Double> valores,
                                                        Function<LocalDate, String> periodoDe) {
-        // 1) agrupar filas por reparación (conservando técnico y fecha)
-        record Rep(String tecnico, LocalDate fecha, String idRep) {}
+        // 1) agrupar filas por reparación (conservando técnico, fecha e IMEI)
+        record Rep(String tecnico, LocalDate fecha, String idRep, String imei) {}
         Map<Rep, List<Pieza>> piezasPorRep = new LinkedHashMap<>();
         for (FilaPuntos f : filas) {
-            Rep rep = new Rep(f.tecnico(), f.fecha(), f.idRep());
+            Rep rep = new Rep(f.tecnico(), f.fecha(), f.idRep(), f.imei());
             List<Pieza> lista = piezasPorRep.computeIfAbsent(rep, k -> new ArrayList<>());
             if (f.tipoPieza() != null || f.cantidad() != null)
                 lista.add(new Pieza(f.tipoPieza(), f.cantidad() == null ? 1 : f.cantidad()));
         }
 
         // 2) acumular por técnico + periodo
-        record Acum(double[] puntos, int[] contadores) {}  // puntos: total,N,G,P — contadores: nN,nG,nP,nSin
+        record Acum(double[] puntos, int[] contadores, Set<String> imeis) {}  // puntos: total,N,G,P — contadores: nN,nG,nP,nSin
         Map<String, Map<String, Acum>> mapa = new LinkedHashMap<>();
         piezasPorRep.forEach((rep, piezas) -> {
             String periodo = periodoDe.apply(rep.fecha());
             Acum a = mapa.computeIfAbsent(rep.tecnico(), k -> new LinkedHashMap<>())
-                         .computeIfAbsent(periodo, k -> new Acum(new double[4], new int[4]));
+                         .computeIfAbsent(periodo, k -> new Acum(new double[4], new int[4], new HashSet<>()));
             double pts = puntosDeReparacion(rep.idRep(), piezas, valores);
             a.puntos()[0] += pts;
             char pref = rep.idRep().charAt(0);
@@ -83,6 +83,7 @@ public final class PuntosCalculo {
             if (pref == 'G') { a.puntos()[2] += pts; a.contadores()[1]++; }
             if (pref == 'P') { a.puntos()[3] += pts; a.contadores()[2]++; }
             if (pref != 'P' && piezas.isEmpty()) a.contadores()[3]++;
+            if (rep.imei() != null) a.imeis().add(rep.imei()); // IMEIs distintos del periodo
         });
 
         // 3) aplanar y ordenar como el endpoint viejo (periodo, técnico)
@@ -90,7 +91,8 @@ public final class PuntosCalculo {
         mapa.forEach((tec, periodos) -> periodos.forEach((periodo, a) ->
                 out.add(new PuntoEstadisticaPuntos(tec, periodo,
                         a.puntos()[0], a.puntos()[1], a.puntos()[2], a.puntos()[3],
-                        a.contadores()[0], a.contadores()[1], a.contadores()[2], a.contadores()[3]))));
+                        a.contadores()[0], a.contadores()[1], a.contadores()[2], a.contadores()[3],
+                        a.imeis().size()))));
         out.sort(Comparator.comparing(PuntoEstadisticaPuntos::getPeriodo)
                            .thenComparing(PuntoEstadisticaPuntos::getNombreTecnico));
         return out;

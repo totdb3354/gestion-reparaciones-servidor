@@ -12,12 +12,14 @@ public class PuntoEstadisticaPuntos {
     private int    nGlass;
     private int    nPulidos;
     private int    nSinPiezas;
+    private int    nImeis;
 
     public PuntoEstadisticaPuntos() {}
 
     public PuntoEstadisticaPuntos(String nombreTecnico, String periodo, double puntos,
                                   double puntosNormales, double puntosGlass, double puntosPulidos,
-                                  int nNormales, int nGlass, int nPulidos, int nSinPiezas) {
+                                  int nNormales, int nGlass, int nPulidos, int nSinPiezas,
+                                  int nImeis) {
         this.nombreTecnico = nombreTecnico;
         this.periodo = periodo;
         this.puntos = puntos;
@@ -28,6 +30,7 @@ public class PuntoEstadisticaPuntos {
         this.nGlass = nGlass;
         this.nPulidos = nPulidos;
         this.nSinPiezas = nSinPiezas;
+        this.nImeis = nImeis;
     }
 
     public String getNombreTecnico()  { return nombreTecnico; }
@@ -40,4 +43,5 @@ public class PuntoEstadisticaPuntos {
     public int    getnGlass()         { return nGlass; }
     public int    getnPulidos()       { return nPulidos; }
     public int    getnSinPiezas()     { return nSinPiezas; }
+    public int    getnImeis()         { return nImeis; }
 }
