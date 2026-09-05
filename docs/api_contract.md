@@ -47,7 +47,7 @@ Sin autenticación requerida.
 
 ### GET `/api/tecnicos`
 Devuelve todos los técnicos (activos e inactivos).  
-**Response:** `[{ "idTec": 1, "nombre": "Juan", "activo": true, "esEstadistica": true }, ...]`
+**Response:** `[{ "idTec": 1, "nombre": "Juan", "activo": true, "esEstadistica": true, "esGlass": false }, ...]`
 
 ### GET `/api/tecnicos/activos`
 Solo técnicos con `ACTIVO = true`.
@@ -58,6 +58,11 @@ Solo técnicos con `ACTIVO = true`.
 
 ### DELETE `/api/tecnicos/{idTec}`
 **Response:** 204 No Content
+
+### PATCH `/api/tecnicos/{idTec}/glass`
+Habilita o deshabilita al técnico para la glass automática del modal de asignación (spec 2026-09-05-glass-prediccion). Rol: `SUPERTECNICO` (Admin → 403).  
+**Request:** `{ "habilitado": true }`  
+**Response:** 204. 404 si el técnico no existe. Log `HABILITAR_GLASS` / `DESHABILITAR_GLASS` con `ID_TEC: n, NOMBRE: <nombre>`.
 
 ---
 
