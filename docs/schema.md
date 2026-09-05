@@ -39,6 +39,7 @@ Persona física que trabaja en el taller.
 | NOMBRE | VARCHAR(100) | Nombre completo |
 | ACTIVO | BOOLEAN | Desactivar en lugar de borrar si tiene historial |
 | ES_ESTADISTICA | BOOLEAN | si cuenta en la vista de estadísticas (exclusión ronda 2, spec 2026-09-02) |
+| ES_GLASS | BOOLEAN | habilitado para la glass automática del modal de asignación (spec 2026-09-05-glass-prediccion); default 0 |
 
 ---
 
