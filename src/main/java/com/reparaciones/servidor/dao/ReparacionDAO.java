@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.*;
+import com.reparaciones.servidor.util.Jornada;
 import com.reparaciones.servidor.util.PuntosCalculo;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,6 +15,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.WeekFields;
@@ -410,22 +412,32 @@ public class ReparacionDAO {
      */
     public List<PuntoEstadisticaPuntos> getEstadisticasPuntos(
             String granularidad, LocalDate desde, LocalDate hasta, Map<String, Double> valores) {
+        // La BD guarda UTC: el rango se pide por instante (días de Madrid completos) y la fecha
+        // del punto y el "en jornada" salen de la hora de cierre en Madrid (spec 2026-09-08 §5).
+        // Antes DATE(FECHA_FIN) usaba la fecha UTC: un cierre entre las 00:00 y las 02:00 de
+        // verano caía en el día anterior.
+        Timestamp desdeUtc = Timestamp.from(desde.atStartOfDay(Jornada.MADRID).toInstant());
+        Timestamp hastaUtc = Timestamp.from(hasta.plusDays(1).atStartOfDay(Jornada.MADRID).toInstant());
         List<PuntosCalculo.FilaPuntos> filas = jdbc.query(
-                "SELECT t.NOMBRE, DATE(r.FECHA_FIN) AS FD, r.ID_REP, r.IMEI, c.TIPO, rc.CANTIDAD" +
+                "SELECT t.NOMBRE, r.FECHA_FIN, r.ID_REP, r.IMEI, c.TIPO, rc.CANTIDAD" +
                 " FROM Reparacion r" +
                 " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
                 " LEFT JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0" +
                 " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
                 " WHERE (r.ID_REP LIKE 'R%' OR r.ID_REP LIKE 'G%' OR r.ID_REP LIKE 'P%')" +
-                " AND r.FECHA_FIN IS NOT NULL AND DATE(r.FECHA_FIN) BETWEEN ? AND ?",
-                (rs, row) -> new PuntosCalculo.FilaPuntos(
-                        rs.getString("NOMBRE"),
-                        rs.getDate("FD").toLocalDate(),
-                        rs.getString("ID_REP"),
-                        rs.getString("IMEI"),
-                        rs.getString("TIPO"),
-                        (Integer) rs.getObject("CANTIDAD")),
-                desde, hasta);
+                " AND r.FECHA_FIN IS NOT NULL AND r.FECHA_FIN >= ? AND r.FECHA_FIN < ?",
+                (rs, row) -> {
+                    ZonedDateTime cierre = Jornada.aMadrid(rs.getTimestamp("FECHA_FIN"));
+                    return new PuntosCalculo.FilaPuntos(
+                            rs.getString("NOMBRE"),
+                            cierre.toLocalDate(),
+                            rs.getString("ID_REP"),
+                            rs.getString("IMEI"),
+                            rs.getString("TIPO"),
+                            (Integer) rs.getObject("CANTIDAD"),
+                            Jornada.enJornada(cierre));
+                },
+                desdeUtc, hastaUtc);
         return PuntosCalculo.agregar(filas, valores,
                 fecha -> formatearPeriodo(inicioPeriodo(fecha, granularidad), granularidad));
     }
