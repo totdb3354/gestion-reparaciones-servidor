@@ -412,10 +412,14 @@ public class ReparacionDAO {
      */
     public List<PuntoEstadisticaPuntos> getEstadisticasPuntos(
             String granularidad, LocalDate desde, LocalDate hasta, Map<String, Double> valores) {
-        // La BD guarda UTC: el rango se pide por instante (días de Madrid completos) y la fecha
-        // del punto y el "en jornada" salen de la hora de cierre en Madrid (spec 2026-09-08 §5).
-        // Antes DATE(FECHA_FIN) usaba la fecha UTC: un cierre entre las 00:00 y las 02:00 de
-        // verano caía en el día anterior.
+        // La BD y la JVM del contenedor van en UTC (plan 2026-06-19-timezone-madrid: el cliente
+        // convierte con FechaUtils; misma premisa que cutoffInicioDeHoyMadrid y el "hecho hoy" de
+        // la carga). Invariante: la zona por defecto de la JVM debe ser la misma en la que NOW()
+        // escribe FECHA_FIN; con las dos en UTC, getTimestamp().toInstant() es el instante real.
+        // El rango se pide por instante (días de Madrid completos) y la fecha del punto y el
+        // "en jornada" salen de la hora de cierre en Madrid (spec 2026-09-08 §5). Antes
+        // DATE(FECHA_FIN) usaba la fecha UTC: un cierre entre las 00:00 y las 02:00 de verano
+        // caía en el día anterior.
         Timestamp desdeUtc = Timestamp.from(desde.atStartOfDay(Jornada.MADRID).toInstant());
         Timestamp hastaUtc = Timestamp.from(hasta.plusDays(1).atStartOfDay(Jornada.MADRID).toInstant());
         List<PuntosCalculo.FilaPuntos> filas = jdbc.query(
