@@ -28,9 +28,17 @@ public final class PuntosCalculo {
 
     public record Pieza(String tipo, int cantidad) {}
 
-    /** Fila cruda de la query (una por pieza; reparación sin piezas = una fila con tipoPieza null). */
+    /** Fila cruda de la query (una por pieza; reparación sin piezas = una fila con tipoPieza null).
+     *  {@code fecha} es la del cierre en Madrid; {@code enJornada} = cierre dentro del horario
+     *  ({@link Jornada}), la misma para todas las filas de una reparación. */
     public record FilaPuntos(String tecnico, LocalDate fecha, String idRep, String imei,
-                             String tipoPieza, Integer cantidad) {}
+                             String tipoPieza, Integer cantidad, boolean enJornada) {
+        /** Fila en jornada (compatibilidad: tests previos y usos sin horario). */
+        public FilaPuntos(String tecnico, LocalDate fecha, String idRep, String imei,
+                          String tipoPieza, Integer cantidad) {
+            this(tecnico, fecha, idRep, imei, tipoPieza, cantidad, true);
+        }
+    }
 
     public static String claveDeTipo(String tipo) {
         if (tipo == null) return "otro";
@@ -59,23 +67,24 @@ public final class PuntosCalculo {
     public static List<PuntoEstadisticaPuntos> agregar(List<FilaPuntos> filas,
                                                        Map<String, Double> valores,
                                                        Function<LocalDate, String> periodoDe) {
-        // 1) agrupar filas por reparación (conservando técnico, fecha e IMEI)
-        record Rep(String tecnico, LocalDate fecha, String idRep, String imei) {}
+        // 1) agrupar filas por reparación (conservando técnico, fecha, IMEI y si cerró en jornada)
+        record Rep(String tecnico, LocalDate fecha, String idRep, String imei, boolean enJornada) {}
         Map<Rep, List<Pieza>> piezasPorRep = new LinkedHashMap<>();
         for (FilaPuntos f : filas) {
-            Rep rep = new Rep(f.tecnico(), f.fecha(), f.idRep(), f.imei());
+            Rep rep = new Rep(f.tecnico(), f.fecha(), f.idRep(), f.imei(), f.enJornada());
             List<Pieza> lista = piezasPorRep.computeIfAbsent(rep, k -> new ArrayList<>());
             if (f.tipoPieza() != null || f.cantidad() != null)
                 lista.add(new Pieza(f.tipoPieza(), f.cantidad() == null ? 1 : f.cantidad()));
         }
 
-        // 2) acumular por técnico + periodo
-        record Acum(double[] puntos, int[] contadores, Set<String> imeis) {}  // puntos: total,N,G,P — contadores: nN,nG,nP,nSin
+        // 2) acumular por técnico + periodo. Lo de fuera de horario suma en el total pero no
+        //    promedia (spec 2026-09-08): puntos[4] e imeisJornada solo con cierres en jornada.
+        record Acum(double[] puntos, int[] contadores, Set<String> imeis, Set<String> imeisJornada) {}  // puntos: total,N,G,P,jornada — contadores: nN,nG,nP,nSin
         Map<String, Map<String, Acum>> mapa = new LinkedHashMap<>();
         piezasPorRep.forEach((rep, piezas) -> {
             String periodo = periodoDe.apply(rep.fecha());
             Acum a = mapa.computeIfAbsent(rep.tecnico(), k -> new LinkedHashMap<>())
-                         .computeIfAbsent(periodo, k -> new Acum(new double[4], new int[4], new HashSet<>()));
+                         .computeIfAbsent(periodo, k -> new Acum(new double[5], new int[4], new HashSet<>(), new HashSet<>()));
             double pts = puntosDeReparacion(rep.idRep(), piezas, valores);
             a.puntos()[0] += pts;
             char pref = rep.idRep().charAt(0);
@@ -84,6 +93,10 @@ public final class PuntosCalculo {
             if (pref == 'P') { a.puntos()[3] += pts; a.contadores()[2]++; }
             if (pref != 'P' && piezas.isEmpty()) a.contadores()[3]++;
             if (rep.imei() != null) a.imeis().add(rep.imei()); // IMEIs distintos del periodo
+            if (rep.enJornada()) {
+                a.puntos()[4] += pts;
+                if (rep.imei() != null) a.imeisJornada().add(rep.imei());
+            }
         });
 
         // 3) aplanar y ordenar como el endpoint viejo (periodo, técnico)
@@ -92,7 +105,7 @@ public final class PuntosCalculo {
                 out.add(new PuntoEstadisticaPuntos(tec, periodo,
                         a.puntos()[0], a.puntos()[1], a.puntos()[2], a.puntos()[3],
                         a.contadores()[0], a.contadores()[1], a.contadores()[2], a.contadores()[3],
-                        a.imeis().size()))));
+                        a.imeis().size(), a.puntos()[4], a.imeisJornada().size()))));
         out.sort(Comparator.comparing(PuntoEstadisticaPuntos::getPeriodo)
                            .thenComparing(PuntoEstadisticaPuntos::getNombreTecnico));
         return out;

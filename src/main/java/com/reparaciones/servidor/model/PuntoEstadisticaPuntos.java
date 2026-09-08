@@ -13,13 +13,15 @@ public class PuntoEstadisticaPuntos {
     private int    nPulidos;
     private int    nSinPiezas;
     private int    nImeis;
+    private double puntosJornada;   // aditivo 2026-09-08: cerrados en horario (lo de fuera suma, no promedia)
+    private int    nImeisJornada;   // aditivo 2026-09-08: IMEIs con algún cierre en horario en el periodo
 
     public PuntoEstadisticaPuntos() {}
 
     public PuntoEstadisticaPuntos(String nombreTecnico, String periodo, double puntos,
                                   double puntosNormales, double puntosGlass, double puntosPulidos,
                                   int nNormales, int nGlass, int nPulidos, int nSinPiezas,
-                                  int nImeis) {
+                                  int nImeis, double puntosJornada, int nImeisJornada) {
         this.nombreTecnico = nombreTecnico;
         this.periodo = periodo;
         this.puntos = puntos;
@@ -31,6 +33,8 @@ public class PuntoEstadisticaPuntos {
         this.nPulidos = nPulidos;
         this.nSinPiezas = nSinPiezas;
         this.nImeis = nImeis;
+        this.puntosJornada = puntosJornada;
+        this.nImeisJornada = nImeisJornada;
     }
 
     public String getNombreTecnico()  { return nombreTecnico; }
@@ -44,4 +48,6 @@ public class PuntoEstadisticaPuntos {
     public int    getnPulidos()       { return nPulidos; }
     public int    getnSinPiezas()     { return nSinPiezas; }
     public int    getnImeis()         { return nImeis; }
+    public double getPuntosJornada()  { return puntosJornada; }
+    public int    getnImeisJornada()  { return nImeisJornada; }
 }

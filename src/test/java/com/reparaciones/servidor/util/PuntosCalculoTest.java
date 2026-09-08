@@ -138,4 +138,41 @@ class PuntosCalculoTest {
                 List.of(new PuntosCalculo.Pieza("bat14", 1)), Map.of());
         assertEquals(0.0, p, 0.001);
     }
+
+    // ── horario: lo de fuera suma, no promedia (spec 2026-09-08) ─────────────
+    @Test void puntosJornadaSumanSoloLosCierresEnHorario() {
+        LocalDate d = LocalDate.of(2026, 8, 28);
+        List<PuntosCalculo.FilaPuntos> filas = List.of(
+                new PuntosCalculo.FilaPuntos("Alex", d, "R20260828_1", "111", "lcd14", 1,    true),  // 2 piezas en jornada
+                new PuntosCalculo.FilaPuntos("Alex", d, "R20260828_1", "111", "bat14", 1,    true),
+                new PuntosCalculo.FilaPuntos("Alex", d, "R20260828_2", "222", "cha12", 1,    false), // extra
+                new PuntosCalculo.FilaPuntos("Alex", d, "P20260828_1", "333", null,    null, false)); // pulido extra
+        PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString).get(0);
+        assertEquals(4.25, p.getPuntos(), 0.001);          // 2,0 + 2,0 + 0,25: el total suma todo
+        assertEquals(2.00, p.getPuntosJornada(), 0.001);   // solo la reparación en horario
+        assertEquals(3, p.getnImeis());
+        assertEquals(1, p.getnImeisJornada());
+        assertEquals(1, p.getnPulidos());                  // los contadores no cambian
+    }
+
+    @Test void imeiConUnCierreEnHorarioYOtroFueraCuentaUnaVezEnJornada() {
+        LocalDate d = LocalDate.of(2026, 8, 28);
+        List<PuntosCalculo.FilaPuntos> filas = List.of(
+                new PuntosCalculo.FilaPuntos("Alex", d, "G20260828_1", "111", "g14",  1, true),
+                new PuntosCalculo.FilaPuntos("Alex", d, "G20260828_2", "111", "mc14", 1, false),
+                new PuntosCalculo.FilaPuntos("Alex", d, "G20260828_3", "222", "g14",  1, false)); // solo extra
+        PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString).get(0);
+        assertEquals(2, p.getnImeis());
+        assertEquals(1, p.getnImeisJornada());
+        assertEquals(0.50, p.getPuntosJornada(), 0.001);
+    }
+
+    @Test void filasSinHorarioCuentanComoJornada() {
+        // Constructor de 6 argumentos (tests previos y usos sin horario): todo en jornada
+        List<PuntosCalculo.FilaPuntos> filas = List.of(
+                new PuntosCalculo.FilaPuntos("Alex", LocalDate.of(2026, 8, 28), "R20260828_1", "111", "lcd14", 1));
+        PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString).get(0);
+        assertEquals(p.getPuntos(), p.getPuntosJornada(), 0.001);
+        assertEquals(p.getnImeis(), p.getnImeisJornada());
+    }
 }
