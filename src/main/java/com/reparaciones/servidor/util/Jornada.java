@@ -37,20 +37,24 @@ public final class Jornada {
             DayOfWeek.THURSDAY,  LocalTime.of(17, 0),
             DayOfWeek.FRIDAY,    LocalTime.of(14, 30));
 
-    /** Margen a cada lado de la franja (decisión del usuario 2026-09-08): cerrar el último
-     *  móvil a las 18:03 no es hora extra. Franja efectiva 8:15–18:15 / 17:15 / 14:45. */
-    public static final Duration MARGEN = Duration.ofMinutes(15);
+    /** Margen ANTES de la entrada (decisión del usuario 2026-09-08): la franja arranca a las 8:00
+     *  en punto — quien llega pronto y cierra algo antes de las 8:30 no está haciendo horas extra. */
+    public static final Duration MARGEN_ENTRADA = Duration.ofMinutes(30);
+
+    /** Margen DESPUÉS de la salida (decisión del usuario 2026-09-08): cerrar el último móvil a las
+     *  18:03 no es hora extra. Franja efectiva 8:00–18:15 (L-M) / 8:00–17:15 (X-J) / 8:00–14:45 (V). */
+    public static final Duration MARGEN_SALIDA = Duration.ofMinutes(15);
 
     /** Cierre en hora de Madrid a partir del Timestamp UTC de la BD (la JVM del contenedor va en UTC). */
     public static ZonedDateTime aMadrid(Timestamp utc) {
         return utc.toInstant().atZone(MADRID);
     }
 
-    /** true si el cierre cae en [ENTRADA − MARGEN, SALIDA + MARGEN] (extremos incluidos) de un día con jornada. */
+    /** true si el cierre cae en [ENTRADA − MARGEN_ENTRADA, SALIDA + MARGEN_SALIDA] (extremos incluidos) de un día con jornada. */
     public static boolean enJornada(ZonedDateTime cierreMadrid) {
         LocalTime salida = SALIDA.get(cierreMadrid.getDayOfWeek());
         if (salida == null) return false;
         LocalTime hora = cierreMadrid.toLocalTime();
-        return !hora.isBefore(ENTRADA.minus(MARGEN)) && !hora.isAfter(salida.plus(MARGEN));
+        return !hora.isBefore(ENTRADA.minus(MARGEN_ENTRADA)) && !hora.isAfter(salida.plus(MARGEN_SALIDA));
     }
 }

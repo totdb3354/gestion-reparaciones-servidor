@@ -310,7 +310,7 @@ Estadísticas de reparaciones por técnico en el rango.
 **Response:** `[{ "etiqueta": "2025-01", "tecnico": "Juan", "valor": 12 }, ...]`
 
 ### GET `/api/reparaciones/estadisticas/puntos?granularidad={dia|semana|mes}&desde={YYYY-MM-DD}&hasta={YYYY-MM-DD}`
-Estadísticas por puntos de dificultad por técnico en el rango (spec 2026-09-01). El `periodo` se calcula con la fecha de cierre **en hora de Madrid**; el rango `desde`/`hasta` son días de Madrid completos. `puntosJornada` y `nImeisJornada` (spec 2026-09-08) son la parte cerrada **dentro del horario del taller** (8:30–18:00 L-M, 17:00 X-J, 14:30 V, con 15 min de margen; fin de semana = fuera): el cliente los usa en las medias, y `puntos`/`nImeis` en los totales.  
+Estadísticas por puntos de dificultad por técnico en el rango (spec 2026-09-01). El `periodo` se calcula con la fecha de cierre **en hora de Madrid**; el rango `desde`/`hasta` son días de Madrid completos. `puntosJornada` y `nImeisJornada` (spec 2026-09-08) son la parte cerrada **dentro del horario del taller** (horario 8:30–18:00 L-M, 17:00 X-J, 14:30 V; franja efectiva con margen 8:00–18:15 / 8:00–17:15 / 8:00–14:45; fin de semana = fuera): el cliente los usa en las medias, y `puntos`/`nImeis` en los totales.  
 **Response:**
 ```json
 [

@@ -7,7 +7,7 @@ import java.time.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Horario del taller con margen de 15 min (spec 2026-09-08 §2). Fechas: 2026-08-31 lunes,
+/** Horario del taller: franja desde las 8:00 (30 min antes de la entrada) hasta la salida + 15 min (spec 2026-09-08 §2). Fechas: 2026-08-31 lunes,
  *  2026-09-02 miércoles, 2026-08-28 viernes, 2026-09-05 sábado, 2026-01-12 lunes. */
 class JornadaTest {
 
@@ -15,9 +15,10 @@ class JornadaTest {
         return LocalDateTime.parse(isoLocal).atZone(Jornada.MADRID);
     }
 
-    @Test void lunesEntraALasOchoYMediaYSaleALasSeisConMargen() {
-        assertFalse(Jornada.enJornada(madrid("2026-08-31T08:14:59")));
-        assertTrue (Jornada.enJornada(madrid("2026-08-31T08:15:00")));
+    @Test void lunesFranjaDesdeLasOchoHastaLasSeisYCuarto() {
+        assertFalse(Jornada.enJornada(madrid("2026-08-31T07:59:59")));
+        assertTrue (Jornada.enJornada(madrid("2026-08-31T08:00:00")));   // 30 min antes de la entrada
+        assertTrue (Jornada.enJornada(madrid("2026-08-31T08:14:59")));
         assertTrue (Jornada.enJornada(madrid("2026-08-31T13:00:00")));   // la comida no descuenta
         assertTrue (Jornada.enJornada(madrid("2026-08-31T18:15:00")));
         assertFalse(Jornada.enJornada(madrid("2026-08-31T18:15:01")));
