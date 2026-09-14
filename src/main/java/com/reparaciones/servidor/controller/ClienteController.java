@@ -3,6 +3,7 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.ClienteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.Cliente;
+import com.reparaciones.servidor.model.ValorBooleano;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,7 +13,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/clientes")
@@ -33,8 +33,8 @@ public class ClienteController {
     public List<Cliente> getActivos() { return dao.getActivos(); }
 
     @GetMapping("/{idCli}/tiene-telefonos")
-    public Map<String, Boolean> tieneTelefonos(@PathVariable int idCli) {
-        return Map.of("value", dao.tieneTelefonos(idCli));
+    public ValorBooleano tieneTelefonos(@PathVariable int idCli) {
+        return new ValorBooleano(dao.tieneTelefonos(idCli));
     }
 
     @PostMapping
@@ -82,7 +82,7 @@ public class ClienteController {
                 "ID_CLI: " + idCli + ", NOMBRE: " + nombre);
     }
 
-    private record NombreRequest(String nombre) {}
-    private record EditarRequest(String nombre, LocalDateTime updatedAt) {}
-    private record ActivoRequest(boolean activo, LocalDateTime updatedAt) {}
+    record NombreRequest(String nombre) {}
+    record EditarRequest(String nombre, LocalDateTime updatedAt) {}
+    record ActivoRequest(boolean activo, LocalDateTime updatedAt) {}
 }

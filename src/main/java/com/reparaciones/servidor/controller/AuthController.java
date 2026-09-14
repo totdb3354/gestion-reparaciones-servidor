@@ -11,7 +11,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -32,7 +31,13 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest req) {
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+            content = @io.swagger.v3.oas.annotations.media.Content(
+                schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = LoginResponse.class))),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", content = @io.swagger.v3.oas.annotations.media.Content)
+    })
+    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest req) {
         try {
             var auth = authManager.authenticate(
                     new UsernamePasswordAuthenticationToken(req.usuario(), req.password()));
@@ -41,13 +46,9 @@ public class AuthController {
 
             logDao.insertar(principal.getIdUsu(), "LOGIN", "");
 
-            Map<String, Object> resp = new HashMap<>();
-            resp.put("idUsu",         principal.getIdUsu());
-            resp.put("nombreUsuario", principal.getUsername());
-            resp.put("rol",           principal.getRol());
-            resp.put("idTec",         principal.getIdTec());
-            resp.put("token",         token);
-            return ResponseEntity.ok(resp);
+            return ResponseEntity.ok(new LoginResponse(
+                    principal.getIdUsu(), principal.getUsername(), principal.getRol(),
+                    principal.getIdTec(), token));
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(401).build();
         }
@@ -68,6 +69,8 @@ public class AuthController {
         }
     }
 
-    private record LoginRequest(String usuario, String password) {}
-    private record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
+    /** Respuesta del login. Mismo JSON que el Map anterior; tipada para el contrato OpenAPI. */
+    public record LoginResponse(int idUsu, String nombreUsuario, String rol, Integer idTec, String token) {}
+    record LoginRequest(String usuario, String password) {}
+    record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
 }
