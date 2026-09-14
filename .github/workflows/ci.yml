@@ -1,0 +1,17 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+      # src/main/resources/application.properties no está en git (credenciales): la suite no lo necesita,
+      # los tests que levantan contexto traen sus propias propiedades (ver OpenApiContractTest).
+      - run: mvn -B -q test
