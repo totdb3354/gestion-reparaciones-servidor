@@ -2,6 +2,7 @@ package com.reparaciones.servidor;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -128,7 +130,25 @@ class OpenApiContractTest {
 
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());
-        Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
+        Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter()
+                .writeValueAsString(ordenarCodigosDeRespuesta(doc)));
+    }
+
+    /** Ordena por clave los códigos de cada "responses" para que el volcado sea estable entre arranques. */
+    private static JsonNode ordenarCodigosDeRespuesta(JsonNode doc) {
+        JsonNode paths = doc.get("paths");
+        if (paths != null) {
+            paths.forEach(operaciones -> operaciones.forEach(operacion -> {
+                if (operacion instanceof ObjectNode opNode
+                        && opNode.get("responses") instanceof ObjectNode responses) {
+                    var ordenadas = new TreeMap<String, JsonNode>();
+                    responses.fields().forEachRemaining(e -> ordenadas.put(e.getKey(), e.getValue()));
+                    responses.removeAll();
+                    ordenadas.forEach(responses::set);
+                }
+            }));
+        }
+        return doc;
     }
 
     /** $ref del esquema del requestBody de una operación (application/json o el único que haya). */
