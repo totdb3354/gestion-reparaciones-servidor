@@ -78,11 +78,34 @@ class OpenApiContractTest {
 
         JsonNode esquemas = doc.path("components").path("schemas");
         assertFalse(esquemas.isMissingNode(), "el contrato no trae components.schemas");
-        for (String esquema : List.of("LoginResponse", "ValorBooleano", "Cliente", "NombreRequest",
-                "EditarRequest", "ActivoRequest", "LoginRequest")) {
+        // Los records anidados se publican prefijados por su controller (ver OpenApiConfig):
+        // ReparacionEditarRequest está en la lista para demostrar que los dos EditarRequest ya no chocan.
+        for (String esquema : List.of("LoginResponse", "ValorBooleano", "Cliente", "ClienteNombreRequest",
+                "ClienteEditarRequest", "ClienteActivoRequest", "AuthLoginRequest",
+                "ReparacionEditarRequest")) {
             assertTrue(esquemas.has(esquema),
                     () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
+
+        JsonNode clienteEditar = esquemas.path("ClienteEditarRequest").path("properties");
+        for (String campo : List.of("nombre", "updatedAt")) {
+            assertTrue(clienteEditar.has(campo), () -> "ClienteEditarRequest sin el campo " + campo
+                    + "; tiene: " + nombres(clienteEditar));
+        }
+
+        JsonNode clienteActivo = esquemas.path("ClienteActivoRequest").path("properties");
+        for (String campo : List.of("activo", "updatedAt")) {
+            assertTrue(clienteActivo.has(campo), () -> "ClienteActivoRequest sin el campo " + campo
+                    + "; tiene: " + nombres(clienteActivo));
+        }
+
+        assertTrue(refDelCuerpo(paths, "/api/clientes/{idCli}", "put").endsWith("/ClienteEditarRequest"),
+                () -> "PUT /api/clientes/{idCli} referencia "
+                        + refDelCuerpo(paths, "/api/clientes/{idCli}", "put"));
+        assertTrue(refDelCuerpo(paths, "/api/clientes/{idCli}/activo", "patch")
+                        .endsWith("/ClienteActivoRequest"),
+                () -> "PATCH /api/clientes/{idCli}/activo referencia "
+                        + refDelCuerpo(paths, "/api/clientes/{idCli}/activo", "patch"));
 
         JsonNode loginResponse = esquemas.path("LoginResponse").path("properties");
         for (String campo : List.of("idUsu", "nombreUsuario", "rol", "idTec", "token")) {
@@ -96,6 +119,20 @@ class OpenApiContractTest {
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());
         Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
+    }
+
+    /** $ref del esquema del requestBody de una operación (application/json o el único que haya). */
+    private static String refDelCuerpo(JsonNode paths, String ruta, String metodo) {
+        JsonNode contenido = paths.path(ruta).path(metodo).path("requestBody").path("content");
+        assertFalse(contenido.isMissingNode(),
+                () -> metodo + " " + ruta + " no declara requestBody en el contrato");
+        JsonNode media = contenido.has("application/json")
+                ? contenido.path("application/json")
+                : contenido.elements().next();
+        String ref = media.path("schema").path("$ref").asText("");
+        assertFalse(ref.isEmpty(),
+                () -> metodo + " " + ruta + " no referencia ningún esquema: " + media);
+        return ref;
     }
 
     private static List<String> nombres(JsonNode objeto) {

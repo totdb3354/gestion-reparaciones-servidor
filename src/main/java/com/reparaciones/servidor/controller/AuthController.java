@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.model.LoginResponse;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.ResponseEntity;
@@ -69,8 +70,6 @@ public class AuthController {
         }
     }
 
-    /** Respuesta del login. Mismo JSON que el Map anterior; tipada para el contrato OpenAPI. */
-    public record LoginResponse(int idUsu, String nombreUsuario, String rol, Integer idTec, String token) {}
     record LoginRequest(String usuario, String password) {}
     record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
 }

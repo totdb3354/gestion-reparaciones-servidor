@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.model.LoginResponse;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ class AuthControllerTest {
         var resp = ctl.login(new AuthController.LoginRequest("fati", "secreta"));
 
         assertEquals(200, resp.getStatusCode().value());
-        var body = (AuthController.LoginResponse) resp.getBody();
+        var body = (LoginResponse) resp.getBody();
         assertNotNull(body);
         assertEquals(7, body.idUsu());
         assertEquals("fati", body.nombreUsuario());
