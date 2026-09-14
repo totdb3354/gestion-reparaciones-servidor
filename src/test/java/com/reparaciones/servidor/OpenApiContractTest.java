@@ -35,7 +35,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "spring.datasource.hikari.initialization-fail-timeout=-1",
         // application.properties no está en git (credenciales), así que el test trae sus propias claves.
         "jwt.secret=secreto-solo-para-tests-de-32-caracteres-o-mas",
-        "jwt.expiration=86400000"
+        "jwt.expiration=86400000",
+        // Para que un application.properties local con springdoc.api-docs.enabled=false no apague
+        // el contrato y haga fallar este test de forma confusa.
+        "springdoc.api-docs.enabled=true"
 })
 class OpenApiContractTest {
 
@@ -52,6 +55,8 @@ class OpenApiContractTest {
      */
     @Test void elContextoArrancaYElContratoExigeSesion() throws Exception {
         var sinToken = mvc.perform(get("/v3/api-docs")).andReturn().getResponse();
+        // Documenta la ausencia actual de un AuthenticationEntryPoint propio; si se añade uno,
+        // este 403 debería pasar a 401 y este test tendría que actualizarse.
         assertEquals(403, sinToken.getStatus(), "el contrato OpenAPI no puede ser público");
 
         var tokenMalo = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer no-es-un-jwt"))
@@ -116,6 +121,11 @@ class OpenApiContractTest {
         assertEquals("boolean", esquemas.path("ValorBooleano").path("properties").path("value")
                 .path("type").asText(), "ValorBooleano.value debe ser boolean");
 
+        String refTieneTelefonos = refDeLaRespuesta(paths, "/api/clientes/{idCli}/tiene-telefonos",
+                "get", "200");
+        assertTrue(refTieneTelefonos.endsWith("/ValorBooleano"),
+                () -> "GET /api/clientes/{idCli}/tiene-telefonos responde " + refTieneTelefonos);
+
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());
         Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
@@ -132,6 +142,20 @@ class OpenApiContractTest {
         String ref = media.path("schema").path("$ref").asText("");
         assertFalse(ref.isEmpty(),
                 () -> metodo + " " + ruta + " no referencia ningún esquema: " + media);
+        return ref;
+    }
+
+    /** $ref del esquema de una respuesta (código dado) de una operación. */
+    private static String refDeLaRespuesta(JsonNode paths, String ruta, String metodo, String codigo) {
+        JsonNode contenido = paths.path(ruta).path(metodo).path("responses").path(codigo).path("content");
+        assertFalse(contenido.isMissingNode(),
+                () -> metodo + " " + ruta + " no declara el código " + codigo + " en el contrato");
+        JsonNode media = contenido.has("application/json")
+                ? contenido.path("application/json")
+                : contenido.elements().next();
+        String ref = media.path("schema").path("$ref").asText("");
+        assertFalse(ref.isEmpty(),
+                () -> metodo + " " + ruta + " " + codigo + " no referencia ningún esquema: " + media);
         return ref;
     }
 

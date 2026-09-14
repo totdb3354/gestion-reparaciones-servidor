@@ -58,7 +58,9 @@ public class OpenApiConfig {
         @Override
         protected String getNameOfClass(Class<?> cls) {
             Class<?> envolvente = cls.getEnclosingClass();
-            if (envolvente == null || getUseFqn()) {
+            // getUseFqn() es defensivo: springdoc 2.6 aplica springdoc.use-fqn al TypeNameResolver.std
+            // estático, no a este bean, así que en la práctica esta rama nunca se toma hoy.
+            if (envolvente == null || cls.getSimpleName().isEmpty() || getUseFqn()) {
                 return super.getNameOfClass(cls);
             }
             return prefijo(envolvente) + cls.getSimpleName();
