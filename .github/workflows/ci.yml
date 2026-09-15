@@ -14,4 +14,4 @@ jobs:
           cache: maven
       # src/main/resources/application.properties no está en git (credenciales): la suite no lo necesita,
       # los tests que levantan contexto traen sus propias propiedades (ver OpenApiContractTest).
-      - run: mvn -B -q test
+      - run: mvn -B test
