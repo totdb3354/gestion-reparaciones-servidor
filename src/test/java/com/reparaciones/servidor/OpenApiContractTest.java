@@ -156,6 +156,7 @@ class OpenApiContractTest {
         // de petición, verificado contra el DAO caso a caso (ver task-3-report.md).
         assertTrue(esquemas.path("TelefonoEstadoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));
         assertTrue(esquemas.path("PulidoAsignacionPulidoRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("ReparacionAsignacionRequest").path("properties").path("comentario").path("nullable").asBoolean(false), "ReparacionAsignacionRequest.comentario nullable");
         assertTrue(esquemas.path("PulidoActualizarPulidoRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
         assertTrue(esquemas.path("ReparacionActualizarAsignacionRequest").path("properties").path("comentarioAsignacion").path("nullable").asBoolean(false));
         assertTrue(esquemas.path("GlassGlassAsignacionRequest").path("properties").path("comentario").path("nullable").asBoolean(false));

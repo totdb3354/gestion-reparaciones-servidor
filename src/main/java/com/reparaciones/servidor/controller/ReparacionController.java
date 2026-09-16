@@ -579,7 +579,7 @@ public class ReparacionController {
     private record BorradorRequest(String contenido) {}
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
-    private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente, boolean esChasis) {}
+    private record AsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente, boolean esChasis) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion, String categoria) {}
 private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) String comentarioAsignacion, LocalDateTime updatedAt) {}
