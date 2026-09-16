@@ -79,7 +79,7 @@ class OpenApiContractTest {
         assertNotNull(paths, "el contrato no trae paths");
         for (String ruta : List.of("/api/clientes", "/api/clientes/activos", "/api/clientes/{idCli}",
                 "/api/clientes/{idCli}/tiene-telefonos", "/api/clientes/{idCli}/activo",
-                "/api/auth/login")) {
+                "/api/auth/login", "/api/reparaciones/pendientes/contadores")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         }
 
@@ -89,7 +89,7 @@ class OpenApiContractTest {
         // ReparacionEditarRequest está en la lista para demostrar que los dos EditarRequest ya no chocan.
         for (String esquema : List.of("LoginResponse", "ValorBooleano", "Cliente", "ClienteNombreRequest",
                 "ClienteEditarRequest", "ClienteActivoRequest", "AuthLoginRequest",
-                "ReparacionEditarRequest")) {
+                "ReparacionEditarRequest", "ContadoresPendientes")) {
             assertTrue(esquemas.has(esquema),
                     () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
@@ -122,6 +122,12 @@ class OpenApiContractTest {
 
         assertEquals("boolean", esquemas.path("ValorBooleano").path("properties").path("value")
                 .path("type").asText(), "ValorBooleano.value debe ser boolean");
+
+        JsonNode contadores = esquemas.path("ContadoresPendientes").path("properties");
+        for (String campo : List.of("reparaciones", "glass", "pulidos")) {
+            assertEquals("integer", contadores.path(campo).path("type").asText(),
+                    () -> "ContadoresPendientes." + campo + " debe ser integer");
+        }
 
         String refTieneTelefonos = refDeLaRespuesta(paths, "/api/clientes/{idCli}/tiene-telefonos",
                 "get", "200");

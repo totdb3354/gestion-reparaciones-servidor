@@ -86,6 +86,21 @@ public class ReparacionController {
         return dao.getAsignaciones(FiltroTecnico.efectivo(principal, tecnico));
     }
 
+    /**
+     * Badge y sufijos de Pendientes de la web (spec web-taller §5.2). Sin parámetro cuenta las del técnico
+     * del token (el supertécnico también es técnico); ADMIN sin técnico recibe ceros. Con parámetro, la
+     * regla de FiltroTecnico (un técnico solo puede pedirse a sí mismo).
+     */
+    @GetMapping("/pendientes/contadores")
+    public ContadoresPendientes getContadoresPendientes(
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        Integer pedido = tecnico != null ? tecnico : principal.getIdTec();
+        Integer efectivo = FiltroTecnico.efectivo(principal, pedido);
+        if (efectivo == null) return new ContadoresPendientes(0, 0, 0);
+        return dao.contarPendientes(efectivo);
+    }
+
     /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */
     @GetMapping("/asignaciones/completadas-hoy")
     public List<ReparacionResumen> getAsignacionesCompletadasHoy() {
