@@ -17,6 +17,15 @@ de `model/` conservan su nombre.
   cliente con teléfonos asociados al borrar).
 - `422 Unprocessable Entity` con `{"message": ...}` para reglas de negocio rechazadas (p. ej.
   contraseña actual incorrecta en `PATCH /api/auth/cambiar-password`); `400` para cuerpos inválidos.
+- `?tecnico=` (entero, opcional) en las listas del taller (`GET /api/reparaciones/historial`,
+  `/api/reparaciones/asignaciones`, `/api/glass/historial`, `/api/glass/asignaciones`,
+  `/api/pulidos/historial`, `/api/pulidos/asignaciones`) y en `GET /api/reparaciones/pendientes/contadores`
+  pasa por `FiltroTecnico`: un TECNICO solo recibe lo suyo (sin parámetro o con su propio `idTec`) y, si
+  pide otro técnico, `403` con el motivo "Solo puedes consultar tus propios trabajos"; SUPERTECNICO y
+  ADMIN filtran libremente (sin parámetro, todos). Detalle en `docs/autorizacion_endpoints.md`.
+- `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
+  asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
+  del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.
 - Sin sesión: una petición sin cabecera `Authorization` recibe `403` (Spring Security sin entry point);
   con token inválido o caducado, `401` (filtro JWT). Los clientes tratan ambos como "sin sesión" cuando
   no hay token, y `401` como sesión caducada.
