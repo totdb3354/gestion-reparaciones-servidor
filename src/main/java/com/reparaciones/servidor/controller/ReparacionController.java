@@ -6,6 +6,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.model.*;
+import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -66,8 +67,9 @@ public class ReparacionController {
 
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getHistorial(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getHistorial(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     @GetMapping("/historial/imei/{imei}")
@@ -79,8 +81,9 @@ public class ReparacionController {
 
     @GetMapping("/asignaciones")
     public List<ReparacionResumen> getAsignaciones(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getAsignaciones(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getAsignaciones(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */

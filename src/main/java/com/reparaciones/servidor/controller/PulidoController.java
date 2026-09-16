@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.ReparacionResumen;
+import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import org.springframework.http.HttpStatus;
@@ -33,14 +34,16 @@ public class PulidoController {
 
     @GetMapping("/asignaciones")
     public List<ReparacionResumen> getAsignaciones(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getAsignacionesPulido(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getAsignacionesPulido(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getHistorialPulido(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getHistorialPulido(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
