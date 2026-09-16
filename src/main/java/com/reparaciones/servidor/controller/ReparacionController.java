@@ -582,7 +582,7 @@ public class ReparacionController {
     private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente, boolean esChasis) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion, String categoria) {}
-private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}
+private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) String comentarioAsignacion, LocalDateTime updatedAt) {}
     private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
                                  String observacionNueva, int nNuevas,
                                  LocalDateTime updatedAt) {}

@@ -262,7 +262,7 @@ public class TelefonoController {
                                     Boolean mic, Boolean faceId, Boolean ms, String msTexto,
                                     Boolean bloqueoOp, String observacion) {}
     private record RevisionResponse(boolean existe, com.reparaciones.servidor.model.Revision revision) {}
-    private record EstadoRequest(String accion, String motivo) {}
+    private record EstadoRequest(String accion, @Schema(nullable = true) String motivo) {}
     private record DevolucionesRequest(java.util.List<DevolucionItem> items) {}
     private record DevolucionItem(String imei, String motivo) {}
 }

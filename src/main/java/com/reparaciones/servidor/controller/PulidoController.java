@@ -113,7 +113,7 @@ public class PulidoController {
     // ── request records ───────────────────────────────────────────────────────
 
     private record MotivoRequest(@Schema(nullable = true) String motivo) {}
-    private record AsignacionPulidoRequest(String imei, int idTec, String comentario) {}
+    private record AsignacionPulidoRequest(String imei, int idTec, @Schema(nullable = true) String comentario) {}
     private record LoteRequest(List<String> ids) {}
-    private record ActualizarPulidoRequest(int idTec, String comentario, LocalDateTime updatedAt) {}
+    private record ActualizarPulidoRequest(int idTec, @Schema(nullable = true) String comentario, LocalDateTime updatedAt) {}
 }

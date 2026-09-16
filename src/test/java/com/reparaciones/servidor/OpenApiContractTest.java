@@ -152,6 +152,14 @@ class OpenApiContractTest {
         assertTrue(esquemas.path("ValorTexto").path("properties").path("value").path("nullable").asBoolean(false));
         assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/referenciadora", "get", "200").endsWith("/ValorTexto"));
 
+        // Fix tras revisión (spec §5.3): comentario/motivo genuinamente opcionales en los cuerpos
+        // de petición, verificado contra el DAO caso a caso (ver task-3-report.md).
+        assertTrue(esquemas.path("TelefonoEstadoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("PulidoAsignacionPulidoRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("PulidoActualizarPulidoRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("ReparacionActualizarAsignacionRequest").path("properties").path("comentarioAsignacion").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("GlassGlassAsignacionRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
+
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());
         Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter()

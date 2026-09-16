@@ -7,6 +7,7 @@ import com.reparaciones.servidor.model.ReparacionResumen;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -67,5 +68,5 @@ public class GlassController {
         return Map.of("value", idRep);
     }
 
-    private record GlassAsignacionRequest(String imei, int idTec, String comentario, boolean urgente) {}
+    private record GlassAsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente) {}
 }
