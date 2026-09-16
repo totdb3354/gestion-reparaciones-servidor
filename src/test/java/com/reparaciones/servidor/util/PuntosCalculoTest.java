@@ -79,41 +79,41 @@ class PuntosCalculoTest {
     @Test void agregaPorTecnicoYPeriodoConDesglose() {
         LocalDate d = LocalDate.of(2026, 9, 1);
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_1", "111", "lcd14", 1),
-                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_1", "111", "bat14", 1),
-                new PuntosCalculo.FilaPuntos("Marcos", d, "R20260901_2", "222", null,    null), // sin piezas
-                new PuntosCalculo.FilaPuntos("Marcos", d, "G20260901_1", "111", "g14",   1),
-                new PuntosCalculo.FilaPuntos("Marcos", d, "P20260901_1", "333", null,    null),
-                new PuntosCalculo.FilaPuntos("Zara",   d, "R20260901_3", "444", "cha12", 1));
+                new PuntosCalculo.FilaPuntos("Técnico K", d, "R20260901_1", "111", "lcd14", 1),
+                new PuntosCalculo.FilaPuntos("Técnico K", d, "R20260901_1", "111", "bat14", 1),
+                new PuntosCalculo.FilaPuntos("Técnico K", d, "R20260901_2", "222", null,    null), // sin piezas
+                new PuntosCalculo.FilaPuntos("Técnico K", d, "G20260901_1", "111", "g14",   1),
+                new PuntosCalculo.FilaPuntos("Técnico K", d, "P20260901_1", "333", null,    null),
+                new PuntosCalculo.FilaPuntos("Técnico N", d, "R20260901_3", "444", "cha12", 1));
         List<PuntoEstadisticaPuntos> out = PuntosCalculo.agregar(filas, VALORES, f -> "2026-09");
 
         assertEquals(2, out.size());
-        PuntoEstadisticaPuntos marcos = out.stream()
-                .filter(p -> p.getNombreTecnico().equals("Marcos")).findFirst().orElseThrow();
-        assertEquals("2026-09", marcos.getPeriodo());
-        assertEquals(3.25, marcos.getPuntos(), 0.001);         // 2,0 + 0,5 + 0,5 + 0,25
-        assertEquals(2.50, marcos.getPuntosNormales(), 0.001); // R: 2,0 + 0,5
-        assertEquals(0.50, marcos.getPuntosGlass(), 0.001);
-        assertEquals(0.25, marcos.getPuntosPulidos(), 0.001);
-        assertEquals(2, marcos.getnNormales());
-        assertEquals(1, marcos.getnGlass());
-        assertEquals(1, marcos.getnPulidos());
-        assertEquals(1, marcos.getnSinPiezas());
-        assertEquals(3, marcos.getnImeis());                   // 111 (R+G), 222, 333
-        PuntoEstadisticaPuntos zara = out.stream()
-                .filter(p -> p.getNombreTecnico().equals("Zara")).findFirst().orElseThrow();
-        assertEquals(2.00, zara.getPuntos(), 0.001);
-        assertEquals(1, zara.getnImeis());
+        PuntoEstadisticaPuntos tecnicoK = out.stream()
+                .filter(p -> p.getNombreTecnico().equals("Técnico K")).findFirst().orElseThrow();
+        assertEquals("2026-09", tecnicoK.getPeriodo());
+        assertEquals(3.25, tecnicoK.getPuntos(), 0.001);         // 2,0 + 0,5 + 0,5 + 0,25
+        assertEquals(2.50, tecnicoK.getPuntosNormales(), 0.001); // R: 2,0 + 0,5
+        assertEquals(0.50, tecnicoK.getPuntosGlass(), 0.001);
+        assertEquals(0.25, tecnicoK.getPuntosPulidos(), 0.001);
+        assertEquals(2, tecnicoK.getnNormales());
+        assertEquals(1, tecnicoK.getnGlass());
+        assertEquals(1, tecnicoK.getnPulidos());
+        assertEquals(1, tecnicoK.getnSinPiezas());
+        assertEquals(3, tecnicoK.getnImeis());                   // 111 (R+G), 222, 333
+        PuntoEstadisticaPuntos tecnicoN = out.stream()
+                .filter(p -> p.getNombreTecnico().equals("Técnico N")).findFirst().orElseThrow();
+        assertEquals(2.00, tecnicoN.getPuntos(), 0.001);
+        assertEquals(1, tecnicoN.getnImeis());
     }
 
     @Test void cuentaImeisDistintosPorPeriodo() {
         // Mismo IMEI con dos trabajos el mismo día cuenta 1; en otro periodo cuenta en el suyo
         LocalDate d1 = LocalDate.of(2026, 9, 1), d2 = LocalDate.of(2026, 9, 2);
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Marcos", d1, "G20260901_1", "111", "g14",  1),
-                new PuntosCalculo.FilaPuntos("Marcos", d1, "G20260901_2", "111", "mc14", 1),
-                new PuntosCalculo.FilaPuntos("Marcos", d1, "G20260901_3", "222", "g14",  1),
-                new PuntosCalculo.FilaPuntos("Marcos", d2, "G20260902_1", "111", "g14",  1));
+                new PuntosCalculo.FilaPuntos("Técnico K", d1, "G20260901_1", "111", "g14",  1),
+                new PuntosCalculo.FilaPuntos("Técnico K", d1, "G20260901_2", "111", "mc14", 1),
+                new PuntosCalculo.FilaPuntos("Técnico K", d1, "G20260901_3", "222", "g14",  1),
+                new PuntosCalculo.FilaPuntos("Técnico K", d2, "G20260902_1", "111", "g14",  1));
         List<PuntoEstadisticaPuntos> out = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString);
         assertEquals(2, out.stream().filter(p -> p.getPeriodo().equals("2026-09-01"))
                 .findFirst().orElseThrow().getnImeis());
@@ -125,7 +125,7 @@ class PuntosCalculoTest {
         // La query trae UNA fila por reparación sin piezas (LEFT JOIN con NULL):
         // no debe contarse como pieza Y como reparación aparte.
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Marcos", LocalDate.of(2026, 9, 1), "R20260901_9", "999", null, null));
+                new PuntosCalculo.FilaPuntos("Técnico K", LocalDate.of(2026, 9, 1), "R20260901_9", "999", null, null));
         List<PuntoEstadisticaPuntos> out = PuntosCalculo.agregar(filas, VALORES, f -> "2026-09");
         assertEquals(0.50, out.get(0).getPuntos(), 0.001);
         assertEquals(1, out.get(0).getnSinPiezas());
@@ -143,10 +143,10 @@ class PuntosCalculoTest {
     @Test void puntosJornadaSumanSoloLosCierresEnHorario() {
         LocalDate d = LocalDate.of(2026, 8, 28);
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Alex", d, "R20260828_1", "111", "lcd14", 1,    true),  // 2 piezas en jornada
-                new PuntosCalculo.FilaPuntos("Alex", d, "R20260828_1", "111", "bat14", 1,    true),
-                new PuntosCalculo.FilaPuntos("Alex", d, "R20260828_2", "222", "cha12", 1,    false), // extra
-                new PuntosCalculo.FilaPuntos("Alex", d, "P20260828_1", "333", null,    null, false)); // pulido extra
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "R20260828_1", "111", "lcd14", 1,    true),  // 2 piezas en jornada
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "R20260828_1", "111", "bat14", 1,    true),
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "R20260828_2", "222", "cha12", 1,    false), // extra
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "P20260828_1", "333", null,    null, false)); // pulido extra
         PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString).get(0);
         assertEquals(4.25, p.getPuntos(), 0.001);          // 2,0 + 2,0 + 0,25: el total suma todo
         assertEquals(2.00, p.getPuntosJornada(), 0.001);   // solo la reparación en horario
@@ -158,9 +158,9 @@ class PuntosCalculoTest {
     @Test void imeiConUnCierreEnHorarioYOtroFueraCuentaUnaVezEnJornada() {
         LocalDate d = LocalDate.of(2026, 8, 28);
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Alex", d, "G20260828_1", "111", "g14",  1, true),
-                new PuntosCalculo.FilaPuntos("Alex", d, "G20260828_2", "111", "mc14", 1, false),
-                new PuntosCalculo.FilaPuntos("Alex", d, "G20260828_3", "222", "g14",  1, false)); // solo extra
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "G20260828_1", "111", "g14",  1, true),
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "G20260828_2", "111", "mc14", 1, false),
+                new PuntosCalculo.FilaPuntos("Técnico A", d, "G20260828_3", "222", "g14",  1, false)); // solo extra
         PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString).get(0);
         assertEquals(2, p.getnImeis());
         assertEquals(1, p.getnImeisJornada());
@@ -170,7 +170,7 @@ class PuntosCalculoTest {
     @Test void filasSinHorarioCuentanComoJornada() {
         // Constructor de 6 argumentos (tests previos y usos sin horario): todo en jornada
         List<PuntosCalculo.FilaPuntos> filas = List.of(
-                new PuntosCalculo.FilaPuntos("Alex", LocalDate.of(2026, 8, 28), "R20260828_1", "111", "lcd14", 1));
+                new PuntosCalculo.FilaPuntos("Técnico A", LocalDate.of(2026, 8, 28), "R20260828_1", "111", "lcd14", 1));
         PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, VALORES, LocalDate::toString).get(0);
         assertEquals(p.getPuntos(), p.getPuntosJornada(), 0.001);
         assertEquals(p.getnImeis(), p.getnImeisJornada());

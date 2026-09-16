@@ -32,6 +32,6 @@ class ImeiLookupServiceTest {
 
     @Test
     void key_vacia_no_llama_a_la_api() {
-        assertThat(service.lookupModeloInterno("352322311421731")).isNull();
+        assertThat(service.lookupModeloInterno("352300000000051")).isNull();
     }
 }

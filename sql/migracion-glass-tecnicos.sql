@@ -1,6 +1,8 @@
 -- Migración de datos (EJECUTADA en preproducción el 2026-07-06, one-off):
 -- convertir a tipo Glass todas las reparaciones históricas de los dos técnicos
--- que solo hacen glass ('jhona' y 'javi'), anteriores a la separación Glass.
+-- que solo hacen glass ('tecnico_h' y 'tecnico_g'), anteriores a la separación Glass.
+-- ('tecnico_h' y 'tecnico_g' son marcadores: los NOMBRE reales de Tecnico no se publican
+-- en el repo; para reejecutarla hay que sustituirlos por los de la BD.)
 -- El tipo vive en el prefijo del ID_REP (PK): R→G (historial) y A→AG (asignaciones).
 --
 -- Resultado real: 1276 filas renombradas (948 R→G, 328 A→AG), 951 filas de
@@ -10,14 +12,14 @@
 -- (AG20260703_63 y _64) editando el mapeo antes de convertir.
 
 -- ── Bloque 0: confirmar técnicos ─────────────────────────────────────────────
-SELECT ID_TEC, NOMBRE FROM Tecnico WHERE NOMBRE IN ('jhona', 'javi');
+SELECT ID_TEC, NOMBRE FROM Tecnico WHERE NOMBRE IN ('tecnico_h', 'tecnico_g');
 
 -- ── Bloque 1: mapeo viejo→nuevo + verificación (no toca datos) ───────────────
 CREATE TEMPORARY TABLE mapeo AS
 SELECT ID_REP AS viejo,
        CONCAT(IF(ID_REP LIKE 'R%', 'G', 'AG'), SUBSTRING(ID_REP, 2)) AS nuevo
 FROM Reparacion
-WHERE ID_TEC IN (SELECT ID_TEC FROM Tecnico WHERE NOMBRE IN ('jhona', 'javi'))
+WHERE ID_TEC IN (SELECT ID_TEC FROM Tecnico WHERE NOMBRE IN ('tecnico_h', 'tecnico_g'))
   AND (ID_REP LIKE 'R%' OR (ID_REP LIKE 'A%' AND ID_REP NOT LIKE 'AG%' AND ID_REP NOT LIKE 'AP%'));
 
 SELECT LEFT(viejo, 1) AS prefijo, COUNT(*) AS filas FROM mapeo GROUP BY LEFT(viejo, 1);
@@ -38,5 +40,5 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- ── Bloque 3: post-check (debe dar 0) ────────────────────────────────────────
 SELECT COUNT(*) AS quedan_sin_convertir FROM Reparacion
-WHERE ID_TEC IN (SELECT ID_TEC FROM Tecnico WHERE NOMBRE IN ('jhona', 'javi'))
+WHERE ID_TEC IN (SELECT ID_TEC FROM Tecnico WHERE NOMBRE IN ('tecnico_h', 'tecnico_g'))
   AND (ID_REP LIKE 'R%' OR (ID_REP LIKE 'A%' AND ID_REP NOT LIKE 'AG%' AND ID_REP NOT LIKE 'AP%'));
