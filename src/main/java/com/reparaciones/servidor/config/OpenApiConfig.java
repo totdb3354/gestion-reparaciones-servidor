@@ -2,11 +2,16 @@ package com.reparaciones.servidor.config;
 
 import io.swagger.v3.core.jackson.ModelResolver;
 import io.swagger.v3.core.jackson.TypeNameResolver;
+import io.swagger.v3.oas.models.media.Schema;
+import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springdoc.core.providers.ObjectMapperProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+
+import java.util.ArrayList;
+import java.util.Map;
 
 /**
  * Ajustes del contrato OpenAPI que publica springdoc.
@@ -41,6 +46,24 @@ public class OpenApiConfig {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     ModelResolver modelResolver(ObjectMapperProvider objectMapperProvider) {
         return new ModelResolver(objectMapperProvider.jsonMapper(), new NombreEsquemaAnidado());
+    }
+
+    /**
+     * Jackson serializa todas las claves (inclusión por defecto del proyecto), así que para la web cada
+     * propiedad está siempre presente: se marcan todas como {@code required} y la nulabilidad se declara
+     * campo a campo con {@code @Schema(nullable = true)}. openapi-typescript genera entonces {@code T} o
+     * {@code T | null} en vez de {@code T | undefined}, y client.ts deja de necesitar {@code Required<>}.
+     */
+    @Bean
+    OpenApiCustomizer todasLasPropiedadesRequeridas() {
+        return openApi -> {
+            if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) return;
+            for (Schema<?> esquema : openApi.getComponents().getSchemas().values()) {
+                Map<String, Schema> propiedades = esquema.getProperties();
+                if (propiedades == null || propiedades.isEmpty()) continue;
+                esquema.setRequired(new ArrayList<>(propiedades.keySet()));
+            }
+        };
     }
 
     /**

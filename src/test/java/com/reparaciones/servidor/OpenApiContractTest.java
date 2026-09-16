@@ -89,7 +89,7 @@ class OpenApiContractTest {
         // ReparacionEditarRequest está en la lista para demostrar que los dos EditarRequest ya no chocan.
         for (String esquema : List.of("LoginResponse", "ValorBooleano", "Cliente", "ClienteNombreRequest",
                 "ClienteEditarRequest", "ClienteActivoRequest", "AuthLoginRequest",
-                "ReparacionEditarRequest", "ContadoresPendientes")) {
+                "ReparacionEditarRequest", "ContadoresPendientes", "ValorTexto")) {
             assertTrue(esquemas.has(esquema),
                     () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
@@ -133,6 +133,24 @@ class OpenApiContractTest {
                 "get", "200");
         assertTrue(refTieneTelefonos.endsWith("/ValorBooleano"),
                 () -> "GET /api/clientes/{idCli}/tiene-telefonos responde " + refTieneTelefonos);
+
+        // Nullabilidad (spec web-taller §5.3): todo required, nullable explícito
+        JsonNode resumen = esquemas.path("ReparacionResumen");
+        List<String> requeridos = new ArrayList<>();
+        resumen.path("required").forEach(n -> requeridos.add(n.asText()));
+        List<String> propiedades = nombres(resumen.path("properties"));
+        assertEquals(propiedades.size(), requeridos.size(), "ReparacionResumen: todas las propiedades deben ser required");
+        assertTrue(requeridos.containsAll(propiedades));
+        assertTrue(resumen.path("properties").path("fechaFin").path("nullable").asBoolean(false), "fechaFin nullable");
+        assertTrue(resumen.path("properties").path("glassEntregadoPor").path("nullable").asBoolean(false), "glassEntregadoPor nullable");
+        assertFalse(resumen.path("properties").path("idRep").path("nullable").asBoolean(false), "idRep no nullable");
+        assertTrue(esquemas.path("LoginResponse").path("properties").path("idTec").path("nullable").asBoolean(false), "idTec nullable");
+        assertTrue(esquemas.path("LoginResponse").path("required").toString().contains("\"token\""));
+        assertTrue(esquemas.path("ReparacionMotivoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("TelefonoClienteRequest").path("properties").path("idCli").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("TelefonoImeiRequest").path("properties").path("clienteExplicito").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("ValorTexto").path("properties").path("value").path("nullable").asBoolean(false));
+        assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/referenciadora", "get", "200").endsWith("/ValorTexto"));
 
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());

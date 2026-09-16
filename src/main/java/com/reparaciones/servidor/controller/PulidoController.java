@@ -7,6 +7,7 @@ import com.reparaciones.servidor.model.ReparacionResumen;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -111,7 +112,7 @@ public class PulidoController {
 
     // ── request records ───────────────────────────────────────────────────────
 
-    private record MotivoRequest(String motivo) {}
+    private record MotivoRequest(@Schema(nullable = true) String motivo) {}
     private record AsignacionPulidoRequest(String imei, int idTec, String comentario) {}
     private record LoteRequest(List<String> ids) {}
     private record ActualizarPulidoRequest(int idTec, String comentario, LocalDateTime updatedAt) {}

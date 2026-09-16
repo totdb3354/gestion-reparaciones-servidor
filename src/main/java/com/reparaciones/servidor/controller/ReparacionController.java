@@ -8,6 +8,7 @@ import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -134,10 +135,8 @@ public class ReparacionController {
     }
 
     @GetMapping("/{idRep}/referenciadora")
-    public Map<String, Object> getReferenciadora(@PathVariable String idRep) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("value", dao.getReferenciadora(idRep));
-        return resp;
+    public ValorTexto getReferenciadora(@PathVariable String idRep) {
+        return new ValorTexto(dao.getReferenciadora(idRep));
     }
 
     @GetMapping("/imei/{imei}/ya-reparados")
@@ -595,7 +594,7 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     record EntregaGlassRequest(boolean entregado) {}   // package-private: lo construye el test
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
-    private record MotivoRequest(String motivo) {}
+    private record MotivoRequest(@Schema(nullable = true) String motivo) {}
 
     /** Tipos de los componentes consumidos, para el detalle del log ("" si no hay filas con pieza). */
     private String componentesDe(List<FilaReparacion> filas) {
