@@ -1,5 +1,7 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
 public class ReparacionResumen {
@@ -7,45 +9,45 @@ public class ReparacionResumen {
     private String        imei;
     private String        nombreTecnico;
     private LocalDateTime fechaAsig;
-    private LocalDateTime fechaFin;
-    private String        tipoComponente;
-    private String        observaciones;
+    @Schema(nullable = true) private LocalDateTime fechaFin;
+    @Schema(nullable = true) private String        tipoComponente;
+    @Schema(nullable = true) private String        observaciones;
     private boolean       esIncidencia;
     private boolean       esResuelto;
     private boolean       esReutilizado;
-    private String        incidencia;
-    private String        idRepAnterior;
+    @Schema(nullable = true) private String        incidencia;
+    @Schema(nullable = true) private String        idRepAnterior;
     private int           idTec;
     private int           esSolicitud;
-    private String        descripcionSolicitud;
-    private String        estadoSolicitud;
-    private String        tipoSolicitud;
+    @Schema(nullable = true) private String        descripcionSolicitud;
+    @Schema(nullable = true) private String        estadoSolicitud;
+    @Schema(nullable = true) private String        tipoSolicitud;
     private int           stockSolicitud;
     private boolean       enCamino;
-    private String        tiposSolicitud;
-    private LocalDateTime updatedAt;
-    private String        modelo;
-    private String        comentarioAsignacion;
-    private String        observacionTelefono;
+    @Schema(nullable = true) private String        tiposSolicitud;
+    @Schema(nullable = true) private LocalDateTime updatedAt;
+    @Schema(nullable = true) private String        modelo;
+    @Schema(nullable = true) private String        comentarioAsignacion;
+    @Schema(nullable = true) private String        observacionTelefono;
     private boolean       urgente;
     private boolean       esChasis;
     private boolean       porCerrar;
     private boolean       tieneAsignaciones;
-    private String        nombreTecnicoAsigna;
-    private LocalDateTime telefonoUpdatedAt;
-    private String        cliente;
+    @Schema(nullable = true) private String        nombreTecnicoAsigna;
+    @Schema(nullable = true) private LocalDateTime telefonoUpdatedAt;
+    @Schema(nullable = true) private String        cliente;
 
     // Entrega a glass (spec 2026-08-28): reales en filas AG, derivados en filas A.
-    private LocalDateTime entregadoAt;              // AG: cuándo bajó el teléfono
-    private String        entregadoPorNombre;       // AG: quién lo bajó
-    private Integer       entregadoPor;             // AG: id de quién lo bajó (firma)
+    @Schema(nullable = true) private LocalDateTime entregadoAt;              // AG: cuándo bajó el teléfono
+    @Schema(nullable = true) private String        entregadoPorNombre;       // AG: quién lo bajó
+    @Schema(nullable = true) private Integer       entregadoPor;             // AG: id de quién lo bajó (firma)
     private boolean       glassAbierta;             // A: hay AG abierta en el IMEI
-    private LocalDateTime glassEntregadoAt;         // A: entrega sellada en esa AG
-    private String        glassEntregadoPorNombre;  // A: quién la selló
-    private Integer       glassEntregadoPor;        // A: id de quién la selló (firma)
-    private String        glassTecnicoNombre;       // A: dueño actual de esa AG
+    @Schema(nullable = true) private LocalDateTime glassEntregadoAt;         // A: entrega sellada en esa AG
+    @Schema(nullable = true) private String        glassEntregadoPorNombre;  // A: quién la selló
+    @Schema(nullable = true) private Integer       glassEntregadoPor;        // A: id de quién la selló (firma)
+    @Schema(nullable = true) private String        glassTecnicoNombre;       // A: dueño actual de esa AG
     private boolean       normalAbierta;            // AG: hay reparación normal abierta en el IMEI (alguien arriba debe entregar)
-    private String        normalTecnicoNombre;      // AG: dueño de esa normal (la más antigua)
+    @Schema(nullable = true) private String        normalTecnicoNombre;      // AG: dueño de esa normal (la más antigua)
 
     public ReparacionResumen() {}
 

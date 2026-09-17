@@ -79,7 +79,7 @@ class OpenApiContractTest {
         assertNotNull(paths, "el contrato no trae paths");
         for (String ruta : List.of("/api/clientes", "/api/clientes/activos", "/api/clientes/{idCli}",
                 "/api/clientes/{idCli}/tiene-telefonos", "/api/clientes/{idCli}/activo",
-                "/api/auth/login")) {
+                "/api/auth/login", "/api/reparaciones/pendientes/contadores")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         }
 
@@ -89,7 +89,7 @@ class OpenApiContractTest {
         // ReparacionEditarRequest está en la lista para demostrar que los dos EditarRequest ya no chocan.
         for (String esquema : List.of("LoginResponse", "ValorBooleano", "Cliente", "ClienteNombreRequest",
                 "ClienteEditarRequest", "ClienteActivoRequest", "AuthLoginRequest",
-                "ReparacionEditarRequest")) {
+                "ReparacionEditarRequest", "ContadoresPendientes", "ValorTexto")) {
             assertTrue(esquemas.has(esquema),
                     () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
@@ -123,10 +123,43 @@ class OpenApiContractTest {
         assertEquals("boolean", esquemas.path("ValorBooleano").path("properties").path("value")
                 .path("type").asText(), "ValorBooleano.value debe ser boolean");
 
+        JsonNode contadores = esquemas.path("ContadoresPendientes").path("properties");
+        for (String campo : List.of("reparaciones", "glass", "pulidos")) {
+            assertEquals("integer", contadores.path(campo).path("type").asText(),
+                    () -> "ContadoresPendientes." + campo + " debe ser integer");
+        }
+
         String refTieneTelefonos = refDeLaRespuesta(paths, "/api/clientes/{idCli}/tiene-telefonos",
                 "get", "200");
         assertTrue(refTieneTelefonos.endsWith("/ValorBooleano"),
                 () -> "GET /api/clientes/{idCli}/tiene-telefonos responde " + refTieneTelefonos);
+
+        // Nullabilidad (spec web-taller §5.3): todo required, nullable explícito
+        JsonNode resumen = esquemas.path("ReparacionResumen");
+        List<String> requeridos = new ArrayList<>();
+        resumen.path("required").forEach(n -> requeridos.add(n.asText()));
+        List<String> propiedades = nombres(resumen.path("properties"));
+        assertEquals(propiedades.size(), requeridos.size(), "ReparacionResumen: todas las propiedades deben ser required");
+        assertTrue(requeridos.containsAll(propiedades));
+        assertTrue(resumen.path("properties").path("fechaFin").path("nullable").asBoolean(false), "fechaFin nullable");
+        assertTrue(resumen.path("properties").path("glassEntregadoPor").path("nullable").asBoolean(false), "glassEntregadoPor nullable");
+        assertFalse(resumen.path("properties").path("idRep").path("nullable").asBoolean(false), "idRep no nullable");
+        assertTrue(esquemas.path("LoginResponse").path("properties").path("idTec").path("nullable").asBoolean(false), "idTec nullable");
+        assertTrue(esquemas.path("LoginResponse").path("required").toString().contains("\"token\""));
+        assertTrue(esquemas.path("ReparacionMotivoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("TelefonoClienteRequest").path("properties").path("idCli").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("TelefonoImeiRequest").path("properties").path("clienteExplicito").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("ValorTexto").path("properties").path("value").path("nullable").asBoolean(false));
+        assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/referenciadora", "get", "200").endsWith("/ValorTexto"));
+
+        // Fix tras revisión (spec §5.3): comentario/motivo genuinamente opcionales en los cuerpos
+        // de petición, verificado contra el DAO caso a caso (ver task-3-report.md).
+        assertTrue(esquemas.path("TelefonoEstadoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("PulidoAsignacionPulidoRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("ReparacionAsignacionRequest").path("properties").path("comentario").path("nullable").asBoolean(false), "ReparacionAsignacionRequest.comentario nullable");
+        assertTrue(esquemas.path("PulidoActualizarPulidoRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("ReparacionActualizarAsignacionRequest").path("properties").path("comentarioAsignacion").path("nullable").asBoolean(false));
+        assertTrue(esquemas.path("GlassGlassAsignacionRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
 
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());

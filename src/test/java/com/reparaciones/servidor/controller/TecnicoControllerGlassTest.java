@@ -19,18 +19,18 @@ class TecnicoControllerGlassTest {
 
     @Test void habilitarActualizaYLoguea() {
         when(dao.setGlass(7, true)).thenReturn(1);
-        when(dao.getNombreById(7)).thenReturn("Javi");
+        when(dao.getNombreById(7)).thenReturn("Técnico G");
         ctl.setGlass(7, new TecnicoController.GlassRequest(true), supertecnico);
         verify(dao).setGlass(7, true);
-        verify(logDao).insertar(2, "HABILITAR_GLASS", "ID_TEC: 7, NOMBRE: Javi");
+        verify(logDao).insertar(2, "HABILITAR_GLASS", "ID_TEC: 7, NOMBRE: Técnico G");
     }
 
     @Test void deshabilitarActualizaYLoguea() {
         when(dao.setGlass(7, false)).thenReturn(1);
-        when(dao.getNombreById(7)).thenReturn("Javi");
+        when(dao.getNombreById(7)).thenReturn("Técnico G");
         ctl.setGlass(7, new TecnicoController.GlassRequest(false), supertecnico);
         verify(dao).setGlass(7, false);
-        verify(logDao).insertar(2, "DESHABILITAR_GLASS", "ID_TEC: 7, NOMBRE: Javi");
+        verify(logDao).insertar(2, "DESHABILITAR_GLASS", "ID_TEC: 7, NOMBRE: Técnico G");
     }
 
     @Test void tecnicoInexistenteDa404SinLog() {

@@ -9,6 +9,7 @@ import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -247,9 +248,10 @@ public class TelefonoController {
 
     private record ImeisRequest(java.util.List<String> imeis) {}
     private record ResultadoARevisarResponse(String imei, String resultado) {}
-    private record ImeiRequest(String imei, String modelo, Integer idCli, Boolean clienteExplicito) {}
+    private record ImeiRequest(String imei, String modelo, @Schema(nullable = true) Integer idCli,
+                               @Schema(nullable = true) Boolean clienteExplicito) {}
     private record ObservacionRequest(String observacion, java.time.LocalDateTime updatedAt) {}
-    private record ClienteRequest(Integer idCli, java.time.LocalDateTime updatedAt) {}
+    private record ClienteRequest(@Schema(nullable = true) Integer idCli, java.time.LocalDateTime updatedAt) {}
     private record RevisionLogisticaRequest(boolean revisado, java.time.LocalDateTime updatedAt) {}
     private record AtributosRequest(String modelo, Integer storageGb, String color,
                                     String gradoProveedor, String gradoPropio, Boolean esEsim,
@@ -260,7 +262,7 @@ public class TelefonoController {
                                     Boolean mic, Boolean faceId, Boolean ms, String msTexto,
                                     Boolean bloqueoOp, String observacion) {}
     private record RevisionResponse(boolean existe, com.reparaciones.servidor.model.Revision revision) {}
-    private record EstadoRequest(String accion, String motivo) {}
+    private record EstadoRequest(String accion, @Schema(nullable = true) String motivo) {}
     private record DevolucionesRequest(java.util.List<DevolucionItem> items) {}
     private record DevolucionItem(String imei, String motivo) {}
 }

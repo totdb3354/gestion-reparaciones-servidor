@@ -1097,6 +1097,22 @@ public class ReparacionDAO {
         return jdbc.query(ASIGNACION_PULIDO_SELECT + order, RESUMEN_MAPPER);
     }
 
+    /**
+     * Asignaciones abiertas por tipo (A%, AG%, AP% con FECHA_FIN nula), de un técnico o de todos
+     * (idTec nulo). Un solo SELECT: lo consume el badge de Pendientes de la web cada 60 s.
+     */
+    public ContadoresPendientes contarPendientes(Integer idTec) {
+        String sql = "SELECT" +
+                " COALESCE(SUM(CASE WHEN ID_REP LIKE 'AG%' THEN 1 ELSE 0 END), 0) AS GLASS," +
+                " COALESCE(SUM(CASE WHEN ID_REP LIKE 'AP%' THEN 1 ELSE 0 END), 0) AS PUL," +
+                " COALESCE(SUM(CASE WHEN ID_REP NOT LIKE 'AG%' AND ID_REP NOT LIKE 'AP%' THEN 1 ELSE 0 END), 0) AS REP" +
+                " FROM Reparacion WHERE ID_REP LIKE 'A%' AND FECHA_FIN IS NULL" +
+                (idTec != null ? " AND ID_TEC = ?" : "");
+        RowMapper<ContadoresPendientes> mapper = (rs, i) ->
+                new ContadoresPendientes(rs.getInt("REP"), rs.getInt("GLASS"), rs.getInt("PUL"));
+        return idTec != null ? jdbc.queryForObject(sql, mapper, idTec) : jdbc.queryForObject(sql, mapper);
+    }
+
     public List<ReparacionResumen> getHistorialPulido(Integer idTecFilter) {
         String order = " ORDER BY r.FECHA_ASIG DESC";
         if (idTecFilter != null) {

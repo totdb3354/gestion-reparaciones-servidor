@@ -4,8 +4,10 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.ReparacionResumen;
+import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,14 +35,16 @@ public class PulidoController {
 
     @GetMapping("/asignaciones")
     public List<ReparacionResumen> getAsignaciones(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getAsignacionesPulido(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getAsignacionesPulido(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getHistorialPulido(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getHistorialPulido(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -108,8 +112,8 @@ public class PulidoController {
 
     // ── request records ───────────────────────────────────────────────────────
 
-    private record MotivoRequest(String motivo) {}
-    private record AsignacionPulidoRequest(String imei, int idTec, String comentario) {}
+    private record MotivoRequest(@Schema(nullable = true) String motivo) {}
+    private record AsignacionPulidoRequest(String imei, int idTec, @Schema(nullable = true) String comentario) {}
     private record LoteRequest(List<String> ids) {}
-    private record ActualizarPulidoRequest(int idTec, String comentario, LocalDateTime updatedAt) {}
+    private record ActualizarPulidoRequest(int idTec, @Schema(nullable = true) String comentario, LocalDateTime updatedAt) {}
 }

@@ -151,9 +151,10 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 | `/` | GET | cualquiera | — |
 | `/imei/{imei}` | GET | cualquiera | — |
 | `/imei/{imei}/count` | GET | cualquiera | — |
-| `/historial` | GET | cualquiera | Filtrado por idTec en DAO para TECNICO |
+| `/historial` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` (ver abajo) |
 | `/historial/imei/{imei}` | GET | cualquiera | — |
-| `/asignaciones` | GET | cualquiera | Filtrado por idTec en DAO para TECNICO |
+| `/asignaciones` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` (ver abajo) |
+| `/pendientes/contadores` | GET | cualquiera | `{reparaciones, glass, pulidos}` abiertas del técnico efectivo: sin `?tecnico=`, el del token (también el SUPERTECNICO); ADMIN sin `?tecnico=` recibe ceros sin consultar; con `?tecnico=`, regla de `FiltroTecnico` |
 | `/asignaciones/{idRep}` | GET | cualquiera | — |
 | `/asignaciones/{idAsig}/solicitudes` | GET | cualquiera | — |
 | `/{idRep}/detalle-edicion` | GET | cualquiera | — |
@@ -161,7 +162,7 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 | `/imei/{imei}/ya-reparados` | GET | cualquiera | — |
 | `/imei/{imei}/incidencia-activa` | GET | cualquiera | — |
 | `/imei/{imei}/tiene-asignacion` | GET | cualquiera | — |
-| `/estadisticas` | GET | cualquiera | Filtrado por idTec en DAO para TECNICO |
+| `/estadisticas` | GET | cualquiera | — |
 | `/estadisticas/puntos` | GET | cualquiera | — |
 | `/` | POST | cualquiera | TECNICO crea sus propias reparaciones |
 | `/asignaciones` | POST | SUPERTECNICO | — |
@@ -174,6 +175,42 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 | `/{idAsignacion}/agotar-componente` | POST | cualquiera | TECNICO solicita pieza agotada |
 | `/asignaciones/{idAsig}` | DELETE | SUPERTECNICO | — |
 | `/{idRep}` | DELETE | SUPERTECNICO | — |
+
+---
+
+## GlassController — `/api/glass`
+
+| Endpoint | Método | Rol requerido | Nota |
+|---|---|---|---|
+| `/asignaciones` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
+| `/historial` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
+| `/asignaciones` | POST | SUPERTECNICO | — |
+
+> Completar, editar y borrar glass van por `ReparacionController` (operan por ID).
+
+---
+
+## PulidoController — `/api/pulidos`
+
+| Endpoint | Método | Rol requerido | Nota |
+|---|---|---|---|
+| `/asignaciones` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
+| `/historial` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
+| `/asignaciones` | POST | SUPERTECNICO | — |
+| `/asignaciones/completar-lote` | POST | cualquiera | — |
+| `/asignaciones/{idAP}` | PATCH | SUPERTECNICO | — |
+| `/asignaciones/{idAP}` | DELETE | SUPERTECNICO | — |
+| `/historial/{idP}` | DELETE | SUPERTECNICO | Motivo opcional en el cuerpo |
+
+---
+
+## Regla del `?tecnico=` (`FiltroTecnico`)
+
+`FiltroTecnico.efectivo(principal, tecnico)` decide qué técnico filtra el DAO en las seis listas del taller (`GET /api/reparaciones/historial`, `/api/reparaciones/asignaciones`, `/api/glass/historial`, `/api/glass/asignaciones`, `/api/pulidos/historial`, `/api/pulidos/asignaciones`) y en `GET /api/reparaciones/pendientes/contadores`:
+
+- **TECNICO**: el filtro es siempre su `idTec`. Sin parámetro o con su propio id recibe lo suyo; si pide otro técnico, `403` con el motivo "Solo puedes consultar tus propios trabajos" (sin llegar al DAO). Un TECNICO sin `idTec` también recibe `403`. Cualquier rol que no sea SUPERTECNICO ni ADMIN se trata como TECNICO.
+- **SUPERTECNICO y ADMIN**: filtro libre (sin parámetro, todos; con parámetro, ese técnico).
+- **Contadores**: sin `?tecnico=` se cuentan los del técnico del token, también para el SUPERTECNICO; un ADMIN sin técnico recibe `{0, 0, 0}` sin consultar.
 
 ---
 
@@ -200,4 +237,4 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 
 ## TecnicoController, TelefonoController, TipoCambioController
 
-Sin restricción de rol adicional — solo autenticación JWT. Los datos que exponen (lista de técnicos, teléfonos, tipos de cambio) son necesarios para todos los roles y son de solo lectura o escritura acotada.
+Sin restricción de rol a nivel de clase — solo autenticación JWT. Algunos métodos sí llevan `@PreAuthorize` (p. ej. `PATCH /api/tecnicos/{idTec}/glass` y las ediciones de teléfono como `/observacion`, `/cliente` o `/atributos`, SUPERTECNICO).

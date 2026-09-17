@@ -6,7 +6,9 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.model.*;
+import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -66,8 +68,9 @@ public class ReparacionController {
 
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getHistorial(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getHistorial(FiltroTecnico.efectivo(principal, tecnico));
     }
 
     @GetMapping("/historial/imei/{imei}")
@@ -79,8 +82,24 @@ public class ReparacionController {
 
     @GetMapping("/asignaciones")
     public List<ReparacionResumen> getAsignaciones(
-            @RequestParam(required = false) Integer tecnico) {
-        return dao.getAsignaciones(tecnico);
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        return dao.getAsignaciones(FiltroTecnico.efectivo(principal, tecnico));
+    }
+
+    /**
+     * Badge y sufijos de Pendientes de la web (spec web-taller §5.2). Sin parámetro cuenta las del técnico
+     * del token (el supertécnico también es técnico); ADMIN sin técnico recibe ceros. Con parámetro, la
+     * regla de FiltroTecnico (un técnico solo puede pedirse a sí mismo).
+     */
+    @GetMapping("/pendientes/contadores")
+    public ContadoresPendientes getContadoresPendientes(
+            @RequestParam(required = false) Integer tecnico,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        Integer pedido = tecnico != null ? tecnico : principal.getIdTec();
+        Integer efectivo = FiltroTecnico.efectivo(principal, pedido);
+        if (efectivo == null) return new ContadoresPendientes(0, 0, 0);
+        return dao.contarPendientes(efectivo);
     }
 
     /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */
@@ -116,10 +135,8 @@ public class ReparacionController {
     }
 
     @GetMapping("/{idRep}/referenciadora")
-    public Map<String, Object> getReferenciadora(@PathVariable String idRep) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("value", dao.getReferenciadora(idRep));
-        return resp;
+    public ValorTexto getReferenciadora(@PathVariable String idRep) {
+        return new ValorTexto(dao.getReferenciadora(idRep));
     }
 
     @GetMapping("/imei/{imei}/ya-reparados")
@@ -562,10 +579,10 @@ public class ReparacionController {
     private record BorradorRequest(String contenido) {}
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
-    private record AsignacionRequest(String imei, int idTec, String comentario, boolean urgente, boolean esChasis) {}
+    private record AsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente, boolean esChasis) {}
     private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                            String idRepAnterior, String idAsignacion, String categoria) {}
-private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacion, LocalDateTime updatedAt) {}
+private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) String comentarioAsignacion, LocalDateTime updatedAt) {}
     private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
                                  String observacionNueva, int nNuevas,
                                  LocalDateTime updatedAt) {}
@@ -577,7 +594,7 @@ private record ActualizarAsignacionRequest(int idTec, String comentarioAsignacio
     record EntregaGlassRequest(boolean entregado) {}   // package-private: lo construye el test
     private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                       String idRepAnterior) {}
-    private record MotivoRequest(String motivo) {}
+    private record MotivoRequest(@Schema(nullable = true) String motivo) {}
 
     /** Tipos de los componentes consumidos, para el detalle del log ("" si no hay filas con pieza). */
     private String componentesDe(List<FilaReparacion> filas) {
