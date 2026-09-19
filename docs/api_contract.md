@@ -47,6 +47,14 @@ de `model/` conservan su nombre.
   "GESTIONADA" | "RECHAZADA"}`. `/api/solicitudes` es de SUPERTECNICO; en `/api/solicitudes-stock` crean TECNICO y
   SUPERTECNICO, leen y cuentan SUPERTECNICO y ADMIN, y cambian de estado o borran SUPERTECNICO.
   `PATCH /api/componentes/{idCom}/stock`: SUPERTECNICO.
+- Reintentos seguros: las cuatro escrituras no repetibles del formulario (`POST /api/reparaciones/completa`,
+  `POST /api/reparaciones/{idAsignacion}/filas`, `POST /api/reparaciones/{idAsignacion}/agotar-componente`,
+  `PUT /api/reparaciones/{idRep}`) aceptan la cabecera opcional `Idempotency-Key`. Con la misma clave, el mismo
+  usuario y la misma petición (ruta y cuerpo), el servidor devuelve el resultado de la primera ejecución sin
+  repetirla, incluido el log de actividad; con la misma clave y otra petición responde `422`; mientras la primera
+  ejecución sigue en curso, un reintento responde `409`. El registro vive en la memoria del proceso, caduca a
+  las 24 horas y tiene tope de tamaño (se purgan las entradas caducadas y, si hace falta, la más antigua). Sin
+  cabecera el comportamiento es exactamente el de siempre, así que el cliente de escritorio no se entera.
 - Chasis por SKU: al completar con una pieza cuyo SKU empieza por `cha`, o al pedirla (agotado o solicitud dentro de
   `completa`), la asignación queda con `esChasis = true`. El servidor nunca lo quita por sí solo; el cambio manual
   (`PATCH /api/reparaciones/asignaciones/{idRep}/chasis`) sigue igual.

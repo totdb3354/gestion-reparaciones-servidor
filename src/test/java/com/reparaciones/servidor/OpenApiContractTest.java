@@ -3,6 +3,7 @@ package com.reparaciones.servidor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -249,6 +251,58 @@ class OpenApiContractTest {
         Files.createDirectories(destino.getParent());
         Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(ordenarCodigosDeRespuesta(doc)));
+    }
+
+    /**
+     * Reintentos seguros (tarea añadida al cierre 2026-09-19): las cuatro escrituras no repetibles del
+     * formulario publican {@code Idempotency-Key} como cabecera opcional; ninguna otra operación la declara.
+     */
+    @Test void lasEscriturasDelFormularioAdmitenClaveDeIdempotencia() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token))
+                .andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        assertNotNull(paths, "el contrato no trae paths");
+
+        Set<String> conCabecera = Set.of(
+                "post /api/reparaciones/completa",
+                "post /api/reparaciones/{idAsignacion}/filas",
+                "post /api/reparaciones/{idAsignacion}/agotar-componente",
+                "put /api/reparaciones/{idRep}");
+
+        for (String operacion : conCabecera) {
+            String[] partes = operacion.split(" ", 2);
+            assertTrue(admiteCabeceraIdempotencia(paths, partes[1], partes[0]),
+                    () -> operacion + " no declara " + RegistroIdempotencia.CABECERA + " como cabecera opcional");
+        }
+
+        Set<String> metodosHttp = Set.of("get", "post", "put", "patch", "delete");
+        paths.fields().forEachRemaining(entradaRuta -> {
+            String ruta = entradaRuta.getKey();
+            entradaRuta.getValue().fields().forEachRemaining(entradaOp -> {
+                String metodo = entradaOp.getKey();
+                if (!metodosHttp.contains(metodo)) return;
+                if (conCabecera.contains(metodo + " " + ruta)) return;
+                assertFalse(admiteCabeceraIdempotencia(paths, ruta, metodo),
+                        () -> metodo + " " + ruta + " no debería declarar " + RegistroIdempotencia.CABECERA);
+            });
+        });
+    }
+
+    private static boolean admiteCabeceraIdempotencia(JsonNode paths, String ruta, String metodo) {
+        JsonNode parametros = paths.path(ruta).path(metodo).path("parameters");
+        if (!parametros.isArray()) return false;
+        for (JsonNode p : parametros) {
+            if ("header".equals(p.path("in").asText())
+                    && RegistroIdempotencia.CABECERA.equals(p.path("name").asText())
+                    && !p.path("required").asBoolean(true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Ordena por clave los códigos de cada "responses" para que el volcado sea estable entre arranques. */
