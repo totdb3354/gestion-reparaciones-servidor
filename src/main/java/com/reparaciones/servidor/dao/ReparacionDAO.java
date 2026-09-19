@@ -301,6 +301,15 @@ public class ReparacionDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    /** ID_TEC de una fila de Reparacion (asignación abierta o cerrada), o {@code null} si no existe.
+     *  Lo usa PropiedadAsignacion para saber de quién es la asignación antes de escribir. */
+    public Integer getIdTecDeAsignacion(String idAsignacion) {
+        List<Integer> result = jdbc.query(
+                "SELECT ID_TEC FROM Reparacion WHERE ID_REP = ?",
+                (rs, row) -> rs.getInt(1), idAsignacion);
+        return result.isEmpty() ? null : result.get(0);
+    }
+
     public Set<Integer> getIdComsYaReparados(String imei, String idRepExcluir) {
         // Categoría derivada de la reparación en edición: G% para glass, R% para el resto
         // (antes estaba cableado a R% y las ediciones de glass no marcaban "ya reparado").
