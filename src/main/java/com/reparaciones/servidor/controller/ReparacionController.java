@@ -231,6 +231,7 @@ public class ReparacionController {
      * editar una reparación ya hecha): exige SUPERTECNICO y conserva el {@code idTec} del cuerpo, que es el
      * técnico original del trabajo (spec web-formulario §5.1).
      */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PostMapping("/completa")
     @ResponseStatus(HttpStatus.CREATED)
     public void insertarCompleta(@RequestBody InsertarCompletaRequest req,
@@ -253,6 +254,7 @@ public class ReparacionController {
                 ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PatchMapping("/{idRep}/completar")
     public void completar(@PathVariable String idRep,
                           @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -506,6 +508,7 @@ public class ReparacionController {
         dao.borrarIncidenciaPorImei(imei, tipo);
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PostMapping("/{idAsignacion}/agotar-componente")
     @ResponseStatus(HttpStatus.CREATED)
     public void agotarComponente(@PathVariable String idAsignacion,
@@ -519,6 +522,7 @@ public class ReparacionController {
                 "ID_ASIG: " + idAsignacion + (imei != null ? ", IMEI: " + imei : "") + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PostMapping("/{idAsignacion}/filas")
     @ResponseStatus(HttpStatus.CREATED)
     public ValorTexto guardarFilaIndividual(@PathVariable String idAsignacion,
