@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.model.SolicitudStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,17 +24,20 @@ public class SolicitudStockController {
         this.logDao = logDao;
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
     @GetMapping
     public List<SolicitudStock> getSolicitudes(
             @RequestParam(required = false) String estado) {
         return dao.getSolicitudes(estado);
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
     @GetMapping("/count")
     public Map<String, Object> count() {
         return Map.of("value", dao.contarPendientes());
     }
 
+    @PreAuthorize("hasAnyRole('TECNICO','SUPERTECNICO')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody InsertarRequest req,
@@ -43,6 +47,7 @@ public class SolicitudStockController {
                 "ID_COM: " + req.idCom());
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idSol}/estado")
     public void actualizarEstado(@PathVariable int idSol,
                                   @RequestBody Map<String, String> body,
@@ -54,6 +59,7 @@ public class SolicitudStockController {
         logDao.insertar(principal.getIdUsu(), accion, "ID_SOL: " + idSol + ", ESTADO: " + estado);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/{idSol}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void borrar(@PathVariable int idSol,

@@ -90,6 +90,9 @@ public class ComponenteController {
                 "ID_COM: " + idCom + ", STOCK_MINIMO: " + req.stockMinimo());
     }
 
+    /** Ajuste manual de stock: solo el supertécnico. El stock del día a día se mueve dentro de las
+     *  transacciones del servidor (completar, editar, agotar, recibir pedidos). */
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCom}/stock")
     public void actualizarStock(@PathVariable int idCom, @RequestBody DeltaRequest req) {
         dao.actualizarStock(idCom, req.delta());
