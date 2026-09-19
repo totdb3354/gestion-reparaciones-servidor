@@ -1,11 +1,13 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
 public class Reparacion {
     private String        idRep;
     private LocalDateTime fechaAsig;
-    private LocalDateTime fechaFin;
+    @Schema(nullable = true) private LocalDateTime fechaFin;
     private String        imei;
     private int           idTec;
     private LocalDateTime updatedAt;

@@ -7,6 +7,7 @@ import com.reparaciones.servidor.dao.RevisionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
+import com.reparaciones.servidor.model.ValorTexto;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -62,12 +63,12 @@ public class TelefonoController {
     }
 
     @GetMapping("/{imei}/modelo")
-    public Map<String, String> getModelo(@PathVariable String imei) {
+    public ValorTexto getModelo(@PathVariable String imei) {
         String modelo = dao.getModelo(imei);
         if (modelo == null || modelo.isBlank()) {
             modelo = imeiLookupService.lookupModeloInterno(imei);
         }
-        return Map.of("value", modelo != null ? modelo : "");
+        return new ValorTexto(modelo != null ? modelo : "");
     }
 
     @PostMapping

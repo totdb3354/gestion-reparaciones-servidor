@@ -3,14 +3,15 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.model.SolicitudStock;
+import com.reparaciones.servidor.model.ValorEntero;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/solicitudes-stock")
@@ -33,8 +34,8 @@ public class SolicitudStockController {
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
     @GetMapping("/count")
-    public Map<String, Object> count() {
-        return Map.of("value", dao.contarPendientes());
+    public ValorEntero count() {
+        return new ValorEntero(dao.contarPendientes());
     }
 
     @PreAuthorize("hasAnyRole('TECNICO','SUPERTECNICO')")
@@ -50,9 +51,9 @@ public class SolicitudStockController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idSol}/estado")
     public void actualizarEstado(@PathVariable int idSol,
-                                  @RequestBody Map<String, String> body,
+                                  @RequestBody EstadoRequest body,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String estado = body.get("estado");
+        String estado = body.estado();
         dao.actualizarEstado(idSol, estado);
         String accion = "RECHAZADA".equalsIgnoreCase(estado)
                 ? "RECHAZAR_SOLICITUD_STOCK" : "GESTIONAR_SOLICITUD_STOCK";
@@ -68,5 +69,6 @@ public class SolicitudStockController {
         logDao.insertar(principal.getIdUsu(), "BORRAR_SOLICITUD_STOCK", "ID_SOL: " + idSol);
     }
 
-    private record InsertarRequest(int idCom, String descripcion) {}
+    private record InsertarRequest(int idCom, @Schema(nullable = true) String descripcion) {}
+    private record EstadoRequest(String estado) {}
 }

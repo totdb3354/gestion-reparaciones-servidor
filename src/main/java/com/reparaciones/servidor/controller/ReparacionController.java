@@ -156,11 +156,9 @@ public class ReparacionController {
     }
 
     @GetMapping("/imei/{imei}/incidencia-activa")
-    public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei,
+    public ValorTexto getIncidenciaActivaPorImei(@PathVariable String imei,
             @RequestParam(defaultValue = "R") String tipo) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("value", dao.getIncidenciaActivaPorImei(imei, tipo));
-        return resp;
+        return new ValorTexto(dao.getIncidenciaActivaPorImei(imei, tipo));
     }
 
     @GetMapping("/imei/{imei}/tiene-asignacion")
@@ -523,9 +521,9 @@ public class ReparacionController {
 
     @PostMapping("/{idAsignacion}/filas")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, String> guardarFilaIndividual(@PathVariable String idAsignacion,
-                                                     @RequestBody GuardarFilaRequest req,
-                                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+    public ValorTexto guardarFilaIndividual(@PathVariable String idAsignacion,
+                                            @RequestBody GuardarFilaRequest req,
+                                            @AuthenticationPrincipal UsuarioPrincipal principal) {
         int idTec = PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idAsignacion));
         String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), idTec,
                 req.idRepAnterior(), idAsignacion);
@@ -534,7 +532,7 @@ public class ReparacionController {
                 esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
                 "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
                 ", IMEI: " + req.imei() + ", TECNICO: " + tecnico + componentesDe(req.filas()));
-        return Map.of("value", idRep);
+        return new ValorTexto(idRep);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -579,10 +577,10 @@ public class ReparacionController {
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @GetMapping("/{idRep}/borrador")
-    public Map<String, String> getBorrador(@PathVariable String idRep,
-                                           @AuthenticationPrincipal UsuarioPrincipal principal) {
+    public ContenidoBorrador getBorrador(@PathVariable String idRep,
+                                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idRep));
-        return java.util.Collections.singletonMap("contenido", borradorDao.get(idRep));
+        return new ContenidoBorrador(borradorDao.get(idRep));
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
@@ -608,19 +606,21 @@ public class ReparacionController {
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
     private record AsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente, boolean esChasis) {}
     record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
-                                   String idRepAnterior, String idAsignacion, String categoria) {}   // package-private: lo construye el test
+                                   @Schema(nullable = true) String idRepAnterior,
+                                   @Schema(nullable = true) String idAsignacion,
+                                   @Schema(nullable = true) String categoria) {}   // package-private: lo construye el test
 private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) String comentarioAsignacion, LocalDateTime updatedAt) {}
     private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
-                                 String observacionNueva, int nNuevas,
+                                 @Schema(nullable = true) String observacionNueva, int nNuevas,
                                  LocalDateTime updatedAt) {}
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
-    record AgotarRequest(int idCom, int cantidad, String descripcion) {}   // package-private: lo construye el test
+    record AgotarRequest(int idCom, int cantidad, @Schema(nullable = true) String descripcion) {}   // package-private: lo construye el test
     private record UrgenteRequest(boolean urgente) {}
     private record ChasisRequest(boolean esChasis) {}
     private record PorCerrarRequest(boolean porCerrar) {}
     record EntregaGlassRequest(boolean entregado) {}   // package-private: lo construye el test
     record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
-                              String idRepAnterior) {}   // package-private: lo construye el test
+                              @Schema(nullable = true) String idRepAnterior) {}   // package-private: lo construye el test
     private record MotivoRequest(@Schema(nullable = true) String motivo) {}
 
     /** Tipos de los componentes consumidos, para el detalle del log ("" si no hay filas con pieza). */

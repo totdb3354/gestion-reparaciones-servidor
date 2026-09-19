@@ -1,5 +1,7 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
 public class SolicitudResumen {
@@ -8,8 +10,8 @@ public class SolicitudResumen {
     private String        imei;
     private String        nombreTecnico;
     private int           idCom;
-    private String        tipoComponente;
-    private String        descripcion;
+    @Schema(nullable = true) private String        tipoComponente;
+    @Schema(nullable = true) private String        descripcion;
     private String        estado;
     private LocalDateTime fechaSolicitud;
 

@@ -161,6 +161,90 @@ class OpenApiContractTest {
         assertTrue(esquemas.path("ReparacionActualizarAsignacionRequest").path("properties").path("comentarioAsignacion").path("nullable").asBoolean(false));
         assertTrue(esquemas.path("GlassGlassAsignacionRequest").path("properties").path("comentario").path("nullable").asBoolean(false));
 
+        // ── Sub-proyecto 2 (spec web-formulario §5.5): formulario de reparación y campana ──
+        for (String esquema : List.of("Componente", "FilaReparacion", "Reparacion", "SolicitudResumen",
+                "SolicitudStock", "ReparacionDAODetalleEdicion", "ReparacionDAOAsignacionActiva",
+                "ReparacionInsertarCompletaRequest", "ReparacionGuardarFilaRequest", "ReparacionAgotarRequest",
+                "ReparacionEditarRequest", "ReparacionBorradorRequest", "SolicitudStockInsertarRequest",
+                "SolicitudEstadoRequest", "SolicitudStockEstadoRequest", "ValorEntero", "ValorTexto",
+                "ContenidoBorrador")) {
+            assertTrue(esquemas.has(esquema),
+                    () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
+        }
+
+        for (String ruta : List.of(
+                // formulario
+                "/api/componentes/agrupados",
+                "/api/reparaciones/imei/{imei}",
+                "/api/reparaciones/imei/{imei}/incidencia-activa",
+                "/api/reparaciones/imei/{imei}/asignaciones-activas",
+                "/api/reparaciones/imei/{imei}/ya-reparados",
+                "/api/reparaciones/imei/{imei}/acciones",
+                "/api/reparaciones/asignaciones/{idAsignacion}/solicitudes",
+                "/api/reparaciones/{idRep}/borrador",
+                "/api/reparaciones/{idRep}/detalle-edicion",
+                "/api/reparaciones/{idRep}",
+                "/api/reparaciones/{idAsignacion}/filas",
+                "/api/reparaciones/{idAsignacion}/agotar-componente",
+                "/api/reparaciones/completa",
+                "/api/telefonos/{imei}/modelo",
+                // campana
+                "/api/componentes/gestionados",
+                "/api/solicitudes", "/api/solicitudes/count",
+                "/api/solicitudes/{idRc}/estado", "/api/solicitudes/{idRc}/limpiar",
+                "/api/solicitudes-stock", "/api/solicitudes-stock/count",
+                "/api/solicitudes-stock/{idSol}/estado", "/api/solicitudes-stock/{idSol}")) {
+            assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        }
+
+        // Nullabilidad campo a campo (todo lo demás es required y no nulo)
+        assertNullable(esquemas, "FilaReparacion", "observacion", "prefijo", "descripcionSolicitud", "estadoSolicitud");
+        assertNullable(esquemas, "Componente", "ultimoPedido", "idComMaster");
+        assertNullable(esquemas, "SolicitudResumen", "tipoComponente", "descripcion");
+        assertNullable(esquemas, "SolicitudStock", "descripcion");
+        assertNullable(esquemas, "Reparacion", "fechaFin");
+        assertNullable(esquemas, "ReparacionDAODetalleEdicion", "observacion");
+        assertNullable(esquemas, "ReparacionInsertarCompletaRequest", "idRepAnterior", "idAsignacion", "categoria");
+        assertNullable(esquemas, "ReparacionGuardarFilaRequest", "idRepAnterior");
+        assertNullable(esquemas, "ReparacionAgotarRequest", "descripcion");
+        assertNullable(esquemas, "ReparacionEditarRequest", "observacionNueva");
+        assertNullable(esquemas, "SolicitudStockInsertarRequest", "descripcion");
+        assertNullable(esquemas, "ContenidoBorrador", "contenido");
+        assertNoNullable(esquemas, "FilaReparacion", "idCom", "cantidad", "reutilizado", "esSolicitud", "enCamino");
+        assertNoNullable(esquemas, "Componente", "idCom", "tipo", "stock", "stockMinimo", "activo", "enCamino");
+        assertNoNullable(esquemas, "SolicitudResumen", "idRc", "idRep", "imei", "nombreTecnico", "estado", "fechaSolicitud");
+        assertNoNullable(esquemas, "SolicitudStock", "idSol", "idCom", "tipoComponente", "nombreUsuario", "estado", "fecha");
+        assertNoNullable(esquemas, "ReparacionDAOAsignacionActiva", "idRep", "nombreTecnico", "idTec");
+        assertNoNullable(esquemas, "ReparacionInsertarCompletaRequest", "filas", "imei", "idTec");
+        assertNoNullable(esquemas, "ReparacionGuardarFilaRequest", "filas", "imei", "idTec");
+        assertNoNullable(esquemas, "ReparacionBorradorRequest", "contenido");
+
+        assertEquals("integer", esquemas.path("ValorEntero").path("properties").path("value").path("type").asText(),
+                "ValorEntero.value debe ser integer");
+        assertEquals("integer", esquemas.path("ReparacionInsertarCompletaRequest").path("properties").path("idTec")
+                .path("type").asText(), "el idTec del cuerpo se conserva en el contrato (compatibilidad)");
+        assertEquals("string", esquemas.path("SolicitudEstadoRequest").path("properties").path("estado")
+                .path("type").asText());
+        assertEquals("string", esquemas.path("SolicitudStockEstadoRequest").path("properties").path("estado")
+                .path("type").asText());
+
+        // Las seis respuestas que dejan de ser Map y los dos cuerpos de estado
+        assertTrue(refDeLaRespuesta(paths, "/api/solicitudes/count", "get", "200").endsWith("/ValorEntero"));
+        assertTrue(refDeLaRespuesta(paths, "/api/solicitudes-stock/count", "get", "200").endsWith("/ValorEntero"));
+        assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/imei/{imei}/incidencia-activa", "get", "200")
+                .endsWith("/ValorTexto"));
+        assertTrue(refDeLaRespuesta(paths, "/api/telefonos/{imei}/modelo", "get", "200").endsWith("/ValorTexto"));
+        assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idAsignacion}/filas", "post", "201")
+                .endsWith("/ValorTexto"));
+        assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/borrador", "get", "200")
+                .endsWith("/ContenidoBorrador"));
+        assertTrue(refDelCuerpo(paths, "/api/solicitudes/{idRc}/estado", "patch").endsWith("/SolicitudEstadoRequest"));
+        assertTrue(refDelCuerpo(paths, "/api/solicitudes-stock/{idSol}/estado", "patch")
+                .endsWith("/SolicitudStockEstadoRequest"));
+        assertTrue(refDelCuerpo(paths, "/api/reparaciones/{idRep}/borrador", "put").endsWith("/ReparacionBorradorRequest"));
+        assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/detalle-edicion", "get", "200")
+                .endsWith("/ReparacionDAODetalleEdicion"));
+
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());
         Files.writeString(destino, JSON.writerWithDefaultPrettyPrinter()
@@ -210,6 +294,24 @@ class OpenApiContractTest {
         assertFalse(ref.isEmpty(),
                 () -> metodo + " " + ruta + " " + codigo + " no referencia ningún esquema: " + media);
         return ref;
+    }
+
+    private static void assertNullable(JsonNode esquemas, String esquema, String... campos) {
+        for (String campo : campos) {
+            JsonNode propiedad = esquemas.path(esquema).path("properties").path(campo);
+            assertFalse(propiedad.isMissingNode(), () -> esquema + " sin el campo " + campo);
+            assertTrue(propiedad.path("nullable").asBoolean(false), () -> esquema + "." + campo + " debe ser nullable");
+        }
+    }
+
+    private static void assertNoNullable(JsonNode esquemas, String esquema, String... campos) {
+        for (String campo : campos) {
+            JsonNode propiedad = esquemas.path(esquema).path("properties").path(campo);
+            assertFalse(propiedad.isMissingNode(), () -> esquema + " sin el campo " + campo);
+            assertFalse(propiedad.path("nullable").asBoolean(false), () -> esquema + "." + campo + " no debe ser nullable");
+            assertTrue(esquemas.path(esquema).path("required").toString().contains("\"" + campo + "\""),
+                    () -> esquema + "." + campo + " debe ser required");
+        }
     }
 
     private static List<String> nombres(JsonNode objeto) {

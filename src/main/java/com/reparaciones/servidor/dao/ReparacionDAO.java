@@ -3,6 +3,7 @@ package com.reparaciones.servidor.dao;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.util.Jornada;
 import com.reparaciones.servidor.util.PuntosCalculo;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -266,7 +267,7 @@ public class ReparacionDAO {
     }
 
     public record DetalleEdicion(String imei, int idTec, int idCom,
-                                  boolean esReutilizado, String observacion, int cantidad,
+                                  boolean esReutilizado, @Schema(nullable = true) String observacion, int cantidad,
                                   LocalDateTime updatedAt) {}
 
     public DetalleEdicion getDetalleEdicion(String idRep) {
