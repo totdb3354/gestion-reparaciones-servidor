@@ -255,6 +255,44 @@ class RegistroIdempotenciaTest {
         assertEquals(1, llamadasTrasEscribir.get());
     }
 
+    /** Nunca se descarta una reclamación en curso por el tope de tamaño, aunque sea la más antigua. */
+    @Test void elTopeNuncaDescartaUnaEntradaEnCurso() throws InterruptedException {
+        RelojFalso reloj = new RelojFalso(Instant.parse("2026-09-19T08:00:00Z"));
+        RegistroIdempotencia r = new RegistroIdempotencia(reloj);
+
+        CountDownLatch dentro = new CountDownLatch(1);
+        CountDownLatch continuar = new CountDownLatch(1);
+        Thread enCurso = new Thread(() -> r.ejecutar(1, "completa", "clave-en-curso", "peticion-en-curso",
+                (Supplier<String>) () -> {
+                    dentro.countDown();
+                    try {
+                        continuar.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return "ok";
+                }));
+        enCurso.start();
+        assertTrue(dentro.await(5, TimeUnit.SECONDS), "el hilo en curso no llegó a entrar en la acción");
+
+        // La reclamación en curso es la más antigua (se creó primero); llenamos el resto del registro.
+        for (int i = 0; i < RegistroIdempotencia.MAX_ENTRADAS - 1; i++) {
+            int copia = i;
+            r.ejecutar(1, "completa", "clave-" + i, "peticion-" + i, (Supplier<String>) () -> "ok-" + copia);
+            reloj.avanzar(Duration.ofMillis(1));
+        }
+
+        // Una entrada más por encima del tope: debería descartar la más antigua entre las HECHAS, nunca la en curso.
+        r.ejecutar(1, "completa", "clave-nueva", "peticion-nueva", (Supplier<String>) () -> "ok");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> r.ejecutar(1, "completa", "clave-en-curso", "peticion-en-curso", (Supplier<String>) () -> "otro"));
+        assertEquals(409, ex.getStatusCode().value());
+
+        continuar.countDown();
+        enCurso.join(5000);
+    }
+
     /** Reloj mutable para simular el paso del tiempo sin dormir el hilo del test. */
     private static final class RelojFalso extends Clock {
         private Instant ahora;

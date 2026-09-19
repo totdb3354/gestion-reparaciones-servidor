@@ -117,7 +117,11 @@ public class RegistroIdempotencia {
         return resultado;
     }
 
-    /** Al insertar con el registro lleno, purga las caducadas y, si sigue lleno, descarta la más antigua. */
+    /**
+     * Al insertar con el registro lleno, purga las caducadas y, si sigue lleno, descarta la más antigua
+     * entre las YA HECHAS; una reclamación en curso nunca se descarta (se acepta un desbordamiento
+     * transitorio si todo el registro está en curso).
+     */
     private void purgarSiHaceFalta(Id clavePropia) {
         if (registro.size() <= MAX_ENTRADAS) return;
 
@@ -128,6 +132,7 @@ public class RegistroIdempotencia {
         Instant masAntiguoInstante = null;
         for (Map.Entry<Id, Entrada> e : registro.entrySet()) {
             if (e.getKey().equals(clavePropia)) continue;
+            if (e.getValue().enCurso) continue;
             if (masAntiguoInstante == null || e.getValue().creado.isBefore(masAntiguoInstante)) {
                 masAntiguoInstante = e.getValue().creado;
                 masAntigua = e.getKey();
