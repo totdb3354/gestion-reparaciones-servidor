@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -42,22 +43,37 @@ public class RegistroIdempotencia {
         this.reloj = reloj;
     }
 
+    /** Atajo sin "lo de después" (equivalente a pasar {@code trasEscribir = null}). */
+    public <T> T ejecutar(int idUsuario, String operacion, String clave, Object peticion, Supplier<T> escritura) {
+        return ejecutar(idUsuario, operacion, clave, peticion, escritura, null);
+    }
+
     /**
-     * @param idUsuario usuario del token (las claves de un usuario no valen para otro)
-     * @param operacion nombre fijo de la operación ("completa", "filas", "agotar", "editar")
-     * @param clave     valor de la cabecera; null o en blanco = ejecutar sin registrar nada
-     * @param peticion  todo lo que define la petición (ruta + cuerpo); se compara con equals()
-     * @param accion    la escritura; su valor de retorno es la respuesta (null si el método es void)
+     * @param idUsuario   usuario del token (las claves de un usuario no valen para otro)
+     * @param operacion   nombre fijo de la operación ("completa", "filas", "agotar", "editar")
+     * @param clave       valor de la cabecera; null o en blanco = ejecutar sin registrar nada
+     * @param peticion    todo lo que define la petición (ruta + cuerpo); se compara con equals()
+     * @param escritura   la escritura transaccional; su valor de retorno es la respuesta (null si el
+     *                    método es void). Solo se ejecuta la primera vez.
+     * @param trasEscribir trabajo que corre una única vez, justo después de que {@code escritura} termine
+     *                    bien (p. ej. el log de actividad y sus lecturas); puede ser {@code null}. La
+     *                    entrada queda "hecha" ANTES de ejecutarlo: si falla, el reintento con la misma
+     *                    clave devuelve el resultado guardado sin repetir la escritura ni volver a
+     *                    ejecutar {@code trasEscribir}; la excepción se relanza tal cual al llamador actual.
      */
-    public <T> T ejecutar(int idUsuario, String operacion, String clave, Object peticion, Supplier<T> accion) {
+    public <T> T ejecutar(int idUsuario, String operacion, String clave, Object peticion,
+                          Supplier<T> escritura, Consumer<T> trasEscribir) {
         if (clave == null || clave.isBlank()) {
-            return accion.get();
+            T resultado = escritura.get();
+            if (trasEscribir != null) trasEscribir.accept(resultado);
+            return resultado;
         }
-        if (clave.length() > MAX_LONGITUD_CLAVE) {
+        String claveRecortada = clave.trim();
+        if (claveRecortada.length() > MAX_LONGITUD_CLAVE) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_CLAVE_INVALIDA);
         }
 
-        Id id = new Id(idUsuario, operacion, clave);
+        Id id = new Id(idUsuario, operacion, claveRecortada);
         AtomicBoolean propietario = new AtomicBoolean(false);
         AtomicReference<Entrada> existenteRef = new AtomicReference<>();
 
@@ -78,21 +94,27 @@ public class RegistroIdempotencia {
             if (Objects.equals(actual.peticion, peticion)) {
                 @SuppressWarnings("unchecked")
                 T resultado = (T) actual.resultado;
-                return resultado;
+                return resultado;   // repetido: nunca se vuelve a ejecutar escritura ni trasEscribir
             }
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_CLAVE_REUTILIZADA);
         }
 
         purgarSiHaceFalta(id);
+        T resultado;
         try {
-            T resultado = accion.get();
-            registro.put(id, Entrada.hecha(peticion, resultado, reloj.instant()));
-            return resultado;
+            resultado = escritura.get();
         } catch (RuntimeException | Error e) {
-            // La transacción se deshizo: el reintento con la misma clave debe poder ejecutarse de nuevo.
+            // La escritura no llegó a comprometerse: el reintento con la misma clave debe poder ejecutarla.
             registro.remove(id);
             throw e;
         }
+        // La escritura ya se comprometió: se guarda como hecha ANTES de "lo de después", para que un fallo
+        // posterior (p. ej. el log de actividad) no la haga repetirse en el reintento.
+        registro.put(id, Entrada.hecha(peticion, resultado, reloj.instant()));
+        if (trasEscribir != null) {
+            trasEscribir.accept(resultado);   // si falla, la excepción se relanza tal cual; la entrada ya quedó
+        }
+        return resultado;
     }
 
     /** Al insertar con el registro lleno, purga las caducadas y, si sigue lleno, descarta la más antigua. */

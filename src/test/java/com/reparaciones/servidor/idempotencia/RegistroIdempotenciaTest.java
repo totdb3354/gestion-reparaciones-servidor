@@ -8,9 +8,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -77,16 +81,18 @@ class RegistroIdempotenciaTest {
         RegistroIdempotencia r = new RegistroIdempotencia();
         CountDownLatch dentro = new CountDownLatch(1);
         CountDownLatch continuar = new CountDownLatch(1);
+        AtomicReference<String> resultadoPrimero = new AtomicReference<>();
 
-        Thread primero = new Thread(() -> r.ejecutar(1, "completa", "clave-1", "peticion-a", (Supplier<String>) () -> {
-            dentro.countDown();
-            try {
-                continuar.await(5, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            return "ok";
-        }));
+        Thread primero = new Thread(() -> resultadoPrimero.set(
+                r.ejecutar(1, "completa", "clave-1", "peticion-a", (Supplier<String>) () -> {
+                    dentro.countDown();
+                    try {
+                        continuar.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return "ok";
+                })));
         primero.start();
         assertTrue(dentro.await(5, TimeUnit.SECONDS), "el primer hilo no llegó a entrar en la acción");
 
@@ -97,6 +103,7 @@ class RegistroIdempotenciaTest {
 
         continuar.countDown();
         primero.join(5000);
+        assertEquals("ok", resultadoPrimero.get(), "el primer hilo debía completar su propia ejecución con normalidad");
     }
 
     @Test void siLaAccionFallaElReintentoVuelveAEjecutar() {
@@ -181,6 +188,71 @@ class RegistroIdempotenciaTest {
 
         assertEquals(400, ex.getStatusCode().value());
         assertEquals(RegistroIdempotencia.MSG_CLAVE_INVALIDA, ex.getReason());
+    }
+
+    @Test void laClaveSeRecortaAntesDeUsarla() {
+        RegistroIdempotencia r = new RegistroIdempotencia();
+        AtomicInteger llamadas = new AtomicInteger();
+        Supplier<String> accion = () -> { llamadas.incrementAndGet(); return "resultado-" + llamadas.get(); };
+
+        String primero = r.ejecutar(1, "completa", "k", "peticion-a", accion);
+        String segundo = r.ejecutar(1, "completa", "  k  ", "peticion-a", accion);
+
+        assertEquals(primero, segundo);
+        assertEquals(1, llamadas.get());
+    }
+
+    // ── lo de después (lookups del log): no forma parte de la escritura transaccional ──────────
+
+    @Test void sinClaveSeEjecutanLasDosPartesEnOrden() {
+        RegistroIdempotencia r = new RegistroIdempotencia();
+        List<String> orden = new ArrayList<>();
+
+        String resultado = r.ejecutar(1, "completa", null, "peticion",
+                (Supplier<String>) () -> { orden.add("escritura"); return "ok"; },
+                (Consumer<String>) res -> orden.add("trasEscribir:" + res));
+
+        assertEquals("ok", resultado);
+        assertEquals(List.of("escritura", "trasEscribir:ok"), orden);
+    }
+
+    @Test void elReintentoServidoDelRegistroNoEjecutaLoDeDespues() {
+        RegistroIdempotencia r = new RegistroIdempotencia();
+        AtomicInteger llamadasTrasEscribir = new AtomicInteger();
+        Consumer<String> trasEscribir = res -> llamadasTrasEscribir.incrementAndGet();
+
+        r.ejecutar(1, "completa", "clave-1", "peticion-a", (Supplier<String>) () -> "ok", trasEscribir);
+        r.ejecutar(1, "completa", "clave-1", "peticion-a", (Supplier<String>) () -> "otro", trasEscribir);
+
+        assertEquals(1, llamadasTrasEscribir.get());
+    }
+
+    /**
+     * Si la escritura ya se comprometió (p. ej. un descuento de stock) pero lo de después falla (el log de
+     * actividad), el reintento con la misma clave NO debe repetir la escritura: la entrada queda hecha antes
+     * de ejecutar lo de después.
+     */
+    @Test void siFallaLoDeDespuesLaEscrituraNoSeRepiteAlReintentar() {
+        RegistroIdempotencia r = new RegistroIdempotencia();
+        AtomicInteger llamadasEscritura = new AtomicInteger();
+        AtomicInteger llamadasTrasEscribir = new AtomicInteger();
+        RuntimeException falloLog = new IllegalStateException("el log falló");
+
+        Supplier<String> escritura = () -> { llamadasEscritura.incrementAndGet(); return "resultado"; };
+        Consumer<String> trasEscribirQueFalla = res -> { llamadasTrasEscribir.incrementAndGet(); throw falloLog; };
+
+        IllegalStateException capturada = assertThrows(IllegalStateException.class,
+                () -> r.ejecutar(1, "completa", "clave-1", "peticion-a", escritura, trasEscribirQueFalla));
+        assertSame(falloLog, capturada);
+        assertEquals(1, llamadasEscritura.get());
+        assertEquals(1, llamadasTrasEscribir.get());
+
+        // Reintento con la misma clave: la escritura no se repite y lo de después tampoco se vuelve a ejecutar.
+        String resultado = r.ejecutar(1, "completa", "clave-1", "peticion-a", escritura,
+                (Consumer<String>) res -> llamadasTrasEscribir.incrementAndGet());
+        assertEquals("resultado", resultado);
+        assertEquals(1, llamadasEscritura.get());
+        assertEquals(1, llamadasTrasEscribir.get());
     }
 
     /** Reloj mutable para simular el paso del tiempo sin dormir el hilo del test. */

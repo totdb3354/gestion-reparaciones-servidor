@@ -21,6 +21,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -128,5 +129,39 @@ class IdempotenciaReparacionControllerTest {
         assertEquals(403, ex.getStatusCode().value());
         assertEquals(PropiedadAsignacion.MSG_NO_ES_TUYA, ex.getReason());
         verify(dao, times(1)).agotarComponente(ASIG, 102, 1, null);   // solo la primera llamada llegó al DAO
+    }
+
+    // ── la escritura ya comprometida no se repite aunque falle lo de después (el log) ──────────
+
+    @Test void siElLogFallaTrasGuardarLaFilaElReintentoNoVuelveAEscribir() {
+        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.guardarFilaIndividual(filas, IMEI, 4, null, ASIG)).thenReturn("R20260916_5");
+        RuntimeException falloLog = new RuntimeException("fallo de log");
+        doThrow(falloLog).when(logDao).insertar(eq(8), any(), any());
+
+        RuntimeException primera = assertThrows(RuntimeException.class, () -> ctl.guardarFilaIndividual(ASIG,
+                new ReparacionController.GuardarFilaRequest(filas, IMEI, 9, null), tecnico, CLAVE));
+        assertSame(falloLog, primera);
+
+        ValorTexto segundo = ctl.guardarFilaIndividual(ASIG,
+                new ReparacionController.GuardarFilaRequest(filas, IMEI, 9, null), tecnico, CLAVE);
+
+        assertEquals("R20260916_5", segundo.value());
+        verify(dao, times(1)).guardarFilaIndividual(filas, IMEI, 4, null, ASIG);
+    }
+
+    @Test void siElLogFallaTrasCompletarElReintentoNoVuelveADescontar() {
+        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        RuntimeException falloLog = new RuntimeException("fallo de log");
+        doThrow(falloLog).when(logDao).insertar(eq(8), any(), any());
+
+        RuntimeException primera = assertThrows(RuntimeException.class, () -> ctl.insertarCompleta(
+                new ReparacionController.InsertarCompletaRequest(filas, IMEI, 9, null, ASIG, null), tecnico, CLAVE));
+        assertSame(falloLog, primera);
+
+        ctl.insertarCompleta(new ReparacionController.InsertarCompletaRequest(filas, IMEI, 9, null, ASIG, null),
+                tecnico, CLAVE);
+
+        verify(dao, times(1)).insertarCompleta(filas, IMEI, 4, null, ASIG, null);
     }
 }
