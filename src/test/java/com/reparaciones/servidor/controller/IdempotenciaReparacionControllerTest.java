@@ -20,9 +20,12 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -163,5 +166,51 @@ class IdempotenciaReparacionControllerTest {
                 tecnico, CLAVE);
 
         verify(dao, times(1)).insertarCompleta(filas, IMEI, 4, null, ASIG, null);
+    }
+
+    // ── la clave queda ligada a la asignación o reparación concreta del primer uso ──────────────
+
+    @Test void laMismaClaveSobreOtraAsignacionEs422EnFilas() {
+        String otraAsig = "A20260916_2";
+        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.getIdTecDeAsignacion(otraAsig)).thenReturn(4);
+        when(dao.guardarFilaIndividual(filas, IMEI, 4, null, ASIG)).thenReturn("R20260916_5");
+
+        ctl.guardarFilaIndividual(ASIG, new ReparacionController.GuardarFilaRequest(filas, IMEI, 9, null), tecnico, CLAVE);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> ctl.guardarFilaIndividual(
+                otraAsig, new ReparacionController.GuardarFilaRequest(filas, IMEI, 9, null), tecnico, CLAVE));
+
+        assertEquals(422, ex.getStatusCode().value());
+        verify(dao, never()).guardarFilaIndividual(filas, IMEI, 4, null, otraAsig);
+    }
+
+    @Test void laMismaClaveSobreOtraAsignacionEs422EnAgotar() {
+        String otraAsig = "A20260916_2";
+        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.getIdTecDeAsignacion(otraAsig)).thenReturn(4);
+
+        ctl.agotarComponente(ASIG, new ReparacionController.AgotarRequest(102, 1, null), tecnico, CLAVE);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> ctl.agotarComponente(
+                otraAsig, new ReparacionController.AgotarRequest(102, 1, null), tecnico, CLAVE));
+
+        assertEquals(422, ex.getStatusCode().value());
+        verify(dao, never()).agotarComponente(otraAsig, 102, 1, null);
+    }
+
+    @Test void laMismaClaveSobreOtraReparacionEs422() {
+        LocalDateTime updatedAt = LocalDateTime.of(2026, 9, 16, 10, 0);
+        when(dao.getResumenById(any())).thenReturn(Optional.empty());
+
+        ctl.editarReparacion("R20260916_5",
+                new ReparacionController.EditarRequest(0, false, "obs", 1, updatedAt), supertecnico, CLAVE);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> ctl.editarReparacion(
+                "R20260916_6", new ReparacionController.EditarRequest(0, false, "obs", 1, updatedAt),
+                supertecnico, CLAVE));
+
+        assertEquals(422, ex.getStatusCode().value());
+        verify(dao, never()).editarReparacion(eq("R20260916_6"), anyInt(), anyBoolean(), any(), anyInt(), any());
     }
 }
