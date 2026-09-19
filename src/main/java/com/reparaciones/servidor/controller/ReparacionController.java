@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.DificultadPuntosDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.PropiedadAsignacion;
@@ -31,16 +32,18 @@ public class ReparacionController {
     private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
     private final ComponenteDAO         componenteDao;
     private final DificultadPuntosDAO   dificultadDao;
+    private final RegistroIdempotencia  idempotencia;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
-                                DificultadPuntosDAO dificultadDao) {
+                                DificultadPuntosDAO dificultadDao, RegistroIdempotencia idempotencia) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
         this.borradorDao = borradorDao;
         this.componenteDao = componenteDao;
         this.dificultadDao = dificultadDao;
+        this.idempotencia = idempotencia;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -235,7 +238,8 @@ public class ReparacionController {
     @PostMapping("/completa")
     @ResponseStatus(HttpStatus.CREATED)
     public void insertarCompleta(@RequestBody InsertarCompletaRequest req,
-                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
+                                 @AuthenticationPrincipal UsuarioPrincipal principal,
+                                 @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
         int idTec;
         if (req.idAsignacion() != null) {
             idTec = PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(req.idAsignacion()));
@@ -243,15 +247,20 @@ public class ReparacionController {
             PropiedadAsignacion.exigirSupertecnico(principal);
             idTec = req.idTec();
         }
-        dao.insertarCompleta(req.filas(), req.imei(), idTec,
+        var peticion = new PeticionCompleta(req.filas(), req.imei(), idTec,
                 req.idRepAnterior(), req.idAsignacion(), req.categoria());
-        String modelo = dao.getModeloByImei(req.imei());
-        String tecnico = dao.getNombreTecnicoById(idTec);
-        logDao.insertar(principal.getIdUsu(),
-                esGlassAsig(req.idAsignacion()) || "G".equals(req.categoria())
-                        ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
-                "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
-                ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
+        idempotencia.ejecutar(principal.getIdUsu(), "completa", claveIdempotencia, peticion, () -> {
+            dao.insertarCompleta(req.filas(), req.imei(), idTec,
+                    req.idRepAnterior(), req.idAsignacion(), req.categoria());
+            String modelo = dao.getModeloByImei(req.imei());
+            String tecnico = dao.getNombreTecnicoById(idTec);
+            logDao.insertar(principal.getIdUsu(),
+                    esGlassAsig(req.idAsignacion()) || "G".equals(req.categoria())
+                            ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
+                    "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
+                    ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
+            return null;
+        });
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
@@ -460,29 +469,35 @@ public class ReparacionController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idRep}")
     public void editarReparacion(@PathVariable String idRep, @RequestBody EditarRequest req,
-                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen ant = dao.getResumenById(idRep).orElse(null);
-        dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
+                                 @AuthenticationPrincipal UsuarioPrincipal principal,
+                                 @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        var peticion = new PeticionEditar(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
                 req.observacionNueva(), req.nNuevas(), req.updatedAt());
+        idempotencia.ejecutar(principal.getIdUsu(), "editar", claveIdempotencia, peticion, () -> {
+            ReparacionResumen ant = dao.getResumenById(idRep).orElse(null);
+            dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
+                    req.observacionNueva(), req.nNuevas(), req.updatedAt());
 
-        List<String> cambios = new ArrayList<>();
-        cambios.add("ID_REP: " + idRep);
-        if (ant != null) {
-            cambios.add("IMEI: " + ant.getImei());
-            String comAnt = ant.getTipoComponente() != null ? ant.getTipoComponente() : "";
-            String comNue = req.idComNuevo() > 0 ? dao.getTipoComponenteById(req.idComNuevo()) : comAnt;
-            if (!comAnt.equals(comNue)) {
-                cambios.add("COM_ANT: " + comAnt + " → COM_NUE: " + comNue);
+            List<String> cambios = new ArrayList<>();
+            cambios.add("ID_REP: " + idRep);
+            if (ant != null) {
+                cambios.add("IMEI: " + ant.getImei());
+                String comAnt = ant.getTipoComponente() != null ? ant.getTipoComponente() : "";
+                String comNue = req.idComNuevo() > 0 ? dao.getTipoComponenteById(req.idComNuevo()) : comAnt;
+                if (!comAnt.equals(comNue)) {
+                    cambios.add("COM_ANT: " + comAnt + " → COM_NUE: " + comNue);
+                }
+                String obsAnt = ant.getObservaciones() != null ? ant.getObservaciones() : "";
+                String obsNue = req.observacionNueva() != null ? req.observacionNueva() : "";
+                if (!obsAnt.equals(obsNue)) {
+                    cambios.add("OBS_ANT: '" + obsAnt + "' → OBS_NUE: '" + obsNue + "'");
+                }
             }
-            String obsAnt = ant.getObservaciones() != null ? ant.getObservaciones() : "";
-            String obsNue = req.observacionNueva() != null ? req.observacionNueva() : "";
-            if (!obsAnt.equals(obsNue)) {
-                cambios.add("OBS_ANT: '" + obsAnt + "' → OBS_NUE: '" + obsNue + "'");
-            }
-        }
-        logDao.insertar(principal.getIdUsu(),
-                esGlass(idRep) ? "EDITAR_GLASS" : "EDITAR_REPARACION",
-                String.join(", ", cambios));
+            logDao.insertar(principal.getIdUsu(),
+                    esGlass(idRep) ? "EDITAR_GLASS" : "EDITAR_REPARACION",
+                    String.join(", ", cambios));
+            return null;
+        });
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -513,13 +528,18 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public void agotarComponente(@PathVariable String idAsignacion,
                                   @RequestBody AgotarRequest req,
-                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+                                  @AuthenticationPrincipal UsuarioPrincipal principal,
+                                  @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
         PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idAsignacion));
-        dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
-        String tipo = dao.getTipoComponenteById(req.idCom());
-        String imei = dao.getImeiByIdRep(idAsignacion);
-        logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
-                "ID_ASIG: " + idAsignacion + (imei != null ? ", IMEI: " + imei : "") + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
+        var peticion = new PeticionAgotar(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
+        idempotencia.ejecutar(principal.getIdUsu(), "agotar", claveIdempotencia, peticion, () -> {
+            dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
+            String tipo = dao.getTipoComponenteById(req.idCom());
+            String imei = dao.getImeiByIdRep(idAsignacion);
+            logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
+                    "ID_ASIG: " + idAsignacion + (imei != null ? ", IMEI: " + imei : "") + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
+            return null;
+        });
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
@@ -527,16 +547,20 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public ValorTexto guardarFilaIndividual(@PathVariable String idAsignacion,
                                             @RequestBody GuardarFilaRequest req,
-                                            @AuthenticationPrincipal UsuarioPrincipal principal) {
+                                            @AuthenticationPrincipal UsuarioPrincipal principal,
+                                            @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
         int idTec = PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idAsignacion));
-        String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), idTec,
-                req.idRepAnterior(), idAsignacion);
-        String tecnico = dao.getNombreTecnicoById(idTec);
-        logDao.insertar(principal.getIdUsu(),
-                esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
-                "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
-                ", IMEI: " + req.imei() + ", TECNICO: " + tecnico + componentesDe(req.filas()));
-        return new ValorTexto(idRep);
+        var peticion = new PeticionFilas(idAsignacion, req.filas(), req.imei(), idTec, req.idRepAnterior());
+        return idempotencia.ejecutar(principal.getIdUsu(), "filas", claveIdempotencia, peticion, () -> {
+            String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), idTec,
+                    req.idRepAnterior(), idAsignacion);
+            String tecnico = dao.getNombreTecnicoById(idTec);
+            logDao.insertar(principal.getIdUsu(),
+                    esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
+                    "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
+                    ", IMEI: " + req.imei() + ", TECNICO: " + tecnico + componentesDe(req.filas()));
+            return new ValorTexto(idRep);
+        });
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -614,9 +638,9 @@ public class ReparacionController {
                                    @Schema(nullable = true) String idAsignacion,
                                    @Schema(nullable = true) String categoria) {}   // package-private: lo construye el test
 private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) String comentarioAsignacion, LocalDateTime updatedAt) {}
-    private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
-                                 @Schema(nullable = true) String observacionNueva, int nNuevas,
-                                 LocalDateTime updatedAt) {}
+    record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
+                        @Schema(nullable = true) String observacionNueva, int nNuevas,
+                        LocalDateTime updatedAt) {}   // package-private: lo construye el test
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
     record AgotarRequest(int idCom, int cantidad, @Schema(nullable = true) String descripcion) {}   // package-private: lo construye el test
     private record UrgenteRequest(boolean urgente) {}
@@ -626,6 +650,17 @@ private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) S
     record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
                               @Schema(nullable = true) String idRepAnterior) {}   // package-private: lo construye el test
     private record MotivoRequest(@Schema(nullable = true) String motivo) {}
+
+    // ── peticiones de reintentos seguros ────────────────────────────────────────
+    // Lo que define cada escritura del formulario (ruta + cuerpo, con el técnico ya resuelto): un
+    // reintento con la misma clave se reconoce comparando esta petición con la guardada (equals()).
+    private record PeticionCompleta(List<FilaReparacion> filas, String imei, int idTecEfectivo,
+                                    String idRepAnterior, String idAsignacion, String categoria) {}
+    private record PeticionFilas(String idAsignacion, List<FilaReparacion> filas, String imei,
+                                 int idTecEfectivo, String idRepAnterior) {}
+    private record PeticionAgotar(String idAsignacion, int idCom, int cantidad, String descripcion) {}
+    private record PeticionEditar(String idRep, int idComNuevo, boolean esReutilizadoNuevo,
+                                  String observacionNueva, int nNuevas, LocalDateTime updatedAt) {}
 
     /** Tipos de los componentes consumidos, para el detalle del log ("" si no hay filas con pieza). */
     private String componentesDe(List<FilaReparacion> filas) {
