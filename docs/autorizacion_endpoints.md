@@ -1,208 +1,43 @@
 # Autorización de endpoints por rol
 
----
-
 ## Por qué existe este documento
 
-La aplicación tiene tres roles: **TECNICO**, **SUPERTECNICO** y **ADMIN**. La interfaz gráfica (cliente JavaFX) ya oculta o deshabilita las acciones que cada rol no puede realizar. Sin embargo, eso no es suficiente: cualquier usuario con un token JWT válido podría saltarse la UI y llamar directamente a la API con herramientas como Postman o curl.
-
-Este tipo de ataque se llama **privilege escalation** (escalada de privilegios): un TECNICO autenticado llama a un endpoint de SUPERTECNICO directamente, sin pasar por la UI que lo bloquearía.
-
-Para evitarlo, el servidor aplica una segunda capa de control usando `@PreAuthorize` de Spring Security — la autorización no solo vive en el cliente, sino también en el servidor.
-
----
+La aplicación tiene tres roles: **TECNICO**, **SUPERTECNICO** y **ADMIN**. Quién puede hacer qué lo decide el servidor en cada petición; los clientes (JavaFX y web) se limitan a reflejarlo mostrando u ocultando acciones. Este documento explica el mecanismo y el criterio. El detalle de cada endpoint no se repite aquí: está en las anotaciones de los controllers y en los tests que se citan al final.
 
 ## Cómo funciona `@PreAuthorize`
 
-`@PreAuthorize` es una anotación de Spring Security que se coloca encima de un método (o de una clase entera) en un controller. Antes de ejecutar el método, Spring comprueba si el usuario autenticado cumple la condición indicada. Si no la cumple, devuelve automáticamente un `403 Forbidden` sin llegar al DAO ni a la base de datos.
+`@PreAuthorize` es una anotación de Spring Security que se coloca sobre un método de un controller, o sobre la clase entera. Antes de ejecutar el método, Spring comprueba que el usuario de la petición cumple la condición; si no la cumple, responde `403 Forbidden` sin llegar al DAO ni a la base de datos.
 
 ```java
-// Solo SUPERTECNICO puede llamar a este endpoint
+// Solo SUPERTECNICO
 @PreAuthorize("hasRole('SUPERTECNICO')")
-@PostMapping("/asignaciones")
-public Map<String, Object> insertarAsignacion(...) { ... }
+@PutMapping("/{idRep}")
+public void editarReparacion(...) { ... }
 
-// SUPERTECNICO o ADMIN pueden llamar a este endpoint
-@PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
-@GetMapping("/cantidad-pendiente/{idCom}")
-public Map<String, Object> getCantidadPendiente(...) { ... }
+// TECNICO o SUPERTECNICO
+@PreAuthorize("hasAnyRole('TECNICO','SUPERTECNICO')")
+@PostMapping
+public void insertar(...) { ... }
 ```
 
-El rol del usuario viene del token JWT — se incluye en el token al hacer login y Spring Security lo lee automáticamente en cada petición a través de `JwtAuthFilter`.
+Una anotación a nivel de clase vale para todos sus métodos. Para que `@PreAuthorize` funcione, la configuración lleva `@EnableMethodSecurity` (en `SecurityConfig`).
 
-Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@EnableMethodSecurity` (ya presente en `SecurityConfig.java`).
+## El rol viaja en el JWT
 
----
+Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor firma un token que incluye el usuario, su rol y, si lo tiene, su técnico (`idTec`). En cada petición, `JwtAuthFilter` valida el token y construye con esos datos el `UsuarioPrincipal`: de él salen tanto el rol que evalúa `@PreAuthorize` como el técnico que usan las reglas de más abajo. Los controllers lo reciben con `@AuthenticationPrincipal`.
+
+- Petición sin cabecera `Authorization`: `403`.
+- Token inválido o caducado: `401`.
+- Token válido sin el rol o la propiedad exigidos: `403`, con el motivo en `message` cuando lo decide una regla propia.
 
 ## Criterio general
 
-- **GET (lectura)**: accesibles a cualquier rol autenticado. No se restringe por rol porque los datos no son sensibles externamente y el atacante potencial ya es un empleado de confianza con credenciales válidas.
-- **Mutaciones (POST, PUT, PATCH, DELETE)**: restringidas por rol según la tabla de permisos. Aquí está el daño potencial real — crear, modificar o borrar datos sin autorización.
-
----
-
-## AuthController — `/api/auth`
-
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/login` | POST | público (sin token) |
-
----
-
-## UsuarioController — `/api/usuarios`
-
-> `@PreAuthorize("hasRole('ADMIN')")` en todos los métodos.
-
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/` | GET | ADMIN |
-| `/registrar` | POST | ADMIN |
-| `/activar/{id}` | PATCH | ADMIN |
-| `/desactivar/{id}` | PATCH | ADMIN |
-| `/excluir-estadisticas/{id}` | PATCH | ADMIN |
-| `/incluir-estadisticas/{id}` | PATCH | ADMIN |
-| `/rol/{id}` | PATCH | ADMIN |
-| `/{id}` | DELETE | ADMIN |
-
----
-
-## LogController — `/api/logs`
-
-> `@PreAuthorize("hasRole('ADMIN')")` a nivel de clase.
-
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/` | GET | ADMIN |
-
----
-
-## CompraController — `/api/compras`
-
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/` | GET | SUPERTECNICO |
-| `/pendientes` | GET | SUPERTECNICO |
-| `/cantidad-pendiente/{idCom}` | GET | SUPERTECNICO, ADMIN |
-| `/` | POST | SUPERTECNICO |
-| `/{idCompra}` | PUT | SUPERTECNICO |
-| `/{idCompra}/confirmar-recibido` | PATCH | SUPERTECNICO |
-| `/{idCompra}/confirmar-parcial` | PATCH | SUPERTECNICO |
-| `/{idCompra}/recibir-resto` | PATCH | SUPERTECNICO |
-| `/{idCompra}/confirmar-alterado` | PATCH | SUPERTECNICO |
-| `/{idCompra}/cancelar` | PATCH | SUPERTECNICO |
-| `/{idCompra}/desrecibir` | PATCH | SUPERTECNICO |
-
-> `GET /cantidad-pendiente/{idCom}` abierto a ADMIN porque `StockController` lo llama al hacer clic en una fila de stock (vista de solo lectura).
-
----
-
-## ProveedorController — `/api/proveedores`
-
-> `@PreAuthorize("hasRole('SUPERTECNICO')")` a nivel de clase.
-
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/` | GET | SUPERTECNICO |
-| `/activos` | GET | SUPERTECNICO |
-| `/{idProv}/tiene-pedidos` | GET | SUPERTECNICO |
-| `/` | POST | SUPERTECNICO |
-| `/{idProv}/activo` | PATCH | SUPERTECNICO |
-| `/{idProv}/divisa` | PATCH | SUPERTECNICO |
-| `/{idProv}` | DELETE | SUPERTECNICO |
-
----
-
-## SolicitudController — `/api/solicitudes`
-
-> `@PreAuthorize("hasRole('SUPERTECNICO')")` a nivel de clase.
-
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/count` | GET | SUPERTECNICO |
-| `/` | GET | SUPERTECNICO |
-| `/{idRc}/estado` | PATCH | SUPERTECNICO |
-| `/{idRc}/limpiar` | PATCH | SUPERTECNICO |
-
----
-
-## ComponenteController — `/api/componentes`
-
-| Endpoint | Método | Rol requerido | Nota |
-|---|---|---|---|
-| `/` | GET | cualquiera | — |
-| `/gestionados` | GET | cualquiera | — |
-| `/stock-bajo` | GET | cualquiera | — |
-| `/agrupados` | GET | cualquiera | TECNICO lo usa en formulario de reparación |
-| `/chasis` | GET | cualquiera | TECNICO lo usa en formulario de reparación |
-| `/evolucion-stock` | GET | cualquiera | — |
-| `/` | POST | SUPERTECNICO | — |
-| `/{idCom}` | PUT | SUPERTECNICO | — |
-| `/{idCom}/stock-minimo` | PATCH | SUPERTECNICO | — |
-| `/{idCom}/stock` | PATCH | cualquiera | TECNICO lo llama al guardar una reparación |
-| `/{idCom}/activo` | PATCH | SUPERTECNICO | — |
-| `/{idCom}` | DELETE | SUPERTECNICO | — |
-
----
-
-## ReparacionController — `/api/reparaciones`
-
-| Endpoint | Método | Rol requerido | Nota |
-|---|---|---|---|
-| `/` | GET | cualquiera | — |
-| `/imei/{imei}` | GET | cualquiera | — |
-| `/imei/{imei}/count` | GET | cualquiera | — |
-| `/historial` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` (ver abajo) |
-| `/historial/imei/{imei}` | GET | cualquiera | — |
-| `/asignaciones` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` (ver abajo) |
-| `/pendientes/contadores` | GET | cualquiera | `{reparaciones, glass, pulidos}` abiertas del técnico efectivo: sin `?tecnico=`, el del token (también el SUPERTECNICO); ADMIN sin `?tecnico=` recibe ceros sin consultar; con `?tecnico=`, regla de `FiltroTecnico` |
-| `/asignaciones/{idRep}` | GET | cualquiera | — |
-| `/asignaciones/{idAsig}/solicitudes` | GET | cualquiera | — |
-| `/{idRep}/detalle-edicion` | GET | cualquiera | — |
-| `/{idRep}/referenciadora` | GET | cualquiera | — |
-| `/imei/{imei}/ya-reparados` | GET | cualquiera | — |
-| `/imei/{imei}/incidencia-activa` | GET | cualquiera | — |
-| `/imei/{imei}/tiene-asignacion` | GET | cualquiera | — |
-| `/estadisticas` | GET | cualquiera | — |
-| `/estadisticas/puntos` | GET | cualquiera | — |
-| `/` | POST | cualquiera | TECNICO crea sus propias reparaciones |
-| `/asignaciones` | POST | SUPERTECNICO | — |
-| `/completa` | POST | cualquiera | TECNICO completa su reparación |
-| `/{idRep}/completar` | PATCH | cualquiera | — |
-| `/asignaciones/{idRep}/tecnico` | PATCH | SUPERTECNICO | — |
-| `/{idRep}` | PUT | cualquiera | TECNICO edita su propia reparación |
-| `/{idRep}/incidencia` | POST | SUPERTECNICO | — |
-| `/imei/{imei}/incidencia-activa` | DELETE | SUPERTECNICO | — |
-| `/{idAsignacion}/agotar-componente` | POST | cualquiera | TECNICO solicita pieza agotada |
-| `/asignaciones/{idAsig}` | DELETE | SUPERTECNICO | — |
-| `/{idRep}` | DELETE | SUPERTECNICO | — |
-
----
-
-## GlassController — `/api/glass`
-
-| Endpoint | Método | Rol requerido | Nota |
-|---|---|---|---|
-| `/asignaciones` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
-| `/historial` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
-| `/asignaciones` | POST | SUPERTECNICO | — |
-
-> Completar, editar y borrar glass van por `ReparacionController` (operan por ID).
-
----
-
-## PulidoController — `/api/pulidos`
-
-| Endpoint | Método | Rol requerido | Nota |
-|---|---|---|---|
-| `/asignaciones` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
-| `/historial` | GET | cualquiera | `?tecnico=` con la regla de `FiltroTecnico` |
-| `/asignaciones` | POST | SUPERTECNICO | — |
-| `/asignaciones/completar-lote` | POST | cualquiera | — |
-| `/asignaciones/{idAP}` | PATCH | SUPERTECNICO | — |
-| `/asignaciones/{idAP}` | DELETE | SUPERTECNICO | — |
-| `/historial/{idP}` | DELETE | SUPERTECNICO | Motivo opcional en el cuerpo |
-
----
+- **Lecturas (GET):** exigen sesión y, donde su controller lo anota, también rol: las de administración (usuarios y logs: ADMIN), las solicitudes de pieza (SUPERTECNICO), las solicitudes de stock (SUPERTECNICO y ADMIN) y el detalle de edición de una reparación (SUPERTECNICO). Las listas del taller se acotan además por técnico con `FiltroTecnico`.
+- **Escrituras (POST, PUT, PATCH, DELETE):** exigen el rol al que los clientes ofrecen esa acción.
+  - **Gestión del taller** — asignar, reasignar, editar o eliminar trabajos, catálogo y stock de componentes, compras, gestión de solicitudes: **SUPERTECNICO**.
+  - **Administración** — usuarios, logs, valores de dificultad: **ADMIN**.
+  - **Trabajo propio del técnico** — completar, guardar una fila, registrar un componente agotado, borrador del formulario, "por cerrar", entrega y llegada de glass, crear una solicitud de stock: **TECNICO y SUPERTECNICO**, siempre sobre sus propias asignaciones.
+- Un endpoint nuevo se anota en el mismo cambio que lo crea, con un test que compruebe al menos un rol admitido y uno no admitido.
 
 ## Regla del `?tecnico=` (`FiltroTecnico`)
 
@@ -212,29 +47,23 @@ Para que `@PreAuthorize` funcione, la clase de configuración debe tener `@Enabl
 - **SUPERTECNICO y ADMIN**: filtro libre (sin parámetro, todos; con parámetro, ese técnico).
 - **Contadores**: sin `?tecnico=` se cuentan los del técnico del token, también para el SUPERTECNICO; un ADMIN sin técnico recibe `{0, 0, 0}` sin consultar.
 
----
+## Regla de las escrituras del formulario (`PropiedadAsignacion`)
 
-## ReparacionComponenteController — `/api/reparacion-componentes`
+`PropiedadAsignacion` vive junto a `FiltroTecnico` y se aplica en `POST /api/reparaciones/completa`, `POST /api/reparaciones/{idAsignacion}/filas`, `POST /api/reparaciones/{idAsignacion}/agotar-componente`, `PATCH /api/reparaciones/{idRep}/completar` y `GET|PUT|DELETE /api/reparaciones/{idRep}/borrador` (la clave del borrador es el id de la asignación):
 
-| Endpoint | Método | Rol requerido | Nota |
-|---|---|---|---|
-| `/{idRep}` | GET | cualquiera | — |
-| `/` | POST | cualquiera | TECNICO añade componentes a su reparación |
-| `/{idRep}/{idCom}` | DELETE | cualquiera | TECNICO elimina componente de su reparación |
-| `/{idRep}/incidencia` | PATCH | SUPERTECNICO | — |
-| `/{idRep}/incidencia` | DELETE | SUPERTECNICO | — |
+- **El técnico de cada trabajo es el del token.** `tecnicoEfectivo(principal, idTecDueno)` devuelve siempre el `idTec` del token; el `idTec` que envíe el cliente en el cuerpo no interviene (se acepta, para que los clientes anteriores sigan funcionando, y se ignora).
+- **Solo se trabaja sobre asignaciones propias**, igual para TECNICO y SUPERTECNICO: si la asignación es de otro técnico, o el token no tiene técnico, `403` con el motivo "Solo puedes trabajar sobre tus propias asignaciones". Si la asignación no existe, la regla deja pasar y el DAO responde su `409` de asignación ya eliminada o completada. El borrador, además, solo admite los roles TECNICO y SUPERTECNICO.
+- **La edición es del supertécnico.** `PUT /api/reparaciones/{idRep}` y `GET /api/reparaciones/{idRep}/detalle-edicion` exigen SUPERTECNICO. Al añadir filas o acciones a una reparación ya hecha, los clientes llaman a `completa` sin `idAsignacion` y con el `idTec` del técnico **original**: ese caso pasa por `exigirSupertecnico` (`403` con el motivo "Solo el supertécnico puede corregir una reparación ya hecha" para los demás roles) y conserva el `idTec` del cuerpo, para que el trabajo siga a nombre de quien lo hizo.
 
----
+## Dónde están los tests
 
-## DificultadController — `/api/valores-dificultad`
+| Qué | Test |
+|---|---|
+| Regla del `?tecnico=` | `security/FiltroTecnicoTest`, `controller/FiltroTecnicoControllersTest`, `controller/ReparacionControllerContadoresTest` |
+| Regla de propiedad de la asignación | `security/PropiedadAsignacionTest`, `controller/PropiedadAsignacionControllersTest` |
+| Roles de la edición y del borrador (cadena de seguridad real, MockMvc) | `controller/RolesReparacionFormularioTest` |
+| Roles de solicitudes de stock y del ajuste de stock (MockMvc) | `controller/RolesSolicitudesStockTest` |
+| Dueño de la asignación en la entrega y la llegada de glass | `controller/ReparacionControllerEntregaGlassTest` |
+| Sin sesión (`403`) y token inválido (`401`) | `OpenApiContractTest.elContextoArrancaYElContratoExigeSesion` |
 
-| Endpoint | Método | Rol requerido |
-|---|---|---|
-| `/` | GET | cualquiera |
-| `/` | PUT | ADMIN |
-
----
-
-## TecnicoController, TelefonoController, TipoCambioController
-
-Sin restricción de rol a nivel de clase — solo autenticación JWT. Algunos métodos sí llevan `@PreAuthorize` (p. ej. `PATCH /api/tecnicos/{idTec}/glass` y las ediciones de teléfono como `/observacion`, `/cliente` o `/atributos`, SUPERTECNICO).
+Los tests de controller que llaman al método Java directamente (con DAOs de Mockito) comprueban las reglas propias, pero no ejercitan `@PreAuthorize`; los roles se comprueban con MockMvc y un token generado con `JwtUtil`, sin base de datos.

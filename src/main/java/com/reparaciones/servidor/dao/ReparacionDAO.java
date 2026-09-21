@@ -3,6 +3,7 @@ package com.reparaciones.servidor.dao;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.util.Jornada;
 import com.reparaciones.servidor.util.PuntosCalculo;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -266,7 +267,7 @@ public class ReparacionDAO {
     }
 
     public record DetalleEdicion(String imei, int idTec, int idCom,
-                                  boolean esReutilizado, String observacion, int cantidad,
+                                  boolean esReutilizado, @Schema(nullable = true) String observacion, int cantidad,
                                   LocalDateTime updatedAt) {}
 
     public DetalleEdicion getDetalleEdicion(String idRep) {
@@ -298,6 +299,15 @@ public class ReparacionDAO {
         List<String> result = jdbc.query(
                 "SELECT IMEI FROM Reparacion WHERE ID_REP = ?",
                 (rs, row) -> rs.getString(1), idRep);
+        return result.isEmpty() ? null : result.get(0);
+    }
+
+    /** ID_TEC de una fila de Reparacion (asignación abierta o cerrada), o {@code null} si no existe.
+     *  Lo usa PropiedadAsignacion para saber de quién es la asignación antes de escribir. */
+    public Integer getIdTecDeAsignacion(String idAsignacion) {
+        List<Integer> result = jdbc.query(
+                "SELECT ID_TEC FROM Reparacion WHERE ID_REP = ?",
+                (rs, row) -> rs.getInt(1), idAsignacion);
         return result.isEmpty() ? null : result.get(0);
     }
 
@@ -538,12 +548,14 @@ public class ReparacionDAO {
                 }
                 creoReparacion = true;
                 idComsUsados.add(fila.idCom);
+                marcarChasisSiProcede(idAsignacion, fila.idCom);
             } else if (idAsignacion != null) {
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
                         " VALUES (?,?,1,?,'PENDIENTE',?)",
                         idAsignacion, fila.idCom, fila.descripcionSolicitud, fila.cantidad);
+                marcarChasisSiProcede(idAsignacion, fila.idCom);
             }
         }
         if (idAsignacion != null) {
@@ -623,12 +635,14 @@ public class ReparacionDAO {
                 }
                 idRepCreado = idRep;
                 idComsUsados.add(fila.idCom);
+                marcarChasisSiProcede(idAsignacion, fila.idCom);
             } else {
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
                         " VALUES (?,?,1,?,'PENDIENTE',?)",
                         idAsignacion, fila.idCom, fila.descripcionSolicitud, fila.cantidad);
+                marcarChasisSiProcede(idAsignacion, fila.idCom);
             }
         }
         if (idRepCreado == null) {
@@ -940,6 +954,7 @@ public class ReparacionDAO {
                 " (ID_REP, ID_COM, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD, CANTIDAD)" +
                 " VALUES (?,?,1,?,'PENDIENTE',1)",
                 idAsignacion, idCom, descripcion);
+        marcarChasisSiProcede(idAsignacion, idCom);
     }
 
     // ── pulido ────────────────────────────────────────────────────────────────
@@ -1188,6 +1203,20 @@ public class ReparacionDAO {
                 "SELECT COALESCE(ID_COM_MASTER, ID_COM) FROM Componente WHERE ID_COM = ?",
                 Integer.class, idCom);
         return master != null ? master : idCom;
+    }
+
+    /**
+     * Autodetección de chasis (spec web-formulario §5.4): marca ES_CHASIS = TRUE en la asignación si el SKU
+     * del componente de la fila (no el de su master) empieza por "cha". Nunca lo quita: el toggle manual
+     * sigue igual. Sin asignación no hace nada. No toca UPDATED_AT (mismo patrón que actualizarChasis).
+     */
+    private void marcarChasisSiProcede(String idAsignacion, int idCom) {
+        if (idAsignacion == null) return;
+        jdbc.update(
+                "UPDATE Reparacion SET ES_CHASIS = TRUE, UPDATED_AT = UPDATED_AT" +
+                " WHERE ID_REP = ? AND ES_CHASIS = FALSE" +
+                " AND EXISTS (SELECT 1 FROM Componente c WHERE c.ID_COM = ? AND LOWER(c.TIPO) LIKE 'cha%')",
+                idAsignacion, idCom);
     }
 
     /** Prefijo de la fila terminada según el de la asignación: AG->G, resto->R. */

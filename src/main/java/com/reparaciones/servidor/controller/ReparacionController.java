@@ -5,8 +5,10 @@ import com.reparaciones.servidor.dao.DificultadPuntosDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
+import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -30,16 +32,18 @@ public class ReparacionController {
     private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
     private final ComponenteDAO         componenteDao;
     private final DificultadPuntosDAO   dificultadDao;
+    private final RegistroIdempotencia  idempotencia;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
-                                DificultadPuntosDAO dificultadDao) {
+                                DificultadPuntosDAO dificultadDao, RegistroIdempotencia idempotencia) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
         this.borradorDao = borradorDao;
         this.componenteDao = componenteDao;
         this.dificultadDao = dificultadDao;
+        this.idempotencia = idempotencia;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -129,6 +133,7 @@ public class ReparacionController {
 
     // ── auxiliares ────────────────────────────────────────────────────────────
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @GetMapping("/{idRep}/detalle-edicion")
     public ReparacionDAO.DetalleEdicion getDetalleEdicion(@PathVariable String idRep) {
         return dao.getDetalleEdicion(idRep);
@@ -154,11 +159,9 @@ public class ReparacionController {
     }
 
     @GetMapping("/imei/{imei}/incidencia-activa")
-    public Map<String, Object> getIncidenciaActivaPorImei(@PathVariable String imei,
+    public ValorTexto getIncidenciaActivaPorImei(@PathVariable String imei,
             @RequestParam(defaultValue = "R") String tipo) {
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("value", dao.getIncidenciaActivaPorImei(imei, tipo));
-        return resp;
+        return new ValorTexto(dao.getIncidenciaActivaPorImei(imei, tipo));
     }
 
     @GetMapping("/imei/{imei}/tiene-asignacion")
@@ -225,24 +228,49 @@ public class ReparacionController {
         return Map.of("value", idRep);
     }
 
+    /**
+     * Con {@code idAsignacion} (flujo nuevo y Glass): el técnico es el del token y la asignación debe ser
+     * suya; el {@code idTec} del cuerpo se ignora. Sin {@code idAsignacion} (filas y acciones añadidas al
+     * editar una reparación ya hecha): exige SUPERTECNICO y conserva el {@code idTec} del cuerpo, que es el
+     * técnico original del trabajo (spec web-formulario §5.1).
+     */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PostMapping("/completa")
     @ResponseStatus(HttpStatus.CREATED)
     public void insertarCompleta(@RequestBody InsertarCompletaRequest req,
-                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.insertarCompleta(req.filas(), req.imei(), req.idTec(),
+                                 @AuthenticationPrincipal UsuarioPrincipal principal,
+                                 @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        int idTec;
+        if (req.idAsignacion() != null) {
+            idTec = PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(req.idAsignacion()));
+        } else {
+            PropiedadAsignacion.exigirSupertecnico(principal);
+            idTec = req.idTec();
+        }
+        var peticion = new PeticionCompleta(req.filas(), req.imei(), idTec,
                 req.idRepAnterior(), req.idAsignacion(), req.categoria());
-        String modelo = dao.getModeloByImei(req.imei());
-        String tecnico = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(),
-                esGlassAsig(req.idAsignacion()) || "G".equals(req.categoria())
-                        ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
-                "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
-                ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
+        idempotencia.ejecutar(principal.getIdUsu(), "completa", claveIdempotencia, peticion,
+                () -> {
+                    dao.insertarCompleta(req.filas(), req.imei(), idTec,
+                            req.idRepAnterior(), req.idAsignacion(), req.categoria());
+                    return null;
+                },
+                ignorado -> {
+                    String modelo = dao.getModeloByImei(req.imei());
+                    String tecnico = dao.getNombreTecnicoById(idTec);
+                    logDao.insertar(principal.getIdUsu(),
+                            esGlassAsig(req.idAsignacion()) || "G".equals(req.categoria())
+                                    ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION",
+                            "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
+                            ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
+                });
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PatchMapping("/{idRep}/completar")
     public void completar(@PathVariable String idRep,
                           @AuthenticationPrincipal UsuarioPrincipal principal) {
+        PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idRep));
         ReparacionResumen rep = dao.getAsignacionAnyById(idRep).orElse(null);
         dao.completar(idRep);
         String detalle = rep != null
@@ -441,31 +469,43 @@ public class ReparacionController {
                 String.join(", ", cambios));
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idRep}")
     public void editarReparacion(@PathVariable String idRep, @RequestBody EditarRequest req,
-                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen ant = dao.getResumenById(idRep).orElse(null);
-        dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
+                                 @AuthenticationPrincipal UsuarioPrincipal principal,
+                                 @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        var peticion = new PeticionEditar(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
                 req.observacionNueva(), req.nNuevas(), req.updatedAt());
-
-        List<String> cambios = new ArrayList<>();
-        cambios.add("ID_REP: " + idRep);
-        if (ant != null) {
-            cambios.add("IMEI: " + ant.getImei());
-            String comAnt = ant.getTipoComponente() != null ? ant.getTipoComponente() : "";
-            String comNue = req.idComNuevo() > 0 ? dao.getTipoComponenteById(req.idComNuevo()) : comAnt;
-            if (!comAnt.equals(comNue)) {
-                cambios.add("COM_ANT: " + comAnt + " → COM_NUE: " + comNue);
-            }
-            String obsAnt = ant.getObservaciones() != null ? ant.getObservaciones() : "";
-            String obsNue = req.observacionNueva() != null ? req.observacionNueva() : "";
-            if (!obsAnt.equals(obsNue)) {
-                cambios.add("OBS_ANT: '" + obsAnt + "' → OBS_NUE: '" + obsNue + "'");
-            }
-        }
-        logDao.insertar(principal.getIdUsu(),
-                esGlass(idRep) ? "EDITAR_GLASS" : "EDITAR_REPARACION",
-                String.join(", ", cambios));
+        // El "antes" (ant) tiene que leerse justo delante de la escritura, no después: es la base de la
+        // comparación del log. Va dentro de la escritura para que solo se lea la primera vez (nunca en un
+        // reintento servido del registro) y siga reflejando el estado previo a este cambio, como siempre.
+        idempotencia.ejecutar(principal.getIdUsu(), "editar", claveIdempotencia, peticion,
+                () -> {
+                    ReparacionResumen ant = dao.getResumenById(idRep).orElse(null);
+                    dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
+                            req.observacionNueva(), req.nNuevas(), req.updatedAt());
+                    return ant;
+                },
+                ant -> {
+                    List<String> cambios = new ArrayList<>();
+                    cambios.add("ID_REP: " + idRep);
+                    if (ant != null) {
+                        cambios.add("IMEI: " + ant.getImei());
+                        String comAnt = ant.getTipoComponente() != null ? ant.getTipoComponente() : "";
+                        String comNue = req.idComNuevo() > 0 ? dao.getTipoComponenteById(req.idComNuevo()) : comAnt;
+                        if (!comAnt.equals(comNue)) {
+                            cambios.add("COM_ANT: " + comAnt + " → COM_NUE: " + comNue);
+                        }
+                        String obsAnt = ant.getObservaciones() != null ? ant.getObservaciones() : "";
+                        String obsNue = req.observacionNueva() != null ? req.observacionNueva() : "";
+                        if (!obsAnt.equals(obsNue)) {
+                            cambios.add("OBS_ANT: '" + obsAnt + "' → OBS_NUE: '" + obsNue + "'");
+                        }
+                    }
+                    logDao.insertar(principal.getIdUsu(),
+                            esGlass(idRep) ? "EDITAR_GLASS" : "EDITAR_REPARACION",
+                            String.join(", ", cambios));
+                });
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -491,31 +531,47 @@ public class ReparacionController {
         dao.borrarIncidenciaPorImei(imei, tipo);
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PostMapping("/{idAsignacion}/agotar-componente")
     @ResponseStatus(HttpStatus.CREATED)
     public void agotarComponente(@PathVariable String idAsignacion,
                                   @RequestBody AgotarRequest req,
-                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
-        String tipo = dao.getTipoComponenteById(req.idCom());
-        String imei = dao.getImeiByIdRep(idAsignacion);
-        logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
-                "ID_ASIG: " + idAsignacion + (imei != null ? ", IMEI: " + imei : "") + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
+                                  @AuthenticationPrincipal UsuarioPrincipal principal,
+                                  @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idAsignacion));
+        var peticion = new PeticionAgotar(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
+        idempotencia.ejecutar(principal.getIdUsu(), "agotar", claveIdempotencia, peticion,
+                () -> {
+                    dao.agotarComponente(idAsignacion, req.idCom(), req.cantidad(), req.descripcion());
+                    return null;
+                },
+                ignorado -> {
+                    String tipo = dao.getTipoComponenteById(req.idCom());
+                    String imei = dao.getImeiByIdRep(idAsignacion);
+                    logDao.insertar(principal.getIdUsu(), "AGOTAR_COMPONENTE",
+                            "ID_ASIG: " + idAsignacion + (imei != null ? ", IMEI: " + imei : "") + ", TIPO: " + tipo + ", CANT: " + req.cantidad());
+                });
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PostMapping("/{idAsignacion}/filas")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, String> guardarFilaIndividual(@PathVariable String idAsignacion,
-                                                     @RequestBody GuardarFilaRequest req,
-                                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.guardarFilaIndividual(req.filas(), req.imei(), req.idTec(),
-                req.idRepAnterior(), idAsignacion);
-        String tecnico = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(),
-                esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
-                "ID_REP: " + idRep + ", ID_ASIG: " + idAsignacion +
-                ", IMEI: " + req.imei() + ", TECNICO: " + tecnico + componentesDe(req.filas()));
-        return Map.of("value", idRep);
+    public ValorTexto guardarFilaIndividual(@PathVariable String idAsignacion,
+                                            @RequestBody GuardarFilaRequest req,
+                                            @AuthenticationPrincipal UsuarioPrincipal principal,
+                                            @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        int idTec = PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idAsignacion));
+        var peticion = new PeticionFilas(idAsignacion, req.filas(), req.imei(), idTec, req.idRepAnterior());
+        return idempotencia.ejecutar(principal.getIdUsu(), "filas", claveIdempotencia, peticion,
+                () -> new ValorTexto(dao.guardarFilaIndividual(req.filas(), req.imei(), idTec,
+                        req.idRepAnterior(), idAsignacion)),
+                resultado -> {
+                    String tecnico = dao.getNombreTecnicoById(idTec);
+                    logDao.insertar(principal.getIdUsu(),
+                            esGlassAsig(idAsignacion) ? "GUARDAR_FILA_INDIVIDUAL_GLASS" : "GUARDAR_FILA_INDIVIDUAL",
+                            "ID_REP: " + resultado.value() + ", ID_ASIG: " + idAsignacion +
+                            ", IMEI: " + req.imei() + ", TECNICO: " + tecnico + componentesDe(req.filas()));
+                });
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -555,46 +611,68 @@ public class ReparacionController {
     }
 
     // ── borrador del modal ─────────────────────────────────────────────────────
+    // La variable de ruta se llama idRep en el contrato, pero es el id de la asignación: el borrador
+    // solo se lee, guarda y borra sobre una asignación propia (PropiedadAsignacion).
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN','TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @GetMapping("/{idRep}/borrador")
-    public Map<String, String> getBorrador(@PathVariable String idRep) {
-        return java.util.Collections.singletonMap("contenido", borradorDao.get(idRep));
+    public ContenidoBorrador getBorrador(@PathVariable String idRep,
+                                         @AuthenticationPrincipal UsuarioPrincipal principal) {
+        PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idRep));
+        return new ContenidoBorrador(borradorDao.get(idRep));
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN','TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @PutMapping("/{idRep}/borrador")
-    public void guardarBorrador(@PathVariable String idRep, @RequestBody BorradorRequest req) {
+    public void guardarBorrador(@PathVariable String idRep, @RequestBody BorradorRequest req,
+                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idRep));
         borradorDao.guardar(idRep, req.contenido());
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN','TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
     @DeleteMapping("/{idRep}/borrador")
-    public void eliminarBorrador(@PathVariable String idRep) {
+    public void eliminarBorrador(@PathVariable String idRep,
+                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
+        PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idRep));
         borradorDao.eliminar(idRep);
     }
 
     // ── request records ───────────────────────────────────────────────────────
 
-    private record BorradorRequest(String contenido) {}
+    record BorradorRequest(String contenido) {}   // package-private: lo construye el test
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
     private record AsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente, boolean esChasis) {}
-    private record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
-                                           String idRepAnterior, String idAsignacion, String categoria) {}
+    record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
+                                   @Schema(nullable = true) String idRepAnterior,
+                                   @Schema(nullable = true) String idAsignacion,
+                                   @Schema(nullable = true) String categoria) {}   // package-private: lo construye el test
 private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) String comentarioAsignacion, LocalDateTime updatedAt) {}
-    private record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
-                                 String observacionNueva, int nNuevas,
-                                 LocalDateTime updatedAt) {}
+    record EditarRequest(int idComNuevo, boolean esReutilizadoNuevo,
+                        @Schema(nullable = true) String observacionNueva, int nNuevas,
+                        LocalDateTime updatedAt) {}   // package-private: lo construye el test
     private record IncidenciaRequest(String comentario, String imei, int idTec) {}
-    private record AgotarRequest(int idCom, int cantidad, String descripcion) {}
+    record AgotarRequest(int idCom, int cantidad, @Schema(nullable = true) String descripcion) {}   // package-private: lo construye el test
     private record UrgenteRequest(boolean urgente) {}
     private record ChasisRequest(boolean esChasis) {}
     private record PorCerrarRequest(boolean porCerrar) {}
     record EntregaGlassRequest(boolean entregado) {}   // package-private: lo construye el test
-    private record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
-                                      String idRepAnterior) {}
+    record GuardarFilaRequest(List<FilaReparacion> filas, String imei, int idTec,
+                              @Schema(nullable = true) String idRepAnterior) {}   // package-private: lo construye el test
     private record MotivoRequest(@Schema(nullable = true) String motivo) {}
+
+    // ── peticiones de reintentos seguros ────────────────────────────────────────
+    // Lo que define cada escritura del formulario (ruta + cuerpo, con el técnico ya resuelto): un
+    // reintento con la misma clave se reconoce comparando esta petición con la guardada (equals()).
+    // Las filas son las mismas instancias que recibe el DAO, que solo las lee: comparten objeto sin riesgo.
+    private record PeticionCompleta(List<FilaReparacion> filas, String imei, int idTecEfectivo,
+                                    String idRepAnterior, String idAsignacion, String categoria) {}
+    private record PeticionFilas(String idAsignacion, List<FilaReparacion> filas, String imei,
+                                 int idTecEfectivo, String idRepAnterior) {}
+    private record PeticionAgotar(String idAsignacion, int idCom, int cantidad, String descripcion) {}
+    private record PeticionEditar(String idRep, int idComNuevo, boolean esReutilizadoNuevo,
+                                  String observacionNueva, int nNuevas, LocalDateTime updatedAt) {}
 
     /** Tipos de los componentes consumidos, para el detalle del log ("" si no hay filas con pieza). */
     private String componentesDe(List<FilaReparacion> filas) {

@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.*;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,7 @@ class FiltroTecnicoControllersTest {
     private final ReparacionDAO dao = mock(ReparacionDAO.class);
     private final ReparacionController rep = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), mock(LogDAO.class), mock(BorradorDAO.class),
-            mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class));
+            mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), new RegistroIdempotencia());
     private final GlassController glass = new GlassController(dao, mock(LogDAO.class), mock(TelefonoDAO.class), mock(ImeiLookupService.class));
     private final PulidoController pulido = new PulidoController(dao, mock(LogDAO.class), mock(TelefonoDAO.class), mock(ImeiLookupService.class));
 

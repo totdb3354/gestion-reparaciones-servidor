@@ -1,5 +1,7 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
 public class Componente {
@@ -11,8 +13,8 @@ public class Componente {
     private boolean       activo;
     private LocalDateTime updatedAt;
     private int           enCamino;
-    private LocalDateTime ultimoPedido;
-    private Integer       idComMaster;
+    @Schema(nullable = true) private LocalDateTime ultimoPedido;
+    @Schema(nullable = true) private Integer       idComMaster;
 
     public Componente() {}
 
