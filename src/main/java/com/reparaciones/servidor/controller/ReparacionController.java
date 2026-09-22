@@ -7,12 +7,15 @@ import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.dao.TecnicoDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
+import com.reparaciones.servidor.job.UrgenteAutomaticoJob;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaTecnicos;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,13 +23,19 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @RestController
 @RequestMapping("/api/reparaciones")
 public class ReparacionController {
+
+    private static final Logger log = LoggerFactory.getLogger(ReparacionController.class);
 
     private final ReparacionDAO         dao;
     private final ReparacionComponenteDAO rcDao;
@@ -107,23 +116,29 @@ public class ReparacionController {
         List<ReparacionResumen> abiertas = dao.getAsignaciones(null);
         List<ReparacionResumen> cerradasHoy;
         try {
-            cerradasHoy = dao.getAsignacionesCompletadasHoy(
-                    com.reparaciones.servidor.job.UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(
-                            java.time.Clock.system(java.time.ZoneId.of("Europe/Madrid"))));
+            cerradasHoy = dao.getAsignacionesCompletadasHoy(cutoffInicioDeHoyMadrid());
         } catch (RuntimeException e) {
-            cerradasHoy = List.of();   // degradación deliberada: solo-pendiente
+            // degradación deliberada: solo-pendiente. Se registra porque es indistinguible de un
+            // día sin trabajo cerrado; ReparacionDAO puede lanzar aquí un IllegalStateException si
+            // ASIGNACION_SELECT se desincroniza con getAsignacionesCompletadasHoy.
+            log.warn("getAsignacionesCompletadasHoy() falló; carga-tecnicos degrada a solo-pendiente", e);
+            cerradasHoy = List.of();
         }
-        java.time.DayOfWeek dia = CargaTecnicos.diaDeHoy();
+        DayOfWeek dia = CargaTecnicos.diaDeHoy();
+        List<Tecnico> tecnicos = tecnicoDao.getAllActivos();
         return new CargaTecnicosRespuesta(
-                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true)),
-                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false)));
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true), dia, tecnicos),
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false), dia, tecnicos));
     }
 
-    /** Una fila por técnico ACTIVO, con ceros para quien no aparezca en el mapa. */
-    private List<CargaTecnicosRespuesta.FilaCarga> filas(Map<Integer, CargaTecnicos.DiaTecnico> mapa) {
-        boolean sinJornada = CargaTecnicos.JORNADA_HORAS.getOrDefault(CargaTecnicos.diaDeHoy(), 0) == 0;
+    /** Una fila por técnico ACTIVO, con ceros para quien no aparezca en el mapa. Día y técnicos ya
+     *  resueltos por el llamante: una sola vez cada uno por petición (antes: día en cada llamada,
+     *  técnicos por cada alcance). */
+    private List<CargaTecnicosRespuesta.FilaCarga> filas(Map<Integer, CargaTecnicos.DiaTecnico> mapa,
+                                                          DayOfWeek dia, List<Tecnico> tecnicos) {
+        boolean sinJornada = CargaTecnicos.JORNADA_HORAS.getOrDefault(dia, 0) == 0;
         CargaTecnicos.Desglose vacio = new CargaTecnicos.Desglose(0, 0, 0, 0, 0, 0);
-        return tecnicoDao.getAllActivos().stream()
+        return tecnicos.stream()
                 .map(t -> {
                     CargaTecnicos.DiaTecnico dt = mapa.getOrDefault(t.getIdTec(),
                             new CargaTecnicos.DiaTecnico(0, 0, vacio, vacio, sinJornada));
@@ -132,6 +147,11 @@ public class ReparacionController {
                             dto(dt.hecho()), dto(dt.pendiente()), dt.sinJornada());
                 })
                 .toList();
+    }
+
+    /** Inicio de hoy en Madrid, como Timestamp (mismo cutoff que usa el job de urgentes). */
+    private static Timestamp cutoffInicioDeHoyMadrid() {
+        return UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(Clock.system(ZoneId.of("Europe/Madrid")));
     }
 
     private static CargaTecnicosRespuesta.DesgloseDto dto(CargaTecnicos.Desglose d) {
@@ -157,9 +177,7 @@ public class ReparacionController {
     /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */
     @GetMapping("/asignaciones/completadas-hoy")
     public List<ReparacionResumen> getAsignacionesCompletadasHoy() {
-        return dao.getAsignacionesCompletadasHoy(
-                com.reparaciones.servidor.job.UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(
-                        java.time.Clock.system(java.time.ZoneId.of("Europe/Madrid"))));
+        return dao.getAsignacionesCompletadasHoy(cutoffInicioDeHoyMadrid());
     }
 
     @GetMapping("/asignaciones/imei/{imei}")
