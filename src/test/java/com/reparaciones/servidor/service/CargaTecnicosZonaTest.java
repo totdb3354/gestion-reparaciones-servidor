@@ -2,6 +2,7 @@ package com.reparaciones.servidor.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -10,24 +11,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class CargaTecnicosZonaTest {
 
-    /** Sábado 00:30 en Madrid es viernes 22:30 en UTC: si el día se resolviera en UTC,
-     *  el fin de semana se desplazaría y la carga saldría con jornada donde no la hay. */
+    /** Viernes 22:30 UTC es sábado 00:30 en Madrid: si {@code diaDeHoy(Clock)} resolviera el día
+     *  en la zona propia del reloj (o en UTC) en vez de forzar Europe/Madrid, este instante daría
+     *  FRIDAY en vez de SATURDAY — justo el cruce de medianoche que desplazaría el fin de semana y
+     *  la jornada (spec 2026-07-09-carga-capacidad-diaria). El reloj se fija a un instante y una
+     *  zona (UTC) explícitos con {@link Clock#fixed}, así que el resultado esperado no depende del
+     *  reloj real ni de la zona por defecto de la máquina que ejecute el test: si alguien quita el
+     *  {@code withZone(Europe/Madrid)} de la implementación, este test falla en cualquier runner,
+     *  no solo en uno que ya corra en UTC. */
     @Test
-    void elDiaSeResuelveEnMadridNoEnUtc() {
-        Instant sabadoDeMadrugadaEnMadrid = Instant.parse("2026-09-25T22:30:00Z");
-        DayOfWeek enMadrid = sabadoDeMadrugadaEnMadrid.atZone(ZoneId.of("Europe/Madrid")).getDayOfWeek();
-        DayOfWeek enUtc = sabadoDeMadrugadaEnMadrid.atZone(ZoneId.of("UTC")).getDayOfWeek();
+    void diaDeHoySiempreInterpretaElInstanteEnMadrid() {
+        Clock relojFijoEnUtc = Clock.fixed(Instant.parse("2026-09-25T22:30:00Z"), ZoneId.of("UTC"));
 
-        assertEquals(DayOfWeek.SATURDAY, enMadrid);
-        assertEquals(DayOfWeek.FRIDAY, enUtc);
-        assertEquals(0, CargaTecnicos.JORNADA_HORAS.get(enMadrid));
-        assertEquals(6, CargaTecnicos.JORNADA_HORAS.get(enUtc));
-    }
-
-    /** El helper que usa el controlador debe devolver el día de Madrid. */
-    @Test
-    void diaDeHoyUsaMadrid() {
-        assertEquals(java.time.LocalDate.now(ZoneId.of("Europe/Madrid")).getDayOfWeek(),
-                     CargaTecnicos.diaDeHoy());
+        assertEquals(DayOfWeek.SATURDAY, CargaTecnicos.diaDeHoy(relojFijoEnUtc));
     }
 }

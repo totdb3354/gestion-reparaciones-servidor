@@ -2,6 +2,8 @@ package com.reparaciones.servidor.service;
 
 import com.reparaciones.servidor.model.ReparacionResumen;
 
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -119,9 +121,16 @@ public final class CargaTecnicos {
         return Math.round(pct) + "%";
     }
 
-    /** Día de la semana en Madrid. El proceso del servidor puede correr en UTC: resolverlo ahí
-     *  desplazaría el fin de semana entre medianoche y las 02:00. */
-    public static java.time.DayOfWeek diaDeHoy() {
-        return LocalDate.now(ZoneId.of("Europe/Madrid")).getDayOfWeek();
+    /** Día de la semana en Madrid, a partir del instante del reloj dado — la zona propia del
+     *  reloj se ignora, siempre se interpreta en Europe/Madrid. Sobrecarga testeable con un
+     *  {@link Clock} fijo, para poder afirmar el cruce de medianoche sin depender del reloj real. */
+    public static DayOfWeek diaDeHoy(Clock clock) {
+        return LocalDate.now(clock.withZone(ZoneId.of("Europe/Madrid"))).getDayOfWeek();
+    }
+
+    /** Día de la semana en Madrid con el reloj real del sistema. El proceso del servidor puede
+     *  correr en UTC: resolverlo ahí desplazaría el fin de semana entre medianoche y las 02:00. */
+    public static DayOfWeek diaDeHoy() {
+        return diaDeHoy(Clock.systemUTC());
     }
 }
