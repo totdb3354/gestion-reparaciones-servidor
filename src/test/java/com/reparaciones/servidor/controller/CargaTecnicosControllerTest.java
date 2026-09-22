@@ -16,12 +16,15 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.sql.Timestamp;
+import java.time.DayOfWeek;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -135,6 +138,59 @@ class CargaTecnicosControllerTest {
                 .andExpect(jsonPath("$.pedidos[1].pendiente.enEsperaPieza").value(0))
                 .andExpect(jsonPath("$.pedidos[1].hecho.normales").value(0))
                 .andExpect(jsonPath("$.total[1].hecho.normales").value(0));
+    }
+
+    /**
+     * Las glass abiertas cuentan en el tramo PENDIENTE, como en el JavaFX (la lista que
+     * PendientesSuperTecnicoController pasa a calcularDia es reparaciones + glass + pulido). Aquí el
+     * técnico 1 solo tiene una glass abierta —getAsignaciones() devuelve vacío—, así que con la versión
+     * anterior, que alimentaba el cálculo solo con dao.getAsignaciones(null), su pendiente salía a cero
+     * mientras el tramo "hecho" sí contaba glass (getAsignacionesCompletadasHoy une A% y AG%).
+     *
+     * Se mockea también getAsignacionesPulido() con una fila AP… para fijar que el pulido viaja en la
+     * lista pero NO computa (decisión A5): pendiente.normales/chasis/porCerrar siguen a cero.
+     *
+     * DETERMINISMO (ningún test puede depender del día en que se ejecute):
+     * - pendiente.glass es un RECUENTO del desglose, y calcularDia lo acumula ANTES de escalarlo por el
+     *   factor de jornada: vale 1 cualquier día de la semana, fin de semana incluido.
+     * - pctPendiente no se compara contra un literal, sino contra CargaTecnicos.calcularDia() invocado
+     *   aquí con el mismo día que resuelve el controlador (en fin de semana el factor es 0 y los dos dan
+     *   0 legítimamente, sin volver intermitente la aserción).
+     * - "entre semana es mayor que cero" se afirma sobre el cálculo puro con un día FIJO (lunes), que no
+     *   depende del reloj: es la propiedad que se quiere fijar, sin sacarla del día real.
+     */
+    @Test void laCargaPendienteCuentaLasGlassAbiertas() throws Exception {
+        mockearTecnicosActivos();
+        List<ReparacionResumen> glass  = List.of(asig("AG_9", 1, "CLI"));
+        List<ReparacionResumen> pulido = List.of(asig("AP_9", 1, "CLI"));
+        when(dao.getAsignaciones(null)).thenReturn(List.of());
+        when(dao.getAsignacionesGlass(null)).thenReturn(glass);
+        when(dao.getAsignacionesPulido(null)).thenReturn(pulido);
+        when(dao.getAsignacionesCompletadasHoy(any(Timestamp.class))).thenReturn(List.of());
+        List<ReparacionResumen> abiertas = new ArrayList<>(glass);
+        abiertas.addAll(pulido);
+        var dia = CargaTecnicos.diaDeHoy();
+        CargaTecnicos.DiaTecnico esperadoTotalT1   = CargaTecnicos.calcularDia(abiertas, List.of(), dia, false).get(1);
+        CargaTecnicos.DiaTecnico esperadoPedidosT1 = CargaTecnicos.calcularDia(abiertas, List.of(), dia, true).get(1);
+        // Entre semana la glass abierta consume jornada: se afirma sobre el cálculo puro con día fijo.
+        assertTrue(CargaTecnicos.calcularDia(abiertas, List.of(), DayOfWeek.MONDAY, true).get(1).pctPendiente() > 0,
+                "entre semana una glass abierta tiene que dar pctPendiente > 0");
+
+        mvc.perform(get("/api/reparaciones/carga-tecnicos").header("Authorization", supertecnico()))
+                .andExpect(status().isOk())
+                // T1: la glass abierta cuenta como pendiente, y el pulido que viaja con ella no computa.
+                .andExpect(jsonPath("$.pedidos[0].idTec").value(1))
+                .andExpect(jsonPath("$.pedidos[0].pendiente.glass").value(1))
+                .andExpect(jsonPath("$.total[0].pendiente.glass").value(1))
+                .andExpect(jsonPath("$.pedidos[0].pendiente.normales").value(0))
+                .andExpect(jsonPath("$.pedidos[0].pendiente.chasis").value(0))
+                .andExpect(jsonPath("$.pedidos[0].pendiente.porCerrar").value(0))
+                .andExpect(jsonPath("$.pedidos[0].hecho.glass").value(0))
+                .andExpect(jsonPath("$.pedidos[0].pctPendiente", closeTo(esperadoPedidosT1.pctPendiente(), 1e-9)))
+                .andExpect(jsonPath("$.total[0].pctPendiente", closeTo(esperadoTotalT1.pctPendiente(), 1e-9)))
+                // T2 no tiene nada: el reparto por técnico no se mezcla.
+                .andExpect(jsonPath("$.pedidos[1].idTec").value(2))
+                .andExpect(jsonPath("$.pedidos[1].pendiente.glass").value(0));
     }
 
     @Test void adminTambienPuedeConsultarla() throws Exception {
