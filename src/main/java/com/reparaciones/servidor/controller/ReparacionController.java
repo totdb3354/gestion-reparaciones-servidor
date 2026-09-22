@@ -5,12 +5,17 @@ import com.reparaciones.servidor.dao.DificultadPuntosDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.dao.TecnicoDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
+import com.reparaciones.servidor.job.UrgenteAutomaticoJob;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.CargaTecnicos;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,13 +23,19 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @RestController
 @RequestMapping("/api/reparaciones")
 public class ReparacionController {
+
+    private static final Logger log = LoggerFactory.getLogger(ReparacionController.class);
 
     private final ReparacionDAO         dao;
     private final ReparacionComponenteDAO rcDao;
@@ -32,17 +43,19 @@ public class ReparacionController {
     private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
     private final ComponenteDAO         componenteDao;
     private final DificultadPuntosDAO   dificultadDao;
+    private final TecnicoDAO            tecnicoDao;
     private final RegistroIdempotencia  idempotencia;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
-                                DificultadPuntosDAO dificultadDao, RegistroIdempotencia idempotencia) {
+                                DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
         this.borradorDao = borradorDao;
         this.componenteDao = componenteDao;
         this.dificultadDao = dificultadDao;
+        this.tecnicoDao   = tecnicoDao;
         this.idempotencia = idempotencia;
     }
 
@@ -92,6 +105,69 @@ public class ReparacionController {
     }
 
     /**
+     * Carga diaria por técnico, en los dos alcances (spec 3a §5). Cálculo que antes hacía el
+     * cliente. El tramo "hecho hoy" degrada a vacío si su consulta falla, igual que el JavaFX.
+     * El día se resuelve en Europe/Madrid (nunca la zona del proceso): a medianoche en el
+     * servidor puede seguir siendo el día anterior en UTC, y viceversa.
+     */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @GetMapping("/carga-tecnicos")
+    public CargaTecnicosRespuesta getCargaTecnicos() {
+        // Las TRES categorías, como el JavaFX (PendientesSuperTecnicoController: la lista que pasa a
+        // calcularDia es reparaciones + glass + pulido). getAsignaciones() sola trae solo las A… (su SQL
+        // excluye AG% y AP%), así que el tramo pendiente de un técnico de glass saldría a cero mientras
+        // el tramo hecho sí las cuenta (getAsignacionesCompletadasHoy une A% y AG%). El pulido se pasa
+        // aunque calcularDia lo descarte (decisión A5): así el calco es literal y no hay que acordarse
+        // de por qué faltaba uno.
+        List<ReparacionResumen> abiertas = new ArrayList<>(dao.getAsignaciones(null));
+        abiertas.addAll(dao.getAsignacionesGlass(null));
+        abiertas.addAll(dao.getAsignacionesPulido(null));
+        List<ReparacionResumen> cerradasHoy;
+        try {
+            cerradasHoy = dao.getAsignacionesCompletadasHoy(cutoffInicioDeHoyMadrid());
+        } catch (RuntimeException e) {
+            // degradación deliberada: solo-pendiente. Se registra porque es indistinguible de un
+            // día sin trabajo cerrado; ReparacionDAO puede lanzar aquí un IllegalStateException si
+            // ASIGNACION_SELECT se desincroniza con getAsignacionesCompletadasHoy.
+            log.warn("getAsignacionesCompletadasHoy() falló; carga-tecnicos degrada a solo-pendiente", e);
+            cerradasHoy = List.of();
+        }
+        DayOfWeek dia = CargaTecnicos.diaDeHoy();
+        List<Tecnico> tecnicos = tecnicoDao.getAllActivos();
+        return new CargaTecnicosRespuesta(
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true), dia, tecnicos),
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false), dia, tecnicos));
+    }
+
+    /** Una fila por técnico ACTIVO, con ceros para quien no aparezca en el mapa. Día y técnicos ya
+     *  resueltos por el llamante: una sola vez cada uno por petición (antes: día en cada llamada,
+     *  técnicos por cada alcance). */
+    private List<CargaTecnicosRespuesta.FilaCarga> filas(Map<Integer, CargaTecnicos.DiaTecnico> mapa,
+                                                          DayOfWeek dia, List<Tecnico> tecnicos) {
+        boolean sinJornada = CargaTecnicos.JORNADA_HORAS.getOrDefault(dia, 0) == 0;
+        CargaTecnicos.Desglose vacio = new CargaTecnicos.Desglose(0, 0, 0, 0, 0, 0);
+        return tecnicos.stream()
+                .map(t -> {
+                    CargaTecnicos.DiaTecnico dt = mapa.getOrDefault(t.getIdTec(),
+                            new CargaTecnicos.DiaTecnico(0, 0, vacio, vacio, sinJornada));
+                    return new CargaTecnicosRespuesta.FilaCarga(
+                            t.getIdTec(), t.getNombre(), dt.pctHecho(), dt.pctPendiente(),
+                            dto(dt.hecho()), dto(dt.pendiente()), dt.sinJornada());
+                })
+                .toList();
+    }
+
+    /** Inicio de hoy en Madrid, como Timestamp (mismo cutoff que usa el job de urgentes). */
+    private static Timestamp cutoffInicioDeHoyMadrid() {
+        return UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(Clock.system(ZoneId.of("Europe/Madrid")));
+    }
+
+    private static CargaTecnicosRespuesta.DesgloseDto dto(CargaTecnicos.Desglose d) {
+        return new CargaTecnicosRespuesta.DesgloseDto(
+                d.normales(), d.chasis(), d.porCerrar(), d.glass(), d.enEsperaPieza());
+    }
+
+    /**
      * Badge y sufijos de Pendientes de la web (spec web-taller §5.2). Sin parámetro cuenta las del técnico
      * del token (el supertécnico también es técnico); ADMIN sin técnico recibe ceros. Con parámetro, la
      * regla de FiltroTecnico (un técnico solo puede pedirse a sí mismo).
@@ -109,9 +185,7 @@ public class ReparacionController {
     /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */
     @GetMapping("/asignaciones/completadas-hoy")
     public List<ReparacionResumen> getAsignacionesCompletadasHoy() {
-        return dao.getAsignacionesCompletadasHoy(
-                com.reparaciones.servidor.job.UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(
-                        java.time.Clock.system(java.time.ZoneId.of("Europe/Madrid"))));
+        return dao.getAsignacionesCompletadasHoy(cutoffInicioDeHoyMadrid());
     }
 
     @GetMapping("/asignaciones/imei/{imei}")

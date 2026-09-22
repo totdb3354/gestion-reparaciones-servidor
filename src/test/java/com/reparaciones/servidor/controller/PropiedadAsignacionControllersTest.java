@@ -26,7 +26,7 @@ class PropiedadAsignacionControllersTest {
     private final BorradorDAO borradorDao = mock(BorradorDAO.class);
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, borradorDao,
-            mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), new RegistroIdempotencia());
+            mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia());
 
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(8, "tecnico_n", "x", "TECNICO", 4);
     private final UsuarioPrincipal supertecnico = new UsuarioPrincipal(7, "tecnico_f", "x", "SUPERTECNICO", 3);
