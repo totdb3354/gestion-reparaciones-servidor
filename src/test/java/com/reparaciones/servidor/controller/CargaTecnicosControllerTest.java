@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.sql.Timestamp;
 import java.util.List;
 
+import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,15 +79,30 @@ class CargaTecnicosControllerTest {
      * directamente pctPendiente (que en fin de semana da 0 en los dos alcances por igual).
      * sinJornada sí depende del día real, así que se calcula aquí con el mismo helper que usa
      * el controlador en vez de asumir un día de la semana concreto.
+     *
+     * "hecho" lleva además una asignación cerrada hoy de un tipo distinto (glass) al de las
+     * abiertas (normales): así el mapeo posicional de dto() en ReparacionController (normales,
+     * chasis, porCerrar, glass, enEsperaPieza) se afirma en positivo y una permuta entre esos
+     * campos se detecta. pctHecho/pctPendiente de T1 se comparan contra el resultado de llamar
+     * a CargaTecnicos.calcularDia() con los mismos datos, en vez de fijar un valor o comparar con
+     * cero: así la aserción es determinista cualquier día de la semana (entre semana, hecho y
+     * pendiente de T1 salen de tipos distintos y por tanto de valores distintos si se permutan;
+     * en fin de semana el factor de jornada es 0 y ambos dan legítimamente 0, indistinguibles
+     * entre sí, pero eso no hace la aserción intermitente: sigue comparando contra el mismo
+     * cálculo de producción que el controlador usa esa misma petición).
      */
     @Test void supertecnicoRecibeLosDosAlcances() throws Exception {
         mockearTecnicosActivos();
-        when(dao.getAsignaciones(null)).thenReturn(List.of(
+        List<ReparacionResumen> abiertas = List.of(
                 asig("A_1", 1, "CLI"),
-                asig("A_2", 1, null)));
-        when(dao.getAsignacionesCompletadasHoy(any(Timestamp.class))).thenReturn(List.of());
-        boolean sinJornadaHoy = CargaTecnicos.JORNADA_HORAS
-                .getOrDefault(CargaTecnicos.diaDeHoy(), 0) == 0;
+                asig("A_2", 1, null));
+        List<ReparacionResumen> cerradasHoy = List.of(asig("AG_1", 1, "CLI"));
+        when(dao.getAsignaciones(null)).thenReturn(abiertas);
+        when(dao.getAsignacionesCompletadasHoy(any(Timestamp.class))).thenReturn(cerradasHoy);
+        var dia = CargaTecnicos.diaDeHoy();
+        boolean sinJornadaHoy = CargaTecnicos.JORNADA_HORAS.getOrDefault(dia, 0) == 0;
+        CargaTecnicos.DiaTecnico esperadoTotalT1   = CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false).get(1);
+        CargaTecnicos.DiaTecnico esperadoPedidosT1 = CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true).get(1);
 
         mvc.perform(get("/api/reparaciones/carga-tecnicos").header("Authorization", supertecnico()))
                 .andExpect(status().isOk())
@@ -97,6 +113,16 @@ class CargaTecnicosControllerTest {
                 .andExpect(jsonPath("$.pedidos[0].nombre").value("T1"))
                 .andExpect(jsonPath("$.pedidos[0].pendiente.normales").value(1))
                 .andExpect(jsonPath("$.total[0].pendiente.normales").value(2))
+                // T1 "hecho" hoy: una glass (distinta del tipo de las abiertas), en positivo.
+                .andExpect(jsonPath("$.pedidos[0].hecho.glass").value(1))
+                .andExpect(jsonPath("$.total[0].hecho.glass").value(1))
+                .andExpect(jsonPath("$.pedidos[0].hecho.normales").value(0))
+                .andExpect(jsonPath("$.pedidos[0].hecho.chasis").value(0))
+                // pctHecho/pctPendiente de T1, contra el cálculo de producción (ver javadoc).
+                .andExpect(jsonPath("$.total[0].pctPendiente", closeTo(esperadoTotalT1.pctPendiente(), 1e-9)))
+                .andExpect(jsonPath("$.total[0].pctHecho", closeTo(esperadoTotalT1.pctHecho(), 1e-9)))
+                .andExpect(jsonPath("$.pedidos[0].pctPendiente", closeTo(esperadoPedidosT1.pctPendiente(), 1e-9)))
+                .andExpect(jsonPath("$.pedidos[0].pctHecho", closeTo(esperadoPedidosT1.pctHecho(), 1e-9)))
                 // T2 (fila 1): sin asignaciones, desglose a cero en los dos alcances.
                 .andExpect(jsonPath("$.pedidos[1].idTec").value(2))
                 .andExpect(jsonPath("$.pedidos[1].nombre").value("T2"))
