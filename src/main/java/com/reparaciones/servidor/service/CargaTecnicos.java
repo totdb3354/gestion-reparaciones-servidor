@@ -116,4 +116,10 @@ public final class CargaTecnicos {
     public static String formatearPct(double pct) {
         return Math.round(pct) + "%";
     }
+
+    /** Día de la semana en Madrid. El proceso del servidor puede correr en UTC: resolverlo ahí
+     *  desplazaría el fin de semana entre medianoche y las 02:00. */
+    public static java.time.DayOfWeek diaDeHoy() {
+        return java.time.LocalDate.now(java.time.ZoneId.of("Europe/Madrid")).getDayOfWeek();
+    }
 }

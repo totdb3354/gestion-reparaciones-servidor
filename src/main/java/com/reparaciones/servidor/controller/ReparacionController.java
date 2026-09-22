@@ -5,11 +5,13 @@ import com.reparaciones.servidor.dao.DificultadPuntosDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.dao.TecnicoDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.CargaTecnicos;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -32,17 +34,19 @@ public class ReparacionController {
     private final com.reparaciones.servidor.dao.BorradorDAO borradorDao;
     private final ComponenteDAO         componenteDao;
     private final DificultadPuntosDAO   dificultadDao;
+    private final TecnicoDAO            tecnicoDao;
     private final RegistroIdempotencia  idempotencia;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
-                                DificultadPuntosDAO dificultadDao, RegistroIdempotencia idempotencia) {
+                                DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
         this.borradorDao = borradorDao;
         this.componenteDao = componenteDao;
         this.dificultadDao = dificultadDao;
+        this.tecnicoDao   = tecnicoDao;
         this.idempotencia = idempotencia;
     }
 
@@ -89,6 +93,50 @@ public class ReparacionController {
             @RequestParam(required = false) Integer tecnico,
             @AuthenticationPrincipal UsuarioPrincipal principal) {
         return dao.getAsignaciones(FiltroTecnico.efectivo(principal, tecnico));
+    }
+
+    /**
+     * Carga diaria por técnico, en los dos alcances (spec 3a §5). Cálculo que antes hacía el
+     * cliente. El tramo "hecho hoy" degrada a vacío si su consulta falla, igual que el JavaFX.
+     * El día se resuelve en Europe/Madrid (nunca la zona del proceso): a medianoche en el
+     * servidor puede seguir siendo el día anterior en UTC, y viceversa.
+     */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @GetMapping("/carga-tecnicos")
+    public CargaTecnicosRespuesta getCargaTecnicos() {
+        List<ReparacionResumen> abiertas = dao.getAsignaciones(null);
+        List<ReparacionResumen> cerradasHoy;
+        try {
+            cerradasHoy = dao.getAsignacionesCompletadasHoy(
+                    com.reparaciones.servidor.job.UrgenteAutomaticoJob.cutoffInicioDeHoyMadrid(
+                            java.time.Clock.system(java.time.ZoneId.of("Europe/Madrid"))));
+        } catch (RuntimeException e) {
+            cerradasHoy = List.of();   // degradación deliberada: solo-pendiente
+        }
+        java.time.DayOfWeek dia = CargaTecnicos.diaDeHoy();
+        return new CargaTecnicosRespuesta(
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true)),
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false)));
+    }
+
+    /** Una fila por técnico ACTIVO, con ceros para quien no aparezca en el mapa. */
+    private List<CargaTecnicosRespuesta.FilaCarga> filas(Map<Integer, CargaTecnicos.DiaTecnico> mapa) {
+        boolean sinJornada = CargaTecnicos.JORNADA_HORAS.getOrDefault(CargaTecnicos.diaDeHoy(), 0) == 0;
+        CargaTecnicos.Desglose vacio = new CargaTecnicos.Desglose(0, 0, 0, 0, 0, 0);
+        return tecnicoDao.getAllActivos().stream()
+                .map(t -> {
+                    CargaTecnicos.DiaTecnico dt = mapa.getOrDefault(t.getIdTec(),
+                            new CargaTecnicos.DiaTecnico(0, 0, vacio, vacio, sinJornada));
+                    return new CargaTecnicosRespuesta.FilaCarga(
+                            t.getIdTec(), t.getNombre(), dt.pctHecho(), dt.pctPendiente(),
+                            dto(dt.hecho()), dto(dt.pendiente()), dt.sinJornada());
+                })
+                .toList();
+    }
+
+    private static CargaTecnicosRespuesta.DesgloseDto dto(CargaTecnicos.Desglose d) {
+        return new CargaTecnicosRespuesta.DesgloseDto(
+                d.normales(), d.chasis(), d.porCerrar(), d.glass(), d.enEsperaPieza());
     }
 
     /**
