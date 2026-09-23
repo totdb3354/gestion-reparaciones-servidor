@@ -65,9 +65,14 @@ public class AsignacionController {
         if (req.asignaciones() == null || req.asignaciones().isEmpty())
             throw regla("El lote no tiene asignaciones");
         Map<String, TelefonoDelLote> telefonos = new HashMap<>();
-        if (req.telefonos() != null) for (TelefonoDelLote t : req.telefonos()) telefonos.put(t.imei(), t);
+        if (req.telefonos() != null) for (TelefonoDelLote t : req.telefonos()) {
+            if (t == null) throw regla("Teléfono nulo en el lote");
+            if (t.imei() == null || !t.imei().matches("\\d{15}")) throw regla("IMEI no válido: " + t.imei());
+            telefonos.put(t.imei(), t);
+        }
         Set<Integer> activos = tecnicoDao.getAllActivos().stream().map(Tecnico::getIdTec).collect(Collectors.toSet());
         for (AsignacionDelLote a : req.asignaciones()) {
+            if (a == null) throw regla("Asignación nula en el lote");
             // Set.of(...).contains(null) lanzaría NullPointerException: una categoría null es simplemente inválida.
             if (a.categoria() == null || !CATEGORIAS.contains(a.categoria())) throw regla("Categoría no válida: " + a.categoria());
             if (a.imei() == null || !a.imei().matches("\\d{15}")) throw regla("IMEI no válido: " + a.imei());

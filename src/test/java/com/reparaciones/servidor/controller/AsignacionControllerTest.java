@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -79,6 +80,22 @@ class AsignacionControllerTest {
         assertEquals(422, estado(() -> controller.guardarLote(new Peticion(
                 List.of(), List.of(new AsignacionDelLote(IMEI, "R", 3, null, false))), super_, CLAVE))); // sin teléfono
         assertEquals(422, estado(() -> controller.guardarLote(new Peticion(List.of(), List.of()), super_, CLAVE))); // vacío
+        verifyNoInteractions(servicio);
+    }
+
+    @Test void validacionesDeTelefonosYElementosNulos422() {
+        assertEquals(422, estado(() -> controller.guardarLote(new Peticion(
+                Arrays.asList(new TelefonoDelLote(IMEI, "13pro", null, false), null),
+                List.of(new AsignacionDelLote(IMEI, "R", 3, null, false))), super_, CLAVE)));     // teléfono nulo
+        assertEquals(422, estado(() -> controller.guardarLote(new Peticion(
+                List.of(new TelefonoDelLote(null, "13pro", null, false)),
+                List.of(new AsignacionDelLote(IMEI, "R", 3, null, false))), super_, CLAVE)));     // IMEI de teléfono nulo
+        assertEquals(422, estado(() -> controller.guardarLote(new Peticion(
+                List.of(new TelefonoDelLote("123", "13pro", null, false)),
+                List.of(new AsignacionDelLote(IMEI, "R", 3, null, false))), super_, CLAVE)));     // IMEI de teléfono mal formado
+        assertEquals(422, estado(() -> controller.guardarLote(new Peticion(
+                List.of(new TelefonoDelLote(IMEI, "13pro", null, false)),
+                Arrays.asList(new AsignacionDelLote(IMEI, "R", 3, null, false), null)), super_, CLAVE))); // asignación nula
         verifyNoInteractions(servicio);
     }
 
