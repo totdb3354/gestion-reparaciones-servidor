@@ -81,7 +81,8 @@ class OpenApiContractTest {
         assertNotNull(paths, "el contrato no trae paths");
         for (String ruta : List.of("/api/clientes", "/api/clientes/activos", "/api/clientes/{idCli}",
                 "/api/clientes/{idCli}/tiene-telefonos", "/api/clientes/{idCli}/activo",
-                "/api/auth/login", "/api/reparaciones/pendientes/contadores")) {
+                "/api/auth/login", "/api/reparaciones/pendientes/contadores", "/api/glass/prediccion",
+                "/api/asignaciones/lote")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         }
 
@@ -255,7 +256,8 @@ class OpenApiContractTest {
 
     /**
      * Reintentos seguros (tarea añadida al cierre 2026-09-19): las cuatro escrituras no repetibles del
-     * formulario publican {@code Idempotency-Key} como cabecera opcional; ninguna otra operación la declara.
+     * formulario, más POST /api/asignaciones/lote (sub-proyecto 3b), publican {@code Idempotency-Key}
+     * como cabecera opcional; ninguna otra operación la declara.
      */
     @Test void lasEscriturasDelFormularioAdmitenClaveDeIdempotencia() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
@@ -271,7 +273,8 @@ class OpenApiContractTest {
                 "post /api/reparaciones/completa",
                 "post /api/reparaciones/{idAsignacion}/filas",
                 "post /api/reparaciones/{idAsignacion}/agotar-componente",
-                "put /api/reparaciones/{idRep}");
+                "put /api/reparaciones/{idRep}",
+                "post /api/asignaciones/lote");
 
         for (String operacion : conCabecera) {
             String[] partes = operacion.split(" ", 2);
