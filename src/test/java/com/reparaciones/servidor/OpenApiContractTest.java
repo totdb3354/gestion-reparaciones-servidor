@@ -81,7 +81,7 @@ class OpenApiContractTest {
         assertNotNull(paths, "el contrato no trae paths");
         for (String ruta : List.of("/api/clientes", "/api/clientes/activos", "/api/clientes/{idCli}",
                 "/api/clientes/{idCli}/tiene-telefonos", "/api/clientes/{idCli}/activo",
-                "/api/auth/login", "/api/reparaciones/pendientes/contadores")) {
+                "/api/auth/login", "/api/reparaciones/pendientes/contadores", "/api/glass/prediccion")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         }
 
