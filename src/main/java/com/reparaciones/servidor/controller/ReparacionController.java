@@ -12,10 +12,9 @@ import com.reparaciones.servidor.model.*;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.CargaTecnicos;
 import io.swagger.v3.oas.annotations.media.Schema;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -35,8 +34,6 @@ import java.util.*;
 @RequestMapping("/api/reparaciones")
 public class ReparacionController {
 
-    private static final Logger log = LoggerFactory.getLogger(ReparacionController.class);
-
     private final ReparacionDAO         dao;
     private final ReparacionComponenteDAO rcDao;
     private final LogDAO                logDao;
@@ -45,10 +42,12 @@ public class ReparacionController {
     private final DificultadPuntosDAO   dificultadDao;
     private final TecnicoDAO            tecnicoDao;
     private final RegistroIdempotencia  idempotencia;
+    private final CargaAsignacionesService cargaAsignaciones;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
-                                DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia) {
+                                DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia,
+                                CargaAsignacionesService cargaAsignaciones) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
@@ -57,6 +56,7 @@ public class ReparacionController {
         this.dificultadDao = dificultadDao;
         this.tecnicoDao   = tecnicoDao;
         this.idempotencia = idempotencia;
+        this.cargaAsignaciones = cargaAsignaciones;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -113,25 +113,9 @@ public class ReparacionController {
     @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
     @GetMapping("/carga-tecnicos")
     public CargaTecnicosRespuesta getCargaTecnicos() {
-        // Las TRES categorías, como el JavaFX (PendientesSuperTecnicoController: la lista que pasa a
-        // calcularDia es reparaciones + glass + pulido). getAsignaciones() sola trae solo las A… (su SQL
-        // excluye AG% y AP%), así que el tramo pendiente de un técnico de glass saldría a cero mientras
-        // el tramo hecho sí las cuenta (getAsignacionesCompletadasHoy une A% y AG%). El pulido se pasa
-        // aunque calcularDia lo descarte (decisión A5): así el calco es literal y no hay que acordarse
-        // de por qué faltaba uno.
-        List<ReparacionResumen> abiertas = new ArrayList<>(dao.getAsignaciones(null));
-        abiertas.addAll(dao.getAsignacionesGlass(null));
-        abiertas.addAll(dao.getAsignacionesPulido(null));
-        List<ReparacionResumen> cerradasHoy;
-        try {
-            cerradasHoy = dao.getAsignacionesCompletadasHoy(cutoffInicioDeHoyMadrid());
-        } catch (RuntimeException e) {
-            // degradación deliberada: solo-pendiente. Se registra porque es indistinguible de un
-            // día sin trabajo cerrado; ReparacionDAO puede lanzar aquí un IllegalStateException si
-            // ASIGNACION_SELECT se desincroniza con getAsignacionesCompletadasHoy.
-            log.warn("getAsignacionesCompletadasHoy() falló; carga-tecnicos degrada a solo-pendiente", e);
-            cerradasHoy = List.of();
-        }
+        CargaAsignacionesService.Estado estado = cargaAsignaciones.cargar();
+        List<ReparacionResumen> abiertas = estado.abiertas();
+        List<ReparacionResumen> cerradasHoy = estado.cerradasHoy();
         DayOfWeek dia = CargaTecnicos.diaDeHoy();
         List<Tecnico> tecnicos = tecnicoDao.getAllActivos();
         return new CargaTecnicosRespuesta(

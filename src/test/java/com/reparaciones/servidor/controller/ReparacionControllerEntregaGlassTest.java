@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.*;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.ReparacionResumen;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.CargaAsignacionesService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -20,7 +21,8 @@ class ReparacionControllerEntregaGlassTest {
     private final LogDAO logDao = mock(LogDAO.class);
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, mock(BorradorDAO.class), mock(ComponenteDAO.class),
-            mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia());
+            mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
+            mock(CargaAsignacionesService.class));
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(42, "tecnico_j", "x", "TECNICO", 7);
 
     private ReparacionResumen asigDe(int idTec) {
