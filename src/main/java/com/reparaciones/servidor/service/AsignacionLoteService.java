@@ -11,7 +11,8 @@ import java.util.List;
 
 /** La transacción del guardado por lotes (spec 3b §4.2, D1): upsert de teléfonos y altas juntos; una asignación
  *  que ya existe (técnico + IMEI + categoría) se salta y se informa; cualquier excepción deshace el lote entero.
- *  Las altas de ReparacionDAO son @Transactional REQUIRED y se unen a esta. Urgente siempre false al crear. */
+ *  Las altas de ReparacionDAO son @Transactional REQUIRED y se unen a esta. Se pasa urgente=false; el DAO
+ *  hereda la urgencia abierta del IMEI, como en las altas sueltas. */
 @Service
 public class AsignacionLoteService {
 

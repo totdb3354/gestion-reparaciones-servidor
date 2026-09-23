@@ -111,4 +111,20 @@ class PrediccionGlassControllerTest {
         when(dao.getAsignacionesGlass(null)).thenReturn(List.of(asig("AG1", "222222222222222", 1, "CLI")));
         predecir(supertecnico(), CUERPO).andExpect(status().isOk()).andExpect(jsonPath("$.idTec").value(2));
     }
+
+    @Test void imeiNuloEs422() throws Exception {
+        // Con candidatos y asignaciones abiertas de por medio para que, sin la validación, PrediccionGlass.elegir
+        // llegue a comparar el imei (null) contra r.getImei() y reviente con NPE (500) en vez de devolver 422.
+        dosHabilitados();
+        when(dao.getAsignacionesGlass(null)).thenReturn(List.of(asig("AG1", "222222222222222", 1, "CLI")));
+        String cuerpo = """
+                {"imei":null,"conCliente":true,"verdes":[]}""";
+        predecir(supertecnico(), cuerpo).andExpect(status().is(422));
+    }
+
+    @Test void imeiMalFormadoEs422() throws Exception {
+        String cuerpo = """
+                {"imei":"123","conCliente":true,"verdes":[]}""";
+        predecir(supertecnico(), cuerpo).andExpect(status().is(422));
+    }
 }

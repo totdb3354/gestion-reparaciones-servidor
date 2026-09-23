@@ -30,7 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Prueba de frontera transaccional REAL de {@link AsignacionLoteService#guardar} (deviación aprobada del
+ * Prueba de frontera transaccional REAL de {@link AsignacionLoteService#guardar} (desviación aprobada del
  * task brief de la 3b, tarea 3): no hay BD de test en el proyecto (sin H2/Testcontainers; el
  * {@code application-test.properties} apunta a una MariaDB local que esta suite no usa), así que en vez de
  * levantar el contexto completo con {@code @SpringBootTest} se monta un contexto mínimo
@@ -83,7 +83,7 @@ class AsignacionLoteServiceTransaccionTest {
     private Connection connection;
 
     /** Los beans mock son singletons reutilizados entre tests: se resetean stubs/interacciones en cada uno
-     *  y se prepara una Connection mock nueva para poder aserta commit/rollback de forma aislada. */
+     *  y se prepara una Connection mock nueva para poder asertar commit/rollback de forma aislada. */
     @BeforeEach
     void resetMocks() throws SQLException {
         reset(dataSource, dao, telefonoDao);

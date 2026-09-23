@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -87,8 +88,11 @@ public class GlassController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping("/prediccion")
     public PrediccionGlassRespuesta predecir(@RequestBody PrediccionRequest req) {
+        if (req.imei() == null || !req.imei().matches("\\d{15}"))
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "IMEI no válido: " + req.imei());
         CargaAsignacionesService.Estado estado = cargaAsignaciones.cargar();
         List<PrediccionGlass.VerdeEnModal> verdes = req.verdes() == null ? List.of() : req.verdes().stream()
+                .filter(v -> v != null)
                 .map(v -> new PrediccionGlass.VerdeEnModal(v.imei(), v.idTec(), v.tipo(), v.esChasis(), v.conCliente()))
                 .toList();
         Tecnico t = PrediccionGlass.elegir(tecnicoDao.getAllActivos(), estado.abiertas(), estado.cerradasHoy(), verdes,
