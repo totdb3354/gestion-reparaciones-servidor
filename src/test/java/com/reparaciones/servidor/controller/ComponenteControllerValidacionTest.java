@@ -31,6 +31,7 @@ class ComponenteControllerValidacionTest {
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("Cantidad no válida (debe ser ≥ 0).", e.getReason());
         verify(dao, never()).actualizar(anyInt(), anyString(), anyInt(), anyInt(), any());
+        verify(logDao, never()).insertar(anyInt(), anyString(), anyString());
     }
 
     @Test void editarConMinimoNegativoEs422() {
@@ -39,6 +40,7 @@ class ComponenteControllerValidacionTest {
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("Valor no válido (debe ser ≥ 0).", e.getReason());
         verify(dao, never()).actualizar(anyInt(), anyString(), anyInt(), anyInt(), any());
+        verify(logDao, never()).insertar(anyInt(), anyString(), anyString());
     }
 
     @Test void editarConCeroVale() {
@@ -53,6 +55,7 @@ class ComponenteControllerValidacionTest {
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("Valor no válido (debe ser ≥ 0).", e.getReason());
         verify(dao, never()).setStockMinimo(anyInt(), anyInt());
+        verify(logDao, never()).insertar(anyInt(), anyString(), anyString());
         ctl.setStockMinimo(5, new ComponenteController.StockMinimoRequest(0), super7);
         verify(dao).setStockMinimo(5, 0);
     }
