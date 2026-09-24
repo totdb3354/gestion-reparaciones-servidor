@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -70,10 +71,15 @@ public class ComponenteController {
         logDao.insertar(principal.getIdUsu(), "CREAR_COMPONENTE", "TIPO: " + req.tipo());
     }
 
+    static final String MSG_CANTIDAD = "Cantidad no válida (debe ser ≥ 0).";
+    static final String MSG_MINIMO   = "Valor no válido (debe ser ≥ 0).";
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idCom}")
     public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {
+        noNegativo(req.stock(), MSG_CANTIDAD);
+        noNegativo(req.stockMinimo(), MSG_MINIMO);
         int stockAnt = dao.getStockById(idCom);
         dao.actualizar(idCom, req.tipo(), req.stock(), req.stockMinimo(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
@@ -85,9 +91,15 @@ public class ComponenteController {
     @PatchMapping("/{idCom}/stock-minimo")
     public void setStockMinimo(@PathVariable int idCom, @RequestBody StockMinimoRequest req,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        noNegativo(req.stockMinimo(), MSG_MINIMO);
         dao.setStockMinimo(idCom, req.stockMinimo());
         logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
                 "ID_COM: " + idCom + ", STOCK_MINIMO: " + req.stockMinimo());
+    }
+
+    /** Rango que el cliente JavaFX ya aplica antes de llamar (sub-proyecto 4a): aquí solo se cierra la puerta. */
+    private static void noNegativo(int valor, String mensaje) {
+        if (valor < 0) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mensaje);
     }
 
     /** Ajuste manual de stock: solo el supertécnico. El stock del día a día se mueve dentro de las
@@ -119,8 +131,8 @@ public class ComponenteController {
     }
 
     private record InsertarRequest(String tipo, int stock, int stockMinimo) {}
-    private record ActualizarRequest(String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {}
-    private record StockMinimoRequest(int stockMinimo) {}
+    record ActualizarRequest(String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {}
+    record StockMinimoRequest(int stockMinimo) {}
     private record DeltaRequest(int delta) {}
     private record ActivoRequest(boolean activo) {}
 }
