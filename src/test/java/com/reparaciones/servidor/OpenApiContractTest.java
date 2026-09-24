@@ -231,7 +231,7 @@ class OpenApiContractTest {
         assertEquals("string", esquemas.path("SolicitudStockEstadoRequest").path("properties").path("estado")
                 .path("type").asText());
 
-        // Las seis respuestas que dejan de ser Map y los dos cuerpos de estado
+        // Las siete respuestas que dejan de ser Map y los dos cuerpos de estado
         assertTrue(refDeLaRespuesta(paths, "/api/solicitudes/count", "get", "200").endsWith("/ValorEntero"));
         assertTrue(refDeLaRespuesta(paths, "/api/solicitudes-stock/count", "get", "200").endsWith("/ValorEntero"));
         assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/imei/{imei}/incidencia-activa", "get", "200")
@@ -247,6 +247,8 @@ class OpenApiContractTest {
         assertTrue(refDelCuerpo(paths, "/api/reparaciones/{idRep}/borrador", "put").endsWith("/ReparacionBorradorRequest"));
         assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/detalle-edicion", "get", "200")
                 .endsWith("/ReparacionDAODetalleEdicion"));
+        assertTrue(refDeLaRespuesta(paths, "/api/compras/cantidad-en-camino/{idCom}", "get", "200").endsWith("/ValorEntero"),
+                "cantidad-en-camino debe responder ValorEntero");
 
         Path destino = Path.of("target", "openapi.json");
         Files.createDirectories(destino.getParent());

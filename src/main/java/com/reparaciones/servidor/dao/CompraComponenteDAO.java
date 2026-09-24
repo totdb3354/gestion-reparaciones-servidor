@@ -63,7 +63,10 @@ public class CompraComponenteDAO {
                 " ORDER BY cc.ES_URGENTE DESC, cc.FECHA_PEDIDO ASC", MAPPER);
     }
 
+    /** Cantidad pendiente de llegar del SKU, resuelta al master del grupo compartido: las compras se insertan
+     *  siempre en el master, así que preguntar por un slave sin resolver devolvía 0 (sub-proyecto 4a). */
     public int getCantidadEnCaminoPorComponente(int idCom) {
+        idCom = resolveToMasterId(idCom);
         return jdbc.queryForObject(
                 "SELECT COALESCE(SUM(CANTIDAD - COALESCE(CANTIDAD_RECIBIDA, 0)), 0)" +
                 " FROM Compra_componente WHERE ID_COM = ? AND ESTADO IN ('en_camino','parcial')",

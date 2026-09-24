@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraComponente;
+import com.reparaciones.servidor.model.ValorEntero;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/compras")
@@ -46,8 +46,8 @@ public class CompraController {
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping("/cantidad-en-camino/{idCom}")
-    public Map<String, Object> getCantidadEnCamino(@PathVariable int idCom) {
-        return Map.of("value", dao.getCantidadEnCaminoPorComponente(idCom));
+    public ValorEntero getCantidadEnCamino(@PathVariable int idCom) {
+        return new ValorEntero(dao.getCantidadEnCaminoPorComponente(idCom));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
