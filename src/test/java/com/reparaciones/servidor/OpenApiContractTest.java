@@ -231,7 +231,7 @@ class OpenApiContractTest {
         assertEquals("string", esquemas.path("SolicitudStockEstadoRequest").path("properties").path("estado")
                 .path("type").asText());
 
-        // Las siete respuestas que dejan de ser Map y los dos cuerpos de estado
+        // Las ocho respuestas que dejan de ser Map y los dos cuerpos de estado
         assertTrue(refDeLaRespuesta(paths, "/api/solicitudes/count", "get", "200").endsWith("/ValorEntero"));
         assertTrue(refDeLaRespuesta(paths, "/api/solicitudes-stock/count", "get", "200").endsWith("/ValorEntero"));
         assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/imei/{imei}/incidencia-activa", "get", "200")
