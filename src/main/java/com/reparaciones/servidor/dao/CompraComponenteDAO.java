@@ -3,11 +3,16 @@ package com.reparaciones.servidor.dao;
 import com.reparaciones.servidor.model.CompraComponente;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -15,6 +20,14 @@ import java.util.List;
 
 @Repository
 public class CompraComponenteDAO {
+
+    /** 409 de estado (spec 4b §4.1). Los comparte CompraOtroDAO. Hasta el 4b el servidor solo protegía "pendiente"
+     *  en confirmar y borrar: con un GET fresco y una llamada directa se podía recibir dos veces (sumando stock). */
+    static final String MSG_NO_PENDIENTE = "El pedido ya no está pendiente";
+    static final String MSG_NO_EN_CAMINO = "El pedido ya no está en camino";
+    static final String MSG_NO_PARCIAL   = "El pedido ya no está en recepción parcial";
+    static final String MSG_NO_RECIBIDO  = "El pedido ya no está recibido";
+    static final String MSG_NO_EDITABLE  = "El pedido no se puede editar en su estado actual";
 
     private final JdbcTemplate jdbc;
 
@@ -73,32 +86,52 @@ public class CompraComponenteDAO {
                 Integer.class, idCom);
     }
 
-    public void insertar(int idCom, int idProv, int cantidad, boolean esUrgente,
-                         double precioUnidad, String divisa, double precioEur) {
-        idCom = resolveToMasterId(idCom);
-        jdbc.update(
-                "INSERT INTO Compra_componente" +
-                " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
-                " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
-                idCom, idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur);
+    /** Devuelve el ID_COMPRA generado (el lote lo devuelve a la web, sub-proyecto 4b; el POST suelto lo ignora).
+     *  El pedido se guarda siempre en el master del SKU compartido. */
+    public int insertar(int idCom, int idProv, int cantidad, boolean esUrgente,
+                        double precioUnidad, String divisa, double precioEur) {
+        int idMaster = resolveToMasterId(idCom);
+        KeyHolder claves = new GeneratedKeyHolder();
+        jdbc.update((PreparedStatementCreator) con -> {
+            PreparedStatement ps = con.prepareStatement(
+                    "INSERT INTO Compra_componente" +
+                    " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
+                    " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
+                    Statement.RETURN_GENERATED_KEYS);
+            ps.setInt(1, idMaster);
+            ps.setInt(2, idProv);
+            ps.setInt(3, cantidad);
+            ps.setBoolean(4, esUrgente);
+            ps.setDouble(5, precioUnidad);
+            ps.setString(6, divisa);
+            ps.setDouble(7, precioEur);
+            return ps;
+        }, claves);
+        Number id = claves.getKey();
+        if (id == null) throw new IllegalStateException("La BD no devolvió el ID_COMPRA del pedido insertado");
+        return id.intValue();
     }
 
+    /** Editable en pendiente, en_camino y recibido; en recibido solo si la cantidad no cambia (el 422 de P2 lo da el
+     *  controlador antes; esta condición cubre la carrera). El WHERE se evalúa sobre la fila de antes del SET. */
     public void editar(int idCompra, int idProv, int cantidad, boolean esUrgente,
                        double precioUnidad, String divisa, double precioEur, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
-        jdbc.update(
-                "UPDATE Compra_componente SET ID_PROV=?, CANTIDAD=?, ES_URGENTE=?," +
-                " PRECIO_UNIDAD_PEDIDO=?, DIVISA=?, PRECIO_EUR=? WHERE ID_COMPRA=?",
-                idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur, idCompra);
+        int n = jdbc.update(
+                "UPDATE Compra_componente SET ID_PROV=?, CANTIDAD=?, ES_URGENTE=?, PRECIO_UNIDAD_PEDIDO=?, DIVISA=?, PRECIO_EUR=? WHERE ID_COMPRA=? AND (ESTADO IN ('pendiente','en_camino') OR (ESTADO='recibido' AND CANTIDAD=?))",
+                idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur, idCompra, cantidad);
+        exigir(n, MSG_NO_EDITABLE);
     }
 
     @Transactional
     public void confirmarRecibido(int idCompra, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_componente SET ESTADO='recibido', FECHA_LLEGADA=NOW() WHERE ID_COMPRA=?",
+        int n = jdbc.update(
+                "UPDATE Compra_componente SET ESTADO='recibido', FECHA_LLEGADA=NOW() WHERE ID_COMPRA=? AND ESTADO='en_camino'",
                 idCompra);
+        exigir(n, MSG_NO_EN_CAMINO);
         jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
                 row.cantidad(), row.idCom());
     }
@@ -107,10 +140,10 @@ public class CompraComponenteDAO {
     public void confirmarParcial(int idCompra, int cantidadRecibida, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
-        jdbc.update(
-                "UPDATE Compra_componente SET ESTADO='parcial', CANTIDAD_RECIBIDA=?, FECHA_LLEGADA=NOW()" +
-                " WHERE ID_COMPRA=?",
+        int n = jdbc.update(
+                "UPDATE Compra_componente SET ESTADO='parcial', CANTIDAD_RECIBIDA=?, FECHA_LLEGADA=NOW() WHERE ID_COMPRA=? AND ESTADO='en_camino'",
                 cantidadRecibida, idCompra);
+        exigir(n, MSG_NO_EN_CAMINO);
         jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
                 cantidadRecibida, row.idCom());
     }
@@ -121,12 +154,11 @@ public class CompraComponenteDAO {
         checkUpdatedAt(row.updatedAt(), updatedAt);
         int nuevaRecibida = (row.cantidadRecibida() != null ? row.cantidadRecibida() : 0) + cantidadExtra;
         boolean completo = nuevaRecibida >= row.cantidad();
-        jdbc.update(
-                "UPDATE Compra_componente" +
-                " SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ?" +
-                (completo ? ", ESTADO = 'recibido'" : "") +
-                " WHERE ID_COMPRA=?",
-                cantidadExtra, idCompra);
+        String sql = completo
+                ? "UPDATE Compra_componente SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ?, ESTADO = 'recibido' WHERE ID_COMPRA=? AND ESTADO='parcial'"
+                : "UPDATE Compra_componente SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ? WHERE ID_COMPRA=? AND ESTADO='parcial'";
+        int n = jdbc.update(sql, cantidadExtra, idCompra);
+        exigir(n, MSG_NO_PARCIAL);
         jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
                 cantidadExtra, row.idCom());
     }
@@ -134,13 +166,17 @@ public class CompraComponenteDAO {
     public void confirmarAlterado(int idCompra, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_componente SET ESTADO='recibido' WHERE ID_COMPRA=?", idCompra);
+        int n = jdbc.update("UPDATE Compra_componente SET ESTADO='recibido' WHERE ID_COMPRA=? AND ESTADO='parcial'",
+                idCompra);
+        exigir(n, MSG_NO_PARCIAL);
     }
 
     public void cancelar(int idCompra, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_componente SET ESTADO='cancelado' WHERE ID_COMPRA=?", idCompra);
+        int n = jdbc.update("UPDATE Compra_componente SET ESTADO='cancelado' WHERE ID_COMPRA=? AND ESTADO='en_camino'",
+                idCompra);
+        exigir(n, MSG_NO_EN_CAMINO);
     }
 
     /** Confirma un pedido pendiente: pasa a 'en_camino' (entra en el flujo de recepción). */
@@ -150,9 +186,7 @@ public class CompraComponenteDAO {
         int n = jdbc.update(
                 "UPDATE Compra_componente SET ESTADO='en_camino' WHERE ID_COMPRA=? AND ESTADO='pendiente'",
                 idCompra);
-        if (n == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente");
-        }
+        exigir(n, MSG_NO_PENDIENTE);
     }
 
     /** Borra un pedido en estado 'pendiente' (aún no se pidió nada). */
@@ -165,11 +199,17 @@ public class CompraComponenteDAO {
         }
     }
 
+    /** Primero el UPDATE condicionado a 'recibido' (409 si ya no lo está); después el 409 de stock de siempre, que
+     *  deshace ese UPDATE porque el método es @Transactional; por último la resta. */
     @Transactional
     public void desrecibir(int idCompra, LocalDateTime updatedAt) {
         CompraRow row = getCompraRow(idCompra);
         checkUpdatedAt(row.updatedAt(), updatedAt);
         int cantidadARevertir = row.cantidadRecibida() != null ? row.cantidadRecibida() : row.cantidad();
+        int n = jdbc.update(
+                "UPDATE Compra_componente SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL WHERE ID_COMPRA=? AND ESTADO='recibido'",
+                idCompra);
+        exigir(n, MSG_NO_RECIBIDO);
         Integer stockActual = jdbc.queryForObject(
                 "SELECT STOCK FROM Componente WHERE ID_COM = ?", Integer.class, row.idCom());
         if (stockActual == null || stockActual < cantidadARevertir) {
@@ -177,8 +217,6 @@ public class CompraComponenteDAO {
                     "Stock insuficiente para deshacer la recepción (" +
                     "stock actual: " + stockActual + ", a descontar: " + cantidadARevertir + ")");
         }
-        jdbc.update("UPDATE Compra_componente SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL" +
-                " WHERE ID_COMPRA=?", idCompra);
         jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ?",
                 cantidadARevertir, row.idCom());
     }
@@ -192,7 +230,8 @@ public class CompraComponenteDAO {
         return master != null ? master : idCom;
     }
 
-    private record CompraRow(int idCom, int cantidad, Integer cantidadRecibida, LocalDateTime updatedAt) {}
+    /** Package-private: los tests de la matriz de estados la devuelven desde el JdbcTemplate mockeado. */
+    record CompraRow(int idCom, int cantidad, Integer cantidadRecibida, LocalDateTime updatedAt) {}
 
     private CompraRow getCompraRow(int idCompra) {
         return jdbc.queryForObject(
@@ -209,6 +248,13 @@ public class CompraComponenteDAO {
     private void checkUpdatedAt(LocalDateTime bdAt, LocalDateTime clientAt) {
         if (!clientAt.truncatedTo(ChronoUnit.SECONDS).equals(bdAt)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
+        }
+    }
+
+    /** Guard de estado: el UPDATE condicionado no tocó ninguna fila → el pedido ya no está en el estado exigido. */
+    static void exigir(int filas, String mensaje) {
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, mensaje);
         }
     }
 

@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.CompraComponenteDAO;
 import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
+import com.reparaciones.servidor.service.ConversionEur;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,7 +18,8 @@ class CompraControllerEnCaminoTest {
     @Test void cantidadEnCaminoDevuelveValorEnteroTipado() {
         CompraComponenteDAO dao = mock(CompraComponenteDAO.class);
         when(dao.getCantidadEnCaminoPorComponente(12)).thenReturn(5);
-        CompraController ctl = new CompraController(dao, mock(LogDAO.class), mock(ComponenteDAO.class), mock(ProveedorDAO.class));
+        CompraController ctl = new CompraController(dao, mock(LogDAO.class), mock(ComponenteDAO.class),
+                mock(ProveedorDAO.class), mock(ConversionEur.class));
 
         assertEquals(5, ctl.getCantidadEnCamino(12).value());
     }

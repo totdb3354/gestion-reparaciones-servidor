@@ -155,6 +155,14 @@ public class ReparacionComponenteDAO {
         }
     }
 
+    /** ID_COM de una solicitud urgente, o null si no existe o no tiene componente. El lote de pedidos lo usa para
+     *  casar la solicitud con su línea (sub-proyecto 4b). */
+    public Integer getIdComDeSolicitud(int idRc) {
+        List<Integer> filas = jdbc.query("SELECT ID_COM FROM Reparacion_componente WHERE ID_RC = ?",
+                (rs, row) -> rs.getObject("ID_COM", Integer.class), idRc);
+        return filas.isEmpty() ? null : filas.get(0);
+    }
+
     public void actualizarEstadoSolicitud(int idRc, String estado) {
         if ("PENDIENTE".equalsIgnoreCase(estado)) {
             // Al recuperar también restauramos ES_SOLICITUD por si otro admin limpió antes

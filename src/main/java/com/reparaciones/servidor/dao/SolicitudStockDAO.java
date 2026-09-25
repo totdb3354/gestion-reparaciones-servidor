@@ -54,6 +54,13 @@ public class SolicitudStockDAO {
                 idCom, idUsu, descripcion);
     }
 
+    /** ID_COM de una solicitud preventiva, o null si no existe (sub-proyecto 4b, lote de pedidos). */
+    public Integer getIdCom(int idSol) {
+        List<Integer> filas = jdbc.query("SELECT ID_COM FROM Solicitud_Stock WHERE ID_SOL = ?",
+                (rs, row) -> rs.getObject("ID_COM", Integer.class), idSol);
+        return filas.isEmpty() ? null : filas.get(0);
+    }
+
     public void actualizarEstado(int idSol, String estado) {
         if ("PENDIENTE".equalsIgnoreCase(estado)) {
             jdbc.update("UPDATE Solicitud_Stock SET ESTADO = 'PENDIENTE' WHERE ID_SOL = ?", idSol);

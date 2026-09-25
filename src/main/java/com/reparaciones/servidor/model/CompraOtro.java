@@ -1,5 +1,7 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
 public class CompraOtro {
@@ -8,10 +10,10 @@ public class CompraOtro {
     private String        nombreProveedor;
     private String        concepto;
     private int           cantidad;
-    private Integer       cantidadRecibida;
+    @Schema(nullable = true) private Integer       cantidadRecibida;
     private boolean       esUrgente;
     private LocalDateTime fechaPedido;
-    private LocalDateTime fechaLlegada;
+    @Schema(nullable = true) private LocalDateTime fechaLlegada;
     private double        precioUnidadPedido;
     private String        divisa;
     private double        precioEur;
