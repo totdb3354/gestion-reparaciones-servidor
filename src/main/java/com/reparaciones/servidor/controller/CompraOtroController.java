@@ -93,8 +93,10 @@ public class CompraOtroController {
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{id}/confirmar-alterado")
-    public void confirmarAlterado(@PathVariable int id, @RequestBody UpdatedAtRequest req) {
+    public void confirmarAlterado(@PathVariable int id, @RequestBody UpdatedAtRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.confirmarAlterado(id, req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "CONFIRMAR_ALTERADO_OTRO", "ID_COMPRA_OTRO: " + id);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -120,11 +122,11 @@ public class CompraOtroController {
         logDao.insertar(principal.getIdUsu(), "BORRAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: " + id);
     }
 
-    private record InsertarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
-                                   double precioUnidad, String divisa, double precioEur) {}
-    private record EditarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
-                                 double precioUnidad, String divisa, double precioEur, LocalDateTime updatedAt) {}
-    private record UpdatedAtRequest(LocalDateTime updatedAt) {}
-    private record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
-    private record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}
+    record InsertarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
+                           double precioUnidad, String divisa, double precioEur) {}
+    record EditarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
+                         double precioUnidad, String divisa, double precioEur, LocalDateTime updatedAt) {}
+    record UpdatedAtRequest(LocalDateTime updatedAt) {}
+    record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
+    record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}
 }

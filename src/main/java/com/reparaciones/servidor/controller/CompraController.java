@@ -104,8 +104,11 @@ public class CompraController {
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCompra}/confirmar-alterado")
-    public void confirmarAlterado(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req) {
+    public void confirmarAlterado(@PathVariable int idCompra, @RequestBody UpdatedAtRequest req,
+                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.confirmarAlterado(idCompra, req.updatedAt());
+        // Hasta el 4b era la única transición sin log (inventario de Pedidos §8)
+        logDao.insertar(principal.getIdUsu(), "CONFIRMAR_ALTERADO", "ID_COMPRA: " + idCompra);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -140,12 +143,12 @@ public class CompraController {
         logDao.insertar(principal.getIdUsu(), "DESRECIBIR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
-    private record InsertarRequest(int idCom, int idProv, int cantidad, boolean esUrgente,
-                                   double precioUnidad, String divisa, double precioEur) {}
-    private record EditarRequest(int idProv, int cantidad, boolean esUrgente,
-                                 double precioUnidad, String divisa, double precioEur,
-                                 LocalDateTime updatedAt) {}
-    private record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
-    private record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}
-    private record UpdatedAtRequest(LocalDateTime updatedAt) {}
+    record InsertarRequest(int idCom, int idProv, int cantidad, boolean esUrgente,
+                           double precioUnidad, String divisa, double precioEur) {}
+    record EditarRequest(int idProv, int cantidad, boolean esUrgente,
+                         double precioUnidad, String divisa, double precioEur,
+                         LocalDateTime updatedAt) {}
+    record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
+    record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}
+    record UpdatedAtRequest(LocalDateTime updatedAt) {}
 }

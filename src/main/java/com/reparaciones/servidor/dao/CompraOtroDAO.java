@@ -12,6 +12,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
+import static com.reparaciones.servidor.dao.CompraComponenteDAO.*;
+
 @Repository
 public class CompraOtroDAO {
 
@@ -65,10 +67,10 @@ public class CompraOtroDAO {
                        double precioUnidad, String divisa, double precioEur, LocalDateTime updatedAt) {
         Row r = getRow(id);
         checkUpdatedAt(r.updatedAt(), updatedAt);
-        jdbc.update(
-                "UPDATE Compra_otro SET ID_PROV=?, CONCEPTO=?, CANTIDAD=?, ES_URGENTE=?," +
-                " PRECIO_UNIDAD_PEDIDO=?, DIVISA=?, PRECIO_EUR=? WHERE ID_COMPRA_OTRO=?",
-                idProv, concepto, cantidad, esUrgente, precioUnidad, divisa, precioEur, id);
+        int n = jdbc.update(
+                "UPDATE Compra_otro SET ID_PROV=?, CONCEPTO=?, CANTIDAD=?, ES_URGENTE=?, PRECIO_UNIDAD_PEDIDO=?, DIVISA=?, PRECIO_EUR=? WHERE ID_COMPRA_OTRO=? AND (ESTADO IN ('pendiente','en_camino') OR (ESTADO='recibido' AND CANTIDAD=?))",
+                idProv, concepto, cantidad, esUrgente, precioUnidad, divisa, precioEur, id, cantidad);
+        exigir(n, MSG_NO_EDITABLE);
     }
 
     public void confirmar(int id, LocalDateTime updatedAt) {
@@ -76,21 +78,24 @@ public class CompraOtroDAO {
         checkUpdatedAt(r.updatedAt(), updatedAt);
         int n = jdbc.update(
                 "UPDATE Compra_otro SET ESTADO='en_camino' WHERE ID_COMPRA_OTRO=? AND ESTADO='pendiente'", id);
-        if (n == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente");
+        exigir(n, MSG_NO_PENDIENTE);
     }
 
     public void confirmarRecibido(int id, LocalDateTime updatedAt) {
         Row r = getRow(id);
         checkUpdatedAt(r.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_otro SET ESTADO='recibido', FECHA_LLEGADA=NOW() WHERE ID_COMPRA_OTRO=?", id);
+        int n = jdbc.update(
+                "UPDATE Compra_otro SET ESTADO='recibido', FECHA_LLEGADA=NOW() WHERE ID_COMPRA_OTRO=? AND ESTADO='en_camino'", id);
+        exigir(n, MSG_NO_EN_CAMINO);
     }
 
     public void confirmarParcial(int id, int cantidadRecibida, LocalDateTime updatedAt) {
         Row r = getRow(id);
         checkUpdatedAt(r.updatedAt(), updatedAt);
-        jdbc.update(
-                "UPDATE Compra_otro SET ESTADO='parcial', CANTIDAD_RECIBIDA=?, FECHA_LLEGADA=NOW() WHERE ID_COMPRA_OTRO=?",
+        int n = jdbc.update(
+                "UPDATE Compra_otro SET ESTADO='parcial', CANTIDAD_RECIBIDA=?, FECHA_LLEGADA=NOW() WHERE ID_COMPRA_OTRO=? AND ESTADO='en_camino'",
                 cantidadRecibida, id);
+        exigir(n, MSG_NO_EN_CAMINO);
     }
 
     public void recibirResto(int id, int cantidadExtra, LocalDateTime updatedAt) {
@@ -98,32 +103,34 @@ public class CompraOtroDAO {
         checkUpdatedAt(r.updatedAt(), updatedAt);
         int nuevaRecibida = (r.cantidadRecibida() != null ? r.cantidadRecibida() : 0) + cantidadExtra;
         boolean completo = nuevaRecibida >= r.cantidad();
-        jdbc.update(
-                "UPDATE Compra_otro" +
-                " SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ?" +
-                (completo ? ", ESTADO = 'recibido'" : "") +
-                " WHERE ID_COMPRA_OTRO=?",
-                cantidadExtra, id);
+        String sql = completo
+                ? "UPDATE Compra_otro SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ?, ESTADO = 'recibido' WHERE ID_COMPRA_OTRO=? AND ESTADO='parcial'"
+                : "UPDATE Compra_otro SET CANTIDAD_RECIBIDA = COALESCE(CANTIDAD_RECIBIDA, 0) + ? WHERE ID_COMPRA_OTRO=? AND ESTADO='parcial'";
+        int n = jdbc.update(sql, cantidadExtra, id);
+        exigir(n, MSG_NO_PARCIAL);
     }
 
     public void confirmarAlterado(int id, LocalDateTime updatedAt) {
         Row r = getRow(id);
         checkUpdatedAt(r.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_otro SET ESTADO='recibido' WHERE ID_COMPRA_OTRO=?", id);
+        int n = jdbc.update("UPDATE Compra_otro SET ESTADO='recibido' WHERE ID_COMPRA_OTRO=? AND ESTADO='parcial'", id);
+        exigir(n, MSG_NO_PARCIAL);
     }
 
     public void cancelar(int id, LocalDateTime updatedAt) {
         Row r = getRow(id);
         checkUpdatedAt(r.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_otro SET ESTADO='cancelado' WHERE ID_COMPRA_OTRO=?", id);
+        int n = jdbc.update("UPDATE Compra_otro SET ESTADO='cancelado' WHERE ID_COMPRA_OTRO=? AND ESTADO='en_camino'", id);
+        exigir(n, MSG_NO_EN_CAMINO);
     }
 
-    /** Revierte a 'en_camino'. Sin stock que descontar -> no hay chequeo. */
+    /** Revierte a 'en_camino' desde 'recibido'. Sin stock que descontar -> no hay chequeo de stock. */
     public void desrecibir(int id, LocalDateTime updatedAt) {
         Row r = getRow(id);
         checkUpdatedAt(r.updatedAt(), updatedAt);
-        jdbc.update("UPDATE Compra_otro SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL" +
-                " WHERE ID_COMPRA_OTRO=?", id);
+        int n = jdbc.update(
+                "UPDATE Compra_otro SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL WHERE ID_COMPRA_OTRO=? AND ESTADO='recibido'", id);
+        exigir(n, MSG_NO_RECIBIDO);
     }
 
     public void borrarPendiente(int id) {
@@ -134,7 +141,8 @@ public class CompraOtroDAO {
 
     // -- helpers --
 
-    private record Row(int cantidad, Integer cantidadRecibida, LocalDateTime updatedAt) {}
+    /** Package-private: los tests de la matriz de estados la devuelven desde el JdbcTemplate mockeado. */
+    record Row(int cantidad, Integer cantidadRecibida, LocalDateTime updatedAt) {}
 
     private Row getRow(int id) {
         return jdbc.queryForObject(
