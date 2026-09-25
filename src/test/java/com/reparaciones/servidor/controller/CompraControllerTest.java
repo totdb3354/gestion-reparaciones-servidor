@@ -4,9 +4,11 @@ import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
+import com.reparaciones.servidor.dao.TipoCambioDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.Proveedor;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.ConversionEur;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,7 +33,9 @@ class CompraControllerTest {
     private final LogDAO logDao = mock(LogDAO.class);
     private final ComponenteDAO componenteDao = mock(ComponenteDAO.class);
     private final ProveedorDAO proveedorDao = mock(ProveedorDAO.class);
-    private final CompraController ctl = new CompraController(dao, logDao, componenteDao, proveedorDao);
+    private final TipoCambioDAO tipoCambio = mock(TipoCambioDAO.class);
+    private final CompraController ctl = new CompraController(dao, logDao, componenteDao, proveedorDao,
+            new ConversionEur(tipoCambio));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3);
 
     CompraControllerTest() {
@@ -180,5 +184,27 @@ class CompraControllerTest {
         ctl.recibirResto(5, new CompraController.RecibirRestoRequest(3, AT), super7);
         verify(dao).recibirResto(5, 3, AT);
         verify(logDao).insertar(7, "RECIBIR_RESTO", "ID_COMPRA: 5");
+    }
+
+    // ── Task 3: precioEur lo calcula el servidor ──
+    @Test void altaEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
+        when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
+        ctl.insertar(new CompraController.InsertarRequest(1, 2, 3, false, 10.0, "USD", 999.0), super7);
+        verify(dao).insertar(1, 2, 3, false, 10.0, "USD", 8.8);
+    }
+
+    @Test void editarEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
+        when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
+        ctl.editar(5, new CompraController.EditarRequest(2, 4, false, 10.0, "usd", 999.0, AT), super7);
+        verify(dao).editar(5, 2, 4, false, 10.0, "USD", 8.8, AT);
+    }
+
+    @Test void sinTasaEs503SinEscribirNiRegistrar() {
+        when(tipoCambio.getTasa("USD")).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "No se pudo obtener el tipo de cambio de USD. Inténtalo de nuevo."));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> ctl.insertar(new CompraController.InsertarRequest(1, 2, 3, false, 10.0, "USD", 999.0), super7));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
+        nadaEscritoNiRegistrado();
     }
 }

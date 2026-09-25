@@ -3,9 +3,11 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
+import com.reparaciones.servidor.dao.TipoCambioDAO;
 import com.reparaciones.servidor.model.CompraOtro;
 import com.reparaciones.servidor.model.Proveedor;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.ConversionEur;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,7 +32,9 @@ class CompraOtroControllerTest {
     private final CompraOtroDAO dao = mock(CompraOtroDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
     private final ProveedorDAO proveedorDao = mock(ProveedorDAO.class);
-    private final CompraOtroController ctl = new CompraOtroController(dao, logDao, proveedorDao);
+    private final TipoCambioDAO tipoCambio = mock(TipoCambioDAO.class);
+    private final CompraOtroController ctl = new CompraOtroController(dao, logDao, proveedorDao,
+            new ConversionEur(tipoCambio));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3);
 
     CompraOtroControllerTest() {
@@ -136,5 +140,18 @@ class CompraOtroControllerTest {
         assertEquals("No puedes recibir más de lo pedido. Faltan 3 unidad(es).", falla422(() ->
                 ctl.recibirResto(5, new CompraOtroController.RecibirRestoRequest(4, AT), super7)));
         nadaEscritoNiRegistrado();
+    }
+
+    // ── Task 3: precioEur lo calcula el servidor ──
+    @Test void altaEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
+        when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
+        ctl.insertar(new CompraOtroController.InsertarRequest(2, CINTA, 3, false, 10.0, "USD", 999.0), super7);
+        verify(dao).insertar(2, CINTA, 3, false, 10.0, "USD", 8.8);
+    }
+
+    @Test void editarEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
+        when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
+        ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT), super7);
+        verify(dao).editar(5, 2, CINTA, 4, false, 10.0, "USD", 8.8, AT);
     }
 }

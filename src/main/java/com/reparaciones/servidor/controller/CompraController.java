@@ -7,6 +7,7 @@ import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.ValorEntero;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.ConversionEur;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,13 +24,16 @@ public class CompraController {
     private final LogDAO              logDao;
     private final ComponenteDAO       componenteDao;
     private final ProveedorDAO        proveedorDao;
+    private final ConversionEur       conversion;
 
     public CompraController(CompraComponenteDAO dao, LogDAO logDao,
-                            ComponenteDAO componenteDao, ProveedorDAO proveedorDao) {
+                            ComponenteDAO componenteDao, ProveedorDAO proveedorDao,
+                            ConversionEur conversion) {
         this.dao           = dao;
         this.logDao        = logDao;
         this.componenteDao = componenteDao;
         this.proveedorDao  = proveedorDao;
+        this.conversion    = conversion;
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
@@ -60,8 +64,10 @@ public class CompraController {
         String divisa = ValidacionPedidos.divisaValida(req.divisa());
         ValidacionPedidos.componenteActivo(componenteDao, req.idCom());
         ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
+        // P3: el importe en euros lo calcula el servidor; req.precioEur() se ignora
+        double precioEur = conversion.aEuros(req.precioUnidad(), divisa);
         dao.insertar(req.idCom(), req.idProv(), req.cantidad(), req.esUrgente(),
-                req.precioUnidad(), divisa, req.precioEur());
+                req.precioUnidad(), divisa, precioEur);
         String tipo = componenteDao.getTipoById(req.idCom());
         String proveedor = proveedorDao.getNombreById(req.idProv());
         logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO",
@@ -78,8 +84,9 @@ public class CompraController {
         ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
         dao.getById(idCompra).ifPresent(c ->
                 ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
+        double precioEur = conversion.aEuros(req.precioUnidad(), divisa);
         dao.editar(idCompra, req.idProv(), req.cantidad(), req.esUrgente(),
-                req.precioUnidad(), divisa, req.precioEur(), req.updatedAt());
+                req.precioUnidad(), divisa, precioEur, req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
