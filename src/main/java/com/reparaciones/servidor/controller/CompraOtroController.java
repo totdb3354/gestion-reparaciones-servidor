@@ -6,6 +6,7 @@ import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraOtro;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ConversionEur;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -145,9 +146,14 @@ public class CompraOtroController {
     }
 
     record InsertarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
-                           double precioUnidad, String divisa, double precioEur) {}
+                           double precioUnidad, String divisa,
+                           @Schema(nullable = true, description = "Ignorado: el servidor calcula el importe en euros")
+                           Double precioEur) {}
     record EditarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
-                         double precioUnidad, String divisa, double precioEur, LocalDateTime updatedAt) {}
+                         double precioUnidad, String divisa,
+                         @Schema(nullable = true, description = "Ignorado: el servidor calcula el importe en euros")
+                         Double precioEur,
+                         LocalDateTime updatedAt) {}
     record UpdatedAtRequest(LocalDateTime updatedAt) {}
     record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
     record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}

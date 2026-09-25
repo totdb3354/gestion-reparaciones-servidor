@@ -257,6 +257,57 @@ class OpenApiContractTest {
     }
 
     /**
+     * Sub-proyecto 4b (spec §4.5): los dos lotes de pedidos con sus esquemas, los nulos que el servidor ya mandaba en
+     * los pedidos (el tipo generado mentía: inventario de Pedidos §22) y el precioEur ignorado de las cuatro peticiones.
+     */
+    @Test void elContratoPublicaLosLotesYLosNulosDePedidos() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token))
+                .andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        for (String ruta : List.of("/api/compras/lote", "/api/compras-otros/lote")) {
+            assertTrue(paths.path(ruta).has("post"), () -> "falta POST " + ruta + " en el contrato");
+        }
+        for (String esquema : List.of("LoteComprasPeticion", "LoteComprasLinea", "LoteComprasSolicitudes",
+                "LoteComprasRespuesta", "LoteComprasOtrosPeticion", "LoteComprasOtrosLinea")) {
+            assertTrue(esquemas.has(esquema),
+                    () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
+        }
+        assertTrue(refDelCuerpo(paths, "/api/compras/lote", "post").endsWith("/LoteComprasPeticion"));
+        assertTrue(refDelCuerpo(paths, "/api/compras-otros/lote", "post").endsWith("/LoteComprasOtrosPeticion"));
+        assertTrue(refDeLaRespuesta(paths, "/api/compras/lote", "post", "200").endsWith("/LoteComprasRespuesta"));
+        assertTrue(refDeLaRespuesta(paths, "/api/compras-otros/lote", "post", "200").endsWith("/LoteComprasRespuesta"));
+
+        assertNullable(esquemas, "LoteComprasLinea", "idCom", "idProv");
+        assertNoNullable(esquemas, "LoteComprasLinea", "cantidad", "esUrgente", "precioUnidad");
+        assertNoNullable(esquemas, "LoteComprasPeticion", "lineas", "solicitudes");
+        assertNoNullable(esquemas, "LoteComprasSolicitudes", "urgentes", "preventivas");
+        assertNoNullable(esquemas, "LoteComprasRespuesta", "idsCreados");
+        assertEquals("integer", esquemas.path("LoteComprasRespuesta").path("properties").path("idsCreados")
+                .path("items").path("type").asText(), "idsCreados debe ser una lista de enteros");
+        assertNullable(esquemas, "LoteComprasOtrosLinea", "idProv", "concepto");
+        assertNoNullable(esquemas, "LoteComprasOtrosLinea", "cantidad", "esUrgente", "precioUnidad");
+        assertNoNullable(esquemas, "LoteComprasOtrosPeticion", "lineas");
+
+        assertNullable(esquemas, "CompraComponente", "cantidadRecibida", "fechaLlegada");
+        assertNullable(esquemas, "CompraOtro", "cantidadRecibida", "fechaLlegada");
+        assertNoNullable(esquemas, "CompraComponente", "idCompra", "cantidad", "estado", "precioEur", "updatedAt");
+        assertNoNullable(esquemas, "CompraOtro", "idCompraOtro", "concepto", "cantidad", "estado", "precioEur");
+
+        for (String peticion : List.of("CompraInsertarRequest", "CompraEditarRequest",
+                "CompraOtroInsertarRequest", "CompraOtroEditarRequest")) {
+            assertNullable(esquemas, peticion, "precioEur");
+            assertEquals("number", esquemas.path(peticion).path("properties").path("precioEur").path("type").asText(),
+                    () -> peticion + ".precioEur debe seguir siendo number");
+        }
+    }
+
+    /**
      * Reintentos seguros (tarea añadida al cierre 2026-09-19): las cuatro escrituras no repetibles del
      * formulario, más POST /api/asignaciones/lote (sub-proyecto 3b), publican {@code Idempotency-Key}
      * como cabecera opcional; ninguna otra operación la declara.
