@@ -55,8 +55,13 @@ public class CompraController {
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody InsertarRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ValidacionPedidos.cantidadPositiva(req.cantidad());
+        ValidacionPedidos.precioNoNegativo(req.precioUnidad());
+        String divisa = ValidacionPedidos.divisaValida(req.divisa());
+        ValidacionPedidos.componenteActivo(componenteDao, req.idCom());
+        ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
         dao.insertar(req.idCom(), req.idProv(), req.cantidad(), req.esUrgente(),
-                req.precioUnidad(), req.divisa(), req.precioEur());
+                req.precioUnidad(), divisa, req.precioEur());
         String tipo = componenteDao.getTipoById(req.idCom());
         String proveedor = proveedorDao.getNombreById(req.idProv());
         logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO",
@@ -67,8 +72,14 @@ public class CompraController {
     @PutMapping("/{idCompra}")
     public void editar(@PathVariable int idCompra, @RequestBody EditarRequest req,
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ValidacionPedidos.cantidadPositiva(req.cantidad());
+        ValidacionPedidos.precioNoNegativo(req.precioUnidad());
+        String divisa = ValidacionPedidos.divisaValida(req.divisa());
+        ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
+        dao.getById(idCompra).ifPresent(c ->
+                ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
         dao.editar(idCompra, req.idProv(), req.cantidad(), req.esUrgente(),
-                req.precioUnidad(), req.divisa(), req.precioEur(), req.updatedAt());
+                req.precioUnidad(), divisa, req.precioEur(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO", "ID_COMPRA: " + idCompra);
     }
 
@@ -89,6 +100,8 @@ public class CompraController {
     @PatchMapping("/{idCompra}/confirmar-parcial")
     public void confirmarParcial(@PathVariable int idCompra, @RequestBody ConfirmarParcialRequest req,
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.getById(idCompra).ifPresent(c ->
+                ValidacionPedidos.rangoParcial(req.cantidadRecibida(), c.getCantidad()));
         dao.confirmarParcial(idCompra, req.cantidadRecibida(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "RECIBIR_PARCIAL",
                 "ID_COMPRA: " + idCompra + ", CANT_RECIBIDA: " + req.cantidadRecibida());
@@ -98,6 +111,8 @@ public class CompraController {
     @PatchMapping("/{idCompra}/recibir-resto")
     public void recibirResto(@PathVariable int idCompra, @RequestBody RecibirRestoRequest req,
                              @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.getById(idCompra).ifPresent(c ->
+                ValidacionPedidos.rangoResto(req.cantidadExtra(), c.getCantidadRecibida(), c.getCantidad()));
         dao.recibirResto(idCompra, req.cantidadExtra(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "RECIBIR_RESTO", "ID_COMPRA: " + idCompra);
     }

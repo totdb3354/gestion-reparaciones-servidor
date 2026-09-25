@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class ProveedorDAO {
@@ -72,6 +73,11 @@ public class ProveedorDAO {
 
     public void borrar(int idProv) {
         jdbc.update("DELETE FROM Proveedor WHERE ID_PROV = ?", idProv);
+    }
+
+    /** Vacío si no existe (getNombreById lanza; CompraController depende de que lance, así que no se toca). */
+    public Optional<Proveedor> getById(int idProv) {
+        return jdbc.query(SELECT_BASE + " WHERE ID_PROV = ?", MAPPER, idProv).stream().findFirst();
     }
 
     public String getNombreById(int idProv) {

@@ -275,6 +275,18 @@ public class ComponenteDAO {
         };
     }
 
+    /** Lo mínimo para validar una línea de pedido (sub-proyecto 4b): si existe, si está activo y su master.
+     *  El ACTIVO de un slave es el de su grupo (setActivo cambia master y slaves a la vez). */
+    public record Basico(int idCom, int idMaster, String tipo, boolean activo) {}
+
+    public Optional<Basico> getBasico(int idCom) {
+        return jdbc.query(
+                "SELECT ID_COM, COALESCE(ID_COM_MASTER, ID_COM) AS ID_MASTER, TIPO, ACTIVO FROM Componente WHERE ID_COM = ?",
+                (rs, row) -> new Basico(rs.getInt("ID_COM"), rs.getInt("ID_MASTER"), rs.getString("TIPO"),
+                        rs.getBoolean("ACTIVO")),
+                idCom).stream().findFirst();
+    }
+
     public String getTipoById(int idCom) {
         return jdbc.queryForObject(
                 "SELECT TIPO FROM Componente WHERE ID_COM = ?", String.class, idCom);

@@ -38,8 +38,13 @@ public class CompraOtroController {
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody InsertarRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ValidacionPedidos.cantidadPositiva(req.cantidad());
+        ValidacionPedidos.precioNoNegativo(req.precioUnidad());
+        ValidacionPedidos.conceptoInformado(req.concepto());
+        String divisa = ValidacionPedidos.divisaValida(req.divisa());
+        ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
         dao.insertar(req.idProv(), req.concepto(), req.cantidad(), req.esUrgente(),
-                req.precioUnidad(), req.divisa(), req.precioEur());
+                req.precioUnidad(), divisa, req.precioEur());
         String proveedor = proveedorDao.getNombreById(req.idProv());
         logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO_OTRO",
                 "CONCEPTO: " + req.concepto() + ", PROVEEDOR: " + proveedor + ", CANT: " + req.cantidad());
@@ -49,8 +54,15 @@ public class CompraOtroController {
     @PutMapping("/{id}")
     public void editar(@PathVariable int id, @RequestBody EditarRequest req,
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
+        ValidacionPedidos.cantidadPositiva(req.cantidad());
+        ValidacionPedidos.precioNoNegativo(req.precioUnidad());
+        ValidacionPedidos.conceptoInformado(req.concepto());
+        String divisa = ValidacionPedidos.divisaValida(req.divisa());
+        ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
+        dao.getById(id).ifPresent(c ->
+                ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
         dao.editar(id, req.idProv(), req.concepto(), req.cantidad(), req.esUrgente(),
-                req.precioUnidad(), req.divisa(), req.precioEur(), req.updatedAt());
+                req.precioUnidad(), divisa, req.precioEur(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: " + id);
     }
 
@@ -78,6 +90,7 @@ public class CompraOtroController {
     @PatchMapping("/{id}/confirmar-parcial")
     public void confirmarParcial(@PathVariable int id, @RequestBody ConfirmarParcialRequest req,
                                  @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.getById(id).ifPresent(c -> ValidacionPedidos.rangoParcial(req.cantidadRecibida(), c.getCantidad()));
         dao.confirmarParcial(id, req.cantidadRecibida(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "RECIBIR_PARCIAL_OTRO",
                 "ID_COMPRA_OTRO: " + id + ", CANT_RECIBIDA: " + req.cantidadRecibida());
@@ -87,6 +100,8 @@ public class CompraOtroController {
     @PatchMapping("/{id}/recibir-resto")
     public void recibirResto(@PathVariable int id, @RequestBody RecibirRestoRequest req,
                              @AuthenticationPrincipal UsuarioPrincipal principal) {
+        dao.getById(id).ifPresent(c ->
+                ValidacionPedidos.rangoResto(req.cantidadExtra(), c.getCantidadRecibida(), c.getCantidad()));
         dao.recibirResto(id, req.cantidadExtra(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "RECIBIR_RESTO_OTRO", "ID_COMPRA_OTRO: " + id);
     }
