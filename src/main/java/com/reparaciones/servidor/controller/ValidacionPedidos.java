@@ -27,6 +27,17 @@ final class ValidacionPedidos {
     static final String MSG_CANTIDAD_RECIBIDO   = "No se puede cambiar la cantidad de un pedido recibido.";
     static final String MSG_RESTO_CERO          = "La cantidad debe ser mayor que 0.";
 
+    // ── Lotes (spec 4b §4.2 y §4.4): los mismos avisos que el formulario del cliente, ahora en el servidor ──
+    static final String MSG_SIN_LINEAS          = "Añade al menos una línea.";
+    static final String MSG_SOLICITUD_SIN_LINEA = "La solicitud no corresponde a ninguna línea del pedido.";
+    static final String L_COMPONENTE            = "selecciona un componente.";
+    static final String L_CONCEPTO              = "el concepto no puede estar vacío.";
+    static final String L_PROVEEDOR             = "selecciona un proveedor.";
+    static final String L_COMPONENTE_OFF        = "el componente está desactivado.";
+    static final String L_PROVEEDOR_OFF         = "el proveedor está desactivado.";
+    static final String L_CANTIDAD              = "la cantidad debe ser mayor que 0.";
+    static final String L_PRECIO                = "el precio no puede ser negativo.";
+
     static void cantidadPositiva(int cantidad) {
         if (cantidad <= 0) throw regla(MSG_CANTIDAD);
     }
@@ -76,6 +87,11 @@ final class ValidacionPedidos {
         if (cantidadExtra > restante) {
             throw regla("No puedes recibir más de lo pedido. Faltan " + restante + " unidad(es).");
         }
+    }
+
+    /** "Línea {n}: {texto}" con n 1-based, como el aviso del formulario. */
+    static ResponseStatusException enLinea(int numero, String texto) {
+        return regla("Línea " + numero + ": " + texto);
     }
 
     static ResponseStatusException regla(String mensaje) {

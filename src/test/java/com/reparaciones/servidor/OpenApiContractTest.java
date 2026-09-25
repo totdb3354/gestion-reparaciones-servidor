@@ -276,7 +276,8 @@ class OpenApiContractTest {
                 "post /api/reparaciones/{idAsignacion}/filas",
                 "post /api/reparaciones/{idAsignacion}/agotar-componente",
                 "put /api/reparaciones/{idRep}",
-                "post /api/asignaciones/lote");
+                "post /api/asignaciones/lote",
+                "post /api/compras/lote");
 
         for (String operacion : conCabecera) {
             String[] partes = operacion.split(" ", 2);
