@@ -7,6 +7,7 @@ import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.LoteCompras;
+import com.reparaciones.servidor.model.LoteComprasOtros;
 import com.reparaciones.servidor.model.Proveedor;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CompraLoteService;
@@ -32,6 +33,7 @@ import static com.reparaciones.servidor.controller.ValidacionPedidos.*;
 public class CompraLoteController {
 
     static final String OP_COMPRAS = "compras-lote";
+    static final String OP_OTROS   = "compras-otros-lote";
 
     private final CompraLoteService servicio;
     private final ComponenteDAO componenteDao;
@@ -73,6 +75,20 @@ public class CompraLoteController {
                 r -> registrarLogsCompras(lineas, urgentes, preventivas, idUsu));
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PostMapping("/compras-otros/lote")
+    public LoteCompras.Respuesta guardarLoteOtros(@RequestBody LoteComprasOtros.Peticion req,
+                                                  @AuthenticationPrincipal UsuarioPrincipal principal,
+                                                  @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false)
+                                                  String claveIdempotencia) {
+        exigirClave(claveIdempotencia);
+        List<OtroValidado> lineas = validarLineasOtro(req.lineas());
+        int idUsu = principal.getIdUsu();
+        return idempotencia.ejecutar(idUsu, OP_OTROS, claveIdempotencia, req,
+                () -> servicio.guardarOtros(resolverOtros(lineas)),
+                r -> registrarLogsOtros(lineas, idUsu));
+    }
+
     // ── validación ───────────────────────────────────────────────────────────
 
     static void exigirClave(String clave) {
@@ -105,6 +121,26 @@ public class CompraLoteController {
 
     private Proveedor proveedor(Integer idProv) {
         return idProv == null ? null : proveedorDao.getById(idProv).orElse(null);
+    }
+
+    private record OtroValidado(LoteComprasOtros.Linea linea, Proveedor proveedor) {}
+
+    /** Por línea y en el orden de la spec: concepto, proveedor, proveedor desactivado, cantidad, precio. */
+    private List<OtroValidado> validarLineasOtro(List<LoteComprasOtros.Linea> lineas) {
+        if (lineas == null || lineas.isEmpty()) throw regla(MSG_SIN_LINEAS);
+        List<OtroValidado> validadas = new ArrayList<>();
+        for (int i = 0; i < lineas.size(); i++) {
+            int n = i + 1;
+            LoteComprasOtros.Linea l = lineas.get(i);
+            if (l == null || l.concepto() == null || l.concepto().isBlank()) throw enLinea(n, L_CONCEPTO);
+            Proveedor p = proveedor(l.idProv());
+            if (p == null) throw enLinea(n, L_PROVEEDOR);
+            if (!p.isActivo()) throw enLinea(n, L_PROVEEDOR_OFF);
+            if (l.cantidad() <= 0) throw enLinea(n, L_CANTIDAD);
+            if (!(l.precioUnidad() >= 0)) throw enLinea(n, L_PRECIO);
+            validadas.add(new OtroValidado(l, p));
+        }
+        return validadas;
     }
 
     /** Cada solicitud tiene que pedir el componente (resuelto al master) de alguna línea; si no existe, tampoco casa. */
@@ -149,6 +185,17 @@ public class CompraLoteController {
         return d == null || d.isBlank() ? "EUR" : d.trim().toUpperCase();
     }
 
+    private List<CompraLoteService.LineaOtro> resolverOtros(List<OtroValidado> lineas) {
+        List<CompraLoteService.LineaOtro> resueltas = new ArrayList<>();
+        for (OtroValidado v : lineas) {
+            String divisa = divisaDe(v.proveedor());
+            LoteComprasOtros.Linea l = v.linea();
+            resueltas.add(new CompraLoteService.LineaOtro(v.proveedor().getIdProv(), l.concepto(), l.cantidad(),
+                    l.esUrgente(), l.precioUnidad(), divisa, conversion.aEuros(l.precioUnidad(), divisa)));
+        }
+        return resueltas;
+    }
+
     // ── logs (trasEscribir: una sola vez, tras la transacción) ───────────────
 
     /** Los mismos textos que POST /api/compras y los PATCH de estado de las dos solicitudes. */
@@ -163,6 +210,14 @@ public class CompraLoteController {
         }
         for (Integer idSol : preventivas) {
             logDao.insertar(idUsu, "GESTIONAR_SOLICITUD_STOCK", "ID_SOL: " + idSol + ", ESTADO: GESTIONADA");
+        }
+    }
+
+    /** El mismo texto que POST /api/compras-otros. */
+    private void registrarLogsOtros(List<OtroValidado> lineas, int idUsu) {
+        for (OtroValidado v : lineas) {
+            logDao.insertar(idUsu, "CREAR_PEDIDO_OTRO", "CONCEPTO: " + v.linea().concepto()
+                    + ", PROVEEDOR: " + v.proveedor().getNombre() + ", CANT: " + v.linea().cantidad());
         }
     }
 }

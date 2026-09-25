@@ -22,8 +22,11 @@ public class CompraLoteService {
     public record LineaCompra(int idCom, int idProv, int cantidad, boolean esUrgente,
                               double precioUnidad, String divisa, double precioEur) {}
 
+    public record LineaOtro(int idProv, String concepto, int cantidad, boolean esUrgente,
+                            double precioUnidad, String divisa, double precioEur) {}
+
     private final CompraComponenteDAO compraDao;
-    private final CompraOtroDAO compraOtroDao;   // lo usa guardarOtros (Task 5)
+    private final CompraOtroDAO compraOtroDao;
     private final ReparacionComponenteDAO reparacionComponenteDao;
     private final SolicitudStockDAO solicitudStockDao;
 
@@ -47,6 +50,17 @@ public class CompraLoteService {
         }
         for (Integer idRc : urgentes) reparacionComponenteDao.actualizarEstadoSolicitud(idRc, GESTIONADA);
         for (Integer idSol : preventivas) solicitudStockDao.actualizarEstado(idSol, GESTIONADA);
+        return new LoteCompras.Respuesta(ids);
+    }
+
+    /** Un alta por línea, en orden; sin solicitudes (los otros pedidos no tienen). */
+    @Transactional
+    public LoteCompras.Respuesta guardarOtros(List<LineaOtro> lineas) {
+        List<Integer> ids = new ArrayList<>();
+        for (LineaOtro l : lineas) {
+            ids.add(compraOtroDao.insertar(l.idProv(), l.concepto(), l.cantidad(), l.esUrgente(),
+                    l.precioUnidad(), l.divisa(), l.precioEur()));
+        }
         return new LoteCompras.Respuesta(ids);
     }
 }

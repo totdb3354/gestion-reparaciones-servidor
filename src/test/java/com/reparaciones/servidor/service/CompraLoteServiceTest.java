@@ -66,4 +66,30 @@ class CompraLoteServiceTest {
 
         verifyNoInteractions(reparacionComponenteDao, solicitudStockDao);
     }
+
+    // ── Task 5: otros pedidos ──
+    private static CompraLoteService.LineaOtro otro(String concepto, int cantidad) {
+        return new CompraLoteService.LineaOtro(2, concepto, cantidad, false, 1.5, "EUR", 1.5);
+    }
+
+    @Test void guardarOtrosInsertaCadaLineaEnOrdenYDevuelveSusIds() {
+        when(compraOtroDao.insertar(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5)).thenReturn(51);
+        when(compraOtroDao.insertar(2, "Bolsas", 1, false, 1.5, "EUR", 1.5)).thenReturn(52);
+
+        LoteCompras.Respuesta r = servicio.guardarOtros(List.of(otro("Cinta de embalar", 3), otro("Bolsas", 1)));
+
+        assertEquals(List.of(51, 52), r.idsCreados());
+        InOrder orden = inOrder(compraOtroDao);
+        orden.verify(compraOtroDao).insertar(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5);
+        orden.verify(compraOtroDao).insertar(2, "Bolsas", 1, false, 1.5, "EUR", 1.5);
+        verifyNoInteractions(compraDao, reparacionComponenteDao, solicitudStockDao);
+    }
+
+    @Test void guardarOtrosPropagaUnFalloEnLaSegundaLinea() {
+        when(compraOtroDao.insertar(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble()))
+                .thenReturn(51)
+                .thenThrow(new DataAccessResourceFailureException("BD caída"));
+        assertThrows(DataAccessResourceFailureException.class,
+                () -> servicio.guardarOtros(List.of(otro("Cinta de embalar", 1), otro("Bolsas", 1))));
+    }
 }

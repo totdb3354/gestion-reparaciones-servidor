@@ -8,6 +8,7 @@ import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.dao.TipoCambioDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.LoteCompras;
+import com.reparaciones.servidor.model.LoteComprasOtros;
 import com.reparaciones.servidor.model.Proveedor;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CompraLoteService;
@@ -52,6 +53,7 @@ class CompraLoteControllerTest {
         when(proveedorDao.getById(6)).thenReturn(Optional.of(new Proveedor(6, "ACME", false, "EUR", null, "COMPONENTES")));
         when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
         when(servicio.guardarCompras(anyList(), anyList(), anyList())).thenReturn(new LoteCompras.Respuesta(List.of(41)));
+        when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51)));
     }
 
     private static LoteCompras.Linea linea(Integer idCom, Integer idProv, int cantidad, double precio) {
@@ -177,5 +179,94 @@ class CompraLoteControllerTest {
         // La escritura no llegó a hacerse: RegistroIdempotencia liberó la clave y el reintento sí guarda
         ctl.guardarLoteCompras(peticion, super7, CLAVE);
         verify(servicio).guardarCompras(anyList(), anyList(), anyList());
+    }
+
+    // ── Task 5: POST /api/compras-otros/lote ──
+    private static final String CINTA = "Cinta de embalar";
+
+    private static LoteComprasOtros.Linea otro(Integer idProv, String concepto, int cantidad, double precio) {
+        return new LoteComprasOtros.Linea(idProv, concepto, cantidad, false, precio);
+    }
+
+    private static LoteComprasOtros.Peticion loteOtros(LoteComprasOtros.Linea... lineas) {
+        return new LoteComprasOtros.Peticion(Arrays.asList(lineas));
+    }
+
+    private String falla422Otros(LoteComprasOtros.Peticion peticion) {
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> ctl.guardarLoteOtros(peticion, super7, CLAVE));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
+        return e.getReason();
+    }
+
+    @Test void otrosSinClaveEs400() {
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> ctl.guardarLoteOtros(loteOtros(otro(2, CINTA, 1, 0.0)), super7, null));
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertEquals("Falta la clave de idempotencia", e.getReason());
+        nadaGuardadoNiRegistrado();
+    }
+
+    @Test void otrosSinLineasEs422() {
+        assertEquals("Añade al menos una línea.", falla422Otros(loteOtros()));
+        assertEquals("Añade al menos una línea.", falla422Otros(new LoteComprasOtros.Peticion(null)));
+        nadaGuardadoNiRegistrado();
+    }
+
+    @Test void otrosLineaSinConceptoEs422ConSuNumero() {
+        assertEquals("Línea 2: el concepto no puede estar vacío.",
+                falla422Otros(loteOtros(otro(2, CINTA, 1, 0.0), otro(2, null, 1, 0.0))));
+        assertEquals("Línea 2: el concepto no puede estar vacío.",
+                falla422Otros(loteOtros(otro(2, CINTA, 1, 0.0), otro(2, "   ", 1, 0.0))));
+        nadaGuardadoNiRegistrado();
+    }
+
+    @Test void otrosLineaSinProveedorOConUnoInexistenteEs422() {
+        assertEquals("Línea 1: selecciona un proveedor.", falla422Otros(loteOtros(otro(null, CINTA, 1, 0.0))));
+        assertEquals("Línea 1: selecciona un proveedor.", falla422Otros(loteOtros(otro(99, CINTA, 1, 0.0))));
+        nadaGuardadoNiRegistrado();
+    }
+
+    /** Orden de la spec: concepto, proveedor, proveedor desactivado, cantidad, precio. */
+    @Test void otrosLosErroresDeUnaLineaSalenEnElOrdenDeLaSpec() {
+        assertEquals("Línea 1: el concepto no puede estar vacío.", falla422Otros(loteOtros(otro(null, "", 0, -1.0))));
+        assertEquals("Línea 1: selecciona un proveedor.", falla422Otros(loteOtros(otro(null, CINTA, 0, -1.0))));
+        assertEquals("Línea 1: el proveedor está desactivado.", falla422Otros(loteOtros(otro(6, CINTA, 0, -1.0))));
+        assertEquals("Línea 1: la cantidad debe ser mayor que 0.", falla422Otros(loteOtros(otro(2, CINTA, 0, -1.0))));
+        assertEquals("Línea 1: el precio no puede ser negativo.", falla422Otros(loteOtros(otro(2, CINTA, 1, -1.0))));
+        nadaGuardadoNiRegistrado();
+    }
+
+    @Test void otrosLaDivisaEsLaDelProveedorYElEurSeCalculaAntesDelServicio() {
+        ctl.guardarLoteOtros(loteOtros(otro(3, CINTA, 2, 10.0), otro(2, "Bolsas", 1, 1.5)), super7, CLAVE);
+        verify(servicio).guardarOtros(eq(List.of(
+                new CompraLoteService.LineaOtro(3, CINTA, 2, false, 10.0, "USD", 8.8),
+                new CompraLoteService.LineaOtro(2, "Bolsas", 1, false, 1.5, "EUR", 1.5))));
+    }
+
+    @Test void otrosLaMismaClaveYLaMismaPeticionDevuelvenLaRespuestaGuardada() {
+        LoteCompras.Respuesta primera = ctl.guardarLoteOtros(loteOtros(otro(2, CINTA, 1, 0.0)), super7, CLAVE);
+        LoteCompras.Respuesta segunda = ctl.guardarLoteOtros(loteOtros(otro(2, CINTA, 1, 0.0)), super7, CLAVE);
+        assertSame(primera, segunda);
+        assertEquals(List.of(51), segunda.idsCreados());
+        verify(servicio, times(1)).guardarOtros(anyList());
+        verify(logDao, times(1)).insertar(eq(7), eq("CREAR_PEDIDO_OTRO"), anyString());
+    }
+
+    @Test void otrosRegistraUnLogPorLinea() {
+        when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51, 52)));
+        ctl.guardarLoteOtros(loteOtros(otro(2, CINTA, 3, 0.0), otro(3, "Bolsas", 1, 10.0)), super7, CLAVE);
+        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3");
+        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Bolsas, PROVEEDOR: Proveedor B, CANT: 1");
+        verifyNoMoreInteractions(logDao);
+    }
+
+    @Test void otrosSinTasaEs503SinLlamarAlServicio() {
+        when(tipoCambio.getTasa("USD")).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "No se pudo obtener el tipo de cambio de USD. Inténtalo de nuevo."));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> ctl.guardarLoteOtros(loteOtros(otro(3, CINTA, 1, 10.0)), super7, CLAVE));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
+        verifyNoInteractions(servicio, logDao);
     }
 }

@@ -92,4 +92,17 @@ class CompraLoteServiceTransaccionTest {
         verify(connection).commit();
         verify(connection, never()).rollback();
     }
+
+    @Test void unFalloEnElLoteDeOtrosHaceRollbackYNuncaCommit() throws SQLException {
+        when(compraOtroDao.insertar(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble()))
+                .thenReturn(51)
+                .thenThrow(new DataAccessResourceFailureException("BD caída"));
+
+        assertThrows(DataAccessResourceFailureException.class, () -> servicio.guardarOtros(List.of(
+                new CompraLoteService.LineaOtro(2, "Cinta de embalar", 1, false, 0.0, "EUR", 0.0),
+                new CompraLoteService.LineaOtro(2, "Bolsas", 1, false, 0.0, "EUR", 0.0))));
+
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+    }
 }

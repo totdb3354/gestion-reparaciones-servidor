@@ -3,10 +3,15 @@ package com.reparaciones.servidor.dao;
 import com.reparaciones.servidor.model.CompraOtro;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -54,13 +59,28 @@ public class CompraOtroDAO {
         return rows.stream().findFirst();
     }
 
-    public void insertar(int idProv, String concepto, int cantidad, boolean esUrgente,
-                         double precioUnidad, String divisa, double precioEur) {
-        jdbc.update(
-                "INSERT INTO Compra_otro" +
-                " (ID_PROV, CONCEPTO, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
-                " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
-                idProv, concepto, cantidad, esUrgente, precioUnidad, divisa, precioEur);
+    /** Devuelve el ID_COMPRA_OTRO generado (el lote lo devuelve a la web, sub-proyecto 4b; el POST suelto lo ignora). */
+    public int insertar(int idProv, String concepto, int cantidad, boolean esUrgente,
+                        double precioUnidad, String divisa, double precioEur) {
+        KeyHolder claves = new GeneratedKeyHolder();
+        jdbc.update((PreparedStatementCreator) con -> {
+            PreparedStatement ps = con.prepareStatement(
+                    "INSERT INTO Compra_otro" +
+                    " (ID_PROV, CONCEPTO, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
+                    " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
+                    Statement.RETURN_GENERATED_KEYS);
+            ps.setInt(1, idProv);
+            ps.setString(2, concepto);
+            ps.setInt(3, cantidad);
+            ps.setBoolean(4, esUrgente);
+            ps.setDouble(5, precioUnidad);
+            ps.setString(6, divisa);
+            ps.setDouble(7, precioEur);
+            return ps;
+        }, claves);
+        Number id = claves.getKey();
+        if (id == null) throw new IllegalStateException("La BD no devolvió el ID_COMPRA_OTRO del pedido insertado");
+        return id.intValue();
     }
 
     public void editar(int id, int idProv, String concepto, int cantidad, boolean esUrgente,

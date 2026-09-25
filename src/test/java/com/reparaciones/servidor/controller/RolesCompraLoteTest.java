@@ -57,6 +57,9 @@ class RolesCompraLoteTest {
             {"lineas":[{"idCom":1,"idProv":2,"cantidad":1,"esUrgente":false,"precioUnidad":0.0}],
              "solicitudes":{"urgentes":[],"preventivas":[]}}""";
 
+    private static final String CUERPO_OTROS = """
+            {"lineas":[{"idProv":2,"concepto":"Cinta de embalar","cantidad":1,"esUrgente":false,"precioUnidad":0.0}]}""";
+
     private ResultActions lote(String ruta, String cuerpo, String token, String clave) throws Exception {
         var peticion = post(ruta).header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON).content(cuerpo);
@@ -85,5 +88,23 @@ class RolesCompraLoteTest {
     @Test void comprasSinClaveEs400() throws Exception {
         catalogo();
         lote("/api/compras/lote", CUERPO_COMPRAS, supertecnico(), null).andExpect(status().isBadRequest());
+    }
+
+    @Test void otrosTecnicoYAdminReciben403() throws Exception {
+        lote("/api/compras-otros/lote", CUERPO_OTROS, tecnico(), "o1").andExpect(status().isForbidden());
+        lote("/api/compras-otros/lote", CUERPO_OTROS, admin(), "o2").andExpect(status().isForbidden());
+    }
+
+    @Test void otrosSupertecnicoGuardaYDevuelveLosIds() throws Exception {
+        catalogo();
+        when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51)));
+        lote("/api/compras-otros/lote", CUERPO_OTROS, supertecnico(), "o3")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idsCreados[0]").value(51));
+    }
+
+    @Test void otrosSinClaveEs400() throws Exception {
+        catalogo();
+        lote("/api/compras-otros/lote", CUERPO_OTROS, supertecnico(), null).andExpect(status().isBadRequest());
     }
 }
