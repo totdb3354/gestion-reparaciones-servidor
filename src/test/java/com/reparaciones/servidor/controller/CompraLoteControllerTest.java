@@ -119,6 +119,13 @@ class CompraLoteControllerTest {
         nadaGuardadoNiRegistrado();
     }
 
+    /** Minor 8 de la revisión final: 1e400 lo parsea Jackson como Infinity; debe rechazarse igual que un negativo. */
+    @Test void lineaConPrecioInfinitoEs422() {
+        assertEquals("Línea 1: el precio no puede ser negativo.",
+                falla422(lote(linea(1, 2, 1, Double.POSITIVE_INFINITY))));
+        nadaGuardadoNiRegistrado();
+    }
+
     @Test void unaSolicitudSinLineaEs422() {
         when(reparacionComponenteDao.getIdComDeSolicitud(11)).thenReturn(5);     // bat-x: ninguna línea lo pide
         when(solicitudStockDao.getIdCom(21)).thenReturn(5);
@@ -259,6 +266,13 @@ class CompraLoteControllerTest {
         verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3");
         verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Bolsas, PROVEEDOR: Proveedor B, CANT: 1");
         verifyNoMoreInteractions(logDao);
+    }
+
+    /** Minor 8 de la revisión final: 1e400 lo parsea Jackson como Infinity; debe rechazarse igual que un negativo. */
+    @Test void otrosLineaConPrecioInfinitoEs422() {
+        assertEquals("Línea 1: el precio no puede ser negativo.",
+                falla422Otros(loteOtros(otro(2, CINTA, 1, Double.POSITIVE_INFINITY))));
+        nadaGuardadoNiRegistrado();
     }
 
     @Test void otrosSinTasaEs503SinLlamarAlServicio() {

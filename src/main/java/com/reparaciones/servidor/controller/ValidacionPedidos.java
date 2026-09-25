@@ -42,9 +42,9 @@ final class ValidacionPedidos {
         if (cantidad <= 0) throw regla(MSG_CANTIDAD);
     }
 
-    /** {@code !(precio >= 0)} rechaza también NaN. */
+    /** Rechaza también NaN e infinito (Minor 8 de la revisión final: {@code 1e400} lo parsea Jackson como Infinity). */
     static void precioNoNegativo(double precio) {
-        if (!(precio >= 0)) throw regla(MSG_PRECIO);
+        if (!Double.isFinite(precio) || precio < 0) throw regla(MSG_PRECIO);
     }
 
     static void conceptoInformado(String concepto) {

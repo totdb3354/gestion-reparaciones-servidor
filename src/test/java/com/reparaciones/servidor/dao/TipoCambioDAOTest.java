@@ -70,4 +70,16 @@ class TipoCambioDAOTest {
         frankfurterResponde("{\"amount\":1.0,\"base\":\"EUR\",\"rates\":{}}");
         falla503();
     }
+
+    /** Important 1 de la revisión final: una tasa 0 (o no numérica) no se cachea y sale como 503, no como
+     *  una división por cero silenciosa el resto del día. */
+    @Test void tasaCeroEs503SinCachear() throws Exception {
+        frankfurterResponde("{\"amount\":1.0,\"base\":\"EUR\",\"rates\":{\"USD\":0}}");
+        falla503();
+    }
+
+    @Test void tasaNoNumericaEs503SinCachear() throws Exception {
+        frankfurterResponde("{\"amount\":1.0,\"base\":\"EUR\",\"rates\":{\"USD\":\"x\"}}");
+        falla503();
+    }
 }

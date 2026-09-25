@@ -89,6 +89,11 @@ public class TipoCambioDAO {
             if (value == null) {
                 throw new IllegalStateException("Divisa " + divisa + " no encontrada: " + body);
             }
+            // Important 1 de la revisión final: una tasa 0/negativa o no numérica no se cachea (evita
+            // una división por cero en ConversionEur el resto del día); sale como 503 igual que Frankfurter caído.
+            if (!value.isNumber() || value.asDouble() <= 0) {
+                throw new IllegalStateException("Tasa no válida para " + divisa + ": " + value);
+            }
             return value.asDouble();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

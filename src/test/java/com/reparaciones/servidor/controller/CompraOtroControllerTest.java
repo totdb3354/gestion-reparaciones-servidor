@@ -124,6 +124,32 @@ class CompraOtroControllerTest {
         nadaEscritoNiRegistrado();
     }
 
+    /** Important 4 de la revisión final: el PUT de otros no tenía ningún camino feliz probado. dao.getById(5)
+     *  no está stubbeado (Optional.empty() por defecto de Mockito), así que además prueba que un id sin
+     *  compra guardada no bloquea la edición: cantidadEditable se salta y se llega a dao.editar. */
+    @Test void editarValidoConGetByIdVacioNoBloqueaYEscribe() {
+        ctl.editar(5, edicion(2, CINTA, 4, 1.5), super7);
+        verify(dao).editar(5, 2, CINTA, 4, false, 1.5, "EUR", 1.5, AT);
+        verify(logDao).insertar(7, "EDITAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: 5");
+    }
+
+    /** Important 4 (alcance de P2): en_camino sí permite cambiar la cantidad, solo recibido la bloquea. */
+    @Test void editarEnCaminoConCantidadDistintaEscribe() {
+        when(dao.getById(5)).thenReturn(Optional.of(pedido("en_camino", 4, null)));
+        ctl.editar(5, edicion(2, CINTA, 7, 1.5), super7);
+        verify(dao).editar(5, 2, CINTA, 7, false, 1.5, "EUR", 1.5, AT);
+        verify(logDao).insertar(7, "EDITAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: 5");
+    }
+
+    /** Important 4: el PUT de otros no probaba sus propios 422 de cantidad/precio/divisa (sí los de compras). */
+    @Test void editarConCantidadPrecioODivisaNoValidosEs422() {
+        assertEquals("Cantidad no válida (debe ser > 0).", falla422(() -> ctl.editar(5, edicion(2, CINTA, 0, 1.5), super7)));
+        assertEquals("Precio no válido.", falla422(() -> ctl.editar(5, edicion(2, CINTA, 3, -1.0), super7)));
+        assertEquals("Divisa no válida (EUR o USD).", falla422(() ->
+                ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 3, false, 1.5, "CNY", 1.5, AT), super7)));
+        nadaEscritoNiRegistrado();
+    }
+
     @Test void parcialFueraDeRangoEs422() {
         when(dao.getById(5)).thenReturn(Optional.of(pedido("en_camino", 5, null)));
         assertEquals("La cantidad debe ser mayor que 0 y menor que 5.", falla422(() ->
@@ -153,5 +179,24 @@ class CompraOtroControllerTest {
         when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
         ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT), super7);
         verify(dao).editar(5, 2, CINTA, 4, false, 10.0, "USD", 8.8, AT);
+    }
+
+    /** Important 4 de la revisión final: el 503 de la tasa no estaba probado en insertar ni en editar de otros. */
+    @Test void insertarSinTasaEs503SinEscribirNiRegistrar() {
+        when(tipoCambio.getTasa("USD")).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "No se pudo obtener el tipo de cambio de USD. Inténtalo de nuevo."));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> ctl.insertar(new CompraOtroController.InsertarRequest(2, CINTA, 3, false, 10.0, "USD", 999.0), super7));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
+        nadaEscritoNiRegistrado();
+    }
+
+    @Test void editarSinTasaEs503SinEscribirNiRegistrar() {
+        when(tipoCambio.getTasa("USD")).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "No se pudo obtener el tipo de cambio de USD. Inténtalo de nuevo."));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT), super7));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
+        nadaEscritoNiRegistrado();
     }
 }

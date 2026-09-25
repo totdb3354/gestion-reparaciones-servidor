@@ -113,7 +113,7 @@ public class CompraLoteController {
             if (!c.activo()) throw enLinea(n, L_COMPONENTE_OFF);
             if (!p.isActivo()) throw enLinea(n, L_PROVEEDOR_OFF);
             if (l.cantidad() <= 0) throw enLinea(n, L_CANTIDAD);
-            if (!(l.precioUnidad() >= 0)) throw enLinea(n, L_PRECIO);
+            if (!Double.isFinite(l.precioUnidad()) || l.precioUnidad() < 0) throw enLinea(n, L_PRECIO);
             validadas.add(new LineaValidada(l, c, p));
         }
         return validadas;
@@ -137,7 +137,7 @@ public class CompraLoteController {
             if (p == null) throw enLinea(n, L_PROVEEDOR);
             if (!p.isActivo()) throw enLinea(n, L_PROVEEDOR_OFF);
             if (l.cantidad() <= 0) throw enLinea(n, L_CANTIDAD);
-            if (!(l.precioUnidad() >= 0)) throw enLinea(n, L_PRECIO);
+            if (!Double.isFinite(l.precioUnidad()) || l.precioUnidad() < 0) throw enLinea(n, L_PRECIO);
             validadas.add(new OtroValidado(l, p));
         }
         return validadas;
