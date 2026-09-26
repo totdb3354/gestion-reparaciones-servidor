@@ -13,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -133,6 +134,96 @@ class UsuarioControllerTest {
         ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", "TECNICO"), admin);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ese nombre de usuario ya existe."), resp.getBody());
+        verifyNoInteractions(logDao);
+    }
+
+    // ── 404 de idTec inexistente (spec 6 §4.2) ──
+    private static void noEncontrado(Runnable accion) {
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, accion::run);
+        assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
+        assertEquals("Técnico no encontrado.", e.getReason());
+    }
+
+    @Test void activarUnInexistenteEs404SinEscribir() {
+        noEncontrado(() -> ctl.activarTecnico(99, admin));
+        verify(dao, never()).activarTecnico(anyInt());
+        verifyNoInteractions(logDao);
+    }
+
+    @Test void desactivarUnInexistenteEs404SinEscribir() {
+        noEncontrado(() -> ctl.desactivarTecnico(99, admin));
+        verify(dao, never()).desactivarTecnico(anyInt());
+        verifyNoInteractions(logDao);
+    }
+
+    @Test void tieneReparacionesDeUnInexistenteEs404() {
+        noEncontrado(() -> ctl.tieneReparaciones(99));
+        verify(dao, never()).tieneReferencias(anyInt());
+    }
+
+    @Test void eliminarUnInexistenteEs404SinBorrar() {
+        noEncontrado(() -> ctl.eliminarTecnico(99, 20, admin));
+        verify(dao, never()).eliminarTecnico(anyInt(), anyInt());
+        verifyNoInteractions(logDao);
+    }
+
+    // ── activar / desactivar como hoy ──
+    @Test void activarYDesactivarEscribenYRegistranLog() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getNombreByIdTec(7)).thenReturn("tecnico-a");
+        ctl.desactivarTecnico(7, admin);
+        ctl.activarTecnico(7, admin);
+        verify(dao).desactivarTecnico(7);
+        verify(dao).activarTecnico(7);
+        verify(logDao).insertar(1, "DESACTIVAR_USUARIO", "ID_TEC: 7, NOMBRE: tecnico-a");
+        verify(logDao).insertar(1, "ACTIVAR_USUARIO", "ID_TEC: 7, NOMBRE: tecnico-a");
+    }
+
+    // ── tiene-reparaciones mira todas las referencias ──
+    @Test void tieneReparacionesDevuelveTieneReferencias() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.tieneReferencias(7)).thenReturn(true);
+        assertEquals(Map.of("value", true), ctl.tieneReparaciones(7));
+        when(dao.tieneReferencias(7)).thenReturn(false);
+        assertEquals(Map.of("value", false), ctl.tieneReparaciones(7));
+    }
+
+    // ── eliminar: 409 con referencias, idUsu resuelto e ignorado ──
+    @Test void eliminarConReferenciasEs409SinBorrarNiRegistrar() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getNombreByIdTec(7)).thenReturn("tecnico-a");
+        when(dao.tieneReferencias(7)).thenReturn(true);
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> ctl.eliminarTecnico(7, 20, admin));
+        assertEquals(HttpStatus.CONFLICT, e.getStatusCode());
+        assertEquals("\"tecnico-a\" tiene reparaciones asociadas.", e.getReason());
+        verify(dao, never()).eliminarTecnico(anyInt(), anyInt());
+        verifyNoInteractions(logDao);
+    }
+
+    @Test void eliminarResuelveElUsuarioDesdeElTecnicoEIgnoraElDeLaQuery() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getNombreByIdTec(7)).thenReturn("tecnico-a");
+        when(dao.getIdUsuByIdTec(7)).thenReturn(20);
+        ctl.eliminarTecnico(7, 999, admin);
+        verify(dao).eliminarTecnico(7, 20);
+        verify(logDao).insertar(1, "ELIMINAR_USUARIO", "ID_TEC: 7, ID_USU: 20, NOMBRE: tecnico-a");
+    }
+
+    @Test void eliminarSinIdUsuEnLaQueryTambienBorra() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getNombreByIdTec(7)).thenReturn("tecnico-a");
+        when(dao.getIdUsuByIdTec(7)).thenReturn(20);
+        ctl.eliminarTecnico(7, null, admin);
+        verify(dao).eliminarTecnico(7, 20);
+    }
+
+    /** Un Tecnico sin fila en Usuario no sale en la tabla (JOIN) y no se borra por aquí: 404. */
+    @Test void eliminarUnTecnicoSinUsuarioEs404() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getNombreByIdTec(7)).thenReturn("tecnico-a");
+        when(dao.getIdUsuByIdTec(7)).thenReturn(null);   // un mock devuelve 0 para Integer si no se dice
+        noEncontrado(() -> ctl.eliminarTecnico(7, 20, admin));
+        verify(dao, never()).eliminarTecnico(anyInt(), anyInt());
         verifyNoInteractions(logDao);
     }
 }

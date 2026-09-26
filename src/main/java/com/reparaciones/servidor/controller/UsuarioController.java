@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -71,6 +72,7 @@ public class UsuarioController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activarTecnico(@PathVariable int idTec,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        exigirTecnico(idTec);
         String nombre = dao.getNombreByIdTec(idTec);
         dao.activarTecnico(idTec);
         logDao.insertar(principal.getIdUsu(), "ACTIVAR_USUARIO",
@@ -82,6 +84,7 @@ public class UsuarioController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void desactivarTecnico(@PathVariable int idTec,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
+        exigirTecnico(idTec);
         String nombre = dao.getNombreByIdTec(idTec);
         dao.desactivarTecnico(idTec);
         logDao.insertar(principal.getIdUsu(), "DESACTIVAR_USUARIO",
@@ -113,18 +116,39 @@ public class UsuarioController {
     @GetMapping("/tecnicos/{idTec}/tiene-reparaciones")
     @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Boolean> tieneReparaciones(@PathVariable int idTec) {
-        return Map.of("value", dao.tieneReparaciones(idTec));
+        exigirTecnico(idTec);
+        return Map.of("value", dao.tieneReferencias(idTec));
     }
 
+    /** Spec 6 §4.2 (G8): el servidor vuelve a comprobar todas las referencias (409 sin borrar nada) y resuelve el
+     *  usuario desde idTec; el idUsu de la query se conserva en el contrato (opcional) para el JavaFX y se ignora. */
     @DeleteMapping("/tecnicos/{idTec}")
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminarTecnico(@PathVariable int idTec, @RequestParam int idUsu,
+    public void eliminarTecnico(@PathVariable int idTec,
+                                @io.swagger.v3.oas.annotations.Parameter(
+                                        description = "Ignorado: el servidor lo resuelve desde idTec")
+                                @RequestParam(required = false) Integer idUsu,
                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
+        exigirTecnico(idTec);
         String nombre = dao.getNombreByIdTec(idTec);
-        dao.eliminarTecnico(idTec, idUsu);
+        if (dao.tieneReferencias(idTec)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, ValidacionUsuarios.msgTieneReferencias(nombre));
+        }
+        Integer idUsuReal = dao.getIdUsuByIdTec(idTec);
+        if (idUsuReal == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ValidacionUsuarios.MSG_NO_ENCONTRADO);
+        }
+        dao.eliminarTecnico(idTec, idUsuReal);
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_USUARIO",
-                "ID_TEC: " + idTec + ", ID_USU: " + idUsu + ", NOMBRE: " + nombre);
+                "ID_TEC: " + idTec + ", ID_USU: " + idUsuReal + ", NOMBRE: " + nombre);
+    }
+
+    /** 404 {message: "Técnico no encontrado."} en vez del 500 de getNombreByIdTec (spec 6 §4.2). */
+    private void exigirTecnico(int idTec) {
+        if (!dao.existeTecnico(idTec)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ValidacionUsuarios.MSG_NO_ENCONTRADO);
+        }
     }
 
     /** Package-private (no private) para que los tests lo construyan; springdoc lo publica con el mismo nombre. */

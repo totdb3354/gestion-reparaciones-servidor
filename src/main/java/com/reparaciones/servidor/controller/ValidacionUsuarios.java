@@ -21,6 +21,13 @@ final class ValidacionUsuarios {
     static final String MSG_TECNICO_LARGO  = "El nombre del técnico no puede superar 100 caracteres.";
     static final String MSG_ROL            = "Rol no permitido.";
 
+    static final String MSG_NO_ENCONTRADO  = "Técnico no encontrado.";
+
+    /** 409 del borrado con datos asociados: el mismo texto que la cabecera del aviso del cliente (RegisterController :224). */
+    static String msgTieneReferencias(String nombreTecnico) {
+        return "\"" + nombreTecnico + "\" tiene reparaciones asociadas.";
+    }
+
     /** Orden del cliente y de la spec: campos → 6 → 50 → 100 → rol; para en el primero. Los nombres llegan ya
      *  recortados (null si venían null); la contraseña no se recorta (calco). {@code rol} null vale TECNICO. */
     static void validarAlta(String nombreTecnico, String nombreUsuario, String password, String rol) {
