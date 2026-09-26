@@ -22,8 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** POST y DELETE /api/tecnicos (spec 6 §4.3): solo ADMIN, con la cadena de seguridad real. Hasta el sub-proyecto 6
- *  no tenían @PreAuthorize y cualquier sesión podía crear o borrar un Tecnico. */
+/** POST y DELETE /api/tecnicos (spec 6 §4.3): solo ADMIN, con la cadena de seguridad real. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {

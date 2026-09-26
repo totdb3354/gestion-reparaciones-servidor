@@ -34,8 +34,7 @@ public class TecnicoController {
         return dao.getAllActivos();
     }
 
-    /** Solo ADMIN desde el sub-proyecto 6 (spec §4.3): hasta entonces cualquier sesión podía crear un Tecnico
-     *  huérfano. Sin consumidor en el JavaFX 0.16.x ni en la web. */
+    /** Solo ADMIN (spec 6 §4.3). Sin consumidor en el JavaFX 0.16.x ni en la web. */
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
