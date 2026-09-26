@@ -22,6 +22,7 @@ final class ValidacionUsuarios {
     static final String MSG_ROL            = "Rol no permitido.";
 
     static final String MSG_NO_ENCONTRADO  = "Técnico no encontrado.";
+    static final String MSG_RELLENA        = "Rellena todos los campos.";
 
     /** 409 del borrado con datos asociados: el mismo texto que la cabecera del aviso del cliente (RegisterController :224). */
     static String msgTieneReferencias(String nombreTecnico) {
@@ -36,6 +37,14 @@ final class ValidacionUsuarios {
         if (nombreUsuario.length() > 50) throw regla(MSG_USUARIO_LARGO);
         if (nombreTecnico.length() > 100) throw regla(MSG_TECNICO_LARGO);
         if (rol != null && !ROLES.contains(rol)) throw regla(MSG_ROL);
+    }
+
+    /** Cambiar contraseña (spec 6 §4.4), mismo orden que CambiarPasswordController :84-91 y sin trim: alguna vacía o
+     *  ausente → "Rellena todos los campos."; nueva de menos de 6 → la misma regla del alta. La confirmación no llega
+     *  al servidor (se queda en el cliente). */
+    static void validarCambioPassword(String passwordActual, String passwordNueva) {
+        if (vacio(passwordActual) || vacio(passwordNueva)) throw regla(MSG_RELLENA);
+        if (passwordNueva.length() < 6) throw regla(MSG_PASSWORD_CORTA);
     }
 
     private static boolean vacio(String s) {

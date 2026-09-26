@@ -59,8 +59,9 @@ public class AuthController {
     public ResponseEntity<?> cambiarPassword(
             @AuthenticationPrincipal UsuarioPrincipal principal,
             @RequestBody CambiarPasswordRequest req) {
-        if (req.passwordNueva() == null || req.passwordNueva().length() < 6)
-            return ResponseEntity.badRequest().build();
+        // 422 con los textos del cliente antes de BCrypt (spec 6 §4.4): sustituye al 400 sin cuerpo y evita el
+        // "rawPassword cannot be null" de matches(null, …). Lanza ResponseStatusException: el catch de abajo no la ve.
+        ValidacionUsuarios.validarCambioPassword(req.passwordActual(), req.passwordNueva());
         try {
             usuarioDao.cambiarPassword(principal.getIdUsu(), req.passwordActual(), req.passwordNueva());
             logDao.insertar(principal.getIdUsu(), "CAMBIAR_PASSWORD", "");
