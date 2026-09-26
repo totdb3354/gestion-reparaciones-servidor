@@ -85,11 +85,55 @@ public class UsuarioDAO {
         jdbc.update("UPDATE Tecnico SET ES_ESTADISTICA = 1 WHERE ID_TEC = ?", idTec);
     }
 
+    /** Las columnas que apuntan a Tecnico.ID_TEC con FK (sql/crear_bd.sql :180-183). */
+    static final List<String> REFERENCIAS_TECNICO = List.of(
+            "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ID_TEC = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ID_TEC_ASIGNA = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ENTREGADO_POR = ?)");
+
+    /** Las columnas que apuntan a Usuario.ID_USU con FK (sql/crear_bd.sql :130-131, :144, :160, :316, :346), salvo
+     *  Log_Actividad, que eliminarTecnico borra a propósito (calco, spec 6 G8). */
+    static final List<String> REFERENCIAS_USUARIO = List.of(
+            "SELECT EXISTS(SELECT 1 FROM Revision WHERE EST_ID_USU = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Revision WHERE FUN_ID_USU = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Envio WHERE ID_USU = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Envio_Telefono WHERE ID_USU_DEVOLUCION = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Solicitud_Stock WHERE ID_USU = ?)",
+            "SELECT EXISTS(SELECT 1 FROM Movimiento_telefono WHERE ID_USU = ?)");
+
+    public boolean existeTecnico(int idTec) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM Tecnico WHERE ID_TEC = ?", Integer.class, idTec);
+        return n != null && n > 0;
+    }
+
+    /** El usuario de un técnico, o null si el técnico no tiene fila en Usuario. */
+    public Integer getIdUsuByIdTec(int idTec) {
+        List<Integer> ids = jdbc.queryForList("SELECT ID_USU FROM Usuario WHERE ID_TEC = ?", Integer.class, idTec);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /** true si el técnico o su usuario aparecen en cualquiera de las nueve columnas con FK hacia ellos (spec 6 §4.2):
+     *  lo que haría fallar el borrado por integridad. Una consulta por referencia, parando en la primera que exista. */
+    public boolean tieneReferencias(int idTec) {
+        for (String sql : REFERENCIAS_TECNICO) {
+            if (existe(sql, idTec)) return true;
+        }
+        Integer idUsu = getIdUsuByIdTec(idTec);
+        if (idUsu == null) return false;
+        for (String sql : REFERENCIAS_USUARIO) {
+            if (existe(sql, idUsu)) return true;
+        }
+        return false;
+    }
+
+    private boolean existe(String sql, int id) {
+        Integer n = jdbc.queryForObject(sql, Integer.class, id);
+        return n != null && n > 0;
+    }
+
+    /** Se conserva por compatibilidad: desde el sub-proyecto 6 mira todas las referencias, no solo Reparacion.ID_TEC. */
     public boolean tieneReparaciones(int idTec) {
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM Reparacion WHERE ID_TEC = ?",
-                Integer.class, idTec);
-        return count != null && count > 0;
+        return tieneReferencias(idTec);
     }
 
     @Transactional

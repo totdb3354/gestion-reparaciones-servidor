@@ -34,7 +34,9 @@ public class TecnicoController {
         return dao.getAllActivos();
     }
 
+    /** Solo ADMIN (spec 6 §4.3). Sin consumidor en el JavaFX 0.16.x ni en la web. */
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody NombreRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
@@ -42,7 +44,9 @@ public class TecnicoController {
         logDao.insertar(principal.getIdUsu(), "CREAR_TECNICO", "NOMBRE: " + req.nombre());
     }
 
+    /** Solo ADMIN desde el sub-proyecto 6 (spec §4.3); sin consumidor en el JavaFX 0.16.x ni en la web. */
     @DeleteMapping("/{idTec}")
+    @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable int idTec,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
