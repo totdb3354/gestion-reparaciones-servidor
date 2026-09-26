@@ -32,30 +32,38 @@ public class UsuarioController {
         return dao.getUsuariosTecnicos();
     }
 
+    /** Alta de usuario y técnico (spec 6 §4.1): los nombres se recortan antes de validar y se guardan recortados;
+     *  los cinco 422 de {@link ValidacionUsuarios#validarAlta} van antes que los dos 409 de duplicado de siempre.
+     *  Un 422 o un 409 no escriben ni registran log. */
     @PostMapping("/tecnicos")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> registrarTecnico(@RequestBody RegistrarTecnicoRequest req,
                                                @AuthenticationPrincipal UsuarioPrincipal principal) {
-        if (dao.existeNombreTecnico(req.nombreTecnico())) {
+        String nombreTecnico = recortar(req.nombreTecnico());
+        String nombreUsuario = recortar(req.nombreUsuario());
+        ValidacionUsuarios.validarAlta(nombreTecnico, nombreUsuario, req.password(), req.rol());
+        if (dao.existeNombreTecnico(nombreTecnico)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("message", "Ya existe un técnico con ese nombre."));
         }
-        if (dao.existeNombreUsuario(req.nombreUsuario())) {
+        if (dao.existeNombreUsuario(nombreUsuario)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("message", "Ese nombre de usuario ya existe."));
         }
+        String rol = req.rol() != null ? req.rol() : "TECNICO";
         try {
-            String rol = req.rol() != null ? req.rol() : "TECNICO";
-            dao.registrarTecnico(req.nombreTecnico(), req.nombreUsuario(), req.password(), rol);
-            logDao.insertar(principal.getIdUsu(), "CREAR_USUARIO",
-                    "NOMBRE_USUARIO: " + req.nombreUsuario() + ", ROL: " + rol + ", TECNICO: " + req.nombreTecnico());
-            return ResponseEntity.status(HttpStatus.CREATED).build();
+            dao.registrarTecnico(nombreTecnico, nombreUsuario, req.password(), rol);
         } catch (DataIntegrityViolationException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("message", "Ese nombre de usuario ya existe."));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }
+        logDao.insertar(principal.getIdUsu(), "CREAR_USUARIO",
+                "NOMBRE_USUARIO: " + nombreUsuario + ", ROL: " + rol + ", TECNICO: " + nombreTecnico);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    private static String recortar(String s) {
+        return s == null ? null : s.trim();
     }
 
     @PatchMapping("/tecnicos/{idTec}/activar")
@@ -119,5 +127,6 @@ public class UsuarioController {
                 "ID_TEC: " + idTec + ", ID_USU: " + idUsu + ", NOMBRE: " + nombre);
     }
 
-    private record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String password, String rol) {}
+    /** Package-private (no private) para que los tests lo construyan; springdoc lo publica con el mismo nombre. */
+    record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String password, String rol) {}
 }
