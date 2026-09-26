@@ -1,5 +1,7 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.time.LocalDateTime;
 
 public class LogActividad {
@@ -7,8 +9,9 @@ public class LogActividad {
     private LocalDateTime fecha;
     private String nombreUsuario;
     private String accion;
-    private String detalle;
-    private String motivo;
+    /** TEXT nulable: la mayoría de filas traen motivo null y algunas detalle null (spec 6 §4.6). */
+    @Schema(nullable = true) private String detalle;
+    @Schema(nullable = true) private String motivo;
 
     public LogActividad() {}
 

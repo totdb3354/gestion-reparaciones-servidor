@@ -308,6 +308,64 @@ class OpenApiContractTest {
     }
 
     /**
+     * Sub-proyecto 6 (spec §4.6): la lista de acciones y el límite del log, el idUsu opcional del borrado de técnicos,
+     * los nulos de LogActividad y los códigos reales del alta, el borrado, activar/desactivar y cambiar contraseña
+     * (antes el contrato decía 200 con un objeto vacío donde el servidor responde 201/204).
+     */
+    @Test void elContratoPublicaLaGestion() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token))
+                .andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        for (String ruta : List.of("/api/logs", "/api/logs/acciones", "/api/usuarios/tecnicos",
+                "/api/usuarios/tecnicos/{idTec}", "/api/usuarios/tecnicos/{idTec}/tiene-reparaciones",
+                "/api/auth/cambiar-password")) {
+            assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        }
+
+        JsonNode acciones = paths.path("/api/logs/acciones").path("get").path("responses").path("200")
+                .path("content").elements().next().path("schema");
+        assertEquals("array", acciones.path("type").asText(), "GET /api/logs/acciones devuelve una lista");
+        assertEquals("string", acciones.path("items").path("type").asText(), "…de textos");
+
+        JsonNode limite = parametro(paths, "/api/logs", "get", "limite");
+        assertEquals("query", limite.path("in").asText());
+        assertFalse(limite.path("required").asBoolean(true), "limite es opcional (el JavaFX no lo manda)");
+        assertEquals("integer", limite.path("schema").path("type").asText());
+
+        JsonNode idUsu = parametro(paths, "/api/usuarios/tecnicos/{idTec}", "delete", "idUsu");
+        assertFalse(idUsu.path("required").asBoolean(true), "idUsu del DELETE pasa a opcional (se ignora)");
+
+        assertNullable(esquemas, "LogActividad", "detalle", "motivo");
+        assertNoNullable(esquemas, "LogActividad", "idLog", "fecha", "nombreUsuario", "accion");
+
+        assertCodigos(paths, "/api/usuarios/tecnicos", "post", "201", "409", "422");
+        assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}", "delete", "204", "404", "409");
+        assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/activar", "patch", "204", "404");
+        assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/desactivar", "patch", "204", "404");
+        assertCodigos(paths, "/api/auth/cambiar-password", "patch", "204", "422");
+    }
+
+    /** Un parámetro (query o path) de una operación, por nombre. */
+    private static JsonNode parametro(JsonNode paths, String ruta, String metodo, String nombre) {
+        for (JsonNode p : paths.path(ruta).path(metodo).path("parameters")) {
+            if (nombre.equals(p.path("name").asText())) return p;
+        }
+        return fail(metodo + " " + ruta + " no declara el parámetro " + nombre);
+    }
+
+    /** Los códigos de respuesta de una operación son exactamente estos (sin el 200 genérico de ResponseEntity<?>). */
+    private static void assertCodigos(JsonNode paths, String ruta, String metodo, String... codigos) {
+        List<String> declarados = nombres(paths.path(ruta).path(metodo).path("responses"));
+        assertEquals(Set.of(codigos), Set.copyOf(declarados), () -> metodo + " " + ruta + " declara " + declarados);
+    }
+
+    /**
      * Reintentos seguros (tarea añadida al cierre 2026-09-19): las cuatro escrituras no repetibles del
      * formulario, más POST /api/asignaciones/lote (sub-proyecto 3b), publican {@code Idempotency-Key}
      * como cabecera opcional; ninguna otra operación la declara.

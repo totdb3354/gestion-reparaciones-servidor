@@ -4,6 +4,9 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
 import com.reparaciones.servidor.model.Usuario;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +41,11 @@ public class UsuarioController {
      *  Un 422 o un 409 no escriben ni registran log. */
     @PostMapping("/tecnicos")
     @PreAuthorize("hasRole('ADMIN')")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", content = @Content),
+        @ApiResponse(responseCode = "409", content = @Content),
+        @ApiResponse(responseCode = "422", content = @Content)
+    })
     public ResponseEntity<?> registrarTecnico(@RequestBody RegistrarTecnicoRequest req,
                                                @AuthenticationPrincipal UsuarioPrincipal principal) {
         String nombreTecnico = recortar(req.nombreTecnico());
@@ -70,6 +78,10 @@ public class UsuarioController {
     @PatchMapping("/tecnicos/{idTec}/activar")
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content)
+    })
     public void activarTecnico(@PathVariable int idTec,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
         exigirTecnico(idTec);
@@ -82,6 +94,10 @@ public class UsuarioController {
     @PatchMapping("/tecnicos/{idTec}/desactivar")
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content)
+    })
     public void desactivarTecnico(@PathVariable int idTec,
                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
         exigirTecnico(idTec);
@@ -125,6 +141,11 @@ public class UsuarioController {
     @DeleteMapping("/tecnicos/{idTec}")
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content),
+        @ApiResponse(responseCode = "409", content = @Content)
+    })
     public void eliminarTecnico(@PathVariable int idTec,
                                 @io.swagger.v3.oas.annotations.Parameter(
                                         description = "Ignorado: el servidor lo resuelve desde idTec")

@@ -56,6 +56,10 @@ public class AuthController {
     }
 
     @PatchMapping("/cambiar-password")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", content = @io.swagger.v3.oas.annotations.media.Content),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", content = @io.swagger.v3.oas.annotations.media.Content)
+    })
     public ResponseEntity<?> cambiarPassword(
             @AuthenticationPrincipal UsuarioPrincipal principal,
             @RequestBody CambiarPasswordRequest req) {
