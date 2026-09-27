@@ -201,6 +201,36 @@ class IdempotenciaAltasControllerTest {
         verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
     }
 
+    /** Un 422 de validación del alta no queda registrado: el envío corregido con la misma clave da 201. */
+    @Test void tecnicoUn422DeValidacionNoSeRecuerdaConLaClave() throws Exception {
+        String clave = claveNueva();
+        MockHttpServletResponse primera = enviar(TECNICOS, admin(),
+                "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"password\":\"12345\",\"rol\":\"TECNICO\"}",
+                clave);
+        assertEquals(422, primera.getStatus());
+        assertEquals("La contraseña debe tener al menos 6 caracteres.", primera.getErrorMessage());
+
+        assertEquals(201, enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getStatus());
+        verify(usuarioDao, times(1)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
+    }
+
+    /** Un 409 por nombre de técnico repetido tampoco queda registrado. */
+    @Test void tecnicoUnNombreDeTecnicoRepetidoNoSeRecuerdaConLaClave() throws Exception {
+        String clave = claveNueva();
+        when(usuarioDao.existeNombreTecnico("tecnico-a")).thenReturn(true);
+        MockHttpServletResponse primera = enviar(TECNICOS, admin(), CUERPO_TECNICO, clave);
+        assertEquals(409, primera.getStatus());
+        assertEquals("{\"message\":\"Ya existe un técnico con ese nombre.\"}",
+                primera.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+        verify(usuarioDao, times(0)).registrarTecnico(any(), any(), any(), any());
+
+        when(usuarioDao.existeNombreTecnico("tecnico-a")).thenReturn(false);
+        assertEquals(201, enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getStatus());
+        verify(usuarioDao, times(1)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
+    }
+
     // ── POST /api/reparaciones/{idRep}/incidencia ───────────────────────────────
 
     private static final String INCIDENCIA = "/api/reparaciones/R20260916_5/incidencia";

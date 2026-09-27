@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -225,5 +226,16 @@ class UsuarioControllerTest {
         noEncontrado(() -> ctl.eliminarTecnico(7, 20, admin));
         verify(dao, never()).eliminarTecnico(anyInt(), anyInt());
         verifyNoInteractions(logDao);
+    }
+
+    // ── huella de la contraseña para comparar reintentos del alta ──
+    /** La huella depende de la clave del proceso: con la misma clave es estable, con otra clave es distinta. */
+    @Test void laHuellaDeLaContrasenaDependeDeLaClaveDelProceso() {
+        byte[] clave1 = UsuarioController.claveHuellaNueva();
+        byte[] clave2 = UsuarioController.claveHuellaNueva();
+        assertEquals(32, clave1.length);
+        assertEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave1, "secreta1"));
+        assertNotEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave2, "secreta1"));
+        assertNotEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave1, "secreta2"));
     }
 }

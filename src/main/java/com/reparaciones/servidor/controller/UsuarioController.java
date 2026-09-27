@@ -16,9 +16,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -33,11 +35,14 @@ public class UsuarioController {
     private final UsuarioDAO           dao;
     private final LogDAO               logDao;
     private final RegistroIdempotencia idempotencia;
+    /** Clave de la huella de la contraseña: aleatoria, creada al arrancar y solo en memoria de este proceso. */
+    private final byte[]               claveHuella;
 
     public UsuarioController(UsuarioDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia) {
         this.dao          = dao;
         this.logDao       = logDao;
         this.idempotencia = idempotencia;
+        this.claveHuella  = claveHuellaNueva();
     }
 
     @GetMapping("/tecnicos")
@@ -66,7 +71,7 @@ public class UsuarioController {
         String rol = req.rol() != null ? req.rol() : "TECNICO";
         // Con clave, un reintento con el mismo cuerpo devuelve el 201 de la primera vez en vez del 409 de
         // duplicado. Los 409 no quedan registrados: salen de la escritura como excepción y se responden aquí.
-        var peticion = new PeticionAltaTecnico(nombreTecnico, nombreUsuario, huella(req.password()), rol);
+        var peticion = new PeticionAltaTecnico(nombreTecnico, nombreUsuario, huella(claveHuella, req.password()), rol);
         try {
             return idempotencia.ejecutar(principal.getIdUsu(), OP_ALTA, claveIdempotencia, peticion,
                     () -> {
@@ -100,11 +105,20 @@ public class UsuarioController {
         }
     }
 
-    private static String huella(String texto) {
+    /** 32 bytes aleatorios para la huella; cada instancia (cada arranque del servidor) tiene los suyos. */
+    static byte[] claveHuellaNueva() {
+        byte[] clave = new byte[32];
+        new SecureRandom().nextBytes(clave);
+        return clave;
+    }
+
+    /** HMAC-SHA256 del texto con la clave dada: sirve para comparar dos peticiones dentro del mismo proceso. */
+    static String huella(byte[] clave, String texto) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(texto.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(clave, "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(texto.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }
     }
