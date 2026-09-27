@@ -11,7 +11,7 @@ class ClienteControllerTest {
 
     private final ClienteDAO dao = mock(ClienteDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final ClienteController ctl = new ClienteController(dao, logDao);
+    private final ClienteController ctl = new ClienteController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia());
 
     @Test void tieneTelefonosDevuelveValorBooleanoTipado() {
         when(dao.tieneTelefonos(5)).thenReturn(true);

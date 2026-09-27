@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.Usuario;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -15,6 +16,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +27,17 @@ import java.util.Map;
 @RequestMapping("/api/usuarios")
 public class UsuarioController {
 
-    private final UsuarioDAO dao;
-    private final LogDAO     logDao;
+    /** Nombre de la operación en {@link RegistroIdempotencia}. */
+    static final String OP_ALTA = "alta-tecnico";
 
-    public UsuarioController(UsuarioDAO dao, LogDAO logDao) {
-        this.dao    = dao;
-        this.logDao = logDao;
+    private final UsuarioDAO           dao;
+    private final LogDAO               logDao;
+    private final RegistroIdempotencia idempotencia;
+
+    public UsuarioController(UsuarioDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia) {
+        this.dao          = dao;
+        this.logDao       = logDao;
+        this.idempotencia = idempotencia;
     }
 
     @GetMapping("/tecnicos")
@@ -47,28 +57,56 @@ public class UsuarioController {
         @ApiResponse(responseCode = "422", content = @Content)
     })
     public ResponseEntity<?> registrarTecnico(@RequestBody RegistrarTecnicoRequest req,
-                                               @AuthenticationPrincipal UsuarioPrincipal principal) {
+                                               @AuthenticationPrincipal UsuarioPrincipal principal,
+                                               @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false)
+                                               String claveIdempotencia) {
         String nombreTecnico = recortar(req.nombreTecnico());
         String nombreUsuario = recortar(req.nombreUsuario());
         ValidacionUsuarios.validarAlta(nombreTecnico, nombreUsuario, req.password(), req.rol());
-        if (dao.existeNombreTecnico(nombreTecnico)) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("message", "Ya existe un técnico con ese nombre."));
-        }
-        if (dao.existeNombreUsuario(nombreUsuario)) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("message", "Ese nombre de usuario ya existe."));
-        }
         String rol = req.rol() != null ? req.rol() : "TECNICO";
+        // Con clave, un reintento con el mismo cuerpo devuelve el 201 de la primera vez en vez del 409 de
+        // duplicado. Los 409 no quedan registrados: salen de la escritura como excepción y se responden aquí.
+        var peticion = new PeticionAltaTecnico(nombreTecnico, nombreUsuario, huella(req.password()), rol);
         try {
-            dao.registrarTecnico(nombreTecnico, nombreUsuario, req.password(), rol);
-        } catch (DataIntegrityViolationException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("message", "Ese nombre de usuario ya existe."));
+            return idempotencia.ejecutar(principal.getIdUsu(), OP_ALTA, claveIdempotencia, peticion,
+                    () -> {
+                        if (dao.existeNombreTecnico(nombreTecnico)) {
+                            throw new Duplicado("Ya existe un técnico con ese nombre.");
+                        }
+                        if (dao.existeNombreUsuario(nombreUsuario)) {
+                            throw new Duplicado("Ese nombre de usuario ya existe.");
+                        }
+                        try {
+                            dao.registrarTecnico(nombreTecnico, nombreUsuario, req.password(), rol);
+                        } catch (DataIntegrityViolationException e) {
+                            throw new Duplicado("Ese nombre de usuario ya existe.");
+                        }
+                        return ResponseEntity.status(HttpStatus.CREATED).build();
+                    },
+                    ignorado -> logDao.insertar(principal.getIdUsu(), "CREAR_USUARIO",
+                            "NOMBRE_USUARIO: " + nombreUsuario + ", ROL: " + rol + ", TECNICO: " + nombreTecnico));
+        } catch (Duplicado d) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", d.getMessage()));
         }
-        logDao.insertar(principal.getIdUsu(), "CREAR_USUARIO",
-                "NOMBRE_USUARIO: " + nombreUsuario + ", ROL: " + rol + ", TECNICO: " + nombreTecnico);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    /** Lo que identifica un alta de técnico en el registro de reintentos: la contraseña entra solo como huella. */
+    private record PeticionAltaTecnico(String nombreTecnico, String nombreUsuario, String huellaPassword, String rol) {}
+
+    /** 409 de duplicado dentro de la escritura del alta: no se registra y se responde con su mensaje. */
+    private static final class Duplicado extends RuntimeException {
+        Duplicado(String mensaje) {
+            super(mensaje, null, false, false);
+        }
+    }
+
+    private static String huella(String texto) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(texto.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static String recortar(String s) {

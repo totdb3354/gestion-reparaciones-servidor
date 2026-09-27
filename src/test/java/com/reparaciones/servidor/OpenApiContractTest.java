@@ -368,7 +368,8 @@ class OpenApiContractTest {
     /**
      * Reintentos seguros (tarea añadida al cierre 2026-09-19): las cuatro escrituras no repetibles del
      * formulario, más POST /api/asignaciones/lote (sub-proyecto 3b), publican {@code Idempotency-Key}
-     * como cabecera opcional; ninguna otra operación la declara.
+     * como cabecera opcional, igual que las altas sueltas de solicitud de stock, proveedor, cliente, técnico
+     * e incidencia (0.8.5); ninguna otra operación la declara.
      */
     @Test void lasEscriturasDelFormularioAdmitenClaveDeIdempotencia() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
@@ -387,7 +388,12 @@ class OpenApiContractTest {
                 "put /api/reparaciones/{idRep}",
                 "post /api/asignaciones/lote",
                 "post /api/compras/lote",
-                "post /api/compras-otros/lote");
+                "post /api/compras-otros/lote",
+                "post /api/solicitudes-stock",
+                "post /api/proveedores",
+                "post /api/clientes",
+                "post /api/usuarios/tecnicos",
+                "post /api/reparaciones/{idRep}/incidencia");
 
         for (String operacion : conCabecera) {
             String[] partes = operacion.split(" ", 2);

@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.ClienteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.Cliente;
 import com.reparaciones.servidor.model.ValorBooleano;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -18,12 +19,17 @@ import java.util.List;
 @RequestMapping("/api/clientes")
 public class ClienteController {
 
+    /** Nombre de la operación en {@link RegistroIdempotencia}. */
+    static final String OP_ALTA = "alta-cliente";
+
     private final ClienteDAO dao;
     private final LogDAO logDao;
+    private final RegistroIdempotencia idempotencia;
 
-    public ClienteController(ClienteDAO dao, LogDAO logDao) {
+    public ClienteController(ClienteDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia) {
         this.dao = dao;
         this.logDao = logDao;
+        this.idempotencia = idempotencia;
     }
 
     @GetMapping
@@ -41,9 +47,15 @@ public class ClienteController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public void insertar(@RequestBody NombreRequest req,
-                         @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.insertar(req.nombre());
-        logDao.insertar(principal.getIdUsu(), "CREAR_CLIENTE", "NOMBRE: " + req.nombre());
+                         @AuthenticationPrincipal UsuarioPrincipal principal,
+                         @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        // Con clave, un reintento con el mismo cuerpo devuelve el 201 de la primera vez sin crear otro cliente.
+        idempotencia.ejecutar(principal.getIdUsu(), OP_ALTA, claveIdempotencia, req,
+                () -> {
+                    dao.insertar(req.nombre());
+                    return null;
+                },
+                ignorado -> logDao.insertar(principal.getIdUsu(), "CREAR_CLIENTE", "NOMBRE: " + req.nombre()));
     }
 
     @PutMapping("/{idCli}")
