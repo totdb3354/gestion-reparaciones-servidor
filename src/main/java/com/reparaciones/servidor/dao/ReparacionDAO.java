@@ -874,11 +874,14 @@ public class ReparacionDAO {
 
     @Transactional
     public void eliminarAsignacion(String idAsig) {
-        String imei = jdbc.queryForObject(
-                "SELECT IMEI FROM Reparacion WHERE ID_REP = ?", String.class, idAsig);
+        List<String> imeis = jdbc.query(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ?", (rs, row) -> rs.getString(1), idAsig);
+        if (imeis.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idAsig);
+        }
         jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ?", idAsig);
         jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idAsig);
-        deleteIfLastReparacion(imei);
+        deleteIfLastReparacion(imeis.get(0));
     }
 
     @Transactional
@@ -889,8 +892,12 @@ public class ReparacionDAO {
                 (rs, row) -> new RcRow(rs.getInt("ID_COM"),
                         rs.getBoolean("ES_REUTILIZADO"), rs.getInt("CANTIDAD")),
                 idRep);
-        String imei = jdbc.queryForObject(
-                "SELECT IMEI FROM Reparacion WHERE ID_REP = ?", String.class, idRep);
+        List<String> imeis = jdbc.query(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ?", (rs, row) -> rs.getString(1), idRep);
+        if (imeis.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep);
+        }
+        String imei = imeis.get(0);
 
         // Si esta R* resolvía una incidencia y no quedan otras que la resuelvan, revertir
         List<String> prevs = jdbc.query(
@@ -1175,10 +1182,14 @@ public class ReparacionDAO {
 
     @Transactional
     public void eliminarPulido(String idP) {
-        String imei = jdbc.queryForObject(
-                "SELECT IMEI FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NOT NULL", String.class, idP);
+        List<String> imeis = jdbc.query(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NOT NULL",
+                (rs, row) -> rs.getString(1), idP);
+        if (imeis.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idP);
+        }
         jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idP);
-        deleteIfLastReparacion(imei);
+        deleteIfLastReparacion(imeis.get(0));
     }
 
     @Transactional

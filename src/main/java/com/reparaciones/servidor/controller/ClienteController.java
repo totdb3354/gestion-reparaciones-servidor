@@ -6,6 +6,7 @@ import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.Cliente;
 import com.reparaciones.servidor.model.ValorBooleano;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -88,7 +89,12 @@ public class ClienteController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "El cliente tiene teléfonos asociados; desactívalo en lugar de borrarlo");
         }
-        String nombre = dao.getNombreById(idCli);
+        String nombre;
+        try {
+            nombre = dao.getNombreById(idCli);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idCli);
+        }
         dao.borrar(idCli);
         logDao.insertar(principal.getIdUsu(), "BORRAR_CLIENTE",
                 "ID_CLI: " + idCli + ", NOMBRE: " + nombre);

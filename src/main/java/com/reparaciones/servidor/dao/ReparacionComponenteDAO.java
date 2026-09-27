@@ -3,10 +3,12 @@ package com.reparaciones.servidor.dao;
 import com.reparaciones.servidor.model.FilaReparacion;
 import com.reparaciones.servidor.model.ReparacionComponente;
 import com.reparaciones.servidor.model.SolicitudResumen;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -121,14 +123,18 @@ public class ReparacionComponenteDAO {
     @Transactional
     public void eliminar(String idRep, int idCom) {
         record RcRow(boolean esReutilizado, boolean esSolicitud, int cantidad) {}
-        RcRow rc = jdbc.queryForObject(
+        List<RcRow> filas = jdbc.query(
                 "SELECT ES_REUTILIZADO, ES_SOLICITUD, CANTIDAD" +
                 " FROM Reparacion_componente WHERE ID_REP = ? AND ID_COM = ?",
                 (rs, row) -> new RcRow(rs.getBoolean("ES_REUTILIZADO"),
                         rs.getBoolean("ES_SOLICITUD"), rs.getInt("CANTIDAD")),
                 idRep, idCom);
+        if (filas.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep + "/" + idCom);
+        }
+        RcRow rc = filas.get(0);
         jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ? AND ID_COM = ?", idRep, idCom);
-        if (rc != null && !rc.esReutilizado() && !rc.esSolicitud()) {
+        if (!rc.esReutilizado() && !rc.esSolicitud()) {
             jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ? AND TIPO NOT LIKE 'otro%'",
                     rc.cantidad(), idCom);
         }

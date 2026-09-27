@@ -649,6 +649,9 @@ public class ReparacionController {
     public void eliminarAsignacion(@PathVariable String idAsig,
                                    @RequestBody(required = false) MotivoRequest req,
                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        // La vista de getAsignacionAnyById filtra por FECHA_FIN IS NULL y excluye 'AP%': una A/AG ya
+        // cerrada existe en Reparacion pero no aparece aquí. Solo sirve para enriquecer el log (con
+        // fallback si no aparece); la existencia real la decide el DAO transaccional contra la tabla.
         ReparacionResumen rep = dao.getAsignacionAnyById(idAsig).orElse(null);
         dao.eliminarAsignacion(idAsig);
         String detalle = rep != null
@@ -667,6 +670,9 @@ public class ReparacionController {
     public void eliminar(@PathVariable String idRep,
                          @RequestBody(required = false) MotivoRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        // getResumenById solo devuelve ID_REP 'R%'/'G%': un pulido 'P...' no aparece aquí aunque exista
+        // en Reparacion. Solo sirve para enriquecer el log (con fallback si no aparece); la existencia
+        // real la decide el DAO transaccional contra la tabla.
         ReparacionResumen rep = dao.getResumenById(idRep).orElse(null);
         dao.eliminar(idRep);
         String detalle = rep != null

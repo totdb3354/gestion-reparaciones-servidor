@@ -52,8 +52,10 @@ class ReparacionDAOUrgenteTest {
         String idRepOrig = "A20260721_1";
 
         // rows de componentes: por defecto Mockito devuelve lista vacía para jdbc.query(...)
-        when(jdbc.queryForObject(eq("SELECT IMEI FROM Reparacion WHERE ID_REP = ?"), eq(String.class), eq(idRep)))
-                .thenReturn(IMEI);
+        // getImei ahora usa jdbc.query(...) con RowMapper (no queryForObject), para poder distinguir
+        // "no existe" (lista vacía -> 404) de "existe" sin lanzar EmptyResultDataAccessException.
+        when(jdbc.query(eq("SELECT IMEI FROM Reparacion WHERE ID_REP = ?"), any(RowMapper.class), eq(idRep)))
+                .thenReturn(List.of(IMEI));
         // esta R* resolvía una incidencia de idRepOrig
         when(jdbc.query(contains("ID_REP_ANTERIOR IS NOT NULL"), any(RowMapper.class), eq(idRep)))
                 .thenReturn(List.of(idRepOrig));
