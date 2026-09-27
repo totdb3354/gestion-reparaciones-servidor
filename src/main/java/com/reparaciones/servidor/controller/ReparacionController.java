@@ -649,13 +649,13 @@ public class ReparacionController {
     public void eliminarAsignacion(@PathVariable String idAsig,
                                    @RequestBody(required = false) MotivoRequest req,
                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen rep = dao.getAsignacionAnyById(idAsig).orElse(null);
+        ReparacionResumen rep = dao.getAsignacionAnyById(idAsig)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idAsig));
         dao.eliminarAsignacion(idAsig);
-        String detalle = rep != null
-                ? "ID_REP: " + idAsig + ", IMEI: " + rep.getImei() +
+        String detalle = "ID_REP: " + idAsig + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
-                  ", TECNICO: " + rep.getNombreTecnico()
-                : "ID_REP: " + idAsig;
+                  ", TECNICO: " + rep.getNombreTecnico();
         logDao.insertar(principal.getIdUsu(),
                 esGlassAsig(idAsig) ? "ELIMINAR_ASIGNACION_GLASS" : "ELIMINAR_ASIGNACION", detalle,
                 req != null ? req.motivo() : null);
@@ -667,13 +667,13 @@ public class ReparacionController {
     public void eliminar(@PathVariable String idRep,
                          @RequestBody(required = false) MotivoRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen rep = dao.getResumenById(idRep).orElse(null);
+        ReparacionResumen rep = dao.getResumenById(idRep)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
         dao.eliminar(idRep);
-        String detalle = rep != null
-                ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
+        String detalle = "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
-                  ", TECNICO: " + rep.getNombreTecnico()
-                : "ID_REP: " + idRep;
+                  ", TECNICO: " + rep.getNombreTecnico();
         logDao.insertar(principal.getIdUsu(),
                 esGlass(idRep) ? "ELIMINAR_GLASS" : "ELIMINAR_REPARACION", detalle,
                 req != null ? req.motivo() : null);
