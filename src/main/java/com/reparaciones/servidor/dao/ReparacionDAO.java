@@ -1175,10 +1175,14 @@ public class ReparacionDAO {
 
     @Transactional
     public void eliminarPulido(String idP) {
-        String imei = jdbc.queryForObject(
-                "SELECT IMEI FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NOT NULL", String.class, idP);
+        List<String> imeis = jdbc.query(
+                "SELECT IMEI FROM Reparacion WHERE ID_REP = ? AND FECHA_FIN IS NOT NULL",
+                (rs, row) -> rs.getString(1), idP);
+        if (imeis.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idP);
+        }
         jdbc.update("DELETE FROM Reparacion WHERE ID_REP = ?", idP);
-        deleteIfLastReparacion(imei);
+        deleteIfLastReparacion(imeis.get(0));
     }
 
     @Transactional

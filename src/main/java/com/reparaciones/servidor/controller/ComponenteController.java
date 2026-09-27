@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -124,7 +125,12 @@ public class ComponenteController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable int idCom,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String tipo = dao.getTipoById(idCom);
+        String tipo;
+        try {
+            tipo = dao.getTipoById(idCom);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idCom);
+        }
         dao.eliminar(idCom);
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_COMPONENTE",
                 "ID_COM: " + idCom + ", TIPO: " + tipo);

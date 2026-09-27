@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TecnicoDAO;
 import com.reparaciones.servidor.model.Tecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -50,7 +51,12 @@ public class TecnicoController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void eliminar(@PathVariable int idTec,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String nombre = dao.getNombreById(idTec);
+        String nombre;
+        try {
+            nombre = dao.getNombreById(idTec);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Técnico no encontrado: " + idTec);
+        }
         dao.eliminar(idTec);
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_TECNICO",
                 "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
