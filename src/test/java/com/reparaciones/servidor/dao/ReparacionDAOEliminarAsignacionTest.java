@@ -14,9 +14,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-/** Borrar del historial un pulido que ya no existe (o que ya no está finalizado) usaba queryForObject
- *  y lanzaba EmptyResultDataAccessException, que el controlador dejaba pasar como 500; debe ser 404. */
-class ReparacionDAOEliminarPulidoTest {
+/** La existencia de la asignación a borrar la decide el propio DAO contra la fila real de Reparacion
+ *  (sin el filtro FECHA_FIN IS NULL / sin 'AP%' que usa la vista del controlador), dentro de la misma
+ *  transacción: así una fila que existe pero la vista no devuelve se sigue borrando, y dos borrados
+ *  simultáneos de la misma fila quedan cubiertos igual que el caso secuencial. */
+class ReparacionDAOEliminarAsignacionTest {
 
     private static final String IMEI = "351111112222333";
 
@@ -25,31 +27,29 @@ class ReparacionDAOEliminarPulidoTest {
     }
 
     @SuppressWarnings("unchecked")
-    @Test void eliminarPulidoInexistenteEs404YNoBorra() {
+    @Test void inexistenteEs404YNoBorraNada() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.query(anyString(), any(RowMapper.class), eq("AP20260927_1")))
+        when(jdbc.query(anyString(), any(RowMapper.class), eq("A20260927_1")))
                 .thenReturn(Collections.emptyList());
 
         ResponseStatusException e = assertThrows(ResponseStatusException.class,
-                () -> dao(jdbc).eliminarPulido("AP20260927_1"));
+                () -> dao(jdbc).eliminarAsignacion("A20260927_1"));
         assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
-        assertEquals("Recurso no encontrado: AP20260927_1", e.getReason());
-        verify(jdbc, never()).update(eq("DELETE FROM Reparacion WHERE ID_REP = ?"), eq("AP20260927_1"));
+        assertEquals("Recurso no encontrado: A20260927_1", e.getReason());
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+        verify(jdbc, never()).queryForObject(anyString(), eq(Integer.class), any());
     }
 
     @SuppressWarnings("unchecked")
-    @Test void eliminarPulidoExistenteBorraComoAntes() {
+    @Test void existenteBorraYLimpiaComoAntes() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.query(anyString(), any(RowMapper.class), eq("AP20260927_1")))
+        when(jdbc.query(anyString(), any(RowMapper.class), eq("A20260927_1")))
                 .thenAnswer(inv -> Collections.singletonList(IMEI));
         when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(IMEI))).thenReturn(1);
 
-        dao(jdbc).eliminarPulido("AP20260927_1");
+        dao(jdbc).eliminarAsignacion("A20260927_1");
 
-        verify(jdbc).update("DELETE FROM Reparacion WHERE ID_REP = ?", "AP20260927_1");
-        // deleteIfLastReparacion(imei) es privado; se verifica por su consulta característica con el
-        // IMEI de la fila borrada.
-        verify(jdbc).queryForObject(
-                eq("SELECT COUNT(*) FROM Reparacion WHERE IMEI = ?"), eq(Integer.class), eq(IMEI));
+        verify(jdbc).update("DELETE FROM Reparacion_componente WHERE ID_REP = ?", "A20260927_1");
+        verify(jdbc).update("DELETE FROM Reparacion WHERE ID_REP = ?", "A20260927_1");
     }
 }

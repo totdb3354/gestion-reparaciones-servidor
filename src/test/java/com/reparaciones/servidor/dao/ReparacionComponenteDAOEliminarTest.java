@@ -34,14 +34,12 @@ class ReparacionComponenteDAOEliminarTest {
     }
 
     @SuppressWarnings("unchecked")
-    @Test void eliminarExistenteBorraYRepone() {
+    @Test void eliminarExistenteBorraYRepone() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
-        try {
-            when(rs.getBoolean("ES_REUTILIZADO")).thenReturn(false);
-            when(rs.getBoolean("ES_SOLICITUD")).thenReturn(false);
-            when(rs.getInt("CANTIDAD")).thenReturn(2);
-        } catch (Exception ignored) {}
+        when(rs.getBoolean("ES_REUTILIZADO")).thenReturn(false);
+        when(rs.getBoolean("ES_SOLICITUD")).thenReturn(false);
+        when(rs.getInt("CANTIDAD")).thenReturn(2);
         when(jdbc.query(anyString(), any(RowMapper.class), eq("A20260927_1"), eq(5)))
                 .thenAnswer(inv -> Collections.singletonList(
                         ((RowMapper<?>) inv.getArgument(1)).mapRow(rs, 0)));

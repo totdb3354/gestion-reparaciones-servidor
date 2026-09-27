@@ -649,13 +649,16 @@ public class ReparacionController {
     public void eliminarAsignacion(@PathVariable String idAsig,
                                    @RequestBody(required = false) MotivoRequest req,
                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen rep = dao.getAsignacionAnyById(idAsig)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idAsig));
+        // La vista de getAsignacionAnyById filtra por FECHA_FIN IS NULL y excluye 'AP%': una A/AG ya
+        // cerrada existe en Reparacion pero no aparece aquí. Solo sirve para enriquecer el log (con
+        // fallback si no aparece); la existencia real la decide el DAO transaccional contra la tabla.
+        ReparacionResumen rep = dao.getAsignacionAnyById(idAsig).orElse(null);
         dao.eliminarAsignacion(idAsig);
-        String detalle = "ID_REP: " + idAsig + ", IMEI: " + rep.getImei() +
+        String detalle = rep != null
+                ? "ID_REP: " + idAsig + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
-                  ", TECNICO: " + rep.getNombreTecnico();
+                  ", TECNICO: " + rep.getNombreTecnico()
+                : "ID_REP: " + idAsig;
         logDao.insertar(principal.getIdUsu(),
                 esGlassAsig(idAsig) ? "ELIMINAR_ASIGNACION_GLASS" : "ELIMINAR_ASIGNACION", detalle,
                 req != null ? req.motivo() : null);
@@ -667,13 +670,16 @@ public class ReparacionController {
     public void eliminar(@PathVariable String idRep,
                          @RequestBody(required = false) MotivoRequest req,
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ReparacionResumen rep = dao.getResumenById(idRep)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep));
+        // getResumenById solo devuelve ID_REP 'R%'/'G%': un pulido 'P...' no aparece aquí aunque exista
+        // en Reparacion. Solo sirve para enriquecer el log (con fallback si no aparece); la existencia
+        // real la decide el DAO transaccional contra la tabla.
+        ReparacionResumen rep = dao.getResumenById(idRep).orElse(null);
         dao.eliminar(idRep);
-        String detalle = "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
+        String detalle = rep != null
+                ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
-                  ", TECNICO: " + rep.getNombreTecnico();
+                  ", TECNICO: " + rep.getNombreTecnico()
+                : "ID_REP: " + idRep;
         logDao.insertar(principal.getIdUsu(),
                 esGlass(idRep) ? "ELIMINAR_GLASS" : "ELIMINAR_REPARACION", detalle,
                 req != null ? req.motivo() : null);
