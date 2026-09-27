@@ -571,14 +571,25 @@ public class ReparacionController {
     @ResponseStatus(HttpStatus.CREATED)
     public void marcarIncidenciaYAsignar(@PathVariable String idRep,
                                           @RequestBody IncidenciaRequest req,
-                                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(), principal.getIdTec(), principal.getIdUsu());
-        String modelo = dao.getModeloByImei(req.imei());
-        String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(),
-                esGlass(idRep) ? "MARCAR_INCIDENCIA_GLASS" : "MARCAR_INCIDENCIA",
-                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
-                ", TECNICO_NUE: " + tecnicoNue);
+                                          @AuthenticationPrincipal UsuarioPrincipal principal,
+                                          @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        // Con clave, un reintento sobre la misma reparación y con el mismo cuerpo devuelve el 201 de la primera
+        // vez sin crear otra incidencia ni otra asignación.
+        var peticion = new PeticionIncidencia(idRep, req.comentario(), req.imei(), req.idTec());
+        idempotencia.ejecutar(principal.getIdUsu(), "incidencia", claveIdempotencia, peticion,
+                () -> {
+                    dao.marcarIncidenciaYAsignar(idRep, req.comentario(), req.imei(), req.idTec(),
+                            principal.getIdTec(), principal.getIdUsu());
+                    return null;
+                },
+                ignorado -> {
+                    String modelo = dao.getModeloByImei(req.imei());
+                    String tecnicoNue = dao.getNombreTecnicoById(req.idTec());
+                    logDao.insertar(principal.getIdUsu(),
+                            esGlass(idRep) ? "MARCAR_INCIDENCIA_GLASS" : "MARCAR_INCIDENCIA",
+                            "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
+                            ", TECNICO_NUE: " + tecnicoNue);
+                });
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -728,6 +739,7 @@ private record ActualizarAsignacionRequest(int idTec, @Schema(nullable = true) S
                                     String idRepAnterior, String idAsignacion, String categoria) {}
     private record PeticionFilas(String idAsignacion, List<FilaReparacion> filas, String imei,
                                  int idTecEfectivo, String idRepAnterior) {}
+    private record PeticionIncidencia(String idRep, String comentario, String imei, int idTec) {}
     private record PeticionAgotar(String idAsignacion, int idCom, int cantidad, String descripcion) {}
     private record PeticionEditar(String idRep, int idComNuevo, boolean esReutilizadoNuevo,
                                   String observacionNueva, int nNuevas, LocalDateTime updatedAt) {}

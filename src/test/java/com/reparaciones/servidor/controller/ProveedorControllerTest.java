@@ -18,7 +18,7 @@ class ProveedorControllerTest {
 
     private final ProveedorDAO dao = mock(ProveedorDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final ProveedorController ctl = new ProveedorController(dao, logDao);
+    private final ProveedorController ctl = new ProveedorController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia());
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico_f", "", "SUPERTECNICO", 3);
 
     private static ResponseStatusException falla(Runnable r) {
@@ -26,35 +26,35 @@ class ProveedorControllerTest {
     }
 
     @Test void altaConNombreEnBlancoEs422() {
-        ResponseStatusException e = falla(() -> ctl.insertar(new ProveedorController.AltaRequest("   ", null, "COMPONENTES")));
+        ResponseStatusException e = falla(() -> ctl.insertar(new ProveedorController.AltaRequest("   ", null, "COMPONENTES"), super7, null));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("El nombre no puede estar vacío.", e.getReason());
         verifyNoInteractions(dao);
     }
 
     @Test void altaConNombreDeMasDe100Es422() {
-        ResponseStatusException e = falla(() -> ctl.insertar(new ProveedorController.AltaRequest("x".repeat(101), null, null)));
+        ResponseStatusException e = falla(() -> ctl.insertar(new ProveedorController.AltaRequest("x".repeat(101), null, null), super7, null));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("El nombre no puede superar los 100 caracteres.", e.getReason());
         verifyNoInteractions(dao);
         // 100 justos valen
-        ctl.insertar(new ProveedorController.AltaRequest("x".repeat(100), null, null));
+        ctl.insertar(new ProveedorController.AltaRequest("x".repeat(100), null, null), super7, null);
         verify(dao).insertar("x".repeat(100), null, null);
     }
 
     @Test void altaConDivisaDesconocidaEs422YConNulaOEnBlancoVale() {
-        ResponseStatusException e = falla(() -> ctl.insertar(new ProveedorController.AltaRequest("ACME", "CNY", null)));
+        ResponseStatusException e = falla(() -> ctl.insertar(new ProveedorController.AltaRequest("ACME", "CNY", null), super7, null));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("Divisa no válida (EUR o USD).", e.getReason());
         // Nula o en blanco: se pasa null y el DAO pone EUR (como hoy)
-        ctl.insertar(new ProveedorController.AltaRequest("ACME", null, "COMPONENTES"));
-        ctl.insertar(new ProveedorController.AltaRequest("ACME", "", "COMPONENTES"));
-        ctl.insertar(new ProveedorController.AltaRequest("ACME", "  ", "COMPONENTES"));
+        ctl.insertar(new ProveedorController.AltaRequest("ACME", null, "COMPONENTES"), super7, null);
+        ctl.insertar(new ProveedorController.AltaRequest("ACME", "", "COMPONENTES"), super7, null);
+        ctl.insertar(new ProveedorController.AltaRequest("ACME", "  ", "COMPONENTES"), super7, null);
         verify(dao, times(3)).insertar("ACME", null, "COMPONENTES");
     }
 
     @Test void altaRecortaElNombre() {
-        ctl.insertar(new ProveedorController.AltaRequest("  ACME  ", "USD", "COMPONENTES"));
+        ctl.insertar(new ProveedorController.AltaRequest("  ACME  ", "USD", "COMPONENTES"), super7, null);
         verify(dao).insertar("ACME", "USD", "COMPONENTES");
     }
 

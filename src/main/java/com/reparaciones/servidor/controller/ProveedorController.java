@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.Proveedor;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -27,12 +28,17 @@ public class ProveedorController {
     static final String MSG_DIVISA = "Divisa no válida (EUR o USD).";
     static final String MSG_TIENE_PEDIDOS = "El proveedor tiene pedidos y no se puede borrar.";
 
+    /** Nombre de la operación en {@link RegistroIdempotencia}. */
+    static final String OP_ALTA = "alta-proveedor";
+
     private final ProveedorDAO dao;
     private final LogDAO logDao;
+    private final RegistroIdempotencia idempotencia;
 
-    public ProveedorController(ProveedorDAO dao, LogDAO logDao) {
+    public ProveedorController(ProveedorDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia) {
         this.dao = dao;
         this.logDao = logDao;
+        this.idempotencia = idempotencia;
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
@@ -56,12 +62,19 @@ public class ProveedorController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody AltaRequest req) {
+    public void insertar(@RequestBody AltaRequest req,
+                         @AuthenticationPrincipal UsuarioPrincipal principal,
+                         @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
         String nombre = nombreValido(req.nombre());
         // Divisa nula o en blanco: se pasa null y el DAO pone EUR (calco del alta del cliente, que no la manda).
         // Solo se valida si viene informada (decisión 4).
         String divisa = req.divisa() == null || req.divisa().isBlank() ? null : divisaValida(req.divisa());
-        dao.insertar(nombre, divisa, req.tipo());
+        // Con clave, un reintento con el mismo cuerpo devuelve el 201 de la primera vez sin crear otro proveedor.
+        idempotencia.ejecutar(principal.getIdUsu(), OP_ALTA, claveIdempotencia, req,
+                () -> {
+                    dao.insertar(nombre, divisa, req.tipo());
+                    return null;
+                });
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")

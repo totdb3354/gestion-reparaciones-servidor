@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -23,7 +24,7 @@ class UsuarioControllerTest {
 
     private final UsuarioDAO dao = mock(UsuarioDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final UsuarioController ctl = new UsuarioController(dao, logDao);
+    private final UsuarioController ctl = new UsuarioController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia());
     private final UsuarioPrincipal admin = new UsuarioPrincipal(1, "admin-prueba", "", "ADMIN", null);
 
     private static UsuarioController.RegistrarTecnicoRequest alta(String tecnico, String usuario, String password, String rol) {
@@ -32,7 +33,7 @@ class UsuarioControllerTest {
 
     /** Un 422 nunca escribe ni registra log (ni siquiera consulta duplicados). */
     private String falla422(UsuarioController.RegistrarTecnicoRequest req) {
-        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> ctl.registrarTecnico(req, admin));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> ctl.registrarTecnico(req, admin, null));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         verifyNoInteractions(dao, logDao);
         return e.getReason();
@@ -86,14 +87,14 @@ class UsuarioControllerTest {
     @Test void losLimitesExactosSonValidos() {
         String usuario50 = "u".repeat(50);
         String tecnico100 = "t".repeat(100);
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" " + tecnico100 + " ", " " + usuario50 + " ", "123456", "TECNICO"), admin);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" " + tecnico100 + " ", " " + usuario50 + " ", "123456", "TECNICO"), admin, null);
         assertEquals(201, resp.getStatusCode().value());
         verify(dao).registrarTecnico(tecnico100, usuario50, "123456", "TECNICO");
     }
 
     // ── alta: trim guardado, rol por defecto, 201 con log ──
     @Test void altaValidaGuardaLosNombresRecortadosYRegistraLog() {
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("  tecnico-a ", " usuario-a  ", " secreta1 ", "SUPERTECNICO"), admin);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("  tecnico-a ", " usuario-a  ", " secreta1 ", "SUPERTECNICO"), admin, null);
         assertEquals(201, resp.getStatusCode().value());
         verify(dao).existeNombreTecnico("tecnico-a");
         verify(dao).existeNombreUsuario("usuario-a");
@@ -103,7 +104,7 @@ class UsuarioControllerTest {
     }
 
     @Test void altaSinRolGuardaTecnico() {
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", null), admin);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", null), admin, null);
         assertEquals(201, resp.getStatusCode().value());
         verify(dao).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
         verify(logDao).insertar(1, "CREAR_USUARIO", "NOMBRE_USUARIO: usuario-a, ROL: TECNICO, TECNICO: tecnico-a");
@@ -112,7 +113,7 @@ class UsuarioControllerTest {
     // ── alta: los dos 409 de siempre ──
     @Test void tecnicoDuplicadoEs409SinEscribir() {
         when(dao.existeNombreTecnico("tecnico-a")).thenReturn(true);
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" tecnico-a ", "usuario-a", "secreta1", "TECNICO"), admin);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" tecnico-a ", "usuario-a", "secreta1", "TECNICO"), admin, null);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ya existe un técnico con ese nombre."), resp.getBody());
         verify(dao, never()).registrarTecnico(anyString(), anyString(), anyString(), anyString());
@@ -121,7 +122,7 @@ class UsuarioControllerTest {
 
     @Test void usuarioDuplicadoEs409SinEscribir() {
         when(dao.existeNombreUsuario("usuario-a")).thenReturn(true);
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a ", "secreta1", "TECNICO"), admin);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a ", "secreta1", "TECNICO"), admin, null);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ese nombre de usuario ya existe."), resp.getBody());
         verify(dao, never()).registrarTecnico(anyString(), anyString(), anyString(), anyString());
@@ -131,7 +132,7 @@ class UsuarioControllerTest {
     @Test void violacionDeIntegridadSigueSiendo409SinLog() {
         doThrow(new DataIntegrityViolationException("duplicado"))
                 .when(dao).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", "TECNICO"), admin);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", "TECNICO"), admin, null);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ese nombre de usuario ya existe."), resp.getBody());
         verifyNoInteractions(logDao);
@@ -225,5 +226,16 @@ class UsuarioControllerTest {
         noEncontrado(() -> ctl.eliminarTecnico(7, 20, admin));
         verify(dao, never()).eliminarTecnico(anyInt(), anyInt());
         verifyNoInteractions(logDao);
+    }
+
+    // ── huella de la contraseña para comparar reintentos del alta ──
+    /** La huella depende de la clave del proceso: con la misma clave es estable, con otra clave es distinta. */
+    @Test void laHuellaDeLaContrasenaDependeDeLaClaveDelProceso() {
+        byte[] clave1 = UsuarioController.claveHuellaNueva();
+        byte[] clave2 = UsuarioController.claveHuellaNueva();
+        assertEquals(32, clave1.length);
+        assertEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave1, "secreta1"));
+        assertNotEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave2, "secreta1"));
+        assertNotEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave1, "secreta2"));
     }
 }

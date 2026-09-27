@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.SolicitudStockDAO;
+import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.SolicitudStock;
 import com.reparaciones.servidor.model.ValorEntero;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -17,12 +18,17 @@ import java.util.List;
 @RequestMapping("/api/solicitudes-stock")
 public class SolicitudStockController {
 
-    private final SolicitudStockDAO dao;
-    private final LogDAO            logDao;
+    /** Nombre de la operación en {@link RegistroIdempotencia}. */
+    static final String OP_ALTA = "alta-solicitud-stock";
 
-    public SolicitudStockController(SolicitudStockDAO dao, LogDAO logDao) {
-        this.dao    = dao;
-        this.logDao = logDao;
+    private final SolicitudStockDAO    dao;
+    private final LogDAO               logDao;
+    private final RegistroIdempotencia idempotencia;
+
+    public SolicitudStockController(SolicitudStockDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia) {
+        this.dao          = dao;
+        this.logDao       = logDao;
+        this.idempotencia = idempotencia;
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
@@ -42,10 +48,16 @@ public class SolicitudStockController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public void insertar(@RequestBody InsertarRequest req,
-                         @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.insertar(req.idCom(), principal.getIdUsu(), req.descripcion());
-        logDao.insertar(principal.getIdUsu(), "SOLICITAR_STOCK",
-                "ID_COM: " + req.idCom());
+                         @AuthenticationPrincipal UsuarioPrincipal principal,
+                         @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        // Con clave, un reintento con el mismo cuerpo devuelve el 201 de la primera vez sin crear otra solicitud.
+        idempotencia.ejecutar(principal.getIdUsu(), OP_ALTA, claveIdempotencia, req,
+                () -> {
+                    dao.insertar(req.idCom(), principal.getIdUsu(), req.descripcion());
+                    return null;
+                },
+                ignorado -> logDao.insertar(principal.getIdUsu(), "SOLICITAR_STOCK",
+                        "ID_COM: " + req.idCom()));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
