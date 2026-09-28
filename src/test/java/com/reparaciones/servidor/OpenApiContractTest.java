@@ -350,7 +350,7 @@ class OpenApiContractTest {
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}", "delete", "204", "404", "409");
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/activar", "patch", "204", "404");
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/desactivar", "patch", "204", "404");
-        assertCodigos(paths, "/api/auth/cambiar-password", "patch", "204", "422");
+        assertCodigos(paths, "/api/auth/cambiar-password", "patch", "204", "422", "429");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

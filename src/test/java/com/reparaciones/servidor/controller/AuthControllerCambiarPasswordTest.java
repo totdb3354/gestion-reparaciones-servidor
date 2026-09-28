@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -17,13 +18,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
 /** PATCH /api/auth/cambiar-password (spec 6 §4.4): 422 "Rellena todos los campos." y 422 de longitud antes de tocar
- *  la BD (sustituyen al 400 sin cuerpo), el 422 "Contraseña actual incorrecta." de siempre y 204 con log. */
+ *  la BD (sustituyen al 400 sin cuerpo), el 422 "Contraseña actual incorrecta." de siempre con su registro
+ *  (spec sp7b §5.2) y 204 con log. */
 class AuthControllerCambiarPasswordTest {
 
     private final UsuarioDAO usuarioDao = mock(UsuarioDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
     private final AuthController ctl = new AuthController(mock(AuthenticationManager.class), mock(JwtUtil.class),
-            logDao, usuarioDao);
+            logDao, usuarioDao, new IntentosFallidos());
     private final UsuarioPrincipal usuario = new UsuarioPrincipal(8, "usuario-a", "", "TECNICO", 4);
 
     private static AuthController.CambiarPasswordRequest cambio(String actual, String nueva) {
@@ -68,12 +70,12 @@ class AuthControllerCambiarPasswordTest {
         verify(usuarioDao).cambiarPassword(8, "secreta1", "      ");
     }
 
-    @Test void actualIncorrectaSigueSiendo422ConSuTextoYSinLog() {
+    @Test void actualIncorrectaSigueSiendo422ConSuTextoYRegistraElFallo() {
         doThrow(new IllegalArgumentException("Contraseña actual incorrecta."))
                 .when(usuarioDao).cambiarPassword(8, "otra-cosa", "nueva123");
         ResponseEntity<?> resp = ctl.cambiarPassword(usuario, cambio("otra-cosa", "nueva123"));
         assertEquals(422, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Contraseña actual incorrecta."), resp.getBody());
-        verifyNoInteractions(logDao);
+        verify(logDao).insertar(8, "CAMBIAR_PASSWORD_FALLIDO", "INTENTOS: 1");
     }
 }
