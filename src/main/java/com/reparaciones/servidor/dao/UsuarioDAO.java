@@ -62,8 +62,10 @@ public class UsuarioDAO {
         }, kh);
         int    idTec = kh.getKey().intValue();
         String hash  = passwordEncoder.encode(password);
+        // La contraseña que elige el administrador queda marcada como temporal, igual que un restablecimiento
+        // (spec sp7b §5.4): quien la recibe tiene que cambiarla al entrar.
         jdbc.update(
-                "INSERT INTO Usuario (NOMBRE_USUARIO, PASSWORD, ROL, ID_TEC) VALUES (?, ?, ?, ?)",
+                "INSERT INTO Usuario (NOMBRE_USUARIO, PASSWORD, ROL, ID_TEC, PASSWORD_TEMPORAL) VALUES (?, ?, ?, ?, 1)",
                 nombreUsuario, hash, rol, idTec);
     }
 
