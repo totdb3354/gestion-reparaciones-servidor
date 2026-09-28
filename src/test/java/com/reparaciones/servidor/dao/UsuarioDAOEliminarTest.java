@@ -10,7 +10,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-/** Borrar un usuario ya no borra su registro de actividad (spec sp7b §5.6, revisa la decisión G8 del SP6). */
+/** Borrar un usuario conserva su registro de actividad (spec sp7b §5.6). */
 class UsuarioDAOEliminarTest {
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
