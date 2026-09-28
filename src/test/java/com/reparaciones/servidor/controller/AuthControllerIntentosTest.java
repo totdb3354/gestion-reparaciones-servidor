@@ -16,8 +16,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /** Los fallos de contraseña dejan constancia y frenan la cuenta (spec sp7b §5.2 y §5.3). */
@@ -69,5 +72,27 @@ class AuthControllerIntentosTest {
         when(jwtUtil.generateToken(any())).thenReturn("un-token");
         ctl.login(login("ana"), null);
         assertEquals(0L, intentos.esperaMs("ana"));
+    }
+
+    @Test void unNombreDemasiadoLargoParaLaColumnaSigueSiendo401() {
+        when(authManager.authenticate(any())).thenThrow(new BadCredentialsException("no"));
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("dato demasiado largo"))
+                .when(logDao).insertarIntento(any(), any(), any());
+        var resp = ctl.login(login("x".repeat(60)), null);
+        assertEquals(401, resp.getStatusCode().value());
+    }
+
+    @Test void unNombreAusenteEs401YNoRegistraNiComprueba() {
+        var resp = ctl.login(login(null), null);
+        assertEquals(401, resp.getStatusCode().value());
+        verifyNoInteractions(logDao);
+        verify(authManager, never()).authenticate(any());
+    }
+
+    @Test void unNombreEnBlancoEs401YNoRegistraNiComprueba() {
+        var resp = ctl.login(login("   "), null);
+        assertEquals(401, resp.getStatusCode().value());
+        verifyNoInteractions(logDao);
+        verify(authManager, never()).authenticate(any());
     }
 }

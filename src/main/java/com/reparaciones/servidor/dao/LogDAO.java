@@ -20,6 +20,10 @@ public class LogDAO {
     /** Tope del parámetro {@code limite} de GET /api/logs (spec 6 §4.5); lo comprueba LogController. */
     public static final int LIMITE_MAX = 5000;
 
+    /** Ancho de la columna NOMBRE_USUARIO (sql/crear_bd.sql): un nombre más largo se recorta antes de insertar,
+     *  para que un intento con un nombre muy largo se registre igual en vez de rechazarlo la base. */
+    static final int MAX_NOMBRE_USUARIO = 50;
+
     private final JdbcTemplate jdbc;
 
     private static final RowMapper<LogActividad> MAPPER = (rs, row) -> new LogActividad(
@@ -53,13 +57,18 @@ public class LogDAO {
 
     /**
      * Anota algo que no tiene usuario detrás, como un intento de entrar con un nombre que no existe: la clave
-     * queda a nulo y el nombre intentado se guarda tal cual (spec sp7b §5.2).
+     * queda a nulo y el nombre intentado se guarda recortado al ancho de la columna (spec sp7b §5.2).
      */
     public void insertarIntento(String nombreUsuario, String accion, String detalle) {
         jdbc.update(
                 "INSERT INTO Log_Actividad (ID_USU, NOMBRE_USUARIO, ACCION, DETALLE, MOTIVO) " +
                 "VALUES (NULL, ?, ?, ?, NULL)",
-                nombreUsuario, accion, detalle);
+                recortarNombre(nombreUsuario), accion, detalle);
+    }
+
+    private static String recortarNombre(String nombreUsuario) {
+        if (nombreUsuario == null || nombreUsuario.length() <= MAX_NOMBRE_USUARIO) return nombreUsuario;
+        return nombreUsuario.substring(0, MAX_NOMBRE_USUARIO);
     }
 
     /** Inicio del día {@code dia} en Madrid expresado en UTC, sin zona: así guarda FECHA la BD (sesión y JVM en UTC;

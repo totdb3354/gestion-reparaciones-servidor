@@ -7,6 +7,8 @@ import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -19,6 +21,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthenticationManager authManager;
     private final JwtUtil               jwtUtil;
@@ -48,6 +52,10 @@ public class AuthController {
     })
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest req,
                                                jakarta.servlet.http.HttpServletRequest http) {
+        // Sin nombre no hay cuenta que frenar ni intento que auditar: 401 antes de tocar nada más (spec sp7b §5.2).
+        if (req.usuario() == null || req.usuario().isBlank()) {
+            return ResponseEntity.status(401).build();
+        }
         intentos.comprobar(req.usuario());
         try {
             var auth = authManager.authenticate(
@@ -65,9 +73,19 @@ public class AuthController {
             // Deja constancia del intento con el nombre tal cual se escribió, aunque no exista ese usuario
             // (spec sp7b §5.2).
             int fallos = intentos.registrarFallo(req.usuario());
-            logDao.insertarIntento(req.usuario(), "LOGIN_FALLIDO",
-                    "INTENTOS: " + fallos + origenDe(http));
+            anotarIntentoFallido(req.usuario(), fallos, http);
             return ResponseEntity.status(401).build();
+        }
+    }
+
+    /** Registrar el intento no puede cambiar el 401 de una autenticación fallida: si la escritura de auditoría
+     *  falla (p. ej. un nombre demasiado largo para la columna), la traza va al log de la aplicación y el intento
+     *  sigue respondiendo 401, igual que RutasRetiradasInterceptor.anotar con las rutas retiradas. */
+    private void anotarIntentoFallido(String usuario, int fallos, jakarta.servlet.http.HttpServletRequest http) {
+        try {
+            logDao.insertarIntento(usuario, "LOGIN_FALLIDO", "INTENTOS: " + fallos + origenDe(http));
+        } catch (RuntimeException e) {
+            log.warn("No se pudo anotar el intento fallido de login: {}", e.toString());
         }
     }
 

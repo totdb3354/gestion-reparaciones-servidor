@@ -26,6 +26,13 @@ class LogDAONombreTest {
                 eq("alguien"), eq("LOGIN_FALLIDO"), eq("ORIGEN: 10.0.0.1"));
     }
 
+    @Test void insertarIntentoRecortaUnNombreDemasiadoLargo() {
+        String nombreLargo = "a".repeat(60);
+        dao.insertarIntento(nombreLargo, "LOGIN_FALLIDO", "ORIGEN: 10.0.0.1");
+        verify(jdbc).update(contains("VALUES (NULL, ?, ?, ?, NULL)"),
+                eq(nombreLargo.substring(0, LogDAO.MAX_NOMBRE_USUARIO)), eq("LOGIN_FALLIDO"), eq("ORIGEN: 10.0.0.1"));
+    }
+
     @Test void elListadoUsaUnJoinQueConservaLasLineasSinUsuario() {
         dao.getFiltered(null, null, null, null);
         verify(jdbc).query(contains("LEFT JOIN Usuario u"), any(org.springframework.jdbc.core.RowMapper.class),
