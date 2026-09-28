@@ -59,18 +59,19 @@ class ProveedorControllerTest {
     }
 
     @Test void editarValidaNombreYDivisa() {
-        ResponseStatusException e1 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("", "EUR", "")));
+        ResponseStatusException e1 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("", "EUR", ""), super7));
         assertEquals("El nombre no puede estar vacío.", e1.getReason());
-        ResponseStatusException e2 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("ACME", "GBP", "")));
+        ResponseStatusException e2 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("ACME", "GBP", ""), super7));
         assertEquals("Divisa no válida (EUR o USD).", e2.getReason());
         // El PUT es estricto: sin divisa también es 422 (el JavaFX siempre manda la del combo)
-        ResponseStatusException e3 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("ACME", null, "")));
+        ResponseStatusException e3 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("ACME", null, ""), super7));
         assertEquals("Divisa no válida (EUR o USD).", e3.getReason());
-        ResponseStatusException e4 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("x".repeat(101), "EUR", "")));
+        ResponseStatusException e4 = falla(() -> ctl.editar(4, new ProveedorController.EditarRequest("x".repeat(101), "EUR", ""), super7));
         assertEquals("El nombre no puede superar los 100 caracteres.", e4.getReason());
         verify(dao, never()).editar(anyInt(), any(), any(), any());
-        ctl.editar(4, new ProveedorController.EditarRequest(" ACME ", "usd", "nota"));
+        ctl.editar(4, new ProveedorController.EditarRequest(" ACME ", "usd", "nota"), super7);
         verify(dao).editar(4, "ACME", "USD", "nota");
+        verify(logDao).insertar(7, "EDITAR_PROVEEDOR", "ID_PROV: 4, NOMBRE: ACME");
     }
 
     @Test void borrarConPedidosEs409SinTocarNada() {
