@@ -70,9 +70,9 @@ public class TelefonoController {
     @GetMapping("/{imei}/modelo")
     public ValorTexto getModelo(@PathVariable String imei,
                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
-        frenoLookup.comprobar(principal.getIdUsu());
         String modelo = dao.getModelo(imei);
         if (modelo == null || modelo.isBlank()) {
+            frenoLookup.comprobar(principal.getIdUsu());
             modelo = imeiLookupService.lookupModeloInterno(imei);
         }
         return new ValorTexto(modelo != null ? modelo : "");

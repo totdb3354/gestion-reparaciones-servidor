@@ -34,7 +34,7 @@ public final class RutasRetiradas {
             // y el endpoint de incidencias.
             new Ruta("GET",    "/api/reparacion-componentes/{idRep}"),
             new Ruta("POST",   "/api/reparacion-componentes"),
-            new Ruta("DELETE", "/api/reparacion-componentes/{idRep}/{idCom}"),
+            new Ruta("DELETE", "/api/reparacion-componentes/{idRep}/{idCom:[0-9]+}"),
             new Ruta("PATCH",  "/api/reparacion-componentes/{idRep}/incidencia"),
             // Reparaciones: lo hacen hoy los endpoints del formulario y del historial.
             new Ruta("GET",    "/api/reparaciones"),

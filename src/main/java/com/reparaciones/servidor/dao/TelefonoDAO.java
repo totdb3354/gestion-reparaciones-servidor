@@ -14,13 +14,18 @@ import org.springframework.web.server.ResponseStatusException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public class TelefonoDAO {
 
     public static final String MSG_TIENE_TRABAJOS =
             "No se puede borrar el teléfono: tiene trabajos registrados en su historial.";
+    /** Mensaje de reserva para la carrera del catch: ahí no se sabe cuál de las cuatro tablas fue. */
+    public static final String MSG_TIENE_REGISTROS =
+            "No se puede borrar el teléfono: tiene registros asociados en su historial.";
 
     private final JdbcTemplate jdbc;
 
@@ -116,23 +121,55 @@ public class TelefonoDAO {
     }
 
     /**
-     * Borra el teléfono solo si no queda ninguna fila de Reparacion apuntándolo. Una asignación ya cerrada que no
-     * aparece en ninguna vista también cuenta como trabajo registrado, porque la clave ajena la protege. Si entre
-     * la comprobación y el borrado aparece un trabajo nuevo, la misma clave ajena lo impide y el borrado termina
-     * en este mismo conflicto.
+     * Borra el teléfono solo si no queda ninguna fila en las cuatro tablas que lo referencian por clave ajena:
+     * Reparacion (trabajos), Revision, Movimiento_telefono y Envio_Telefono. Una fila ya cerrada que no aparece
+     * en ninguna vista también cuenta, porque la clave ajena la protege igual. El mensaje nombra las causas
+     * presentes, para no decir "trabajos" cuando lo único que hay es, por ejemplo, un movimiento. Si entre la
+     * comprobación y el borrado aparece una fila nueva en cualquiera de las cuatro, la misma clave ajena lo
+     * impide y el borrado termina en el mismo conflicto, con el mensaje de reserva porque ya no se sabe cuál fue.
      */
     @Transactional
     public void eliminar(String imei) {
-        Integer trabajos = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ?", Integer.class, imei);
-        if (trabajos != null && trabajos > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_TIENE_TRABAJOS);
+        Map<String, Object> conteos = jdbc.queryForMap(
+                "SELECT" +
+                " (SELECT COUNT(*) FROM Reparacion WHERE IMEI = ?) AS TRABAJOS," +
+                " (SELECT COUNT(*) FROM Revision WHERE IMEI = ?) AS REVISIONES," +
+                " (SELECT COUNT(*) FROM Movimiento_telefono WHERE IMEI = ?) AS MOVIMIENTOS," +
+                " (SELECT COUNT(*) FROM Envio_Telefono WHERE IMEI = ?) AS ENVIOS",
+                imei, imei, imei, imei);
+        long trabajos    = ((Number) conteos.get("TRABAJOS")).longValue();
+        long revisiones  = ((Number) conteos.get("REVISIONES")).longValue();
+        long movimientos = ((Number) conteos.get("MOVIMIENTOS")).longValue();
+        long envios      = ((Number) conteos.get("ENVIOS")).longValue();
+        if (trabajos > 0 || revisiones > 0 || movimientos > 0 || envios > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    mensajeNoBorrable(trabajos, revisiones, movimientos, envios));
         }
         try {
             jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
         } catch (DataIntegrityViolationException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_TIENE_TRABAJOS);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_TIENE_REGISTROS);
         }
+    }
+
+    /** Construye el mensaje del 409 nombrando solo las causas presentes, para que sea cierto en cada caso. */
+    private static String mensajeNoBorrable(long trabajos, long revisiones, long movimientos, long envios) {
+        if (trabajos > 0 && revisiones == 0 && movimientos == 0 && envios == 0) {
+            return MSG_TIENE_TRABAJOS;
+        }
+        List<String> causas = new ArrayList<>();
+        if (trabajos > 0) causas.add("trabajos");
+        if (revisiones > 0) causas.add("revisiones");
+        if (movimientos > 0) causas.add("movimientos");
+        if (envios > 0) causas.add("envíos");
+        return "No se puede borrar el teléfono: tiene " + listaConY(causas) + " registrados en su historial.";
+    }
+
+    private static String listaConY(List<String> items) {
+        if (items.size() == 1) {
+            return items.get(0);
+        }
+        return String.join(", ", items.subList(0, items.size() - 1)) + " y " + items.get(items.size() - 1);
     }
 
     public List<TelefonoInventario> getInventario() {

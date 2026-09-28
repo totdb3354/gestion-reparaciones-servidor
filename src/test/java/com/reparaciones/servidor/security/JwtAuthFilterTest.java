@@ -18,7 +18,7 @@ import java.util.Date;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Un token bien firmado pero incompleto es 401, no un error interno (spec sp7b §4.5). */
+/** Un token bien firmado pero incompleto es 401 (spec sp7b §4.5). */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -62,6 +62,13 @@ class JwtAuthFilterTest {
 
     @Test void tokenConRolVacioEs401() throws Exception {
         String token = firmar(java.util.Map.of("idUsu", 8, "rol", "  "));
+        mvc.perform(get("/api/reparaciones/historial").header("Authorization", "Bearer " + token))
+           .andExpect(status().isUnauthorized());
+    }
+
+    /** Un claim con otro tipo del esperado (idUsu como texto) no rompe el filtro: 401, no 500. */
+    @Test void tokenConClaimDeTipoEquivocadoEs401() throws Exception {
+        String token = firmar(java.util.Map.of("idUsu", "ocho", "rol", "TECNICO"));
         mvc.perform(get("/api/reparaciones/historial").header("Authorization", "Bearer " + token))
            .andExpect(status().isUnauthorized());
     }

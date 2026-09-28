@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class RolesModulosInventarioTest {
 
-    /** Las siete lecturas que estaban abiertas. Formato: "METODO ruta". */
+    /** Las seis lecturas que estaban abiertas. Formato: "METODO ruta". */
     private static final List<String> SOLO_SUPERTECNICO = List.of(
             "GET /api/colores/equivalencias",
             "GET /api/modelos/equivalencias",

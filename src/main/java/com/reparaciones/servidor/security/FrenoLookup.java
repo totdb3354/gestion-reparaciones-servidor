@@ -11,12 +11,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * Ritmo máximo por usuario de la consulta de modelo por IMEI, que llama a un servicio externo de pago:
- * permite hasta {@link #MAX_POR_VENTANA} consultas por usuario en cada ventana de {@link #VENTANA_MS},
- * en modo ráfaga (no exige separación entre ellas dentro de la ventana). Esto deja pasar de golpe el
- * lote de consultas que dispara un lote de IMEIs a la vez, y frena solo un bucle desbocado. En memoria
- * y por instancia, igual que el registro de reintentos: si el servidor se reinicia, el contador arranca
- * de cero, lo que es inocuo para lo que protege.
+ * Ritmo máximo por usuario de las consultas de modelo por IMEI que de verdad llegan al servicio externo
+ * de pago, es decir, las que caen porque el IMEI no está ya en la base: permite hasta
+ * {@link #MAX_POR_VENTANA} consultas por usuario en cada ventana de {@link #VENTANA_MS}, en modo ráfaga
+ * (no exige separación entre ellas dentro de la ventana). Esto deja pasar de golpe el lote de consultas
+ * externas que dispara un lote de IMEIs nuevos a la vez, y frena solo un bucle desbocado. Los IMEIs que
+ * ya están en la base no gastan cupo, porque no cuestan nada. En memoria y por instancia, igual que el
+ * registro de reintentos: si el servidor se reinicia, el contador arranca de cero, lo que es inocuo para
+ * lo que protege.
  */
 @Component
 public class FrenoLookup {

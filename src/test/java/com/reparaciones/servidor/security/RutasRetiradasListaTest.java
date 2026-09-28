@@ -52,7 +52,9 @@ class RutasRetiradasListaTest {
             "GET /api/tecnicos/activos",
             "DELETE /api/telefonos/355400000000111",
             "GET /api/telefonos/355400000000111/modelo",
-            "POST /api/telefonos");
+            "POST /api/telefonos",
+            "PATCH /api/componentes/101/stock-minimo",
+            "DELETE /api/reparacion-componentes/R20260928_1/incidencia");
 
     @Test void laListaTiene24Entradas() {
         assertEquals(24, RutasRetiradas.LISTA.size());

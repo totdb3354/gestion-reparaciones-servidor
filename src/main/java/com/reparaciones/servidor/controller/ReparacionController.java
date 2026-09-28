@@ -166,8 +166,10 @@ public class ReparacionController {
         return dao.contarPendientes(efectivo);
     }
 
-    /** Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2. */
-    // El ADMIN reutiliza la vista de asignaciones en solo lectura y también la lee (spec sp7b §4.3).
+    /**
+     * Asignaciones completadas hoy (corte = inicio de hoy en Madrid) — "hecho hoy" de la carga v2.
+     * El ADMIN reutiliza la vista de asignaciones en solo lectura y también la lee (spec sp7b §4.3).
+     */
     @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
     @GetMapping("/asignaciones/completadas-hoy")
     public List<ReparacionResumen> getAsignacionesCompletadasHoy() {
