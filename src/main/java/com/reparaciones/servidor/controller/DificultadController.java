@@ -26,6 +26,8 @@ public class DificultadController {
         this.logDao = logDao;
     }
 
+    // El modal que los muestra es solo del administrador (spec sp7b §4.3).
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public List<ValorDificultad> getValores() {
         return dao.getAll();
