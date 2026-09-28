@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -24,8 +25,9 @@ class AuthControllerCambiarPasswordTest {
 
     private final UsuarioDAO usuarioDao = mock(UsuarioDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
+    private final EstadoUsuarioService estadoUsuario = mock(EstadoUsuarioService.class);
     private final AuthController ctl = new AuthController(mock(AuthenticationManager.class), mock(JwtUtil.class),
-            logDao, usuarioDao, new IntentosFallidos());
+            logDao, usuarioDao, new IntentosFallidos(), estadoUsuario);
     private final UsuarioPrincipal usuario = new UsuarioPrincipal(8, "usuario-a", "", "TECNICO", 4);
 
     private static AuthController.CambiarPasswordRequest cambio(String actual, String nueva) {
@@ -45,6 +47,21 @@ class AuthControllerCambiarPasswordTest {
         assertEquals(204, resp.getStatusCode().value());
         verify(usuarioDao).cambiarPassword(8, "secreta1", "nueva123");
         verify(logDao).insertar(8, "CAMBIAR_PASSWORD", "");
+    }
+
+    /** Tras cambiarla, la entrada cacheada del filtro se retira: el usuario puede operar de inmediato en vez
+     *  de esperar hasta 30 s a que caduque (spec sp7b, arreglo E3-2). */
+    @Test void unCambioValidoRetiraLaEntradaDeLaCache() {
+        ctl.cambiarPassword(usuario, cambio("secreta1", "nueva123"));
+        verify(estadoUsuario).invalidar(8);
+    }
+
+    /** Un intento fallido no retira nada: la marca de contraseña temporal sigue como estaba. */
+    @Test void unCambioFallidoNoTocaLaCache() {
+        doThrow(new IllegalArgumentException("Contraseña actual incorrecta."))
+                .when(usuarioDao).cambiarPassword(8, "otra-cosa", "nueva123");
+        ctl.cambiarPassword(usuario, cambio("otra-cosa", "nueva123"));
+        verifyNoInteractions(estadoUsuario);
     }
 
     @Test void camposVaciosOAusentesSon422() {

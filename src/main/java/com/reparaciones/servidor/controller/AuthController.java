@@ -3,6 +3,7 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
 import com.reparaciones.servidor.model.LoginResponse;
+import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -24,14 +25,17 @@ public class AuthController {
     private final LogDAO                logDao;
     private final UsuarioDAO            usuarioDao;
     private final IntentosFallidos      intentos;
+    private final EstadoUsuarioService  estadoUsuario;
 
     public AuthController(AuthenticationManager authManager, JwtUtil jwtUtil,
-                          LogDAO logDao, UsuarioDAO usuarioDao, IntentosFallidos intentos) {
-        this.authManager = authManager;
-        this.jwtUtil     = jwtUtil;
-        this.logDao      = logDao;
-        this.usuarioDao  = usuarioDao;
-        this.intentos    = intentos;
+                          LogDAO logDao, UsuarioDAO usuarioDao, IntentosFallidos intentos,
+                          EstadoUsuarioService estadoUsuario) {
+        this.authManager  = authManager;
+        this.jwtUtil      = jwtUtil;
+        this.logDao       = logDao;
+        this.usuarioDao   = usuarioDao;
+        this.intentos     = intentos;
+        this.estadoUsuario = estadoUsuario;
     }
 
     @PostMapping("/login")
@@ -82,6 +86,9 @@ public class AuthController {
         ValidacionUsuarios.validarCambioPassword(req.passwordActual(), req.passwordNueva());
         try {
             usuarioDao.cambiarPassword(principal.getIdUsu(), req.passwordActual(), req.passwordNueva());
+            // La marca ya se limpió en la base: retira también la entrada cacheada para que pueda operar de
+            // inmediato, sin esperar a que caduque la caché del filtro (spec sp7b, arreglo E3-2).
+            estadoUsuario.invalidar(principal.getIdUsu());
             intentos.limpiar(principal.getUsername());
             logDao.insertar(principal.getIdUsu(), "CAMBIAR_PASSWORD", "");
             return ResponseEntity.noContent().build();

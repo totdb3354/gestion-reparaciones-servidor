@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -21,7 +22,8 @@ class AuthControllerTest {
     private final LogDAO logDao = mock(LogDAO.class);
     private final UsuarioDAO usuarioDao = mock(UsuarioDAO.class);
     private final IntentosFallidos intentos = new IntentosFallidos();
-    private final AuthController ctl = new AuthController(authManager, jwtUtil, logDao, usuarioDao, intentos);
+    private final EstadoUsuarioService estadoUsuario = mock(EstadoUsuarioService.class);
+    private final AuthController ctl = new AuthController(authManager, jwtUtil, logDao, usuarioDao, intentos, estadoUsuario);
 
     @Test void loginDevuelveRespuestaTipadaConLosCincoCampos() {
         var principal = new UsuarioPrincipal(7, "tecnico_f", "x", "SUPERTECNICO", 3);

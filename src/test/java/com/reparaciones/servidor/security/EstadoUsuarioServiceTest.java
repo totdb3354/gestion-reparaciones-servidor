@@ -23,8 +23,12 @@ class EstadoUsuarioServiceTest {
     private final EstadoUsuarioService servicio = new EstadoUsuarioService(jdbc, ahora::get);
 
     private void responde(int idUsu, boolean operativo) {
-        when(jdbc.queryForList(anyString(), eq(Integer.class), eq(idUsu)))
-                .thenReturn(operativo ? List.of(1) : List.of());
+        responde(idUsu, operativo, false);
+    }
+
+    private void responde(int idUsu, boolean operativo, boolean passwordTemporal) {
+        when(jdbc.queryForList(anyString(), eq(Boolean.class), eq(idUsu)))
+                .thenReturn(operativo ? List.of(passwordTemporal) : List.of());
     }
 
     @Test void unUsuarioActivoEsOperativo() {
@@ -42,7 +46,7 @@ class EstadoUsuarioServiceTest {
         servicio.estaOperativo(8);
         ahora.addAndGet(EstadoUsuarioService.TTL_MS - 1);
         servicio.estaOperativo(8);
-        verify(jdbc, times(1)).queryForList(anyString(), eq(Integer.class), eq(8));
+        verify(jdbc, times(1)).queryForList(anyString(), eq(Boolean.class), eq(8));
     }
 
     @Test void pasadaLaVentanaVuelveAConsultar() {
@@ -50,7 +54,7 @@ class EstadoUsuarioServiceTest {
         servicio.estaOperativo(8);
         ahora.addAndGet(EstadoUsuarioService.TTL_MS);
         servicio.estaOperativo(8);
-        verify(jdbc, times(2)).queryForList(anyString(), eq(Integer.class), eq(8));
+        verify(jdbc, times(2)).queryForList(anyString(), eq(Boolean.class), eq(8));
     }
 
     @Test void unaDesactivacionSeNotaAlCaducarLaVentana() {
@@ -70,8 +74,44 @@ class EstadoUsuarioServiceTest {
 
     /** Si la base de datos falla, no se expulsa a nadie: se deja pasar y se registra. */
     @Test void siLaConsultaFallaDejaPasar() {
-        when(jdbc.queryForList(anyString(), eq(Integer.class), eq(8)))
+        when(jdbc.queryForList(anyString(), eq(Boolean.class), eq(8)))
                 .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("caída"));
         assertTrue(servicio.estaOperativo(8));
+    }
+
+    @Test void unUsuarioConLaMarcaTienePasswordTemporal() {
+        responde(8, true, true);
+        assertTrue(servicio.tienePasswordTemporal(8));
+    }
+
+    @Test void unUsuarioSinLaMarcaNoLaTiene() {
+        responde(8, true, false);
+        assertFalse(servicio.tienePasswordTemporal(8));
+    }
+
+    /** Un usuario que ya no está operativo no tiene sentido preguntarle por la marca: no la tiene. */
+    @Test void unUsuarioNoOperativoNoTienePasswordTemporal() {
+        responde(8, false);
+        assertFalse(servicio.tienePasswordTemporal(8));
+    }
+
+    /** estaOperativo y tienePasswordTemporal comparten la misma consulta y la misma entrada de caché. */
+    @Test void lasDosConsultasComparteLaMismaCacheYNoDuplicanLaLlamada() {
+        responde(8, true, true);
+        servicio.estaOperativo(8);
+        servicio.tienePasswordTemporal(8);
+        verify(jdbc, times(1)).queryForList(anyString(), eq(Boolean.class), eq(8));
+    }
+
+    /** Tras invalidar, la próxima consulta vuelve a la base aunque siga dentro de la ventana de caché
+     *  (spec sp7b, arreglo E3-2): así un cambio de contraseña propio surte efecto sin esperar a los 30 s. */
+    @Test void invalidarFuerzaUnaNuevaConsultaAunDentroDeLaVentana() {
+        responde(8, true, true);
+        assertTrue(servicio.tienePasswordTemporal(8));
+
+        responde(8, true, false);
+        servicio.invalidar(8);
+        assertFalse(servicio.tienePasswordTemporal(8));
+        verify(jdbc, times(2)).queryForList(anyString(), eq(Boolean.class), eq(8));
     }
 }
