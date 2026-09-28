@@ -77,5 +77,9 @@ class RolesModulosInventarioTest {
         mvc.perform(post("/api/lotes/verificar").header("Authorization", tecnico())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"imeis\":[]}"))
            .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/lotes/verificar").header("Authorization", supertecnico())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"imeis\":[]}"))
+           .andExpect(status().isOk());
     }
 }
