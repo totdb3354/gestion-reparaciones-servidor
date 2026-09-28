@@ -18,9 +18,11 @@ import java.util.List;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final EstadoUsuarioService estadoUsuario;
 
-    public JwtAuthFilter(JwtUtil jwtUtil) {
-        this.jwtUtil = jwtUtil;
+    public JwtAuthFilter(JwtUtil jwtUtil, EstadoUsuarioService estadoUsuario) {
+        this.jwtUtil       = jwtUtil;
+        this.estadoUsuario = estadoUsuario;
     }
 
     @Override
@@ -53,6 +55,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // Un token bien firmado pero sin los datos del usuario no identifica a nadie: 401,
         // y sin autoridad de rol (spec sp7b §4.5).
         if (idUsu == null || username == null || rol == null || rol.isBlank()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
+            return;
+        }
+
+        // El token puede ser válido y el usuario ya no: desactivado, borrado o con otro rol. 401 y no 403,
+        // porque es lo único que devuelve al usuario a la pantalla de entrada en los dos clientes (spec sp7b D4).
+        if (!estadoUsuario.estaOperativo(idUsu)) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
             return;
         }

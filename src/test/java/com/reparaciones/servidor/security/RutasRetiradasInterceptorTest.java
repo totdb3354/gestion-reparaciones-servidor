@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.reparaciones.servidor.UsuariosOperativosTestConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.context.TestPropertySource;
@@ -23,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Las rutas retiradas responden 403 y dejan constancia, y las vivas siguen pasando (spec sp7b §4.1). */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(UsuariosOperativosTestConfig.class)
 @TestPropertySource(properties = {
         "spring.sql.init.mode=never",
         "spring.datasource.url=jdbc:mariadb://localhost:3306/reparaciones",
