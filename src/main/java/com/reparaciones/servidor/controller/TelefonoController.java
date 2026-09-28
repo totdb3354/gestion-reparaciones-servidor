@@ -8,6 +8,7 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.model.ValorTexto;
+import com.reparaciones.servidor.security.FrenoLookup;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -30,15 +31,17 @@ public class TelefonoController {
     private final RevisionDAO revisionDao;
     private final EnvioDAO envioDao;
     private final MovimientoDAO movimientoDao;
+    private final FrenoLookup frenoLookup;
 
     public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao,
-                             EnvioDAO envioDao, MovimientoDAO movimientoDao) {
+                             EnvioDAO envioDao, MovimientoDAO movimientoDao, FrenoLookup frenoLookup) {
         this.dao = dao;
         this.imeiLookupService = imeiLookupService;
         this.logDao = logDao;
         this.revisionDao = revisionDao;
         this.envioDao = envioDao;
         this.movimientoDao = movimientoDao;
+        this.frenoLookup = frenoLookup;
     }
 
     @GetMapping
@@ -65,7 +68,9 @@ public class TelefonoController {
     }
 
     @GetMapping("/{imei}/modelo")
-    public ValorTexto getModelo(@PathVariable String imei) {
+    public ValorTexto getModelo(@PathVariable String imei,
+                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        frenoLookup.comprobar(principal.getIdUsu());
         String modelo = dao.getModelo(imei);
         if (modelo == null || modelo.isBlank()) {
             modelo = imeiLookupService.lookupModeloInterno(imei);
