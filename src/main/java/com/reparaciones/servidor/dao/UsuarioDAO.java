@@ -91,8 +91,9 @@ public class UsuarioDAO {
             "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ID_TEC_ASIGNA = ?)",
             "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ENTREGADO_POR = ?)");
 
-    /** Las columnas que apuntan a Usuario.ID_USU con FK (sql/crear_bd.sql :130-131, :144, :160, :316, :346), salvo
-     *  Log_Actividad, que eliminarTecnico borra a propósito (calco, spec 6 G8). */
+    /** Las columnas que apuntan a Usuario.ID_USU con FK (sql/crear_bd.sql :130-131, :144, :160, :316, :346).
+     *  Log_Actividad no está: su columna ID_USU admite nulo y eliminarTecnico deja su registro de actividad
+     *  en su sitio (spec sp7b §5.6). */
     static final List<String> REFERENCIAS_USUARIO = List.of(
             "SELECT EXISTS(SELECT 1 FROM Revision WHERE EST_ID_USU = ?)",
             "SELECT EXISTS(SELECT 1 FROM Revision WHERE FUN_ID_USU = ?)",
@@ -136,9 +137,12 @@ public class UsuarioDAO {
         return tieneReferencias(idTec);
     }
 
+    /**
+     * Borra al usuario y a su técnico, y deja su registro de actividad en su sitio: la clave ajena lo pone a nulo
+     * y el nombre ya está guardado en cada línea, así que la auditoría sigue siendo legible (spec sp7b §5.6).
+     */
     @Transactional
     public void eliminarTecnico(int idTec, int idUsu) {
-        jdbc.update("DELETE FROM Log_Actividad WHERE ID_USU = ?", idUsu);
         jdbc.update("DELETE FROM Usuario WHERE ID_USU = ?", idUsu);
         jdbc.update("DELETE FROM Tecnico WHERE ID_TEC = ?", idTec);
     }

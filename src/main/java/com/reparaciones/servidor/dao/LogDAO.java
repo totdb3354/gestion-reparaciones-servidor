@@ -39,10 +39,27 @@ public class LogDAO {
         insertar(idUsu, accion, detalle, null);
     }
 
+    /**
+     * Guarda el nombre del usuario en la propia línea, resuelto en la misma sentencia: así la línea sigue
+     * diciendo quién hizo qué cuando el usuario ya no exista (spec sp7b §5.6). Si el usuario no existe, no se
+     * inserta nada: no hay actividad que registrar sin actor.
+     */
     public void insertar(int idUsu, String accion, String detalle, String motivo) {
         jdbc.update(
-                "INSERT INTO Log_Actividad (ID_USU, ACCION, DETALLE, MOTIVO) VALUES (?, ?, ?, ?)",
-                idUsu, accion, detalle, motivo);
+                "INSERT INTO Log_Actividad (ID_USU, NOMBRE_USUARIO, ACCION, DETALLE, MOTIVO) " +
+                "SELECT ?, NOMBRE_USUARIO, ?, ?, ? FROM Usuario WHERE ID_USU = ?",
+                idUsu, accion, detalle, motivo, idUsu);
+    }
+
+    /**
+     * Anota algo que no tiene usuario detrás, como un intento de entrar con un nombre que no existe: la clave
+     * queda a nulo y el nombre intentado se guarda tal cual (spec sp7b §5.2).
+     */
+    public void insertarIntento(String nombreUsuario, String accion, String detalle) {
+        jdbc.update(
+                "INSERT INTO Log_Actividad (ID_USU, NOMBRE_USUARIO, ACCION, DETALLE, MOTIVO) " +
+                "VALUES (NULL, ?, ?, ?, NULL)",
+                nombreUsuario, accion, detalle);
     }
 
     /** Inicio del día {@code dia} en Madrid expresado en UTC, sin zona: así guarda FECHA la BD (sesión y JVM en UTC;
@@ -63,8 +80,9 @@ public class LogDAO {
     public List<LogActividad> getFiltered(String accion, String tecnico,
                                           LocalDate desde, LocalDate hasta, Integer limite) {
         StringBuilder sql = new StringBuilder(
-                "SELECT l.ID_LOG, l.FECHA, u.NOMBRE_USUARIO, l.ACCION, l.DETALLE, l.MOTIVO " +
-                "FROM Log_Actividad l JOIN Usuario u ON l.ID_USU = u.ID_USU WHERE 1=1");
+                "SELECT l.ID_LOG, l.FECHA, COALESCE(l.NOMBRE_USUARIO, u.NOMBRE_USUARIO) AS NOMBRE_USUARIO, " +
+                "       l.ACCION, l.DETALLE, l.MOTIVO " +
+                "FROM Log_Actividad l LEFT JOIN Usuario u ON l.ID_USU = u.ID_USU WHERE 1=1");
         List<Object> params = new ArrayList<>();
 
         if (accion != null && !accion.isBlank()) {
@@ -72,7 +90,7 @@ public class LogDAO {
             params.add(accion);
         }
         if (tecnico != null && !tecnico.isBlank()) {
-            sql.append(" AND u.NOMBRE_USUARIO = ?");
+            sql.append(" AND COALESCE(l.NOMBRE_USUARIO, u.NOMBRE_USUARIO) = ?");
             params.add(tecnico);
         }
         if (desde != null) {
