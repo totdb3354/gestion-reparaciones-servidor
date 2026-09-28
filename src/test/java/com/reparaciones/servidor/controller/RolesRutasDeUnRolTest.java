@@ -8,10 +8,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Cada ruta exige el rol que la alcanza en pantalla (spec sp7b §4.3). */
@@ -34,6 +36,7 @@ class RolesRutasDeUnRolTest {
     @MockBean DificultadPuntosDAO dificultadDao;
     @MockBean ReparacionDAO reparacionDao;
     @MockBean LogDAO logDao;
+    @MockBean TipoCambioDAO tipoCambioDao;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico_n", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico_f", "", "SUPERTECNICO", 3)); }
@@ -53,6 +56,7 @@ class RolesRutasDeUnRolTest {
 
     @Test void elTipoDeCambioEsDelSupertecnico() throws Exception {
         mvc.perform(get("/api/tipo-cambio/USD").header("Authorization", tecnico())).andExpect(status().isForbidden());
+        mvc.perform(get("/api/tipo-cambio/USD").header("Authorization", supertecnico())).andExpect(status().isOk());
     }
 
     /** El ADMIN reutiliza la vista de asignaciones en solo lectura: completadas-hoy lleva los dos roles. */
@@ -70,5 +74,25 @@ class RolesRutasDeUnRolTest {
            .andExpect(status().isForbidden());
         mvc.perform(get("/api/reparaciones/R20260928_1/referenciadora").header("Authorization", tecnico()))
            .andExpect(status().isForbidden());
+        mvc.perform(get("/api/reparaciones/imei/355400000000111/tiene-asignacion?tecnico=1").header("Authorization", supertecnico()))
+           .andExpect(status().isOk());
+        mvc.perform(get("/api/reparaciones/R20260928_1/referenciadora").header("Authorization", supertecnico()))
+           .andExpect(status().isOk());
+    }
+
+    /** La gestión de una solicitud (cambiar su estado o limpiarla del listado) es del supertécnico. */
+    @Test void gestionarSolicitudEsDelSupertecnico() throws Exception {
+        String cuerpo = "{\"estado\":\"RECHAZADA\"}";
+        mvc.perform(patch("/api/solicitudes/701/estado").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+           .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/solicitudes/701/limpiar").header("Authorization", tecnico()))
+           .andExpect(status().isForbidden());
+
+        mvc.perform(patch("/api/solicitudes/701/estado").header("Authorization", supertecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+           .andExpect(status().isOk());
+        mvc.perform(patch("/api/solicitudes/701/limpiar").header("Authorization", supertecnico()))
+           .andExpect(status().isOk());
     }
 }
