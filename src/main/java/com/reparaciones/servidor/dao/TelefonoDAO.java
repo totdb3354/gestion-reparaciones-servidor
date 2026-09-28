@@ -4,6 +4,7 @@ import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.model.VerificacionImei;
 import com.reparaciones.servidor.service.UbicacionDerivador;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -116,8 +117,9 @@ public class TelefonoDAO {
 
     /**
      * Borra el teléfono solo si no queda ninguna fila de Reparacion apuntándolo. Una asignación ya cerrada que no
-     * aparece en ninguna vista también cuenta: la clave ajena la protege, y sin esta comprobación el borrado salía
-     * como error interno (informe R3-02).
+     * aparece en ninguna vista también cuenta como trabajo registrado, porque la clave ajena la protege. Si entre
+     * la comprobación y el borrado aparece un trabajo nuevo, la misma clave ajena lo impide y el borrado termina
+     * en este mismo conflicto.
      */
     @Transactional
     public void eliminar(String imei) {
@@ -126,7 +128,11 @@ public class TelefonoDAO {
         if (trabajos != null && trabajos > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_TIENE_TRABAJOS);
         }
-        jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
+        try {
+            jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_TIENE_TRABAJOS);
+        }
     }
 
     public List<TelefonoInventario> getInventario() {

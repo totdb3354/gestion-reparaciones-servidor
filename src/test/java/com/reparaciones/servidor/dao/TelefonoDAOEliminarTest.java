@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.dao;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -14,7 +15,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** Borrar un teléfono con trabajos registrados se explica en vez de romper (spec sp7b §4.4). */
+/** Borrar un teléfono con trabajos registrados responde conflicto con un mensaje que lo explica (spec sp7b §4.4). */
 class TelefonoDAOEliminarTest {
 
     private static final String IMEI = "355400000000111";
@@ -36,10 +37,14 @@ class TelefonoDAOEliminarTest {
         verify(jdbc).update("DELETE FROM Telefono WHERE IMEI = ?", IMEI);
     }
 
-    /** Una fila de pulido ya cerrada cuenta como trabajo registrado: es el caso del informe R3-02. */
-    @Test void unaAsignacionDePulidoCerradaTambienImpideBorrar() {
-        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(IMEI))).thenReturn(1);
+    /** Carrera: el conteo dice 0 pero el borrado choca con la clave ajena porque otra transacción
+     *  insertó un trabajo mientras tanto; debe responder el mismo conflicto, con el mismo mensaje. */
+    @Test void siElBorradoChocaConLaClaveAjenaEs409ConMensaje() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(IMEI))).thenReturn(0);
+        when(jdbc.update(eq("DELETE FROM Telefono WHERE IMEI = ?"), eq(IMEI)))
+                .thenThrow(new DataIntegrityViolationException("fk violada"));
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> dao.eliminar(IMEI));
         assertEquals(409, ex.getStatusCode().value());
+        assertEquals(TelefonoDAO.MSG_TIENE_TRABAJOS, ex.getReason());
     }
 }
