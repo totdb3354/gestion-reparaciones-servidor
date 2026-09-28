@@ -7,11 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -60,5 +63,38 @@ class RutasRetiradasInterceptorTest {
     @Test void sinTokenLaRechazaLaSeguridadYNoSeAnota() throws Exception {
         mvc.perform(get("/api/componentes")).andExpect(status().isForbidden());
         verifyNoInteractions(logDao);
+    }
+
+    @Test void conXRealIpSeAnotaEsaDireccionConPrecedenciaSobreXForwardedFor() throws Exception {
+        mvc.perform(get("/api/componentes")
+                        .header("Authorization", tecnico())
+                        .header("X-Real-IP", "203.0.113.7")
+                        .header("X-Forwarded-For", "198.51.100.4, 10.0.0.1"))
+           .andExpect(status().isForbidden());
+        verify(logDao).insertar(eq(8), eq(RutasRetiradas.ACCION_LOG), contains("ORIGEN: 203.0.113.7"));
+    }
+
+    @Test void sinXRealIpSeAnotaLaPrimeraDireccionDeXForwardedFor() throws Exception {
+        mvc.perform(get("/api/componentes")
+                        .header("Authorization", tecnico())
+                        .header("X-Forwarded-For", "198.51.100.4, 10.0.0.1"))
+           .andExpect(status().isForbidden());
+        verify(logDao).insertar(eq(8), eq(RutasRetiradas.ACCION_LOG), contains("ORIGEN: 198.51.100.4"));
+    }
+
+    @Test void sinCabecerasDeProxySeAnotaLaDireccionDelSocket() throws Exception {
+        mvc.perform(get("/api/componentes")
+                        .header("Authorization", tecnico())
+                        .with(request -> { request.setRemoteAddr("10.0.0.1"); return request; }))
+           .andExpect(status().isForbidden());
+        verify(logDao).insertar(eq(8), eq(RutasRetiradas.ACCION_LOG), contains("ORIGEN: 10.0.0.1"));
+    }
+
+    @Test void siFallaElRegistroDeActividadLaRespuestaSigueSiendo403() throws Exception {
+        doThrow(new DataAccessResourceFailureException("fallo simulado de acceso a datos"))
+                .when(logDao).insertar(eq(8), eq(RutasRetiradas.ACCION_LOG), any());
+        mvc.perform(get("/api/componentes").header("Authorization", tecnico()))
+           .andExpect(status().isForbidden());
+        verifyNoInteractions(componenteDao);
     }
 }
