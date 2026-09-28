@@ -46,7 +46,9 @@ public class TelefonoController {
         return dao.getAll();
     }
 
+    // Inventario y lotes no los usa la tienda: sus lecturas exigen el mismo rol que sus escrituras (spec sp7b §4.2).
     @GetMapping("/inventario")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<TelefonoInventario> getInventario() {
         return dao.getInventario();
     }
@@ -188,6 +190,7 @@ public class TelefonoController {
 
     /** F2b: revisión vigente (última pasada) para la ficha; existe=false si nunca hubo. */
     @GetMapping("/{imei}/revision")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public RevisionResponse getRevision(@PathVariable String imei) {
         com.reparaciones.servidor.model.Revision r = revisionDao.getVigente(imei);
         return new RevisionResponse(r != null, r);
@@ -212,6 +215,7 @@ public class TelefonoController {
 
     /** F2c: línea de vida del teléfono para el historial de la ficha. */
     @GetMapping("/{imei}/movimientos")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<com.reparaciones.servidor.model.MovimientoTelefono> getMovimientos(@PathVariable String imei) {
         return movimientoDao.getPorImei(imei);
     }

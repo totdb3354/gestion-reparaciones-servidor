@@ -26,10 +26,13 @@ public class LoteController {
         this.importService = importService;
     }
 
+    // Inventario y lotes no los usa la tienda: sus lecturas exigen el mismo rol que sus escrituras (spec sp7b §4.2).
     @GetMapping
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<Lote> getAll() { return loteDao.getAll(); }
 
     @PostMapping("/verificar")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<VerificacionImei> verificar(@RequestBody VerificarRequest req) {
         return telefonoDao.verificar(req.imeis());
     }
