@@ -11,14 +11,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * Ritmo máximo por usuario de las consultas de modelo por IMEI que de verdad llegan al servicio externo
- * de pago, es decir, las que caen porque el IMEI no está ya en la base: permite hasta
- * {@link #MAX_POR_VENTANA} consultas por usuario en cada ventana de {@link #VENTANA_MS}, en modo ráfaga
- * (no exige separación entre ellas dentro de la ventana). Esto deja pasar de golpe el lote de consultas
- * externas que dispara un lote de IMEIs nuevos a la vez, y frena solo un bucle desbocado. Los IMEIs que
- * ya están en la base no gastan cupo, porque no cuestan nada. En memoria y por instancia, igual que el
- * registro de reintentos: si el servidor se reinicia, el contador arranca de cero, lo que es inocuo para
- * lo que protege.
+ * Ritmo máximo por usuario de las consultas de modelo por IMEI que de verdad salen al servicio externo,
+ * es decir, las de un IMEI que todavía no está en la base: permite hasta {@link #MAX_POR_VENTANA}
+ * consultas por usuario en cada ventana de {@link #VENTANA_MS}, en modo ráfaga (no exige separación
+ * entre ellas dentro de la ventana). Así pasa de golpe el lote de consultas externas que dispara un
+ * lote de IMEIs nuevos, y solo se frena un bucle desbocado.
+ *
+ * Lo que protege no es el coste —el servicio es gratuito— sino dos cosas: que una llamada repetida sin
+ * control lleve al proveedor a limitar o cortar el acceso, y que la latencia acumulada de muchas
+ * llamadas externas seguidas empuje una respuesta por encima del tiempo máximo aceptado.
+ *
+ * Los IMEIs que ya están en la base no gastan cupo, porque no salen fuera. En memoria y por instancia,
+ * igual que el registro de reintentos: si el servidor se reinicia, el contador arranca de cero, lo que
+ * es inocuo para lo que protege.
  */
 @Component
 public class FrenoLookup {
