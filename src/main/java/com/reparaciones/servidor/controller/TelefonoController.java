@@ -8,6 +8,7 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.model.ValorTexto;
+import com.reparaciones.servidor.security.FrenoLookup;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.ImeiLookupService;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -30,15 +31,17 @@ public class TelefonoController {
     private final RevisionDAO revisionDao;
     private final EnvioDAO envioDao;
     private final MovimientoDAO movimientoDao;
+    private final FrenoLookup frenoLookup;
 
     public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao,
-                             EnvioDAO envioDao, MovimientoDAO movimientoDao) {
+                             EnvioDAO envioDao, MovimientoDAO movimientoDao, FrenoLookup frenoLookup) {
         this.dao = dao;
         this.imeiLookupService = imeiLookupService;
         this.logDao = logDao;
         this.revisionDao = revisionDao;
         this.envioDao = envioDao;
         this.movimientoDao = movimientoDao;
+        this.frenoLookup = frenoLookup;
     }
 
     @GetMapping
@@ -46,7 +49,9 @@ public class TelefonoController {
         return dao.getAll();
     }
 
+    // Inventario y lotes no los usa la tienda: sus lecturas exigen el mismo rol que sus escrituras (spec sp7b §4.2).
     @GetMapping("/inventario")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<TelefonoInventario> getInventario() {
         return dao.getInventario();
     }
@@ -63,9 +68,11 @@ public class TelefonoController {
     }
 
     @GetMapping("/{imei}/modelo")
-    public ValorTexto getModelo(@PathVariable String imei) {
+    public ValorTexto getModelo(@PathVariable String imei,
+                                @AuthenticationPrincipal UsuarioPrincipal principal) {
         String modelo = dao.getModelo(imei);
         if (modelo == null || modelo.isBlank()) {
+            frenoLookup.comprobar(principal.getIdUsu());
             modelo = imeiLookupService.lookupModeloInterno(imei);
         }
         return new ValorTexto(modelo != null ? modelo : "");
@@ -123,9 +130,12 @@ public class TelefonoController {
     }
 
     @DeleteMapping("/{imei}")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable String imei) {
+    public void eliminar(@PathVariable String imei,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.eliminar(imei);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_TELEFONO", "IMEI: " + imei);
     }
 
     /**
@@ -188,6 +198,7 @@ public class TelefonoController {
 
     /** F2b: revisión vigente (última pasada) para la ficha; existe=false si nunca hubo. */
     @GetMapping("/{imei}/revision")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public RevisionResponse getRevision(@PathVariable String imei) {
         com.reparaciones.servidor.model.Revision r = revisionDao.getVigente(imei);
         return new RevisionResponse(r != null, r);
@@ -212,6 +223,7 @@ public class TelefonoController {
 
     /** F2c: línea de vida del teléfono para el historial de la ficha. */
     @GetMapping("/{imei}/movimientos")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<com.reparaciones.servidor.model.MovimientoTelefono> getMovimientos(@PathVariable String imei) {
         return movimientoDao.getPorImei(imei);
     }

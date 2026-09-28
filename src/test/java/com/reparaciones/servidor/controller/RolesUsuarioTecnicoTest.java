@@ -17,12 +17,12 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** POST y DELETE /api/tecnicos (spec 6 §4.3): solo ADMIN, con la cadena de seguridad real. */
+/** POST y DELETE /api/tecnicos: ya no están disponibles, los sustituyen las pantallas actuales de
+ *  /api/usuarios/tecnicos; responden 403 a cualquier rol, con la cadena de seguridad real. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -57,11 +57,11 @@ class RolesUsuarioTecnicoTest {
         verify(tecnicoDao, never()).insertar(anyString());
     }
 
-    @Test void crearAdminEs201() throws Exception {
+    @Test void crearTecnicoYaNoEstaDisponible() throws Exception {
         mvc.perform(post("/api/tecnicos").header("Authorization", admin())
                         .contentType(MediaType.APPLICATION_JSON).content(CUERPO))
-                .andExpect(status().isCreated());
-        verify(tecnicoDao).insertar("tecnico-a");
+                .andExpect(status().isForbidden());
+        verify(tecnicoDao, never()).insertar(anyString());
     }
 
     @Test void borrarTecnicoYSupertecnicoReciben403() throws Exception {
@@ -72,10 +72,9 @@ class RolesUsuarioTecnicoTest {
         verify(tecnicoDao, never()).eliminar(anyInt());
     }
 
-    @Test void borrarAdminEs204() throws Exception {
-        when(tecnicoDao.getNombreById(9)).thenReturn("tecnico-a");
+    @Test void borrarTecnicoYaNoEstaDisponible() throws Exception {
         mvc.perform(delete("/api/tecnicos/9").header("Authorization", admin()))
-                .andExpect(status().isNoContent());
-        verify(tecnicoDao).eliminar(9);
+                .andExpect(status().isForbidden());
+        verify(tecnicoDao, never()).eliminar(anyInt());
     }
 }

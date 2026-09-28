@@ -34,16 +34,28 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = header.substring(7);
-        if (!jwtUtil.isValid(token)) {
+        Claims  claims;
+        String  username;
+        String  rol;
+        Integer idUsu;
+        Integer idTec;
+        try {
+            claims   = jwtUtil.parseToken(token);
+            username = claims.getSubject();
+            rol      = claims.get("rol", String.class);
+            idUsu    = claims.get("idUsu", Integer.class);
+            idTec    = claims.get("idTec", Integer.class);
+        } catch (RuntimeException e) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
             return;
         }
 
-        Claims  claims   = jwtUtil.parseToken(token);
-        String  username = claims.getSubject();
-        String  rol      = claims.get("rol", String.class);
-        int     idUsu    = claims.get("idUsu", Integer.class);
-        Integer idTec    = claims.get("idTec", Integer.class);
+        // Un token bien firmado pero sin los datos del usuario no identifica a nadie: 401,
+        // y sin autoridad de rol (spec sp7b §4.5).
+        if (idUsu == null || username == null || rol == null || rol.isBlank()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
+            return;
+        }
 
         var principal = new UsuarioPrincipal(idUsu, username, "", rol, idTec);
         var auth = new UsernamePasswordAuthenticationToken(

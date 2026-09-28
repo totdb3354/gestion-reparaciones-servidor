@@ -16,7 +16,9 @@ public class ColorEquivalenciaController {
 
     public ColorEquivalenciaController(ColorEquivalenciaDAO dao) { this.dao = dao; }
 
+    // Equivalencias de color no las usa la tienda: sus lecturas exigen el mismo rol que sus escrituras (spec sp7b §4.2).
     @GetMapping
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<Map<String, String>> getAll() { return dao.getAll(); }
 
     @PutMapping

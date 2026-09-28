@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.TipoCambioDAO;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -15,6 +16,7 @@ public class TipoCambioController {
         this.dao = dao;
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @GetMapping("/{divisa}")
     public Map<String, Double> getTasa(@PathVariable String divisa) {
         return Map.of("value", dao.getTasa(divisa));
