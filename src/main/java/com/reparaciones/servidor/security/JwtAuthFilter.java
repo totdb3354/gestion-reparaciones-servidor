@@ -42,8 +42,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         Claims  claims   = jwtUtil.parseToken(token);
         String  username = claims.getSubject();
         String  rol      = claims.get("rol", String.class);
-        int     idUsu    = claims.get("idUsu", Integer.class);
+        Integer idUsu    = claims.get("idUsu", Integer.class);
         Integer idTec    = claims.get("idTec", Integer.class);
+
+        // Un token bien firmado pero sin los datos del usuario no identifica a nadie: 401, no un error interno,
+        // y sin autoridades inventadas (spec sp7b §4.5).
+        if (idUsu == null || username == null || rol == null || rol.isBlank()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
+            return;
+        }
 
         var principal = new UsuarioPrincipal(idUsu, username, "", rol, idTec);
         var auth = new UsernamePasswordAuthenticationToken(
