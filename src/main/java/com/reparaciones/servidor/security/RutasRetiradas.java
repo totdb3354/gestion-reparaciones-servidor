@@ -21,13 +21,13 @@ public final class RutasRetiradas {
 
     public static final List<Ruta> LISTA = List.of(
             // Almacén de primera generación: el stock lo mueve el servidor al guardar reparaciones,
-            // y las pantallas usan /api/componentes/agrupados y /gestionados. El ajuste manual de stock
-            // (PATCH .../stock) sigue vivo para el supertécnico, así que no entra en esta lista.
+            // y las pantallas usan /api/componentes/agrupados y /gestionados.
             new Ruta("GET",    "/api/componentes"),
             new Ruta("GET",    "/api/componentes/stock-bajo"),
             new Ruta("GET",    "/api/componentes/chasis"),
             new Ruta("GET",    "/api/componentes/evolucion-stock"),
             new Ruta("POST",   "/api/componentes"),
+            new Ruta("PATCH",  "/api/componentes/{idCom}/stock"),
             new Ruta("DELETE", "/api/componentes/{idCom}"),
             new Ruta("GET",    "/api/compras/en-camino"),
             // Piezas de una reparación: las pantallas usan /api/reparaciones/{idAsignacion}/filas
@@ -45,8 +45,9 @@ public final class RutasRetiradas {
             new Ruta("GET",    "/api/reparaciones/estadisticas"),
             new Ruta("POST",   "/api/reparaciones"),
             new Ruta("PATCH",  "/api/reparaciones/{idRep}/completar"),
-            // Técnicos: el alta y el borrado por ADMIN (POST y DELETE /api/tecnicos) siguen vivos, con su
-            // propia cadena de autorización, así que no entran en esta lista.
+            // Técnicos: el alta y el borrado reales van por /api/usuarios/tecnicos.
+            new Ruta("POST",   "/api/tecnicos"),
+            new Ruta("DELETE", "/api/tecnicos/{idTec}"),
             // Teléfonos: las pantallas usan las consultas concretas del formulario.
             new Ruta("GET",    "/api/telefonos"),
             new Ruta("GET",    "/api/telefonos/{imei}/exists")

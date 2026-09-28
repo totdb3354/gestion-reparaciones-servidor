@@ -88,12 +88,11 @@ class RolesSolicitudesStockTest {
         verify(dao).borrar(701);
     }
 
-    @Test void ajusteDeStockSoloSupertecnico() throws Exception {
+    @Test void ajusteDeStockYaNoEstaDisponible() throws Exception {
         String cuerpo = "{\"delta\":1}";
         assertEquals(403, status(json(patch("/api/componentes/101/stock"), cuerpo), tecnico()));
         assertEquals(403, status(json(patch("/api/componentes/101/stock"), cuerpo), admin()));
+        assertEquals(403, status(json(patch("/api/componentes/101/stock"), cuerpo), supertecnico()));
         verifyNoInteractions(componenteDao);
-        assertEquals(200, status(json(patch("/api/componentes/101/stock"), cuerpo), supertecnico()));
-        verify(componenteDao).actualizarStock(101, 1);
     }
 }
