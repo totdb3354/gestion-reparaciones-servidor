@@ -7,6 +7,7 @@ import com.reparaciones.servidor.service.UbicacionDerivador;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.sql.Timestamp;
@@ -16,6 +17,9 @@ import java.util.List;
 
 @Repository
 public class TelefonoDAO {
+
+    public static final String MSG_TIENE_TRABAJOS =
+            "No se puede borrar el teléfono: tiene trabajos registrados en su historial.";
 
     private final JdbcTemplate jdbc;
 
@@ -110,7 +114,18 @@ public class TelefonoDAO {
         }
     }
 
+    /**
+     * Borra el teléfono solo si no queda ninguna fila de Reparacion apuntándolo. Una asignación ya cerrada que no
+     * aparece en ninguna vista también cuenta: la clave ajena la protege, y sin esta comprobación el borrado salía
+     * como error interno (informe R3-02).
+     */
+    @Transactional
     public void eliminar(String imei) {
+        Integer trabajos = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ?", Integer.class, imei);
+        if (trabajos != null && trabajos > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_TIENE_TRABAJOS);
+        }
         jdbc.update("DELETE FROM Telefono WHERE IMEI = ?", imei);
     }
 

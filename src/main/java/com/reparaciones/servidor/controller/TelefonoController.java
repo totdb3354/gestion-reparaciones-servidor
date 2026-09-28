@@ -125,9 +125,12 @@ public class TelefonoController {
     }
 
     @DeleteMapping("/{imei}")
+    @PreAuthorize("hasRole('SUPERTECNICO')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable String imei) {
+    public void eliminar(@PathVariable String imei,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.eliminar(imei);
+        logDao.insertar(principal.getIdUsu(), "ELIMINAR_TELEFONO", "IMEI: " + imei);
     }
 
     /**
