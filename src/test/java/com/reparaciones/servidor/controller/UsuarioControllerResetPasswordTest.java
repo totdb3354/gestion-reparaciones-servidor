@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -60,6 +61,7 @@ class UsuarioControllerResetPasswordTest {
     }
 
     @Test void elAdminRecibeUnaContrasenaYQuedaRegistrado() throws Exception {
+        when(dao.fijarPasswordTemporal(eq(8), anyString())).thenReturn(1);
         mvc.perform(post(RUTA).header("Authorization", admin()))
            .andExpect(status().isOk())
            .andExpect(jsonPath("$.value").isString());
@@ -69,10 +71,18 @@ class UsuarioControllerResetPasswordTest {
 
     /** La contraseña entregada no se repite entre llamadas. */
     @Test void cadaLlamadaEntregaUnaDistinta() throws Exception {
+        when(dao.fijarPasswordTemporal(eq(8), anyString())).thenReturn(1);
         String una = mvc.perform(post(RUTA).header("Authorization", admin()))
                 .andReturn().getResponse().getContentAsString();
         String otra = mvc.perform(post(RUTA).header("Authorization", admin()))
                 .andReturn().getResponse().getContentAsString();
         org.junit.jupiter.api.Assertions.assertNotEquals(una, otra);
+    }
+
+    /** Si ese usuario no existe, la actualización no afecta a ninguna fila: 404 y sin registrar nada. */
+    @Test void unUsuarioInexistenteEs404YNoRegistraNada() throws Exception {
+        when(dao.fijarPasswordTemporal(eq(8), anyString())).thenReturn(0);
+        mvc.perform(post(RUTA).header("Authorization", admin())).andExpect(status().isNotFound());
+        verify(logDao, never()).insertar(anyInt(), anyString(), anyString());
     }
 }

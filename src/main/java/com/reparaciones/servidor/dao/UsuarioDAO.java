@@ -168,9 +168,12 @@ public class UsuarioDAO {
     /**
      * Deja una contraseña entregada por el administrador y marca al usuario para que tenga que cambiarla al
      * entrar (spec sp7b §5.4). El administrador nunca fija una contraseña definitiva ajena.
+     *
+     * @return filas afectadas: 0 si ese usuario no existe, para que el controlador responda 404 sin entregar
+     *         ni registrar nada.
      */
-    public void fijarPasswordTemporal(int idUsu, String password) {
-        jdbc.update("UPDATE Usuario SET PASSWORD = ?, PASSWORD_TEMPORAL = 1 WHERE ID_USU = ?",
+    public int fijarPasswordTemporal(int idUsu, String password) {
+        return jdbc.update("UPDATE Usuario SET PASSWORD = ?, PASSWORD_TEMPORAL = 1 WHERE ID_USU = ?",
                 passwordEncoder.encode(password), idUsu);
     }
 

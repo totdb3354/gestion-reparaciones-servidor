@@ -229,13 +229,22 @@ public class UsuarioController {
     /**
      * Entrega una contraseña temporal para otro usuario. La genera el servidor, se devuelve una sola vez para
      * que el administrador la comunique, y el usuario está obligado a cambiarla al entrar (spec sp7b §5.4).
+     * Si ese usuario no existe, la actualización no afecta a ninguna fila: 404 y sin registrar nada, como en
+     * los demás endpoints de administración (p. ej. {@link #exigirTecnico}).
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{idUsu}/password-temporal")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content)
+    })
     public ValorTexto entregarPasswordTemporal(@PathVariable int idUsu,
                                                @AuthenticationPrincipal UsuarioPrincipal principal) {
         String password = PasswordTemporal.generar();
-        dao.fijarPasswordTemporal(idUsu, password);
+        int filas = dao.fijarPasswordTemporal(idUsu, password);
+        if (filas == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado: " + idUsu);
+        }
         logDao.insertar(principal.getIdUsu(), "RESTABLECER_PASSWORD", "ID_USU: " + idUsu);
         return new ValorTexto(password);
     }
