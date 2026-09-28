@@ -73,4 +73,31 @@ class IntentosFallidosTest {
         assertDoesNotThrow(() -> intentos.comprobar(null));
         assertEquals(0, intentos.registrarFallo(null));
     }
+
+    @Test void elFrenoPorCuentaIgnoraMayusculas() {
+        for (int i = 0; i < IntentosFallidos.UMBRAL; i++) intentos.registrarFallo("Ana");
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> intentos.comprobar("ANA"));
+        assertEquals(429, ex.getStatusCode().value());
+    }
+
+    @Test void unAciertoConOtraVarianteDeMayusculasLimpiaElContadorComun() {
+        for (int i = 0; i < IntentosFallidos.UMBRAL; i++) intentos.registrarFallo("ana");
+        intentos.limpiar("ANA");
+        assertDoesNotThrow(() -> intentos.comprobar("ana"));
+    }
+
+    @Test void conElRegistroLlenoSeDescartaLaCuentaMenosReciente() {
+        for (int i = 0; i < IntentosFallidos.MAX_ENTRADAS; i++) {
+            for (int f = 0; f < IntentosFallidos.UMBRAL; f++) intentos.registrarFallo("cuenta-" + i);
+            ahora.incrementAndGet();
+        }
+        // Sigue en el mapa: es la primera cuenta, la menos reciente, pero el mapa aún no ha superado el tope.
+        // esperaMs no depende del reloj (solo de si la cuenta sigue teniendo fallos registrados).
+        assertEquals(true, intentos.esperaMs("cuenta-0") > 0L);
+
+        // Una cuenta nueva satura el mapa por encima del tope y descarta la menos reciente (cuenta-0).
+        for (int f = 0; f < IntentosFallidos.UMBRAL; f++) intentos.registrarFallo("cuenta-nueva");
+
+        assertEquals(0L, intentos.esperaMs("cuenta-0"), "cuenta-0 debía haberse descartado por ser la menos reciente");
+    }
 }
