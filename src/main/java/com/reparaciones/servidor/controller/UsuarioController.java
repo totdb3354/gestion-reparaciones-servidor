@@ -4,6 +4,8 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.Usuario;
+import com.reparaciones.servidor.model.ValorTexto;
+import com.reparaciones.servidor.security.PasswordTemporal;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -222,6 +224,20 @@ public class UsuarioController {
         if (!dao.existeTecnico(idTec)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ValidacionUsuarios.MSG_NO_ENCONTRADO);
         }
+    }
+
+    /**
+     * Entrega una contraseña temporal para otro usuario. La genera el servidor, se devuelve una sola vez para
+     * que el administrador la comunique, y el usuario está obligado a cambiarla al entrar (spec sp7b §5.4).
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/{idUsu}/password-temporal")
+    public ValorTexto entregarPasswordTemporal(@PathVariable int idUsu,
+                                               @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String password = PasswordTemporal.generar();
+        dao.fijarPasswordTemporal(idUsu, password);
+        logDao.insertar(principal.getIdUsu(), "RESTABLECER_PASSWORD", "ID_USU: " + idUsu);
+        return new ValorTexto(password);
     }
 
     /** Package-private (no private) para que los tests lo construyan; springdoc lo publica con el mismo nombre. */

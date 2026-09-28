@@ -160,7 +160,22 @@ public class UsuarioDAO {
         if (!passwordEncoder.matches(passwordActual, hashActual))
             throw new IllegalArgumentException("Contraseña actual incorrecta.");
         String hashNuevo = passwordEncoder.encode(passwordNueva);
-        jdbc.update("UPDATE Usuario SET PASSWORD = ? WHERE ID_USU = ?", hashNuevo, idUsu);
+        jdbc.update("UPDATE Usuario SET PASSWORD = ?, PASSWORD_TEMPORAL = 0 WHERE ID_USU = ?", hashNuevo, idUsu);
+    }
+
+    /**
+     * Deja una contraseña entregada por el administrador y marca al usuario para que tenga que cambiarla al
+     * entrar (spec sp7b §5.4). El administrador nunca fija una contraseña definitiva ajena.
+     */
+    public void fijarPasswordTemporal(int idUsu, String password) {
+        jdbc.update("UPDATE Usuario SET PASSWORD = ?, PASSWORD_TEMPORAL = 1 WHERE ID_USU = ?",
+                passwordEncoder.encode(password), idUsu);
+    }
+
+    public boolean tienePasswordTemporal(int idUsu) {
+        Boolean b = jdbc.queryForObject(
+                "SELECT PASSWORD_TEMPORAL FROM Usuario WHERE ID_USU = ?", Boolean.class, idUsu);
+        return Boolean.TRUE.equals(b);
     }
 
     public String getNombreByIdTec(int idTec) {

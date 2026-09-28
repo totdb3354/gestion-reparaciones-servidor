@@ -56,7 +56,7 @@ public class AuthController {
 
             return ResponseEntity.ok(new LoginResponse(
                     principal.getIdUsu(), principal.getUsername(), principal.getRol(),
-                    principal.getIdTec(), token));
+                    principal.getIdTec(), token, usuarioDao.tienePasswordTemporal(principal.getIdUsu())));
         } catch (BadCredentialsException e) {
             // Deja constancia del intento con el nombre tal cual se escribió, aunque no exista ese usuario
             // (spec sp7b §5.2).
