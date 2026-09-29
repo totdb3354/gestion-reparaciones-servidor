@@ -8,6 +8,7 @@ import com.reparaciones.servidor.model.ValorTexto;
 import com.reparaciones.servidor.security.PasswordTemporal;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -234,8 +235,11 @@ public class UsuarioController {
      */
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{idUsu}/password-temporal")
+    // El 200 declara su cuerpo ValorTexto a proposito: es lo unico que devuelve esta ruta y lo que la web
+    // necesita para mostrar la contraseña una sola vez. Con @ApiResponses presente springdoc no añade el
+    // 200 por su cuenta, asi que omitirlo lo borraria del contrato.
     @ApiResponses({
-        @ApiResponse(responseCode = "200", content = @Content),
+        @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = ValorTexto.class))),
         @ApiResponse(responseCode = "404", content = @Content)
     })
     public ValorTexto entregarPasswordTemporal(@PathVariable int idUsu,
