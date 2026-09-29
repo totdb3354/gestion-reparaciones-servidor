@@ -2,6 +2,8 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.security.EstadoUsuarioService;
+import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -19,7 +21,9 @@ class AuthControllerTest {
     private final JwtUtil jwtUtil = mock(JwtUtil.class);
     private final LogDAO logDao = mock(LogDAO.class);
     private final UsuarioDAO usuarioDao = mock(UsuarioDAO.class);
-    private final AuthController ctl = new AuthController(authManager, jwtUtil, logDao, usuarioDao);
+    private final IntentosFallidos intentos = new IntentosFallidos();
+    private final EstadoUsuarioService estadoUsuario = mock(EstadoUsuarioService.class);
+    private final AuthController ctl = new AuthController(authManager, jwtUtil, logDao, usuarioDao, intentos, estadoUsuario);
 
     @Test void loginDevuelveRespuestaTipadaConLosCincoCampos() {
         var principal = new UsuarioPrincipal(7, "tecnico_f", "x", "SUPERTECNICO", 3);
@@ -28,7 +32,7 @@ class AuthControllerTest {
         when(authManager.authenticate(any())).thenReturn(auth);
         when(jwtUtil.generateToken(principal)).thenReturn("jwt-123");
 
-        var resp = ctl.login(new AuthController.LoginRequest("tecnico_f", "secreta"));
+        var resp = ctl.login(new AuthController.LoginRequest("tecnico_f", "secreta"), null);
 
         assertEquals(200, resp.getStatusCode().value());
         var body = resp.getBody();
@@ -43,7 +47,7 @@ class AuthControllerTest {
 
     @Test void loginConCredencialesMalasDevuelve401SinCuerpo() {
         when(authManager.authenticate(any())).thenThrow(new BadCredentialsException("no"));
-        var resp = ctl.login(new AuthController.LoginRequest("x", "y"));
+        var resp = ctl.login(new AuthController.LoginRequest("x", "y"), null);
         assertEquals(401, resp.getStatusCode().value());
         assertNull(resp.getBody());
     }

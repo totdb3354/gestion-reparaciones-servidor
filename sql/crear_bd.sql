@@ -90,11 +90,12 @@ CREATE TABLE Telefono (
 -- ── Tablas con dependencias ────────────────────────────────────────────────────
 
 CREATE TABLE Usuario (
-    ID_USU         INT          NOT NULL AUTO_INCREMENT,
-    NOMBRE_USUARIO VARCHAR(50)  NOT NULL UNIQUE,
-    PASSWORD       VARCHAR(255) NOT NULL,
-    ROL            ENUM('ADMIN','SUPERTECNICO','TECNICO') NOT NULL,
-    ID_TEC         INT          NULL,
+    ID_USU            INT          NOT NULL AUTO_INCREMENT,
+    NOMBRE_USUARIO    VARCHAR(50)  NOT NULL UNIQUE,
+    PASSWORD          VARCHAR(255) NOT NULL,
+    ROL               ENUM('ADMIN','SUPERTECNICO','TECNICO') NOT NULL,
+    ID_TEC            INT          NULL,
+    PASSWORD_TEMPORAL TINYINT(1)   NOT NULL DEFAULT 0,
     PRIMARY KEY (ID_USU),
     CONSTRAINT fk_usuario_tecnico FOREIGN KEY (ID_TEC) REFERENCES Tecnico (ID_TEC)
 );
@@ -319,14 +320,15 @@ CREATE TABLE Solicitud_Stock (
 -- ── Log de actividad ──────────────────────────────────────────────────────────
 
 CREATE TABLE Log_Actividad (
-    ID_LOG  INT          NOT NULL AUTO_INCREMENT,
-    FECHA   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ID_USU  INT          NOT NULL,
-    ACCION  VARCHAR(50)  NOT NULL,
-    DETALLE TEXT,
-    MOTIVO  TEXT,
+    ID_LOG         INT          NOT NULL AUTO_INCREMENT,
+    FECHA          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ID_USU         INT          NULL,
+    NOMBRE_USUARIO VARCHAR(50)  NULL,
+    ACCION         VARCHAR(50)  NOT NULL,
+    DETALLE        TEXT,
+    MOTIVO         TEXT,
     PRIMARY KEY (ID_LOG),
-    CONSTRAINT fk_log_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU)
+    CONSTRAINT fk_log_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 
 -- ── Trazabilidad de movimientos telefónicos ────────────────────────────────────

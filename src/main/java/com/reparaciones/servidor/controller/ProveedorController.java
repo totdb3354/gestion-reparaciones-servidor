@@ -74,19 +74,26 @@ public class ProveedorController {
                 () -> {
                     dao.insertar(nombre, divisa, req.tipo());
                     return null;
-                });
+                },
+                ignorado -> logDao.insertar(principal.getIdUsu(), "CREAR_PROVEEDOR", "NOMBRE: " + nombre));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idProv}/activo")
-    public void setActivo(@PathVariable int idProv, @RequestBody ActivoRequest req) {
+    public void setActivo(@PathVariable int idProv, @RequestBody ActivoRequest req,
+                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.setActivo(idProv, req.activo());
+        logDao.insertar(principal.getIdUsu(),
+                req.activo() ? "ALTA_PROVEEDOR" : "BAJA_PROVEEDOR", "ID_PROV: " + idProv);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idProv}")
-    public void editar(@PathVariable int idProv, @RequestBody EditarRequest req) {
-        dao.editar(idProv, nombreValido(req.nombre()), divisaValida(req.divisa()), req.comentario());
+    public void editar(@PathVariable int idProv, @RequestBody EditarRequest req,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        String nombre = nombreValido(req.nombre());
+        dao.editar(idProv, nombre, divisaValida(req.divisa()), req.comentario());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_PROVEEDOR", "ID_PROV: " + idProv + ", NOMBRE: " + nombre);
     }
 
     /** Guard que hasta el 4a solo aplicaba el cliente: sin él, la clave foránea de compras y lotes hacía fallar el

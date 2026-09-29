@@ -20,8 +20,10 @@ import static org.mockito.Mockito.*;
 @SuppressWarnings("unchecked")
 class LogDAOFiltroTest {
 
-    private static final String BASE = "SELECT l.ID_LOG, l.FECHA, u.NOMBRE_USUARIO, l.ACCION, l.DETALLE, l.MOTIVO "
-            + "FROM Log_Actividad l JOIN Usuario u ON l.ID_USU = u.ID_USU WHERE 1=1";
+    private static final String BASE =
+            "SELECT l.ID_LOG, l.FECHA, COALESCE(l.NOMBRE_USUARIO, u.NOMBRE_USUARIO) AS NOMBRE_USUARIO,        "
+            + "l.ACCION, l.DETALLE, l.MOTIVO "
+            + "FROM Log_Actividad l LEFT JOIN Usuario u ON l.ID_USU = u.ID_USU WHERE 1=1";
     private static final String ORDEN = " ORDER BY l.FECHA DESC, l.ID_LOG DESC";
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -86,8 +88,8 @@ class LogDAOFiltroTest {
     @Test void accionYUsuarioFiltranPorIgualdadYElLimiteVaAlFinal() {
         dao.getFiltered("CREAR_USUARIO", "admin-prueba", LocalDate.of(2026, 6, 10), null, 1000);
         verify(jdbc).query(sql.capture(), any(RowMapper.class), p.capture(), p.capture(), p.capture(), p.capture());
-        assertEquals(BASE + " AND l.ACCION = ? AND u.NOMBRE_USUARIO = ? AND l.FECHA >= ?" + ORDEN + " LIMIT ?",
-                sql.getValue());
+        assertEquals(BASE + " AND l.ACCION = ? AND COALESCE(l.NOMBRE_USUARIO, u.NOMBRE_USUARIO) = ? AND l.FECHA >= ?"
+                + ORDEN + " LIMIT ?", sql.getValue());
         assertEquals(List.of("CREAR_USUARIO", "admin-prueba", LocalDateTime.of(2026, 6, 9, 22, 0), 1000),
                 p.getAllValues());
     }

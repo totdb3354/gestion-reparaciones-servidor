@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -32,6 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(UsuariosOperativosTestConfig.class)
 @TestPropertySource(properties = {
         // Sin BD: Hikari es perezoso, así que el contexto arranca aunque no haya MariaDB delante.
         "spring.sql.init.mode=never",
@@ -348,7 +350,7 @@ class OpenApiContractTest {
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}", "delete", "204", "404", "409");
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/activar", "patch", "204", "404");
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/desactivar", "patch", "204", "404");
-        assertCodigos(paths, "/api/auth/cambiar-password", "patch", "204", "422");
+        assertCodigos(paths, "/api/auth/cambiar-password", "patch", "204", "422", "429");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

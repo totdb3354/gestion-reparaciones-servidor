@@ -62,8 +62,10 @@ public class UsuarioDAO {
         }, kh);
         int    idTec = kh.getKey().intValue();
         String hash  = passwordEncoder.encode(password);
+        // La contraseña que elige el administrador queda marcada como temporal, igual que un restablecimiento
+        // (spec sp7b §5.4): quien la recibe tiene que cambiarla al entrar.
         jdbc.update(
-                "INSERT INTO Usuario (NOMBRE_USUARIO, PASSWORD, ROL, ID_TEC) VALUES (?, ?, ?, ?)",
+                "INSERT INTO Usuario (NOMBRE_USUARIO, PASSWORD, ROL, ID_TEC, PASSWORD_TEMPORAL) VALUES (?, ?, ?, ?, 1)",
                 nombreUsuario, hash, rol, idTec);
     }
 
@@ -91,8 +93,9 @@ public class UsuarioDAO {
             "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ID_TEC_ASIGNA = ?)",
             "SELECT EXISTS(SELECT 1 FROM Reparacion WHERE ENTREGADO_POR = ?)");
 
-    /** Las columnas que apuntan a Usuario.ID_USU con FK (sql/crear_bd.sql :130-131, :144, :160, :316, :346), salvo
-     *  Log_Actividad, que eliminarTecnico borra a propósito (calco, spec 6 G8). */
+    /** Las columnas que apuntan a Usuario.ID_USU con FK (sql/crear_bd.sql :130-131, :144, :160, :316, :346).
+     *  Log_Actividad no está: su columna ID_USU admite nulo y eliminarTecnico deja su registro de actividad
+     *  en su sitio (spec sp7b §5.6). */
     static final List<String> REFERENCIAS_USUARIO = List.of(
             "SELECT EXISTS(SELECT 1 FROM Revision WHERE EST_ID_USU = ?)",
             "SELECT EXISTS(SELECT 1 FROM Revision WHERE FUN_ID_USU = ?)",
@@ -136,9 +139,12 @@ public class UsuarioDAO {
         return tieneReferencias(idTec);
     }
 
+    /**
+     * Borra al usuario y a su técnico, y deja su registro de actividad en su sitio: la clave ajena lo pone a nulo
+     * y el nombre ya está guardado en cada línea, así que la auditoría sigue siendo legible (spec sp7b §5.6).
+     */
     @Transactional
     public void eliminarTecnico(int idTec, int idUsu) {
-        jdbc.update("DELETE FROM Log_Actividad WHERE ID_USU = ?", idUsu);
         jdbc.update("DELETE FROM Usuario WHERE ID_USU = ?", idUsu);
         jdbc.update("DELETE FROM Tecnico WHERE ID_TEC = ?", idTec);
     }
@@ -156,7 +162,25 @@ public class UsuarioDAO {
         if (!passwordEncoder.matches(passwordActual, hashActual))
             throw new IllegalArgumentException("Contraseña actual incorrecta.");
         String hashNuevo = passwordEncoder.encode(passwordNueva);
-        jdbc.update("UPDATE Usuario SET PASSWORD = ? WHERE ID_USU = ?", hashNuevo, idUsu);
+        jdbc.update("UPDATE Usuario SET PASSWORD = ?, PASSWORD_TEMPORAL = 0 WHERE ID_USU = ?", hashNuevo, idUsu);
+    }
+
+    /**
+     * Deja una contraseña entregada por el administrador y marca al usuario para que tenga que cambiarla al
+     * entrar (spec sp7b §5.4). El administrador nunca fija una contraseña definitiva ajena.
+     *
+     * @return filas afectadas: 0 si ese usuario no existe, para que el controlador responda 404 sin entregar
+     *         ni registrar nada.
+     */
+    public int fijarPasswordTemporal(int idUsu, String password) {
+        return jdbc.update("UPDATE Usuario SET PASSWORD = ?, PASSWORD_TEMPORAL = 1 WHERE ID_USU = ?",
+                passwordEncoder.encode(password), idUsu);
+    }
+
+    public boolean tienePasswordTemporal(int idUsu) {
+        Boolean b = jdbc.queryForObject(
+                "SELECT PASSWORD_TEMPORAL FROM Usuario WHERE ID_USU = ?", Boolean.class, idUsu);
+        return Boolean.TRUE.equals(b);
     }
 
     public String getNombreByIdTec(int idTec) {

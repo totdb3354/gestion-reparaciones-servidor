@@ -18,9 +18,18 @@ import java.util.List;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final EstadoUsuarioService estadoUsuario;
 
-    public JwtAuthFilter(JwtUtil jwtUtil) {
-        this.jwtUtil = jwtUtil;
+    public JwtAuthFilter(JwtUtil jwtUtil, EstadoUsuarioService estadoUsuario) {
+        this.jwtUtil       = jwtUtil;
+        this.estadoUsuario = estadoUsuario;
+    }
+
+    /** El login decide sus propias credenciales; un token que la petición traiga de paso no debe condicionarlo
+     *  (spec sp7b, arreglo E3-1). */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "POST".equals(request.getMethod()) && "/api/auth/login".equals(request.getRequestURI());
     }
 
     @Override
@@ -54,6 +63,22 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // y sin autoridad de rol (spec sp7b §4.5).
         if (idUsu == null || username == null || rol == null || rol.isBlank()) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
+            return;
+        }
+
+        // El token puede ser válido y el usuario ya no: desactivado o borrado. 401 y no 403,
+        // porque es lo único que devuelve al usuario a la pantalla de entrada en los dos clientes (spec sp7b D4).
+        if (!estadoUsuario.estaOperativo(idUsu)) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token inválido o expirado");
+            return;
+        }
+
+        // Con la contraseña marcada como temporal solo se puede cambiarla: el resto de rutas responden 403,
+        // no 401, porque la sesión sigue siendo válida y solo falta ese paso (spec sp7b §5.4, arreglo E3-2).
+        boolean esCambioPassword = "PATCH".equals(request.getMethod())
+                && "/api/auth/cambiar-password".equals(request.getRequestURI());
+        if (!esCambioPassword && estadoUsuario.tienePasswordTemporal(idUsu)) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Tienes que cambiar la contraseña antes de seguir.");
             return;
         }
 

@@ -602,8 +602,10 @@ public class ReparacionController {
     @DeleteMapping("/imei/{imei}/incidencia-activa")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void borrarIncidenciaPorImei(@PathVariable String imei,
-            @RequestParam(defaultValue = "R") String tipo) {
+            @RequestParam(defaultValue = "R") String tipo,
+            @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.borrarIncidenciaPorImei(imei, tipo);
+        logDao.insertar(principal.getIdUsu(), "BORRAR_INCIDENCIA_ACTIVA", "IMEI: " + imei + ", TIPO: " + tipo);
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")

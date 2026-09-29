@@ -46,8 +46,9 @@ public class SolicitudController {
     }
 
     @PatchMapping("/{idRc}/limpiar")
-    public void limpiar(@PathVariable int idRc) {
+    public void limpiar(@PathVariable int idRc, @AuthenticationPrincipal UsuarioPrincipal principal) {
         dao.limpiarSolicitud(idRc);
+        logDao.insertar(principal.getIdUsu(), "LIMPIAR_SOLICITUD", "ID_RC: " + idRc);
     }
 
     private record EstadoRequest(String estado) {}
