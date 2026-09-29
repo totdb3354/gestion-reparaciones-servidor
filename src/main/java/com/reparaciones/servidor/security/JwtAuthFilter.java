@@ -17,6 +17,13 @@ import java.util.List;
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
+    /**
+     * Texto de ese 403. **La web lo reconoce por este texto** para llevar a la pantalla de cambio obligatorio en vez de
+     * enseñar "no tienes permisos" en bucle (MSG_403_PASSWORD_TEMPORAL en gestion-reparaciones-web/src/shared/api/errors.ts).
+     * Cambiarlo aquí sin cambiarlo allí devuelve a la web al mensaje genérico. Un test fija el texto en cada lado.
+     */
+    public static final String MSG_PASSWORD_TEMPORAL = "Tienes que cambiar la contraseña antes de seguir.";
+
     private final JwtUtil jwtUtil;
     private final EstadoUsuarioService estadoUsuario;
 
@@ -78,7 +85,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         boolean esCambioPassword = "PATCH".equals(request.getMethod())
                 && "/api/auth/cambiar-password".equals(request.getRequestURI());
         if (!esCambioPassword && estadoUsuario.tienePasswordTemporal(idUsu)) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Tienes que cambiar la contraseña antes de seguir.");
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, MSG_PASSWORD_TEMPORAL);
             return;
         }
 

@@ -3,6 +3,8 @@ package com.reparaciones.servidor.security;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -107,5 +109,15 @@ class JwtAuthFilterEstadoTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"passwordActual\":\"secreta1\",\"passwordNueva\":\"nueva123\"}"))
            .andExpect(status().isNoContent());
+    }
+
+    /**
+     * El texto de ese 403 es contrato con la web, que lo reconoce para llevar a la pantalla de cambio obligatorio en vez
+     * de enseñar "no tienes permisos" en bucle. Si se cambia aquí hay que cambiarlo tambien en
+     * gestion-reparaciones-web/src/shared/api/errors.ts (MSG_403_PASSWORD_TEMPORAL), donde otro test fija el mismo texto.
+     */
+    @Test
+    void elTextoDel403EsElQueReconoceLaWeb() {
+        assertEquals("Tienes que cambiar la contraseña antes de seguir.", JwtAuthFilter.MSG_PASSWORD_TEMPORAL);
     }
 }
