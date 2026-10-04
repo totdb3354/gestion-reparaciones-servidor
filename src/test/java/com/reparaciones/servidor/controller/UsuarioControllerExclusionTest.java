@@ -11,7 +11,7 @@ class UsuarioControllerExclusionTest {
 
     private final UsuarioDAO dao = mock(UsuarioDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final UsuarioController ctl = new UsuarioController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia());
+    private final UsuarioController ctl = new UsuarioController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia(), org.mockito.Mockito.mock(com.reparaciones.servidor.security.EstadoUsuarioService.class));
     private final UsuarioPrincipal admin = new UsuarioPrincipal(1, "admin", "x", "ADMIN", null);
 
     @Test void excluirActualizaYLoguea() {

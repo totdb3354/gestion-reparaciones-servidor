@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.UsuarioDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.model.Usuario;
 import com.reparaciones.servidor.model.ValorTexto;
+import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.PasswordTemporal;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -38,14 +39,17 @@ public class UsuarioController {
     private final UsuarioDAO           dao;
     private final LogDAO               logDao;
     private final RegistroIdempotencia idempotencia;
+    private final EstadoUsuarioService estadoUsuario;
     /** Clave de la huella de la contraseña: aleatoria, creada al arrancar y solo en memoria de este proceso. */
     private final byte[]               claveHuella;
 
-    public UsuarioController(UsuarioDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia) {
-        this.dao          = dao;
-        this.logDao       = logDao;
-        this.idempotencia = idempotencia;
-        this.claveHuella  = claveHuellaNueva();
+    public UsuarioController(UsuarioDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia,
+                             EstadoUsuarioService estadoUsuario) {
+        this.dao           = dao;
+        this.logDao        = logDao;
+        this.idempotencia  = idempotencia;
+        this.estadoUsuario = estadoUsuario;
+        this.claveHuella   = claveHuellaNueva();
     }
 
     @GetMapping("/tecnicos")
@@ -142,6 +146,7 @@ public class UsuarioController {
         exigirTecnico(idTec);
         String nombre = dao.getNombreByIdTec(idTec);
         dao.activarTecnico(idTec);
+        olvidarEstadoDelTecnico(idTec);
         logDao.insertar(principal.getIdUsu(), "ACTIVAR_USUARIO",
                 "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
     }
@@ -158,6 +163,7 @@ public class UsuarioController {
         exigirTecnico(idTec);
         String nombre = dao.getNombreByIdTec(idTec);
         dao.desactivarTecnico(idTec);
+        olvidarEstadoDelTecnico(idTec);
         logDao.insertar(principal.getIdUsu(), "DESACTIVAR_USUARIO",
                 "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
     }
@@ -216,8 +222,17 @@ public class UsuarioController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ValidacionUsuarios.MSG_NO_ENCONTRADO);
         }
         dao.eliminarTecnico(idTec, idUsuReal);
+        estadoUsuario.invalidar(idUsuReal);
         logDao.insertar(principal.getIdUsu(), "ELIMINAR_USUARIO",
                 "ID_TEC: " + idTec + ", ID_USU: " + idUsuReal + ", NOMBRE: " + nombre);
+    }
+
+    /** Retira el estado cacheado del usuario de ese técnico para que el cambio recién escrito surta efecto en su
+     *  siguiente petición, sin esperar a que caduque la caché de {@link EstadoUsuarioService}. Va siempre después
+     *  de la escritura: antes, una petición suya entre medias volvería a cachear el estado anterior. */
+    private void olvidarEstadoDelTecnico(int idTec) {
+        Integer idUsu = dao.getIdUsuByIdTec(idTec);
+        if (idUsu != null) estadoUsuario.invalidar(idUsu);
     }
 
     /** 404 {message: "Técnico no encontrado."} en vez del 500 de getNombreByIdTec (spec 6 §4.2). */
@@ -249,6 +264,7 @@ public class UsuarioController {
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado: " + idUsu);
         }
+        estadoUsuario.invalidar(idUsu);
         logDao.insertar(principal.getIdUsu(), "RESTABLECER_PASSWORD", "ID_USU: " + idUsu);
         return new ValorTexto(password);
     }

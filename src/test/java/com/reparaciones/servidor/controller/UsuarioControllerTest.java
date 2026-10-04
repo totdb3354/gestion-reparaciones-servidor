@@ -2,8 +2,10 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +26,8 @@ class UsuarioControllerTest {
 
     private final UsuarioDAO dao = mock(UsuarioDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final UsuarioController ctl = new UsuarioController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia());
+    private final EstadoUsuarioService estado = mock(EstadoUsuarioService.class);
+    private final UsuarioController ctl = new UsuarioController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia(), estado);
     private final UsuarioPrincipal admin = new UsuarioPrincipal(1, "admin-prueba", "", "ADMIN", null);
 
     private static UsuarioController.RegistrarTecnicoRequest alta(String tecnico, String usuario, String password, String rol) {
@@ -226,6 +229,74 @@ class UsuarioControllerTest {
         noEncontrado(() -> ctl.eliminarTecnico(7, 20, admin));
         verify(dao, never()).eliminarTecnico(anyInt(), anyInt());
         verifyNoInteractions(logDao);
+    }
+
+    // ── el estado cacheado del usuario se olvida al cambiarlo (EstadoUsuarioService guarda 30 s) ──
+    // Siempre DESPUÉS de escribir: si se olvidara antes, una petición de ese usuario entre medias volvería a
+    // cachear el estado viejo durante otros 30 s.
+
+    @Test void desactivarOlvidaElEstadoDelUsuarioDespuesDeEscribir() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getIdUsuByIdTec(7)).thenReturn(20);
+        ctl.desactivarTecnico(7, admin);
+        InOrder orden = inOrder(dao, estado);
+        orden.verify(dao).desactivarTecnico(7);
+        orden.verify(estado).invalidar(20);
+    }
+
+    /** Quien se reactiva puede operar en su siguiente petición, sin esperar a que caduque la caché. */
+    @Test void activarOlvidaElEstadoDelUsuarioDespuesDeEscribir() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getIdUsuByIdTec(7)).thenReturn(20);
+        ctl.activarTecnico(7, admin);
+        InOrder orden = inOrder(dao, estado);
+        orden.verify(dao).activarTecnico(7);
+        orden.verify(estado).invalidar(20);
+    }
+
+    @Test void eliminarOlvidaElEstadoDelUsuarioDespuesDeBorrar() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getIdUsuByIdTec(7)).thenReturn(20);
+        ctl.eliminarTecnico(7, null, admin);
+        InOrder orden = inOrder(dao, estado);
+        orden.verify(dao).eliminarTecnico(7, 20);
+        orden.verify(estado).invalidar(20);
+    }
+
+    /** La marca de contraseña temporal surte efecto en la siguiente petición del usuario, no a los 30 s. */
+    @Test void restablecerOlvidaElEstadoDelUsuarioDespuesDeEscribir() {
+        when(dao.fijarPasswordTemporal(eq(8), anyString())).thenReturn(1);
+        ctl.entregarPasswordTemporal(8, admin);
+        InOrder orden = inOrder(dao, estado);
+        orden.verify(dao).fijarPasswordTemporal(eq(8), anyString());
+        orden.verify(estado).invalidar(8);
+    }
+
+    @Test void restablecerAUnInexistenteNoTocaLaCache() {
+        when(dao.fijarPasswordTemporal(eq(8), anyString())).thenReturn(0);
+        assertThrows(ResponseStatusException.class, () -> ctl.entregarPasswordTemporal(8, admin));
+        verifyNoInteractions(estado);
+    }
+
+    @Test void losCuatro404NoTocanLaCache() {
+        assertThrows(ResponseStatusException.class, () -> ctl.activarTecnico(99, admin));
+        assertThrows(ResponseStatusException.class, () -> ctl.desactivarTecnico(99, admin));
+        assertThrows(ResponseStatusException.class, () -> ctl.eliminarTecnico(99, null, admin));
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getIdUsuByIdTec(7)).thenReturn(null);
+        assertThrows(ResponseStatusException.class, () -> ctl.eliminarTecnico(7, null, admin));
+        verifyNoInteractions(estado);
+    }
+
+    /** Un técnico sin fila en Usuario no tiene sesión que olvidar: activar y desactivar siguen funcionando. */
+    @Test void activarYDesactivarUnTecnicoSinUsuarioNoTocanLaCache() {
+        when(dao.existeTecnico(7)).thenReturn(true);
+        when(dao.getIdUsuByIdTec(7)).thenReturn(null);
+        ctl.desactivarTecnico(7, admin);
+        ctl.activarTecnico(7, admin);
+        verify(dao).desactivarTecnico(7);
+        verify(dao).activarTecnico(7);
+        verifyNoInteractions(estado);
     }
 
     // ── huella de la contraseña para comparar reintentos del alta ──

@@ -24,8 +24,9 @@ import java.util.function.Supplier;
  *
  * La respuesta se cachea {@link #TTL_MS}: la web sondea cada minuto y cada pestaña abierta multiplica las
  * peticiones, así que consultar en cada una sería un coste por nada. Ese tiempo es también el techo de retardo
- * aceptado entre desactivar a alguien y que deje de poder operar. Cuando alguien cambia su propia contraseña,
- * {@link #invalidar(int)} retira su entrada al momento en vez de esperar a que caduque.
+ * aceptado si un cambio no avisa. Los cambios que pasan por la aplicación sí avisan: cambiar la propia
+ * contraseña, y activar, desactivar, eliminar o entregar una contraseña temporal desde la administración de
+ * usuarios llaman a {@link #invalidar(int)}, que retira la entrada al momento en vez de esperar a que caduque.
  *
  * Si la consulta falla, se deja pasar: una caída de la base de datos no debe expulsar al taller entero.
  */
@@ -69,8 +70,9 @@ public class EstadoUsuarioService {
         return entrada(idUsu).passwordTemporal();
     }
 
-    /** Retira la entrada cacheada de un usuario, para que un cambio de contraseña propio surta efecto sin
-     *  esperar hasta {@link #TTL_MS} (spec sp7b, arreglo E3-2). */
+    /** Retira la entrada cacheada de un usuario, para que un cambio recién escrito en él (su contraseña, su
+     *  estado activo, su borrado) surta efecto en su siguiente petición sin esperar hasta {@link #TTL_MS}. Se
+     *  llama después de la escritura. */
     public void invalidar(int idUsu) {
         cache.remove(idUsu);
     }
