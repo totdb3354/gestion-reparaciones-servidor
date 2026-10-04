@@ -20,12 +20,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 
@@ -40,8 +34,6 @@ public class UsuarioController {
     private final LogDAO               logDao;
     private final RegistroIdempotencia idempotencia;
     private final EstadoUsuarioService estadoUsuario;
-    /** Clave de la huella de la contraseña: aleatoria, creada al arrancar y solo en memoria de este proceso. */
-    private final byte[]               claveHuella;
 
     public UsuarioController(UsuarioDAO dao, LogDAO logDao, RegistroIdempotencia idempotencia,
                              EstadoUsuarioService estadoUsuario) {
@@ -49,7 +41,6 @@ public class UsuarioController {
         this.logDao        = logDao;
         this.idempotencia  = idempotencia;
         this.estadoUsuario = estadoUsuario;
-        this.claveHuella   = claveHuellaNueva();
     }
 
     @GetMapping("/tecnicos")
@@ -58,13 +49,15 @@ public class UsuarioController {
         return dao.getUsuariosTecnicos();
     }
 
-    /** Alta de usuario y técnico (spec 6 §4.1): los nombres se recortan antes de validar y se guardan recortados;
-     *  los cinco 422 de {@link ValidacionUsuarios#validarAlta} van antes que los dos 409 de duplicado de siempre.
-     *  Un 422 o un 409 no escriben ni registran log. */
+    /** Alta de usuario y técnico (spec 6 §4.1; spec política de contraseñas §3.2): los nombres se recortan antes de
+     *  validar y se guardan recortados; los 422 de {@link ValidacionUsuarios#validarAlta} van antes que los dos 409 de
+     *  duplicado. La contraseña la genera el servidor como en "Restablecer", el DAO la deja marcada como temporal y se
+     *  devuelve una sola vez. Con clave de reintento, la respuesta guardada (con esa temporal) vive solo en la memoria
+     *  de este proceso hasta que caduca: es lo que permite recuperarla si la primera respuesta se perdió. */
     @PostMapping("/tecnicos")
     @PreAuthorize("hasRole('ADMIN')")
     @ApiResponses({
-        @ApiResponse(responseCode = "201", content = @Content),
+        @ApiResponse(responseCode = "201", content = @Content(schema = @Schema(implementation = ValorTexto.class))),
         @ApiResponse(responseCode = "409", content = @Content),
         @ApiResponse(responseCode = "422", content = @Content)
     })
@@ -74,11 +67,9 @@ public class UsuarioController {
                                                String claveIdempotencia) {
         String nombreTecnico = recortar(req.nombreTecnico());
         String nombreUsuario = recortar(req.nombreUsuario());
-        ValidacionUsuarios.validarAlta(nombreTecnico, nombreUsuario, req.password(), req.rol());
+        ValidacionUsuarios.validarAlta(nombreTecnico, nombreUsuario, req.rol());
         String rol = req.rol() != null ? req.rol() : "TECNICO";
-        // Con clave, un reintento con el mismo cuerpo devuelve el 201 de la primera vez en vez del 409 de
-        // duplicado. Los 409 no quedan registrados: salen de la escritura como excepción y se responden aquí.
-        var peticion = new PeticionAltaTecnico(nombreTecnico, nombreUsuario, huella(claveHuella, req.password()), rol);
+        var peticion = new PeticionAltaTecnico(nombreTecnico, nombreUsuario, rol);
         try {
             return idempotencia.ejecutar(principal.getIdUsu(), OP_ALTA, claveIdempotencia, peticion,
                     () -> {
@@ -88,12 +79,13 @@ public class UsuarioController {
                         if (dao.existeNombreUsuario(nombreUsuario)) {
                             throw new Duplicado("Ese nombre de usuario ya existe.");
                         }
+                        String password = PasswordTemporal.generar();
                         try {
-                            dao.registrarTecnico(nombreTecnico, nombreUsuario, req.password(), rol);
+                            dao.registrarTecnico(nombreTecnico, nombreUsuario, password, rol);
                         } catch (DataIntegrityViolationException e) {
                             throw new Duplicado("Ese nombre de usuario ya existe.");
                         }
-                        return ResponseEntity.status(HttpStatus.CREATED).build();
+                        return ResponseEntity.status(HttpStatus.CREATED).body(new ValorTexto(password));
                     },
                     ignorado -> logDao.insertar(principal.getIdUsu(), "CREAR_USUARIO",
                             "NOMBRE_USUARIO: " + nombreUsuario + ", ROL: " + rol + ", TECNICO: " + nombreTecnico));
@@ -102,31 +94,13 @@ public class UsuarioController {
         }
     }
 
-    /** Lo que identifica un alta de técnico en el registro de reintentos: la contraseña entra solo como huella. */
-    private record PeticionAltaTecnico(String nombreTecnico, String nombreUsuario, String huellaPassword, String rol) {}
+    /** Lo que identifica un alta de técnico en el registro de reintentos. */
+    private record PeticionAltaTecnico(String nombreTecnico, String nombreUsuario, String rol) {}
 
     /** 409 de duplicado dentro de la escritura del alta: no se registra y se responde con su mensaje. */
     private static final class Duplicado extends RuntimeException {
         Duplicado(String mensaje) {
             super(mensaje, null, false, false);
-        }
-    }
-
-    /** 32 bytes aleatorios para la huella; cada instancia (cada arranque del servidor) tiene los suyos. */
-    static byte[] claveHuellaNueva() {
-        byte[] clave = new byte[32];
-        new SecureRandom().nextBytes(clave);
-        return clave;
-    }
-
-    /** HMAC-SHA256 del texto con la clave dada: sirve para comparar dos peticiones dentro del mismo proceso. */
-    static String huella(byte[] clave, String texto) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(clave, "HmacSHA256"));
-            return HexFormat.of().formatHex(mac.doFinal(texto.getBytes(StandardCharsets.UTF_8)));
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException(e);
         }
     }
 
@@ -269,6 +243,7 @@ public class UsuarioController {
         return new ValorTexto(password);
     }
 
-    /** Package-private (no private) para que los tests lo construyan; springdoc lo publica con el mismo nombre. */
-    record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String password, String rol) {}
+    /** Package-private (no private) para que los tests lo construyan; springdoc lo publica con el mismo nombre. Un
+     *  "password" en el cuerpo (cliente antiguo) se ignora: la contraseña del alta la genera el servidor. */
+    record RegistrarTecnicoRequest(String nombreTecnico, String nombreUsuario, String rol) {}
 }

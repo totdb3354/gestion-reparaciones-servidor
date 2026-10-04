@@ -16,7 +16,6 @@ final class ValidacionUsuarios {
     static final Set<String> ROLES = Set.of("TECNICO", "SUPERTECNICO");
 
     static final String MSG_CAMPOS         = "Todos los campos son obligatorios.";
-    static final String MSG_PASSWORD_CORTA = "La contraseña debe tener al menos 6 caracteres.";
     static final String MSG_USUARIO_LARGO  = "El nombre de usuario no puede superar 50 caracteres.";
     static final String MSG_TECNICO_LARGO  = "El nombre del técnico no puede superar 100 caracteres.";
     static final String MSG_ROL            = "Rol no permitido.";
@@ -29,11 +28,10 @@ final class ValidacionUsuarios {
         return "\"" + nombreTecnico + "\" tiene reparaciones asociadas.";
     }
 
-    /** Orden del cliente y de la spec: campos → 6 → 50 → 100 → rol; para en el primero. Los nombres llegan ya
-     *  recortados (null si venían null); la contraseña no se recorta (calco). {@code rol} null vale TECNICO. */
-    static void validarAlta(String nombreTecnico, String nombreUsuario, String password, String rol) {
-        if (vacio(nombreTecnico) || vacio(nombreUsuario) || vacio(password)) throw regla(MSG_CAMPOS);
-        if (password.length() < 6) throw regla(MSG_PASSWORD_CORTA);
+    /** Orden del alta: campos → 50 → 100 → rol; para en el primero. Los nombres llegan ya recortados (null si venían
+     *  null). La contraseña ya no llega: la genera el servidor. {@code rol} null vale TECNICO. */
+    static void validarAlta(String nombreTecnico, String nombreUsuario, String rol) {
+        if (vacio(nombreTecnico) || vacio(nombreUsuario)) throw regla(MSG_CAMPOS);
         if (nombreUsuario.length() > 50) throw regla(MSG_USUARIO_LARGO);
         if (nombreTecnico.length() > 100) throw regla(MSG_TECNICO_LARGO);
         if (rol != null && !ROLES.contains(rol)) throw regla(MSG_ROL);

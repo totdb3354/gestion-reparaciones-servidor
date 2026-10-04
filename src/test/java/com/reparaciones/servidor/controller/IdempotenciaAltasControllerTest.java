@@ -24,8 +24,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -171,22 +174,22 @@ class IdempotenciaAltasControllerTest {
 
     private static final String TECNICOS = "/api/usuarios/tecnicos";
     private static final String CUERPO_TECNICO =
-            "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"password\":\"secreta1\",\"rol\":\"TECNICO\"}";
+            "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"rol\":\"TECNICO\"}";
 
     @Test void tecnicoConLaMismaClaveSeCreaUnaVez() throws Exception {
         dosVecesMismaRespuesta(TECNICOS, admin(), CUERPO_TECNICO, claveNueva());
-        verify(usuarioDao, times(1)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(usuarioDao, times(1)).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
         verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
     }
 
     @Test void tecnicoSinCabeceraSeCreaCadaVez() throws Exception {
         dosVecesSinCabecera(TECNICOS, admin(), CUERPO_TECNICO);
-        verify(usuarioDao, times(2)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(usuarioDao, times(2)).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
     }
 
     @Test void tecnicoConLaMismaClaveYOtroCuerpoEs422() throws Exception {
         mismaClaveOtroCuerpo(TECNICOS, admin(), CUERPO_TECNICO,
-                "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"password\":\"secreta2\",\"rol\":\"TECNICO\"}");
+                "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"rol\":\"SUPERTECNICO\"}");
         verify(usuarioDao, times(1)).registrarTecnico(any(), any(), any(), any());
     }
 
@@ -200,7 +203,7 @@ class IdempotenciaAltasControllerTest {
 
         when(usuarioDao.existeNombreUsuario("usuario-a")).thenReturn(false);
         assertEquals(201, enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getStatus());
-        verify(usuarioDao, times(1)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(usuarioDao, times(1)).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
         verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
     }
 
@@ -208,13 +211,13 @@ class IdempotenciaAltasControllerTest {
     @Test void tecnicoUn422DeValidacionNoSeRecuerdaConLaClave() throws Exception {
         String clave = claveNueva();
         MockHttpServletResponse primera = enviar(TECNICOS, admin(),
-                "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"password\":\"12345\",\"rol\":\"TECNICO\"}",
+                "{\"nombreTecnico\":\"\",\"nombreUsuario\":\"usuario-a\",\"rol\":\"TECNICO\"}",
                 clave);
         assertEquals(422, primera.getStatus());
-        assertEquals("La contraseña debe tener al menos 6 caracteres.", primera.getErrorMessage());
+        assertEquals("Todos los campos son obligatorios.", primera.getErrorMessage());
 
         assertEquals(201, enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getStatus());
-        verify(usuarioDao, times(1)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(usuarioDao, times(1)).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
         verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
     }
 
@@ -230,8 +233,25 @@ class IdempotenciaAltasControllerTest {
 
         when(usuarioDao.existeNombreTecnico("tecnico-a")).thenReturn(false);
         assertEquals(201, enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getStatus());
-        verify(usuarioDao, times(1)).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(usuarioDao, times(1)).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
         verify(logDao, times(1)).insertar(eq(1), eq("CREAR_USUARIO"), any());
+    }
+
+    /** El reintento con la misma clave devuelve la MISMA temporal (si la respuesta se perdió, es la única forma de tenerla). */
+    @Test void tecnicoElReintentoDevuelveLaMismaTemporal() throws Exception {
+        String clave = claveNueva();
+        String primera = enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getContentAsString();
+        String segunda = enviar(TECNICOS, admin(), CUERPO_TECNICO, clave).getContentAsString();
+        assertTrue(primera.matches("\\{\"value\":\"[A-Za-z0-9]{10}\"\\}"), primera);
+        assertEquals(primera, segunda);
+    }
+
+    /** Un cliente viejo que aún mande "password" no la impone: se ignora y la temporal es otra. */
+    @Test void tecnicoUnaPasswordEnElCuerpoSeIgnora() throws Exception {
+        var resp = enviar(TECNICOS, admin(),
+                "{\"nombreTecnico\":\"tecnico-a\",\"nombreUsuario\":\"usuario-a\",\"password\":\"impuesta-1234\",\"rol\":\"TECNICO\"}", null);
+        assertEquals(201, resp.getStatus());
+        verify(usuarioDao).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), argThat(p -> !"impuesta-1234".equals(p)), eq("TECNICO"));
     }
 
     // ── POST /api/reparaciones/{idRep}/incidencia ───────────────────────────────
