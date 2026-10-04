@@ -51,6 +51,12 @@
             <version>0.12.6</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Estimación de la fuerza de una contraseña (algoritmo zxcvbn de Dropbox), con consejos en español -->
+        <dependency>
+            <groupId>com.nulab-inc</groupId>
+            <artifactId>zxcvbn</artifactId>
+            <version>1.9.0</version>
+        </dependency>
 
         <!-- MariaDB -->
         <dependency>
