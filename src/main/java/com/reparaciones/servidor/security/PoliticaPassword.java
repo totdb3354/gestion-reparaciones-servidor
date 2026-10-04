@@ -88,7 +88,7 @@ public class PoliticaPassword {
     }
 
     private static int umbral(String rol) {
-        return "ADMIN".equals(rol) ? NOTA_MINIMA_ADMIN : NOTA_MINIMA;
+        return "ADMIN".equalsIgnoreCase(rol) ? NOTA_MINIMA_ADMIN : NOTA_MINIMA;
     }
 
     /** Lo que zxcvbn trata como "datos del usuario": el nombre de usuario, el del técnico y cada una de sus palabras, las

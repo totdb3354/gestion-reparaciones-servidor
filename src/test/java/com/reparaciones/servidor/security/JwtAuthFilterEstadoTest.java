@@ -129,6 +129,16 @@ class JwtAuthFilterEstadoTest {
            .andExpect(status().isForbidden());
     }
 
+    @Test void conPasswordTemporalElFiltroMiraMetodoYRuta() throws Exception {
+        when(estado.estaOperativo(anyInt())).thenReturn(true);
+        when(estado.tienePasswordTemporal(anyInt())).thenReturn(true);
+        mvc.perform(get("/api/auth/evaluar-password").header("Authorization", token()))
+           .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/auth/evaluar-password")
+                        .header("Authorization", token()))
+           .andExpect(status().isForbidden());
+    }
+
     @Test void evaluarPasswordSinSesionNoResponde() throws Exception {
         mvc.perform(post("/api/auth/evaluar-password")
                         .contentType(MediaType.APPLICATION_JSON)

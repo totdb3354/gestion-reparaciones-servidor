@@ -48,6 +48,15 @@ class PoliticaPasswordTest {
         assertEquals(PoliticaPassword.MSG_LARGA, conNota(4).evaluar(conTildes, null, "u", null, "TECNICO").mensaje());
     }
 
+    /** 48 caracteres, justo 72 bytes: cabe; con un byte mas (73) ya es larga. */
+    @Test void setentaYDosBytesExactosSonValidosYSetentaYTresSonLargos() {
+        String justa = "ñ".repeat(24) + "a".repeat(24);
+        assertEquals(48, justa.length());
+        assertEquals(72, justa.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        assertTrue(conNota(4).evaluar(justa, null, "u", null, "TECNICO").aceptable());
+        assertEquals(PoliticaPassword.MSG_LARGA, conNota(4).evaluar(justa + "a", null, "u", null, "TECNICO").mensaje());
+    }
+
     @Test void unaCadenaEnormeNoSeMide() {
         List<String> medidas = new ArrayList<>();
         var politica = new PoliticaPassword((p, w) -> { medidas.add(p); return new MedidorFuerza.Medida(4, List.of()); }, "");
@@ -77,6 +86,7 @@ class PoliticaPasswordTest {
         assertTrue(conNota(3).evaluar(BUENA, null, "u", null, "TECNICO").aceptable());
         assertTrue(conNota(3).evaluar(BUENA, null, "u", null, "SUPERTECNICO").aceptable());
         assertFalse(conNota(3).evaluar(BUENA, null, "u", null, "ADMIN").aceptable());
+        assertFalse(conNota(3).evaluar(BUENA, null, "u", null, "admin").aceptable());
         assertTrue(conNota(4).evaluar(BUENA, null, "u", null, "ADMIN").aceptable());
         assertNull(conNota(4).evaluar(BUENA, null, "u", null, "ADMIN").mensaje());
     }
@@ -85,9 +95,9 @@ class PoliticaPasswordTest {
         List<List<String>> palabras = new ArrayList<>();
         var politica = new PoliticaPassword((p, w) -> { palabras.add(w); return new MedidorFuerza.Medida(4, List.of()); },
                 " MarcaUno, otra ,, ");
-        politica.evaluar(BUENA, null, "Usuario-A", "Juan Pérez", "TECNICO");
+        politica.evaluar(BUENA, null, "Usuario-A", "Técnico Prueba", "TECNICO");
         List<String> w = palabras.get(0);
-        assertTrue(w.containsAll(List.of("usuario-a", "juan pérez", "juan", "pérez", "marcauno", "otra", "taller", "reparaciones")),
+        assertTrue(w.containsAll(List.of("usuario-a", "técnico prueba", "técnico", "prueba", "marcauno", "otra", "taller", "reparaciones")),
                 () -> "palabras: " + w);
         assertFalse(w.contains(""));
     }

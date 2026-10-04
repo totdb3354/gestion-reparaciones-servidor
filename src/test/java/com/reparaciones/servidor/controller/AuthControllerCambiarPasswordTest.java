@@ -25,7 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
-/** PATCH /api/auth/cambiar-password (spec 6 §4.4): 422 "Rellena todos los campos." y 422 de longitud antes de tocar
+/** PATCH /api/auth/cambiar-password (spec 6 §4.4): 422 "Rellena todos los campos." y 422 de la política antes de tocar
  *  la BD (sustituyen al 400 sin cuerpo), el 422 "Contraseña actual incorrecta." de siempre con su registro
  *  (spec sp7b §5.2) y 204 con log. */
 class AuthControllerCambiarPasswordTest {

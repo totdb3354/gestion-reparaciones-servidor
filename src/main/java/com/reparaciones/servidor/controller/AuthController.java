@@ -156,7 +156,14 @@ public class AuthController {
         return reenviada == null || reenviada.isBlank() ? "" : ", ORIGEN: " + reenviada;
     }
 
-    record LoginRequest(String usuario, String password) {}
-    record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
-    record EvaluarPasswordRequest(String password) {}
+    // Spring MVC puede registrar el cuerpo deserializado con toString() (DEBUG): la contrasena nunca debe llegar al log.
+    record LoginRequest(String usuario, String password) {
+        @Override public String toString() { return "LoginRequest[usuario=" + usuario + ", password=***]"; }
+    }
+    record CambiarPasswordRequest(String passwordActual, String passwordNueva) {
+        @Override public String toString() { return "CambiarPasswordRequest[passwordActual=***, passwordNueva=***]"; }
+    }
+    record EvaluarPasswordRequest(String password) {
+        @Override public String toString() { return "EvaluarPasswordRequest[password=***]"; }
+    }
 }
