@@ -111,6 +111,31 @@ class JwtAuthFilterEstadoTest {
            .andExpect(status().isNoContent());
     }
 
+    @Test void conPasswordTemporalEvaluarPasswordSiLlega() throws Exception {
+        when(estado.estaOperativo(anyInt())).thenReturn(true);
+        when(estado.tienePasswordTemporal(anyInt())).thenReturn(true);
+        mvc.perform(post("/api/auth/evaluar-password")
+                        .header("Authorization", token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"tortuga violeta lampara nube 47\"}"))
+           .andExpect(status().isOk())
+           .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.aceptable").value(true));
+    }
+
+    @Test void conPasswordTemporalOtraRutaDeAuthSigueSiendo403() throws Exception {
+        when(estado.estaOperativo(anyInt())).thenReturn(true);
+        when(estado.tienePasswordTemporal(anyInt())).thenReturn(true);
+        mvc.perform(get("/api/reparaciones/historial").header("Authorization", token()))
+           .andExpect(status().isForbidden());
+    }
+
+    @Test void evaluarPasswordSinSesionNoResponde() throws Exception {
+        mvc.perform(post("/api/auth/evaluar-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"tortuga violeta lampara nube 47\"}"))
+           .andExpect(status().isForbidden());
+    }
+
     /**
      * El texto de ese 403 es contrato con la web, que lo reconoce para llevar a la pantalla de cambio obligatorio en vez
      * de enseñar "no tienes permisos" en bucle. Si se cambia aquí hay que cambiarlo tambien en

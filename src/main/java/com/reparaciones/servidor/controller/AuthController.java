@@ -125,6 +125,19 @@ public class AuthController {
         }
     }
 
+    /**
+     * Nota de una contraseña propuesta, para la barra de la web mientras se escribe: la misma regla que al guardar,
+     * con el usuario, el técnico y el rol de la sesión (nunca del cuerpo). No conoce la actual, así que no comprueba
+     * que sea distinta (eso lo hace el guardado). No escribe, no registra actividad y no deja la contraseña en ningún
+     * log. Se permite también con la contraseña temporal (JwtAuthFilter), porque se usa en el cambio obligatorio.
+     */
+    @PostMapping("/evaluar-password")
+    public EvaluacionPassword evaluarPassword(@AuthenticationPrincipal UsuarioPrincipal principal,
+                                              @RequestBody EvaluarPasswordRequest req) {
+        return politica.evaluar(req.password(), null, principal.getUsername(), nombreTecnico(principal),
+                principal.getRol());
+    }
+
     /** Nombre visible del técnico de la sesión, para que la regla lo penalice; null sin técnico o si no se encuentra. */
     private String nombreTecnico(UsuarioPrincipal principal) {
         if (principal.getIdTec() == null) return null;
@@ -145,4 +158,5 @@ public class AuthController {
 
     record LoginRequest(String usuario, String password) {}
     record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
+    record EvaluarPasswordRequest(String password) {}
 }
