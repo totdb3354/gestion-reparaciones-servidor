@@ -32,7 +32,8 @@ class AuthControllerIntentosTest {
     private final UsuarioDAO usuarioDao = mock(UsuarioDAO.class);
     private final IntentosFallidos intentos = new IntentosFallidos();
     private final EstadoUsuarioService estadoUsuario = mock(EstadoUsuarioService.class);
-    private final AuthController ctl = new AuthController(authManager, jwtUtil, logDao, usuarioDao, intentos, estadoUsuario);
+    private final AuthController ctl = new AuthController(authManager, jwtUtil, logDao, usuarioDao, intentos, estadoUsuario,
+            new com.reparaciones.servidor.security.PoliticaPassword((p, w) -> new com.reparaciones.servidor.security.MedidorFuerza.Medida(4, java.util.List.of()), ""));
 
     private static AuthController.LoginRequest login(String usuario) {
         return new AuthController.LoginRequest(usuario, "mala");

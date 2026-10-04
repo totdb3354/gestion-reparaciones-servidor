@@ -39,12 +39,10 @@ final class ValidacionUsuarios {
         if (rol != null && !ROLES.contains(rol)) throw regla(MSG_ROL);
     }
 
-    /** Cambiar contraseña (spec 6 §4.4), mismo orden que CambiarPasswordController :84-91 y sin trim: alguna vacía o
-     *  ausente → "Rellena todos los campos."; nueva de menos de 6 → la misma regla del alta. La confirmación no llega
-     *  al servidor (se queda en el cliente). */
+    /** Cambiar contraseña: alguna vacía o ausente → "Rellena todos los campos.". El resto de reglas de la nueva las
+     *  aplica {@link com.reparaciones.servidor.security.PoliticaPassword}. La confirmación no llega al servidor. */
     static void validarCambioPassword(String passwordActual, String passwordNueva) {
         if (vacio(passwordActual) || vacio(passwordNueva)) throw regla(MSG_RELLENA);
-        if (passwordNueva.length() < 6) throw regla(MSG_PASSWORD_CORTA);
     }
 
     private static boolean vacio(String s) {

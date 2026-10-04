@@ -107,7 +107,7 @@ class JwtAuthFilterEstadoTest {
         mvc.perform(patch("/api/auth/cambiar-password")
                         .header("Authorization", token())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"passwordActual\":\"secreta1\",\"passwordNueva\":\"nueva123\"}"))
+                        .content("{\"passwordActual\":\"secreta1\",\"passwordNueva\":\"tortuga violeta lampara nube 47\"}"))
            .andExpect(status().isNoContent());
     }
 
