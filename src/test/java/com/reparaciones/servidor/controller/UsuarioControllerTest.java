@@ -5,6 +5,8 @@ import com.reparaciones.servidor.dao.UsuarioDAO;
 import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
+import com.reparaciones.servidor.model.ValorTexto;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /** UsuarioController (spec 6 §4.1 y §4.2): 422 del alta en orden, trim guardado, 409 de duplicados, 404 de ids
@@ -30,8 +33,8 @@ class UsuarioControllerTest {
     private final UsuarioController ctl = new UsuarioController(dao, logDao, new com.reparaciones.servidor.idempotencia.RegistroIdempotencia(), estado);
     private final UsuarioPrincipal admin = new UsuarioPrincipal(1, "admin-prueba", "", "ADMIN", null);
 
-    private static UsuarioController.RegistrarTecnicoRequest alta(String tecnico, String usuario, String password, String rol) {
-        return new UsuarioController.RegistrarTecnicoRequest(tecnico, usuario, password, rol);
+    private static UsuarioController.RegistrarTecnicoRequest alta(String tecnico, String usuario, String rol) {
+        return new UsuarioController.RegistrarTecnicoRequest(tecnico, usuario, rol);
     }
 
     /** Un 422 nunca escribe ni registra log (ni siquiera consulta duplicados). */
@@ -44,79 +47,76 @@ class UsuarioControllerTest {
 
     // ── alta: los cinco 422 en orden ──
     @Test void altaConCampoVacioEs422() {
-        assertEquals("Todos los campos son obligatorios.", falla422(alta("", "usuario-a", "secreta1", "TECNICO")));
+        assertEquals("Todos los campos son obligatorios.", falla422(alta("", "usuario-a", "TECNICO")));
     }
 
     @Test void altaConNombresEnBlancoONulosEs422() {
-        assertEquals("Todos los campos son obligatorios.", falla422(alta("   ", "usuario-a", "secreta1", "TECNICO")));
-        assertEquals("Todos los campos son obligatorios.", falla422(alta("tecnico-a", null, "secreta1", "TECNICO")));
-        assertEquals("Todos los campos son obligatorios.", falla422(alta("tecnico-a", "usuario-a", null, "TECNICO")));
-        assertEquals("Todos los campos son obligatorios.", falla422(alta("tecnico-a", "usuario-a", "", "TECNICO")));
-    }
-
-    @Test void altaConPasswordCortaEs422() {
-        assertEquals("La contraseña debe tener al menos 6 caracteres.",
-                falla422(alta("tecnico-a", "usuario-a", "12345", "TECNICO")));
+        assertEquals("Todos los campos son obligatorios.", falla422(alta("   ", "usuario-a", "TECNICO")));
+        assertEquals("Todos los campos son obligatorios.", falla422(alta("tecnico-a", null, "TECNICO")));
     }
 
     @Test void altaConUsuarioDeMasDe50Es422() {
         assertEquals("El nombre de usuario no puede superar 50 caracteres.",
-                falla422(alta("tecnico-a", "u".repeat(51), "secreta1", "TECNICO")));
+                falla422(alta("tecnico-a", "u".repeat(51), "TECNICO")));
     }
 
     @Test void altaConTecnicoDeMasDe100Es422() {
         assertEquals("El nombre del técnico no puede superar 100 caracteres.",
-                falla422(alta("t".repeat(101), "usuario-a", "secreta1", "TECNICO")));
+                falla422(alta("t".repeat(101), "usuario-a", "TECNICO")));
     }
 
     @Test void altaConRolNoPermitidoEs422EnVezDe400() {
-        assertEquals("Rol no permitido.", falla422(alta("tecnico-a", "usuario-a", "secreta1", "ADMIN")));
-        assertEquals("Rol no permitido.", falla422(alta("tecnico-a", "usuario-a", "secreta1", "")));
+        assertEquals("Rol no permitido.", falla422(alta("tecnico-a", "usuario-a", "ADMIN")));
+        assertEquals("Rol no permitido.", falla422(alta("tecnico-a", "usuario-a", "")));
     }
 
     /** Parando en la primera: con todo mal a la vez sale el primero de la lista, y así sucesivamente. */
-    @Test void elOrdenEsCamposSeisCincuentaCienRol() {
+    @Test void elOrdenEsCamposCincuentaCienRol() {
         String largo51 = "u".repeat(51);
         String largo101 = "t".repeat(101);
-        assertEquals("Todos los campos son obligatorios.", falla422(alta("", largo51, "1", "ADMIN")));
-        assertEquals("La contraseña debe tener al menos 6 caracteres.", falla422(alta(largo101, largo51, "1", "ADMIN")));
-        assertEquals("El nombre de usuario no puede superar 50 caracteres.",
-                falla422(alta(largo101, largo51, "secreta1", "ADMIN")));
-        assertEquals("El nombre del técnico no puede superar 100 caracteres.",
-                falla422(alta(largo101, "usuario-a", "secreta1", "ADMIN")));
+        assertEquals("Todos los campos son obligatorios.", falla422(alta("", largo51, "ADMIN")));
+        assertEquals("El nombre de usuario no puede superar 50 caracteres.", falla422(alta(largo101, largo51, "ADMIN")));
+        assertEquals("El nombre del técnico no puede superar 100 caracteres.", falla422(alta(largo101, "usuario-a", "ADMIN")));
     }
 
-    /** Los límites exactos pasan: 6 caracteres, 50 y 100 (tras el trim). */
+    /** Los límites exactos pasan: 50 y 100 (tras el trim). */
     @Test void losLimitesExactosSonValidos() {
         String usuario50 = "u".repeat(50);
         String tecnico100 = "t".repeat(100);
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" " + tecnico100 + " ", " " + usuario50 + " ", "123456", "TECNICO"), admin, null);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" " + tecnico100 + " ", " " + usuario50 + " ", "TECNICO"), admin, null);
         assertEquals(201, resp.getStatusCode().value());
-        verify(dao).registrarTecnico(tecnico100, usuario50, "123456", "TECNICO");
+        verify(dao).registrarTecnico(eq(tecnico100), eq(usuario50), anyString(), eq("TECNICO"));
     }
 
     // ── alta: trim guardado, rol por defecto, 201 con log ──
-    @Test void altaValidaGuardaLosNombresRecortadosYRegistraLog() {
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("  tecnico-a ", " usuario-a  ", " secreta1 ", "SUPERTECNICO"), admin, null);
+    /** La contraseña la genera el servidor, se guarda (marcada temporal por el DAO) y se devuelve una sola vez. */
+    @Test void altaValidaGeneraLaTemporalLaDevuelveYRegistraLogSinElla() {
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("  tecnico-a ", " usuario-a  ", "SUPERTECNICO"), admin, null);
         assertEquals(201, resp.getStatusCode().value());
-        verify(dao).existeNombreTecnico("tecnico-a");
-        verify(dao).existeNombreUsuario("usuario-a");
-        // la contraseña no se recorta (calco del cliente)
-        verify(dao).registrarTecnico("tecnico-a", "usuario-a", " secreta1 ", "SUPERTECNICO");
+        ArgumentCaptor<String> guardada = ArgumentCaptor.forClass(String.class);
+        verify(dao).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), guardada.capture(), eq("SUPERTECNICO"));
+        assertEquals(10, guardada.getValue().length());
+        assertEquals(new ValorTexto(guardada.getValue()), resp.getBody());
         verify(logDao).insertar(1, "CREAR_USUARIO", "NOMBRE_USUARIO: usuario-a, ROL: SUPERTECNICO, TECNICO: tecnico-a");
     }
 
+    @Test void dosAltasRecibenTemporalesDistintas() {
+        var r1 = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "TECNICO"), admin, null);
+        var r2 = ctl.registrarTecnico(alta("tecnico-b", "usuario-b", "TECNICO"), admin, null);
+        assertNotEquals(r1.getBody(), r2.getBody());
+    }
+
     @Test void altaSinRolGuardaTecnico() {
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", null), admin, null);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", null), admin, null);
         assertEquals(201, resp.getStatusCode().value());
-        verify(dao).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
+        verify(dao).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
         verify(logDao).insertar(1, "CREAR_USUARIO", "NOMBRE_USUARIO: usuario-a, ROL: TECNICO, TECNICO: tecnico-a");
     }
 
     // ── alta: los dos 409 de siempre ──
     @Test void tecnicoDuplicadoEs409SinEscribir() {
         when(dao.existeNombreTecnico("tecnico-a")).thenReturn(true);
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" tecnico-a ", "usuario-a", "secreta1", "TECNICO"), admin, null);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta(" tecnico-a ", "usuario-a", "TECNICO"), admin, null);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ya existe un técnico con ese nombre."), resp.getBody());
         verify(dao, never()).registrarTecnico(anyString(), anyString(), anyString(), anyString());
@@ -125,7 +125,7 @@ class UsuarioControllerTest {
 
     @Test void usuarioDuplicadoEs409SinEscribir() {
         when(dao.existeNombreUsuario("usuario-a")).thenReturn(true);
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a ", "secreta1", "TECNICO"), admin, null);
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a ", "TECNICO"), admin, null);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ese nombre de usuario ya existe."), resp.getBody());
         verify(dao, never()).registrarTecnico(anyString(), anyString(), anyString(), anyString());
@@ -134,8 +134,8 @@ class UsuarioControllerTest {
 
     @Test void violacionDeIntegridadSigueSiendo409SinLog() {
         doThrow(new DataIntegrityViolationException("duplicado"))
-                .when(dao).registrarTecnico("tecnico-a", "usuario-a", "secreta1", "TECNICO");
-        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "secreta1", "TECNICO"), admin, null);
+                .when(dao).registrarTecnico(eq("tecnico-a"), eq("usuario-a"), anyString(), eq("TECNICO"));
+        ResponseEntity<?> resp = ctl.registrarTecnico(alta("tecnico-a", "usuario-a", "TECNICO"), admin, null);
         assertEquals(409, resp.getStatusCode().value());
         assertEquals(Map.of("message", "Ese nombre de usuario ya existe."), resp.getBody());
         verifyNoInteractions(logDao);
@@ -299,14 +299,4 @@ class UsuarioControllerTest {
         verifyNoInteractions(estado);
     }
 
-    // ── huella de la contraseña para comparar reintentos del alta ──
-    /** La huella depende de la clave del proceso: con la misma clave es estable, con otra clave es distinta. */
-    @Test void laHuellaDeLaContrasenaDependeDeLaClaveDelProceso() {
-        byte[] clave1 = UsuarioController.claveHuellaNueva();
-        byte[] clave2 = UsuarioController.claveHuellaNueva();
-        assertEquals(32, clave1.length);
-        assertEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave1, "secreta1"));
-        assertNotEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave2, "secreta1"));
-        assertNotEquals(UsuarioController.huella(clave1, "secreta1"), UsuarioController.huella(clave1, "secreta2"));
-    }
 }

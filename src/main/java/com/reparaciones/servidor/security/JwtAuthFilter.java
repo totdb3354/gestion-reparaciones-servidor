@@ -80,11 +80,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Con la contraseña marcada como temporal solo se puede cambiarla: el resto de rutas responden 403,
-        // no 401, porque la sesión sigue siendo válida y solo falta ese paso (spec sp7b §5.4, arreglo E3-2).
-        boolean esCambioPassword = "PATCH".equals(request.getMethod())
-                && "/api/auth/cambiar-password".equals(request.getRequestURI());
-        if (!esCambioPassword && estadoUsuario.tienePasswordTemporal(idUsu)) {
+        // Con la contraseña marcada como temporal solo se puede cambiarla (y pedir la nota de la nueva para la barra):
+        // el resto de rutas responden 403, no 401, porque la sesión sigue siendo válida y solo falta ese paso
+        // (spec sp7b §5.4, arreglo E3-2).
+        String ruta = request.getRequestURI();
+        boolean permitidaConTemporal =
+                ("PATCH".equals(request.getMethod()) && "/api/auth/cambiar-password".equals(ruta))
+                || ("POST".equals(request.getMethod()) && "/api/auth/evaluar-password".equals(ruta));
+        if (!permitidaConTemporal && estadoUsuario.tienePasswordTemporal(idUsu)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, MSG_PASSWORD_TEMPORAL);
             return;
         }

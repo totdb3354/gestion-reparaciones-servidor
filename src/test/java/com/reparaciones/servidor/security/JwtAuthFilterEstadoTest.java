@@ -107,8 +107,43 @@ class JwtAuthFilterEstadoTest {
         mvc.perform(patch("/api/auth/cambiar-password")
                         .header("Authorization", token())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"passwordActual\":\"secreta1\",\"passwordNueva\":\"nueva123\"}"))
+                        .content("{\"passwordActual\":\"secreta1\",\"passwordNueva\":\"tortuga violeta lampara nube 47\"}"))
            .andExpect(status().isNoContent());
+    }
+
+    @Test void conPasswordTemporalEvaluarPasswordSiLlega() throws Exception {
+        when(estado.estaOperativo(anyInt())).thenReturn(true);
+        when(estado.tienePasswordTemporal(anyInt())).thenReturn(true);
+        mvc.perform(post("/api/auth/evaluar-password")
+                        .header("Authorization", token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"tortuga violeta lampara nube 47\"}"))
+           .andExpect(status().isOk())
+           .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.aceptable").value(true));
+    }
+
+    @Test void conPasswordTemporalOtraRutaDeAuthSigueSiendo403() throws Exception {
+        when(estado.estaOperativo(anyInt())).thenReturn(true);
+        when(estado.tienePasswordTemporal(anyInt())).thenReturn(true);
+        mvc.perform(get("/api/reparaciones/historial").header("Authorization", token()))
+           .andExpect(status().isForbidden());
+    }
+
+    @Test void conPasswordTemporalElFiltroMiraMetodoYRuta() throws Exception {
+        when(estado.estaOperativo(anyInt())).thenReturn(true);
+        when(estado.tienePasswordTemporal(anyInt())).thenReturn(true);
+        mvc.perform(get("/api/auth/evaluar-password").header("Authorization", token()))
+           .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/auth/evaluar-password")
+                        .header("Authorization", token()))
+           .andExpect(status().isForbidden());
+    }
+
+    @Test void evaluarPasswordSinSesionNoResponde() throws Exception {
+        mvc.perform(post("/api/auth/evaluar-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"tortuga violeta lampara nube 47\"}"))
+           .andExpect(status().isForbidden());
     }
 
     /**

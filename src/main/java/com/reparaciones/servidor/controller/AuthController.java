@@ -2,10 +2,12 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.UsuarioDAO;
+import com.reparaciones.servidor.model.EvaluacionPassword;
 import com.reparaciones.servidor.model.LoginResponse;
 import com.reparaciones.servidor.security.EstadoUsuarioService;
 import com.reparaciones.servidor.security.IntentosFallidos;
 import com.reparaciones.servidor.security.JwtUtil;
+import com.reparaciones.servidor.security.PoliticaPassword;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,16 +32,18 @@ public class AuthController {
     private final UsuarioDAO            usuarioDao;
     private final IntentosFallidos      intentos;
     private final EstadoUsuarioService  estadoUsuario;
+    private final PoliticaPassword      politica;
 
     public AuthController(AuthenticationManager authManager, JwtUtil jwtUtil,
                           LogDAO logDao, UsuarioDAO usuarioDao, IntentosFallidos intentos,
-                          EstadoUsuarioService estadoUsuario) {
+                          EstadoUsuarioService estadoUsuario, PoliticaPassword politica) {
         this.authManager  = authManager;
         this.jwtUtil      = jwtUtil;
         this.logDao       = logDao;
         this.usuarioDao   = usuarioDao;
         this.intentos     = intentos;
         this.estadoUsuario = estadoUsuario;
+        this.politica      = politica;
     }
 
     @PostMapping("/login")
@@ -102,6 +106,10 @@ public class AuthController {
         // 422 con los textos del cliente antes de BCrypt (spec 6 §4.4): sustituye al 400 sin cuerpo y evita el
         // "rawPassword cannot be null" de matches(null, …). Lanza ResponseStatusException: el catch de abajo no la ve.
         ValidacionUsuarios.validarCambioPassword(req.passwordActual(), req.passwordNueva());
+        // La regla de la nueva antes de comprobar la actual: un rechazo por la regla no es un intento fallido.
+        EvaluacionPassword evaluacion = politica.evaluar(req.passwordNueva(), req.passwordActual(),
+                principal.getUsername(), nombreTecnico(principal), principal.getRol());
+        if (!evaluacion.aceptable()) throw ValidacionUsuarios.regla(evaluacion.mensaje());
         try {
             usuarioDao.cambiarPassword(principal.getIdUsu(), req.passwordActual(), req.passwordNueva());
             // La marca ya se limpió en la base: retira también la entrada cacheada para que pueda operar de
@@ -117,6 +125,29 @@ public class AuthController {
         }
     }
 
+    /**
+     * Nota de una contraseña propuesta, para la barra de la web mientras se escribe: la misma regla que al guardar,
+     * con el usuario, el técnico y el rol de la sesión (nunca del cuerpo). No conoce la actual, así que no comprueba
+     * que sea distinta (eso lo hace el guardado). No escribe, no registra actividad y no deja la contraseña en ningún
+     * log. Se permite también con la contraseña temporal (JwtAuthFilter), porque se usa en el cambio obligatorio.
+     */
+    @PostMapping("/evaluar-password")
+    public EvaluacionPassword evaluarPassword(@AuthenticationPrincipal UsuarioPrincipal principal,
+                                              @RequestBody EvaluarPasswordRequest req) {
+        return politica.evaluar(req.password(), null, principal.getUsername(), nombreTecnico(principal),
+                principal.getRol());
+    }
+
+    /** Nombre visible del técnico de la sesión, para que la regla lo penalice; null sin técnico o si no se encuentra. */
+    private String nombreTecnico(UsuarioPrincipal principal) {
+        if (principal.getIdTec() == null) return null;
+        try {
+            return usuarioDao.getNombreByIdTec(principal.getIdTec());
+        } catch (org.springframework.dao.DataAccessException e) {
+            return null;
+        }
+    }
+
     /** La dirección que ve la aplicación, para el registro; vacío si no hay petición (tests). */
     private static String origenDe(jakarta.servlet.http.HttpServletRequest http) {
         if (http == null) return "";
@@ -125,6 +156,14 @@ public class AuthController {
         return reenviada == null || reenviada.isBlank() ? "" : ", ORIGEN: " + reenviada;
     }
 
-    record LoginRequest(String usuario, String password) {}
-    record CambiarPasswordRequest(String passwordActual, String passwordNueva) {}
+    // Spring MVC puede registrar el cuerpo deserializado con toString() (DEBUG): la contrasena nunca debe llegar al log.
+    record LoginRequest(String usuario, String password) {
+        @Override public String toString() { return "LoginRequest[usuario=" + usuario + ", password=***]"; }
+    }
+    record CambiarPasswordRequest(String passwordActual, String passwordNueva) {
+        @Override public String toString() { return "CambiarPasswordRequest[passwordActual=***, passwordNueva=***]"; }
+    }
+    record EvaluarPasswordRequest(String password) {
+        @Override public String toString() { return "EvaluarPasswordRequest[password=***]"; }
+    }
 }
