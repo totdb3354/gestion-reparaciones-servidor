@@ -34,7 +34,8 @@ public class ImeiLookupService {
             "13", "13mini", "13pro", "13promax",
             "14", "14plus", "14pro", "14promax",
             "15", "15plus", "15pro", "15promax",
-            "16", "16e", "16plus", "16pro", "16promax"
+            "16", "16e", "16plus", "16pro", "16promax",
+            "17", "air", "17pro", "17promax"
     );
 
     private final String apiKey;
@@ -76,7 +77,10 @@ public class ImeiLookupService {
             if (brand == null || !brand.asText().equalsIgnoreCase("Apple")) return null;
             JsonNode name = obj.get("name");
             if (name == null) return null;
-            return comercialACodigoInterno(name.asText());
+            String codigo = comercialACodigoInterno(name.asText());
+            // Sin este aviso, un modelo nuevo que no está en MODELOS_ORDENADOS se pierde en silencio.
+            if (codigo == null) log.warn("IMEI lookup sin mapear: '{}' para {}", name.asText(), imei);
+            return codigo;
         } catch (Exception e) {
             log.warn("IMEI lookup fallido para {}: {}", imei, e.getMessage());
             return null;
@@ -111,6 +115,7 @@ public class ImeiLookupService {
             case "xsmax"  -> "iPhone XS Max";
             case "6s"     -> "iPhone 6S";
             case "6splus" -> "iPhone 6S Plus";
+            case "air"    -> "iPhone Air";
             default -> {
                 String num      = modelo.replaceAll("[^0-9]", "");
                 String variante = modelo.replaceAll("[0-9]", "");

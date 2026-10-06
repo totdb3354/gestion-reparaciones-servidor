@@ -19,6 +19,14 @@ class ImeiLookupServiceTest {
     }
 
     @Test
+    void convierte_la_serie_17_y_el_air() {
+        assertThat(service.comercialACodigoInterno("iPhone 17")).isEqualTo("17");
+        assertThat(service.comercialACodigoInterno("Apple iPhone Air")).isEqualTo("air");
+        assertThat(service.comercialACodigoInterno("iPhone 17 Pro")).isEqualTo("17pro");
+        assertThat(service.comercialACodigoInterno("iPhone 17 Pro Max")).isEqualTo("17promax");
+    }
+
+    @Test
     void android_devuelve_null() {
         assertThat(service.comercialACodigoInterno("Samsung Galaxy S24")).isNull();
         assertThat(service.comercialACodigoInterno("Moto G22")).isNull();
