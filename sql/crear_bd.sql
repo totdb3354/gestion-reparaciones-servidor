@@ -244,6 +244,18 @@ INSERT INTO Dificultad_puntos (CLAVE, PUNTOS) VALUES
     ('otro',     0.50),
     ('pulido',   0.25);
 
+CREATE TABLE Parametro (
+    CLAVE      VARCHAR(50) NOT NULL,
+    VALOR      INT         NOT NULL,
+    UPDATED_AT TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (CLAVE)
+);
+
+INSERT INTO Parametro (CLAVE, VALOR) VALUES
+    ('PREVISION_PESO_1', 50),
+    ('PREVISION_PESO_2', 30),
+    ('PREVISION_PESO_3', 20);
+
 CREATE TABLE Compra_componente (
     ID_COMPRA            INT           NOT NULL AUTO_INCREMENT,
     ID_COM               INT           NOT NULL,
