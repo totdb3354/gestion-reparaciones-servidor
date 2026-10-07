@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.PrevisionPedidoService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +24,16 @@ import java.util.Map;
 @RequestMapping("/api/componentes")
 public class ComponenteController {
 
-    private final ComponenteDAO dao;
-    private final LogDAO        logDao;
+    private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
 
-    public ComponenteController(ComponenteDAO dao, LogDAO logDao) {
-        this.dao    = dao;
-        this.logDao = logDao;
+    private final ComponenteDAO          dao;
+    private final LogDAO                 logDao;
+    private final PrevisionPedidoService prevision;
+
+    public ComponenteController(ComponenteDAO dao, LogDAO logDao, PrevisionPedidoService prevision) {
+        this.dao       = dao;
+        this.logDao    = logDao;
+        this.prevision = prevision;
     }
 
     @GetMapping
@@ -35,9 +41,14 @@ public class ComponenteController {
         return dao.getAll();
     }
 
+    /** Listado de Stock. La previsión de pedidos (consumo/día, pedir 15 y 30 días) es información de compras: solo
+     *  se calcula para SUPERTECNICO y ADMIN; a un TECNICO le llegan los tres campos nulos (spec 0.9.5 §3.3). */
     @GetMapping("/gestionados")
-    public List<Componente> getAllGestionados() {
-        return dao.getAllGestionados();
+    public List<Componente> getAllGestionados(@AuthenticationPrincipal UsuarioPrincipal principal) {
+        List<Componente> lista = dao.getAllGestionados();
+        if (principal != null && ("SUPERTECNICO".equals(principal.getRol()) || "ADMIN".equals(principal.getRol())))
+            prevision.rellenar(lista, LocalDate.now(MADRID));
+        return lista;
     }
 
     @GetMapping("/stock-bajo")

@@ -16,6 +16,11 @@ public class Componente {
     @Schema(nullable = true) private LocalDateTime ultimoPedido;
     @Schema(nullable = true) private Integer       idComMaster;
 
+    // Previsión de pedidos (spec 0.9.5 §3): solo para SUPERTECNICO y ADMIN y solo en componentes activos.
+    @Schema(nullable = true) private Double  consumoDiario;
+    @Schema(nullable = true) private Integer pedir15;
+    @Schema(nullable = true) private Integer pedir30;
+
     public Componente() {}
 
     public Componente(int idCom, String tipo, LocalDateTime fechaRegistro,
@@ -43,4 +48,14 @@ public class Componente {
     public void setUltimoPedido(LocalDateTime fecha)  { this.ultimoPedido = fecha; }
     public Integer getIdComMaster()                   { return idComMaster; }
     public void setIdComMaster(Integer idComMaster)   { this.idComMaster = idComMaster; }
+
+    public Double  getConsumoDiario() { return consumoDiario; }
+    public Integer getPedir15()       { return pedir15; }
+    public Integer getPedir30()       { return pedir30; }
+
+    public void setPrevision(double consumoDiario, int pedir15, int pedir30) {
+        this.consumoDiario = consumoDiario;
+        this.pedir15       = pedir15;
+        this.pedir30       = pedir30;
+    }
 }

@@ -205,6 +205,7 @@ class OpenApiContractTest {
         // Nullabilidad campo a campo (todo lo demás es required y no nulo)
         assertNullable(esquemas, "FilaReparacion", "observacion", "prefijo", "descripcionSolicitud", "estadoSolicitud");
         assertNullable(esquemas, "Componente", "ultimoPedido", "idComMaster");
+        assertNullable(esquemas, "Componente", "consumoDiario", "pedir15", "pedir30");
         assertNullable(esquemas, "SolicitudResumen", "tipoComponente", "descripcion");
         assertNullable(esquemas, "SolicitudStock", "descripcion");
         assertNullable(esquemas, "Reparacion", "fechaFin");

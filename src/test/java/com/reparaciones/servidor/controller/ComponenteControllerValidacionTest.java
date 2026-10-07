@@ -21,7 +21,7 @@ class ComponenteControllerValidacionTest {
 
     private final ComponenteDAO dao = mock(ComponenteDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final ComponenteController ctl = new ComponenteController(dao, logDao);
+    private final ComponenteController ctl = new ComponenteController(dao, logDao, mock(com.reparaciones.servidor.service.PrevisionPedidoService.class));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico_f", "", "SUPERTECNICO", 3);
     private final LocalDateTime ahora = LocalDateTime.of(2026, 9, 24, 10, 0);
 
