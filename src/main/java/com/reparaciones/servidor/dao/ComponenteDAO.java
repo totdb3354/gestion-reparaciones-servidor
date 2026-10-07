@@ -193,17 +193,17 @@ public class ComponenteDAO {
                 tipo, stock, stockMinimo);
     }
 
-    public void actualizar(int idCom, String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {
+    /** Editar stock. El mínimo no se toca aquí: solo lo cambia el ADMIN con setStockMinimo (spec 0.9.5 §4.2). */
+    public void actualizar(int idCom, String tipo, int stock, LocalDateTime updatedAt) {
         int masterIdCom = resolveToMasterId(idCom);
         if (masterIdCom != idCom) {
-            // Slave: actualizar STOCK en el master; TIPO y STOCK_MINIMO en el propio slave
+            // Slave: STOCK en el master; TIPO en el propio slave
             jdbc.update("UPDATE Componente SET STOCK = ? WHERE ID_COM = ?", stock, masterIdCom);
-            jdbc.update("UPDATE Componente SET TIPO = ?, STOCK_MINIMO = ? WHERE ID_COM = ?",
-                    tipo, stockMinimo, idCom);
+            jdbc.update("UPDATE Componente SET TIPO = ? WHERE ID_COM = ?", tipo, idCom);
         } else {
             int filas = jdbc.update(
-                    "UPDATE Componente SET TIPO = ?, STOCK = ?, STOCK_MINIMO = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
-                    tipo, stock, stockMinimo, idCom,
+                    "UPDATE Componente SET TIPO = ?, STOCK = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
+                    tipo, stock, idCom,
                     Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
             if (filas == 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
@@ -211,8 +211,9 @@ public class ComponenteDAO {
         }
     }
 
+    /** El mínimo vive en el master del grupo compartido: es el que enseña Stock y el que usa la previsión. */
     public void setStockMinimo(int idCom, int stockMinimo) {
-        jdbc.update("UPDATE Componente SET STOCK_MINIMO = ? WHERE ID_COM = ?", stockMinimo, idCom);
+        jdbc.update("UPDATE Componente SET STOCK_MINIMO = ? WHERE ID_COM = ?", stockMinimo, resolveToMasterId(idCom));
     }
 
     public void actualizarStock(int idCom, int delta) {

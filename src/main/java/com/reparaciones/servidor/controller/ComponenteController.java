@@ -86,20 +86,20 @@ public class ComponenteController {
     static final String MSG_CANTIDAD = "Cantidad no válida (debe ser ≥ 0).";
     static final String MSG_MINIMO   = "Valor no válido (debe ser ≥ 0).";
 
+    /** "Editar stock" (SUPERTECNICO) no cambia el mínimo: el campo stockMinimo del cuerpo se acepta, para no romper clientes, y se ignora. El mínimo solo lo cambia el ADMIN con PATCH /stock-minimo (spec 0.9.5 §4.2). */
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idCom}")
     public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {
         noNegativo(req.stock(), MSG_CANTIDAD);
-        noNegativo(req.stockMinimo(), MSG_MINIMO);
         int stockAnt = dao.getStockById(idCom);
-        dao.actualizar(idCom, req.tipo(), req.stock(), req.stockMinimo(), req.updatedAt());
+        dao.actualizar(idCom, req.tipo(), req.stock(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
                 "ID_COM: " + idCom + ", TIPO: " + req.tipo() +
                 ", STOCK_ANT: " + stockAnt + " → STOCK_NUE: " + req.stock());
     }
 
-    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{idCom}/stock-minimo")
     public void setStockMinimo(@PathVariable int idCom, @RequestBody StockMinimoRequest req,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
