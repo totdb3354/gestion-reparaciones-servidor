@@ -17,3 +17,5 @@ INSERT INTO Parametro (CLAVE, VALOR) VALUES
     ('PREVISION_PESO_1', 50),
     ('PREVISION_PESO_2', 30),
     ('PREVISION_PESO_3', 20);
+
+-- Verificación post: SELECT CLAVE, VALOR FROM Parametro ORDER BY CLAVE;  -- 3 filas: 50/30/20

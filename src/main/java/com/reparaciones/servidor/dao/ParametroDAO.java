@@ -27,8 +27,8 @@ public class ParametroDAO {
         this.jdbc = jdbc;
     }
 
-    /** Los pesos guardados, o 50/30/20 si no hay tabla (servidor desplegado antes que la migración), falta alguna
-     *  clave o no son válidos: la previsión de Stock nunca rompe el listado. */
+    /** Los pesos guardados, o 50/30/20 si no se puede leer la tabla (p. ej. servidor desplegado antes que la migración),
+     *  falta alguna clave o no son válidos: la previsión de Stock nunca rompe el listado. */
     public Pesos getPesosPrevision() {
         Map<String, Integer> valores = new HashMap<>();
         try {
@@ -37,7 +37,7 @@ public class ParametroDAO {
                 valores.put((String) fila.get("CLAVE"), ((Number) fila.get("VALOR")).intValue());
             }
         } catch (DataAccessException e) {
-            log.warn("Sin tabla Parametro ({}): la previsión usa los pesos por defecto", e.getMessage());
+            log.warn("No se pudieron leer los pesos de Parametro ({}): la previsión usa los pesos por defecto", e.getMessage());
             return Pesos.POR_DEFECTO;
         }
         if (!valores.keySet().containsAll(List.of(PESO_1, PESO_2, PESO_3))) {
