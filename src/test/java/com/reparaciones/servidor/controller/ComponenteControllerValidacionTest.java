@@ -21,7 +21,7 @@ class ComponenteControllerValidacionTest {
 
     private final ComponenteDAO dao = mock(ComponenteDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final ComponenteController ctl = new ComponenteController(dao, logDao);
+    private final ComponenteController ctl = new ComponenteController(dao, logDao, mock(com.reparaciones.servidor.service.PrevisionPedidoService.class));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico_f", "", "SUPERTECNICO", 3);
     private final LocalDateTime ahora = LocalDateTime.of(2026, 9, 24, 10, 0);
 
@@ -30,23 +30,20 @@ class ComponenteControllerValidacionTest {
                 () -> ctl.actualizar(5, new ComponenteController.ActualizarRequest("lcd-x", -1, 2, ahora), super7));
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
         assertEquals("Cantidad no válida (debe ser ≥ 0).", e.getReason());
-        verify(dao, never()).actualizar(anyInt(), anyString(), anyInt(), anyInt(), any());
+        verify(dao, never()).actualizar(anyInt(), anyString(), anyInt(), any());
         verify(logDao, never()).insertar(anyInt(), anyString(), anyString());
     }
 
-    @Test void editarConMinimoNegativoEs422() {
-        ResponseStatusException e = assertThrows(ResponseStatusException.class,
-                () -> ctl.actualizar(5, new ComponenteController.ActualizarRequest("lcd-x", 3, -2, ahora), super7));
-        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
-        assertEquals("Valor no válido (debe ser ≥ 0).", e.getReason());
-        verify(dao, never()).actualizar(anyInt(), anyString(), anyInt(), anyInt(), any());
-        verify(logDao, never()).insertar(anyInt(), anyString(), anyString());
+    @Test void editarIgnoraElMinimo() {
+        when(dao.getStockById(5)).thenReturn(4);
+        ctl.actualizar(5, new ComponenteController.ActualizarRequest("lcd-x", 3, -2, ahora), super7);
+        verify(dao).actualizar(5, "lcd-x", 3, ahora);
     }
 
     @Test void editarConCeroVale() {
         when(dao.getStockById(5)).thenReturn(4);
         ctl.actualizar(5, new ComponenteController.ActualizarRequest("lcd-x", 0, 0, ahora), super7);
-        verify(dao).actualizar(5, "lcd-x", 0, 0, ahora);
+        verify(dao).actualizar(5, "lcd-x", 0, ahora);
     }
 
     @Test void minimoNegativoEs422YCeroVale() {

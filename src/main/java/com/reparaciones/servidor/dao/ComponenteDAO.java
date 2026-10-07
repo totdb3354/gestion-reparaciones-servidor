@@ -2,6 +2,7 @@ package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
+import com.reparaciones.servidor.util.PrevisionPedido;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -72,6 +73,27 @@ public class ComponenteDAO {
             c.setUltimoPedido(up != null ? up.toLocalDateTime() : null);
             return c;
         });
+    }
+
+    /** Unidades consumidas por master y día en [desde, hasta) (spec 0.9.5 §3.2): solo las piezas de las reparaciones
+     *  resultantes (R…, G…), que son las que restan stock; las solicitudes cuelgan de la asignación (A…, AG…) y una
+     *  solicitud ya servida tiene las mismas marcas que una fila de consumo. Sin reutilizadas ni tipos "otro". */
+    public List<PrevisionPedido.ConsumoDia> getConsumoDiario(LocalDate desde, LocalDate hasta) {
+        String sql = """
+                SELECT COALESCE(c.ID_COM_MASTER, c.ID_COM) AS ID_MASTER, DATE(r.FECHA_FIN) AS DIA,
+                       SUM(rc.CANTIDAD) AS UNIDADES
+                FROM Reparacion_componente rc
+                JOIN Reparacion r ON rc.ID_REP = r.ID_REP
+                JOIN Componente c ON rc.ID_COM = c.ID_COM
+                WHERE (r.ID_REP LIKE 'R%' OR r.ID_REP LIKE 'G%')
+                  AND rc.ES_REUTILIZADO = 0
+                  AND c.TIPO NOT LIKE 'otro%'
+                  AND r.FECHA_FIN >= ? AND r.FECHA_FIN < ?
+                GROUP BY ID_MASTER, DIA
+                """;
+        return jdbc.query(sql, (rs, row) -> new PrevisionPedido.ConsumoDia(
+                        rs.getInt("ID_MASTER"), rs.getDate("DIA").toLocalDate(), rs.getInt("UNIDADES")),
+                Timestamp.valueOf(desde.atStartOfDay()), Timestamp.valueOf(hasta.atStartOfDay()));
     }
 
     public List<Componente> getStockBajo() {
@@ -171,17 +193,17 @@ public class ComponenteDAO {
                 tipo, stock, stockMinimo);
     }
 
-    public void actualizar(int idCom, String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {
+    /** Editar stock. El mínimo no se toca aquí: solo lo cambia el ADMIN con setStockMinimo (spec 0.9.5 §4.2). */
+    public void actualizar(int idCom, String tipo, int stock, LocalDateTime updatedAt) {
         int masterIdCom = resolveToMasterId(idCom);
         if (masterIdCom != idCom) {
-            // Slave: actualizar STOCK en el master; TIPO y STOCK_MINIMO en el propio slave
+            // Slave: STOCK en el master; TIPO en el propio slave
             jdbc.update("UPDATE Componente SET STOCK = ? WHERE ID_COM = ?", stock, masterIdCom);
-            jdbc.update("UPDATE Componente SET TIPO = ?, STOCK_MINIMO = ? WHERE ID_COM = ?",
-                    tipo, stockMinimo, idCom);
+            jdbc.update("UPDATE Componente SET TIPO = ? WHERE ID_COM = ?", tipo, idCom);
         } else {
             int filas = jdbc.update(
-                    "UPDATE Componente SET TIPO = ?, STOCK = ?, STOCK_MINIMO = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
-                    tipo, stock, stockMinimo, idCom,
+                    "UPDATE Componente SET TIPO = ?, STOCK = ? WHERE ID_COM = ? AND UPDATED_AT = ?",
+                    tipo, stock, idCom,
                     Timestamp.valueOf(updatedAt.truncatedTo(ChronoUnit.SECONDS)));
             if (filas == 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario");
@@ -189,8 +211,9 @@ public class ComponenteDAO {
         }
     }
 
+    /** El mínimo vive en el master del grupo compartido: es el que enseña Stock y el que usa la previsión. */
     public void setStockMinimo(int idCom, int stockMinimo) {
-        jdbc.update("UPDATE Componente SET STOCK_MINIMO = ? WHERE ID_COM = ?", stockMinimo, idCom);
+        jdbc.update("UPDATE Componente SET STOCK_MINIMO = ? WHERE ID_COM = ?", stockMinimo, resolveToMasterId(idCom));
     }
 
     public void actualizarStock(int idCom, int delta) {

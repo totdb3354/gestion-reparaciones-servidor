@@ -17,6 +17,7 @@ Tablas (generado con grep el 2026-09-14):
 - `Lote`
 - `TipoCambio`
 - `Dificultad_puntos`
+- `Parametro`
 - `Compra_componente`
 - `Compra_otro`
 - `Reparacion_componente`

@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.PrevisionPedidoService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +24,16 @@ import java.util.Map;
 @RequestMapping("/api/componentes")
 public class ComponenteController {
 
-    private final ComponenteDAO dao;
-    private final LogDAO        logDao;
+    private static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
 
-    public ComponenteController(ComponenteDAO dao, LogDAO logDao) {
-        this.dao    = dao;
-        this.logDao = logDao;
+    private final ComponenteDAO          dao;
+    private final LogDAO                 logDao;
+    private final PrevisionPedidoService prevision;
+
+    public ComponenteController(ComponenteDAO dao, LogDAO logDao, PrevisionPedidoService prevision) {
+        this.dao       = dao;
+        this.logDao    = logDao;
+        this.prevision = prevision;
     }
 
     @GetMapping
@@ -35,9 +41,14 @@ public class ComponenteController {
         return dao.getAll();
     }
 
+    /** Listado de Stock. La previsión de pedidos (consumo/día, pedir 15 y 30 días) es información de compras: solo
+     *  se calcula para SUPERTECNICO y ADMIN; a un TECNICO le llegan los tres campos nulos (spec 0.9.5 §3.3). */
     @GetMapping("/gestionados")
-    public List<Componente> getAllGestionados() {
-        return dao.getAllGestionados();
+    public List<Componente> getAllGestionados(@AuthenticationPrincipal UsuarioPrincipal principal) {
+        List<Componente> lista = dao.getAllGestionados();
+        if (principal != null && ("SUPERTECNICO".equals(principal.getRol()) || "ADMIN".equals(principal.getRol())))
+            prevision.rellenar(lista, LocalDate.now(MADRID));
+        return lista;
     }
 
     @GetMapping("/stock-bajo")
@@ -75,20 +86,20 @@ public class ComponenteController {
     static final String MSG_CANTIDAD = "Cantidad no válida (debe ser ≥ 0).";
     static final String MSG_MINIMO   = "Valor no válido (debe ser ≥ 0).";
 
+    /** "Editar stock" (SUPERTECNICO) no cambia el mínimo: el campo stockMinimo del cuerpo se acepta, para no romper clientes, y se ignora. El mínimo solo lo cambia el ADMIN con PATCH /stock-minimo (spec 0.9.5 §4.2). */
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PutMapping("/{idCom}")
     public void actualizar(@PathVariable int idCom, @RequestBody ActualizarRequest req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {
         noNegativo(req.stock(), MSG_CANTIDAD);
-        noNegativo(req.stockMinimo(), MSG_MINIMO);
         int stockAnt = dao.getStockById(idCom);
-        dao.actualizar(idCom, req.tipo(), req.stock(), req.stockMinimo(), req.updatedAt());
+        dao.actualizar(idCom, req.tipo(), req.stock(), req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
                 "ID_COM: " + idCom + ", TIPO: " + req.tipo() +
                 ", STOCK_ANT: " + stockAnt + " → STOCK_NUE: " + req.stock());
     }
 
-    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{idCom}/stock-minimo")
     public void setStockMinimo(@PathVariable int idCom, @RequestBody StockMinimoRequest req,
                                @AuthenticationPrincipal UsuarioPrincipal principal) {
