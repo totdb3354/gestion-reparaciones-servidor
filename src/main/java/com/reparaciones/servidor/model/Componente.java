@@ -18,8 +18,7 @@ public class Componente {
 
     // Previsión de pedidos (spec 0.9.5 §3): solo para SUPERTECNICO y ADMIN y solo en componentes activos.
     @Schema(nullable = true) private Double  consumoDiario;
-    @Schema(nullable = true) private Integer pedir15;
-    @Schema(nullable = true) private Integer pedir30;
+    @Schema(nullable = true) private Integer pedir60;
 
     public Componente() {}
 
@@ -50,12 +49,10 @@ public class Componente {
     public void setIdComMaster(Integer idComMaster)   { this.idComMaster = idComMaster; }
 
     public Double  getConsumoDiario() { return consumoDiario; }
-    public Integer getPedir15()       { return pedir15; }
-    public Integer getPedir30()       { return pedir30; }
+    public Integer getPedir60()       { return pedir60; }
 
-    public void setPrevision(double consumoDiario, int pedir15, int pedir30) {
+    public void setPrevision(double consumoDiario, int pedir60) {
         this.consumoDiario = consumoDiario;
-        this.pedir15       = pedir15;
-        this.pedir30       = pedir30;
+        this.pedir60       = pedir60;
     }
 }

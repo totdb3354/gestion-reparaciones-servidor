@@ -41,8 +41,8 @@ public class ComponenteController {
         return dao.getAll();
     }
 
-    /** Listado de Stock. La previsión de pedidos (consumo/día, pedir 15 y 30 días) es información de compras: solo
-     *  se calcula para SUPERTECNICO y ADMIN; a un TECNICO le llegan los tres campos nulos (spec 0.9.5 §3.3). */
+    /** Listado de Stock. La previsión de pedidos (consumo/día y pedir para 60 días) es información de compras: solo
+     *  se calcula para SUPERTECNICO y ADMIN; a un TECNICO le llegan los dos campos nulos (spec 0.9.5 §3.3). */
     @GetMapping("/gestionados")
     public List<Componente> getAllGestionados(@AuthenticationPrincipal UsuarioPrincipal principal) {
         List<Componente> lista = dao.getAllGestionados();

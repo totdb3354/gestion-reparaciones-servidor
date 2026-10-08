@@ -10,8 +10,8 @@ import java.util.Map;
 
 /**
  * Previsión de pedidos de piezas (spec 0.9.5 §3.1). El consumo diario es una media ponderada de tres tramos de 30
- * días hacia atrás (lo reciente pesa más) y el pedido cubre 15 o 30 días con el stock mínimo como suelo:
- * {@code pedir = máx(0, ⌈máx(mínimo, consumo/día × días) − (stock + en camino)⌉)}.
+ * días hacia atrás (lo reciente pesa más) y el pedido cubre 60 días con el stock mínimo como suelo:
+ * {@code pedir = máx(0, ⌈máx(mínimo, consumo/día × 60) − (stock + en camino)⌉)}.
  *
  * <p>Todo se calcula en enteros escalados por 3000 (100 de los porcentajes × 30 días del tramo): en coma flotante,
  * 0,1 × 30 da 3,0000000000000004 y el redondeo hacia arriba pediría una pieza de más.
@@ -21,6 +21,8 @@ public final class PrevisionPedido {
     public static final int DIAS_TRAMO = 30;
     public static final int DIAS_VENTANA = 3 * DIAS_TRAMO;
     private static final long ESCALA = 100L * DIAS_TRAMO;
+    /** Días que cubre el pedido. */
+    public static final int DIAS_PEDIDO = 60;
 
     /** Pesos en % de los tramos 1-30, 31-60 y 61-90 días. Válidos si son enteros de 0 a 100 que suman 100. */
     public record Pesos(int p1, int p2, int p3) {
@@ -44,7 +46,7 @@ public final class PrevisionPedido {
     /** Unidades de un master consumidas en un día (una fila de la consulta de consumo). */
     public record ConsumoDia(int idMaster, LocalDate dia, int unidades) {}
 
-    public record Resultado(double consumoDiario, int pedir15, int pedir30) {}
+    public record Resultado(double consumoDiario, int pedir60) {}
 
     private PrevisionPedido() {}
 
@@ -66,12 +68,11 @@ public final class PrevisionPedido {
         long ponderado = (long) p.p1() * t.t1() + (long) p.p2() * t.t2() + (long) p.p3() * t.t3();
         double consumoDiario = BigDecimal.valueOf(ponderado)
                 .divide(BigDecimal.valueOf(ESCALA), 2, RoundingMode.HALF_UP).doubleValue();
-        int disponible = stock + enCamino;
-        return new Resultado(consumoDiario, pedir(ponderado, 15, minimo, disponible), pedir(ponderado, 30, minimo, disponible));
+        return new Resultado(consumoDiario, pedir(ponderado, minimo, stock + enCamino));
     }
 
-    private static int pedir(long ponderado, int dias, int minimo, int disponible) {
-        long objetivo = Math.max((long) minimo * ESCALA, ponderado * dias);
+    private static int pedir(long ponderado, int minimo, int disponible) {
+        long objetivo = Math.max((long) minimo * ESCALA, ponderado * DIAS_PEDIDO);
         long falta = objetivo - (long) disponible * ESCALA;
         if (falta <= 0) return 0;
         return (int) ((falta + ESCALA - 1) / ESCALA);

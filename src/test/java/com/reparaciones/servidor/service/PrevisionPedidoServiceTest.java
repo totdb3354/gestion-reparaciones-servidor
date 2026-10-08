@@ -45,14 +45,12 @@ class PrevisionPedidoServiceTest {
         servicio.rellenar(List.of(master, slave, sinConsumo, desactivado), HOY);
 
         assertEquals(0.31, master.getConsumoDiario());
-        assertEquals(2, master.getPedir15());
-        assertEquals(7, master.getPedir30());
+        assertEquals(16, master.getPedir60());
         assertEquals(0.31, slave.getConsumoDiario());
-        assertEquals(7, slave.getPedir30());
+        assertEquals(16, slave.getPedir60());
         assertEquals(0.0, sinConsumo.getConsumoDiario());
-        assertEquals(2, sinConsumo.getPedir15());
+        assertEquals(2, sinConsumo.getPedir60());
         assertNull(desactivado.getConsumoDiario());
-        assertNull(desactivado.getPedir15());
-        assertNull(desactivado.getPedir30());
+        assertNull(desactivado.getPedir60());
     }
 }
