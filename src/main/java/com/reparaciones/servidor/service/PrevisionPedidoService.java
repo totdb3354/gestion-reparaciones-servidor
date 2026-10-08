@@ -34,7 +34,7 @@ public class PrevisionPedidoService {
             int master = c.getIdComMaster() != null ? c.getIdComMaster() : c.getIdCom();
             Resultado r = PrevisionPedido.calcular(porMaster.getOrDefault(master, Tramos.CERO), pesos,
                     c.getStockMinimo(), c.getStock(), c.getEnCamino());
-            c.setPrevision(r.consumoDiario(), r.pedir15(), r.pedir30());
+            c.setPrevision(r.consumoDiario(), r.pedir60());
         }
     }
 }
