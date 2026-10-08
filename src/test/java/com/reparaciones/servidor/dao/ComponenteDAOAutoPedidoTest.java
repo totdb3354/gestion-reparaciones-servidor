@@ -32,7 +32,8 @@ class ComponenteDAOAutoPedidoTest {
         when(jdbc.queryForObject(contains("COALESCE(ID_COM_MASTER, ID_COM)"), eq(Integer.class), eq(99)))
                 .thenThrow(new EmptyResultDataAccessException(1));
         assertThrows(EmptyResultDataAccessException.class, () -> dao.setAutoPedido(99, true));
-        verify(jdbc, never()).update(anyString(), any(), any());
+        // update(String, Object...) es la llamada real: any(Object[].class) casa con el varargs entero.
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
     @Test @SuppressWarnings("unchecked")
