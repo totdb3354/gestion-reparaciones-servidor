@@ -41,13 +41,16 @@ public class ComponenteController {
         return dao.getAll();
     }
 
-    /** Listado de Stock. La previsión de pedidos (consumo/día y pedir para 60 días) es información de compras: solo
-     *  se calcula para SUPERTECNICO y ADMIN; a un TECNICO le llegan los dos campos nulos (spec 0.9.5 §3.3). */
+    /** Listado de Stock. La previsión de pedidos (consumo/día y pedir para 60 días) y la marca del pedido automático son
+     *  información de compras: solo para SUPERTECNICO y ADMIN; a un TECNICO le llegan los tres campos nulos
+     *  (spec 0.9.5 §3.3, spec 0.9.6 §4.2). */
     @GetMapping("/gestionados")
     public List<Componente> getAllGestionados(@AuthenticationPrincipal UsuarioPrincipal principal) {
         List<Componente> lista = dao.getAllGestionados();
         if (principal != null && ("SUPERTECNICO".equals(principal.getRol()) || "ADMIN".equals(principal.getRol())))
             prevision.rellenar(lista, LocalDate.now(MADRID));
+        else
+            lista.forEach(c -> c.setAutoPedido(null));
         return lista;
     }
 
@@ -109,6 +112,21 @@ public class ComponenteController {
                 "ID_COM: " + idCom + ", STOCK_MINIMO: " + req.stockMinimo());
     }
 
+    /** Marca del pedido automático (spec 0.9.6 §4.2): se guarda en el master del grupo y se apunta con su id. */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
+    @PatchMapping("/{idCom}/auto-pedido")
+    public void setAutoPedido(@PathVariable int idCom, @RequestBody AutoPedidoRequest req,
+                              @AuthenticationPrincipal UsuarioPrincipal principal) {
+        int master;
+        try {
+            master = dao.setAutoPedido(idCom, req.autoPedido());
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idCom);
+        }
+        logDao.insertar(principal.getIdUsu(), "EDITAR_COMPONENTE",
+                "ID_COM: " + master + ", AUTO_PEDIDO: " + (req.autoPedido() ? "SI" : "NO"));
+    }
+
     /** Rango que el cliente JavaFX ya aplica antes de llamar (sub-proyecto 4a): aquí solo se cierra la puerta. */
     private static void noNegativo(int valor, String mensaje) {
         if (valor < 0) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mensaje);
@@ -150,6 +168,7 @@ public class ComponenteController {
     private record InsertarRequest(String tipo, int stock, int stockMinimo) {}
     record ActualizarRequest(String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {}
     record StockMinimoRequest(int stockMinimo) {}
+    record AutoPedidoRequest(boolean autoPedido) {}
     private record DeltaRequest(int delta) {}
     private record ActivoRequest(boolean activo) {}
 }
