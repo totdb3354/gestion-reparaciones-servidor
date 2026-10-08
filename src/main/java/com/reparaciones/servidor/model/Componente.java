@@ -20,6 +20,9 @@ public class Componente {
     @Schema(nullable = true) private Double  consumoDiario;
     @Schema(nullable = true) private Integer pedir60;
 
+    // Pedido automático (spec 0.9.6 §4): la marca del master; solo para SUPERTECNICO y ADMIN.
+    @Schema(nullable = true) private Boolean autoPedido;
+
     public Componente() {}
 
     public Componente(int idCom, String tipo, LocalDateTime fechaRegistro,
@@ -55,4 +58,7 @@ public class Componente {
         this.consumoDiario = consumoDiario;
         this.pedir60       = pedir60;
     }
+
+    public Boolean getAutoPedido()                { return autoPedido; }
+    public void    setAutoPedido(Boolean autoPedido) { this.autoPedido = autoPedido; }
 }
