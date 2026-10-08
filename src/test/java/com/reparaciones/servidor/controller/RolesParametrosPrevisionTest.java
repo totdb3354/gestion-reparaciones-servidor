@@ -79,4 +79,13 @@ class RolesParametrosPrevisionTest {
         assertEquals(200, status(json(patch("/api/componentes/5/stock-minimo"), cuerpo), admin()));
         verify(componenteDao).setStockMinimo(5, 4);
     }
+
+    @Test void autoPedidoSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"autoPedido\":true}";
+        assertEquals(403, status(json(patch("/api/componentes/5/auto-pedido"), cuerpo), tecnico()));
+        verify(componenteDao, never()).setAutoPedido(anyInt(), anyBoolean());
+        assertEquals(200, status(json(patch("/api/componentes/5/auto-pedido"), cuerpo), supertecnico()));
+        assertEquals(200, status(json(patch("/api/componentes/5/auto-pedido"), cuerpo), admin()));
+        verify(componenteDao, times(2)).setAutoPedido(5, true);
+    }
 }

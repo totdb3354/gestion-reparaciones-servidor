@@ -48,6 +48,7 @@ public class ComponenteDAO {
                 SELECT c.ID_COM, c.TIPO, c.FECHA_REGISTRO,
                        COALESCE(master.STOCK, c.STOCK) AS STOCK,
                        COALESCE(master.STOCK_MINIMO, c.STOCK_MINIMO) AS STOCK_MINIMO,
+                       COALESCE(master.AUTO_PEDIDO, c.AUTO_PEDIDO) AS AUTO_PEDIDO,
                        c.ACTIVO, c.UPDATED_AT, c.ID_COM_MASTER,
                        COALESCE(SUM(CASE WHEN cc.ESTADO IN ('en_camino','parcial')
                                          THEN cc.CANTIDAD - COALESCE(cc.CANTIDAD_RECIBIDA, 0)
@@ -69,6 +70,7 @@ public class ComponenteDAO {
             int masterId = rs.getInt("ID_COM_MASTER");
             if (!rs.wasNull()) c.setIdComMaster(masterId);
             c.setEnCamino(rs.getInt("EN_CAMINO"));
+            c.setAutoPedido(rs.getBoolean("AUTO_PEDIDO"));
             Timestamp up = rs.getTimestamp("ULTIMO_PEDIDO");
             c.setUltimoPedido(up != null ? up.toLocalDateTime() : null);
             return c;
@@ -214,6 +216,15 @@ public class ComponenteDAO {
     /** El mínimo vive en el master del grupo compartido: es el que enseña Stock y el que usa la previsión. */
     public void setStockMinimo(int idCom, int stockMinimo) {
         jdbc.update("UPDATE Componente SET STOCK_MINIMO = ? WHERE ID_COM = ?", stockMinimo, resolveToMasterId(idCom));
+    }
+
+    /** Marca del pedido automático (spec 0.9.6 §4.2), en el master del grupo. No toca UPDATED_AT: "Editar stock" lo usa
+     *  para detectar ediciones simultáneas y marcar no es editar. Devuelve el id del master; un id inexistente lanza
+     *  EmptyResultDataAccessException (resolveToMasterId). */
+    public int setAutoPedido(int idCom, boolean autoPedido) {
+        int master = resolveToMasterId(idCom);
+        jdbc.update("UPDATE Componente SET AUTO_PEDIDO = ?, UPDATED_AT = UPDATED_AT WHERE ID_COM = ?", autoPedido, master);
+        return master;
     }
 
     public void actualizarStock(int idCom, int delta) {
