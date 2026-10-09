@@ -148,6 +148,8 @@ class OpenApiContractTest {
         assertTrue(requeridos.containsAll(propiedades));
         assertTrue(resumen.path("properties").path("fechaFin").path("nullable").asBoolean(false), "fechaFin nullable");
         assertTrue(resumen.path("properties").path("glassEntregadoPor").path("nullable").asBoolean(false), "glassEntregadoPor nullable");
+        assertTrue(resumen.path("properties").path("clienteTelefono").path("nullable").asBoolean(false),
+                "clienteTelefono nullable (spec 0.9.8 §5)");
         assertFalse(resumen.path("properties").path("idRep").path("nullable").asBoolean(false), "idRep no nullable");
         assertTrue(esquemas.path("LoginResponse").path("properties").path("idTec").path("nullable").asBoolean(false), "idTec nullable");
         assertTrue(esquemas.path("LoginResponse").path("required").toString().contains("\"token\""));

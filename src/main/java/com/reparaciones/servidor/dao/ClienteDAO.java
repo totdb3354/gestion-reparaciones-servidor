@@ -58,9 +58,12 @@ public class ClienteDAO {
         }
     }
 
+    /** Teléfonos con este cliente o trabajos que lo guardaron al cerrarse (spec 0.9.8 §5): con cualquiera de los dos
+     *  no se puede borrar (claves ajenas), solo desactivar. La ruta conserva su nombre (tiene-telefonos). */
     public boolean tieneTelefonos(int idCli) {
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM Telefono WHERE ID_CLI = ?", Integer.class, idCli);
+                "SELECT (SELECT COUNT(*) FROM Telefono WHERE ID_CLI = ?) + (SELECT COUNT(*) FROM Reparacion WHERE ID_CLI = ?)",
+                Integer.class, idCli, idCli);
         return count != null && count > 0;
     }
 

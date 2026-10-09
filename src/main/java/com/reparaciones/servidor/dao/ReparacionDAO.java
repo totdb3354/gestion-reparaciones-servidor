@@ -35,6 +35,13 @@ public class ReparacionDAO {
     private static final String CLIENTE_DEL_IMEI   = "(SELECT tc.ID_CLI FROM Telefono tc WHERE tc.IMEI = ?)";
     private static final String CLIENTE_DE_LA_FILA = "(SELECT tc.ID_CLI FROM Telefono tc WHERE tc.IMEI = Reparacion.IMEI)";
 
+    /** Spec 0.9.8 §2: el cliente de un trabajo abierto es el de su teléfono; el de uno cerrado, el guardado al cerrarlo.
+     *  Con IS NOT NULL a propósito: getAsignacionesCompletadasHoy reescribe "r.FECHA_FIN IS NULL" en ASIGNACION_SELECT. */
+    private static final String JOIN_CLIENTES =
+            " LEFT JOIN Cliente cli ON cli.ID_CLI = CASE WHEN r.FECHA_FIN IS NOT NULL THEN r.ID_CLI ELSE tel.ID_CLI END" +
+            " LEFT JOIN Cliente cliTel ON cliTel.ID_CLI = tel.ID_CLI";
+    private static final String COLUMNAS_CLIENTE = " cli.NOMBRE AS CLIENTE, cliTel.NOMBRE AS CLIENTE_TELEFONO";
+
     private static final RowMapper<Reparacion> REP_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
         return new Reparacion(
@@ -64,14 +71,14 @@ public class ReparacionDAO {
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
             "  AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
             " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'R%'";
 
     private static final String ASIGNACION_SELECT =
@@ -119,13 +126,13 @@ public class ReparacionDAO {
             "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
             "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' AND r.ID_REP NOT LIKE 'AG%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
@@ -175,6 +182,7 @@ public class ReparacionDAO {
         try { rr.setNormalAbierta(rs.getInt("NORMAL_ABIERTAS") > 0); } catch (Exception ignored) {}
         try { rr.setNormalTecnicoNombre(rs.getString("NORMAL_TECNICO_NOMBRE")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
+        rr.setClienteTelefono(rs.getString("CLIENTE_TELEFONO"));
         return rr;
     };
 
@@ -224,7 +232,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -240,7 +248,7 @@ public class ReparacionDAO {
         if (!sql.contains("r.FECHA_FIN >= ?"))
             throw new IllegalStateException("ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
                          " ORDER BY r.FECHA_FIN ASC";
         List<ReparacionResumen> result = new ArrayList<>(jdbc.query(sql + groupBy, RESUMEN_MAPPER, cutoff));
 
@@ -248,7 +256,7 @@ public class ReparacionDAO {
         if (!sqlGlass.contains("r.FECHA_FIN >= ?"))
             throw new IllegalStateException("GLASS_ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
         String groupByGlass = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
                          " ORDER BY r.FECHA_FIN ASC";
         result.addAll(jdbc.query(sqlGlass + groupByGlass, RESUMEN_MAPPER, cutoff));
 
@@ -258,14 +266,14 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
 
     public List<ReparacionResumen> getAsignacionesPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
                          " ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
@@ -982,12 +990,12 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'AP%' AND r.FECHA_FIN IS NULL";
 
     private static final String HISTORIAL_PULIDO_SELECT =
@@ -1001,12 +1009,12 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'P%'";
 
     // ── glass ─────────────────────────────────────────────────────────────────
@@ -1052,13 +1060,13 @@ public class ReparacionDAO {
             "  WHERE n.IMEI = r.IMEI AND n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL" +
             "  ORDER BY n.FECHA_ASIG ASC LIMIT 1) AS NORMAL_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL";
 
     private static final String GLASS_HISTORIAL_SELECT =
@@ -1080,20 +1088,20 @@ public class ReparacionDAO {
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
             "  AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
             " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'G%'";
 
     public List<ReparacionResumen> getAsignacionesGlass(Integer idTecFilter) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null)
             return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         return jdbc.query(GLASS_ASIGNACION_SELECT + groupBy, RESUMEN_MAPPER);
@@ -1108,7 +1116,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignacionesGlassPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
 
@@ -1317,7 +1325,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionGlassById(String idRep) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_REP = ?" + groupBy, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
