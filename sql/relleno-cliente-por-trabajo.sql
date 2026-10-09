@@ -1,21 +1,33 @@
 -- 0.9.8: relleno de Reparacion.ID_CLI en los trabajos ya cerrados (spec 2026-10-09-v098-cliente-por-trabajo §6).
--- Regla: el ultimo apunte ASIGNAR_CLIENTE/CAMBIAR_CLIENTE del IMEI con FECHA <= FECHA_FIN; si el IMEI tiene apuntes
+-- Regla: el ultimo apunte ASIGNAR_CLIENTE/CAMBIAR_CLIENTE/QUITAR_CLIENTE del IMEI con FECHA <= FECHA_FIN
+-- (QUITAR_CLIENTE y 'ID_CLI: ' con raya significan sin cliente); si el IMEI tiene apuntes
 -- pero todos son posteriores, sin cliente; si no tiene ninguno, el cliente actual del telefono; si el apunte nombra un
 -- cliente que ya no existe, sin cliente.
 --
 -- ORDEN: despues de migracion-cliente-por-trabajo.sql y del arranque del servidor 0.9.8. Copia de la base antes.
 -- COMO: en la consola de MariaDB, BLOQUE A BLOQUE y en la MISMA sesion (variables y tablas temporales de sesion).
---   Bloques 0-2 solo leen (el analisis completo, sin bloquear nada). El bloque 3 escribe en una transaccion, comprueba
---   lo escrito y se termina A MANO con COMMIT; o ROLLBACK;.
+--   Bloques 0-2 solo leen (cada sentencia bloquea un instante mientras corre y no queda nada bloqueado). El bloque 3
+--   escribe en una transaccion, comprueba lo escrito y se termina A MANO con COMMIT; o ROLLBACK;. Hasta entonces las
+--   filas cerradas que escribe quedan bloqueadas: leer 3.2/3.3 y decidir de inmediato; mientras, las escrituras
+--   sobre esos trabajos esperan.
 -- Solo ASCII fuera de los comentarios: no depende de como envie la terminal los caracteres.
 
 -- == Bloque 0: parametros y comprobaciones ===================================
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 SET time_zone = '+00:00';   -- FECHA_FIN (DATETIME) y Log_Actividad.FECHA (TIMESTAMP) se comparan en UTC
+
+-- 0.0 BASE = gestion_reparaciones (si no, PARAR)
+SELECT DATABASE() AS BASE;
+-- 0.0b Las 4 tablas deben salir con TABLE_COLLATION = utf8mb4_unicode_ci; si alguna sale con otra, PARAR
+SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('Cliente', 'Telefono', 'Reparacion', 'Log_Actividad');
+
+-- StartedAt es el ultimo arranque del contenedor: si el backend se reinicio despues del despliegue de la 0.9.8,
+-- usar la hora de inicio de ese despliegue (YA_CON_CLIENTE distinto de 0 lo delata).
 -- Arranque del backend 0.9.8 tal como lo da: docker inspect -f '{{.State.StartedAt}}' reparaciones-backend-1
 SET @corte := REPLACE(LEFT('PEGAR_STARTED_AT', 19), 'T', ' ');
 
--- 0.1 COLUMNA = 1; YA_CON_CLIENTE = 0 (nadie ha rellenado aun lo cerrado antes del corte)
+-- 0.1 COLUMNA = 1; YA_CON_CLIENTE = 0 (nadie ha rellenado aun lo cerrado antes del corte). Si YA_CON_CLIENTE no es 0, PARAR
 SELECT COUNT(*) AS COLUMNA FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Reparacion' AND COLUMN_NAME = 'ID_CLI';
 SELECT @corte AS CORTE, COUNT(*) AS CERRADAS_ANTES_DEL_CORTE, COALESCE(SUM(ID_CLI IS NOT NULL), 0) AS YA_CON_CLIENTE
@@ -25,10 +37,10 @@ FROM Reparacion WHERE FECHA_FIN IS NOT NULL AND FECHA_FIN < @corte;
 DROP TEMPORARY TABLE IF EXISTS apunte_cliente, imei_con_apuntes, relleno;
 
 CREATE TEMPORARY TABLE apunte_cliente (
-    IMEI    VARCHAR(30) NOT NULL,
+    IMEI    VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL,
     FECHA   DATETIME    NOT NULL,
     ID_LOG  INT         NOT NULL,
-    CLI_TXT VARCHAR(30) NOT NULL,
+    CLI_TXT VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL,
     ID_CLI  INT         NULL,
     KEY (IMEI, FECHA, ID_LOG)
 );
@@ -36,28 +48,35 @@ INSERT INTO apunte_cliente (IMEI, FECHA, ID_LOG, CLI_TXT, ID_CLI)
 SELECT a.IMEI, a.FECHA, a.ID_LOG, a.CLI_TXT, c.ID_CLI
 FROM (SELECT TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(l.DETALLE, 'IMEI: ', -1), ',', 1)) AS IMEI,
              l.FECHA, l.ID_LOG,
-             TRIM(SUBSTRING_INDEX(l.DETALLE, 'ID_CLI: ', -1)) AS CLI_TXT
+             CASE WHEN l.ACCION = 'QUITAR_CLIENTE' THEN '-'
+                  ELSE TRIM(SUBSTRING_INDEX(l.DETALLE, 'ID_CLI: ', -1)) END AS CLI_TXT
       FROM Log_Actividad l
-      WHERE l.ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE') AND l.DETALLE LIKE 'IMEI: %, ID_CLI: %') a
-LEFT JOIN Cliente c ON a.CLI_TXT REGEXP '^[0-9]+$' AND c.ID_CLI = CAST(a.CLI_TXT AS UNSIGNED);
+      WHERE (l.ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE') AND l.DETALLE LIKE 'IMEI: %, ID_CLI: %')
+         OR (l.ACCION = 'QUITAR_CLIENTE' AND l.DETALLE LIKE 'IMEI: %')) a
+LEFT JOIN Cliente c ON c.ID_CLI = CASE WHEN a.CLI_TXT REGEXP '^[0-9]+$' THEN CAST(a.CLI_TXT AS UNSIGNED) END;
 
-CREATE TEMPORARY TABLE imei_con_apuntes (IMEI VARCHAR(30) NOT NULL PRIMARY KEY)
+CREATE TEMPORARY TABLE imei_con_apuntes (IMEI VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL PRIMARY KEY)
 SELECT DISTINCT IMEI FROM apunte_cliente;
 
--- 1.1 Apuntes leidos. FORMATO_RARO = 0 (si no, PARAR: hay apuntes de cliente con otro formato)
+-- 1.1 Filas del registro de cada accion (referencia)
+SELECT ACCION, COUNT(*) AS FILAS FROM Log_Actividad
+WHERE ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE', 'QUITAR_CLIENTE') GROUP BY ACCION;
+-- Apuntes leidos. FORMATO_RARO = 0 (si no, PARAR: hay apuntes de cliente con otro formato)
 SELECT COUNT(*) AS APUNTES, COUNT(DISTINCT IMEI) AS IMEIS,
        COALESCE(SUM(CLI_TXT NOT REGEXP '^[0-9]+$'), 0) AS DEJAN_SIN_CLIENTE,
        COALESCE(SUM(CLI_TXT REGEXP '^[0-9]+$' AND ID_CLI IS NULL), 0) AS CLIENTE_BORRADO,
        MIN(FECHA) AS PRIMERO, MAX(FECHA) AS ULTIMO
 FROM apunte_cliente;
 SELECT COUNT(*) AS FORMATO_RARO FROM Log_Actividad
-WHERE ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE') AND DETALLE NOT LIKE 'IMEI: %, ID_CLI: %';
+WHERE (ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE') AND DETALLE NOT LIKE 'IMEI: %, ID_CLI: %')
+   OR (ACCION = 'QUITAR_CLIENTE' AND DETALLE NOT LIKE 'IMEI: %')
+   OR (ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE', 'QUITAR_CLIENTE') AND DETALLE IS NULL);
 
 -- == Bloque 2: propuesta y analisis (solo lectura) ===========================
 CREATE TEMPORARY TABLE relleno (
-    ID_REP VARCHAR(30) NOT NULL PRIMARY KEY,
+    ID_REP VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL PRIMARY KEY,
     ID_CLI INT         NULL,
-    FUENTE VARCHAR(10) NOT NULL
+    FUENTE VARCHAR(10) COLLATE utf8mb4_unicode_ci NOT NULL
 );
 INSERT INTO relleno (ID_REP, ID_CLI, FUENTE)
 SELECT r.ID_REP,
@@ -117,15 +136,15 @@ WHERE ct.NOMBRE LIKE '%incidencia%'
 GROUP BY CLIENTE_TELEFONO, GUARDADO ORDER BY CLIENTE_TELEFONO, TRABAJOS DESC;
 
 -- == Bloque 3: escribir y comprobar (una transaccion) ========================
--- Pegar entero. 3.1 "Changed" = suma de CON_CLIENTE del 2.1; 3.2 = esa misma suma; 3.3 = el 2.5.
+-- Pegar entero. 3.1 "Rows matched" = suma de TRABAJOS del 2.1 y "Changed" = suma de CON_CLIENTE del 2.1;
+-- 3.2 = esa misma suma de CON_CLIENTE; 3.3 = el 2.5.
 -- Terminar a mano con COMMIT; (cuadra) o ROLLBACK; (no cuadra o ha salido cualquier ERROR).
 START TRANSACTION;
 
 -- 3.1 UPDATED_AT se conserva: es un dato anadido, no una edicion
-UPDATE Reparacion r
-JOIN relleno x ON x.ID_REP = r.ID_REP
+UPDATE relleno x STRAIGHT_JOIN Reparacion r ON r.ID_REP = x.ID_REP
 SET r.ID_CLI = x.ID_CLI, r.UPDATED_AT = r.UPDATED_AT
-WHERE r.ID_CLI IS NULL;
+WHERE r.ID_CLI IS NULL AND r.FECHA_FIN IS NOT NULL AND r.FECHA_FIN < @corte;
 
 -- 3.2 Cerradas antes del corte que ya tienen cliente guardado
 SELECT COUNT(*) AS CERRADAS_CON_CLIENTE FROM Reparacion
