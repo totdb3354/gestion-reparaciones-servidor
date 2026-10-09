@@ -17,16 +17,16 @@ SELECT COUNT(*) AS chasis_origen FROM Componente
 -- Puntos de la tapa (antes que las tapas: sin esta fila puntuarian 0)
 INSERT IGNORE INTO Dificultad_puntos (CLAVE, PUNTOS) VALUES ('tapa', 1.00);
 
--- Una tapa por chasis: stock 0, minimo 2, activa, sin grupo compartido
+-- Una tapa por chasis: stock 9999 (como los chasis: su stock no se cuenta), minimo 2, activa, sin grupo compartido
 INSERT INTO Componente (TIPO, STOCK, STOCK_MINIMO, ACTIVO)
-SELECT CONCAT('tapa', SUBSTRING(c.TIPO, 4)), 0, 2, 1
+SELECT CONCAT('tapa', SUBSTRING(c.TIPO, 4)), 9999, 2, 1
   FROM Componente c
  WHERE c.TIPO LIKE 'chai%' AND c.TIPO NOT LIKE '%esim' AND c.ACTIVO = 1
    AND c.TIPO REGEXP '^chai(14|15|16|17|air)' AND c.TIPO NOT REGEXP '^chai14pro'
    AND NOT EXISTS (SELECT 1 FROM Componente t WHERE t.TIPO = CONCAT('tapa', SUBSTRING(c.TIPO, 4)));
 
--- Comprobacion: puntos_tapa 1.00; tapas = chasis_origen, stock 0, minimos 2 y 2, todas activas
+-- Comprobacion: puntos_tapa 1.00; tapas = chasis_origen, stock 9999 y 9999 (recien creadas), minimos 2 y 2, todas activas
 SELECT PUNTOS AS puntos_tapa FROM Dificultad_puntos WHERE CLAVE = 'tapa';
-SELECT COUNT(*) AS tapas, SUM(STOCK) AS stock, MIN(STOCK_MINIMO) AS min_minimo, MAX(STOCK_MINIMO) AS max_minimo,
+SELECT COUNT(*) AS tapas, MIN(STOCK) AS min_stock, MAX(STOCK) AS max_stock, MIN(STOCK_MINIMO) AS min_minimo, MAX(STOCK_MINIMO) AS max_minimo,
        SUM(ACTIVO) AS activas
   FROM Componente WHERE TIPO LIKE 'tapai%';
