@@ -35,6 +35,19 @@ class PuntosCalculoTest {
         assertEquals("glass", PuntosCalculo.claveDeTipo("G15PROMAX"));
     }
 
+    @Test void tapaTraseraTieneSuClave() {
+        assertEquals("tapa", PuntosCalculo.claveDeTipo("tapai15black"));
+        assertEquals("tapa", PuntosCalculo.claveDeTipo("tapai16promaxdeserttitanium"));
+    }
+
+    @Test void unaTapaPuntuaSuValorNoElDeOtro() {
+        Map<String, Double> valores = new java.util.HashMap<>(VALORES);
+        valores.put("tapa", 1.00);
+        double p = PuntosCalculo.puntosDeReparacion("R20261009_1",
+                List.of(new PuntosCalculo.Pieza("tapai15black", 1)), valores);
+        assertEquals(1.00, p, 0.001); // con 'otro' serían 0,50
+    }
+
     // ── puntosDeReparacion ────────────────────────────────────────────────────
     @Test void cadaPiezaPuntuaUnaVezSinMultiplicarPorCantidad() {
         // Decisión smoke 2026-09-03: cantidad>1 suele ser pieza rota o venida defectuosa —

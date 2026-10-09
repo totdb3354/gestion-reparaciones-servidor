@@ -141,7 +141,7 @@ public class ComponenteDAO {
             String prefijo = extraerPrefijo(c.getTipo());
             agrupados.computeIfAbsent(prefijo, k -> new ArrayList<>()).add(c);
         }
-        List<String> orden = List.of("bat", "cha", "g", "mc", "lcd");
+        List<String> orden = List.of("bat", "cha", "tapa", "g", "mc", "lcd");
         Map<String, List<Componente>> ordenado = new LinkedHashMap<>();
         for (String prefijo : orden)
             if (agrupados.containsKey(prefijo)) ordenado.put(prefijo, agrupados.get(prefijo));

@@ -15,6 +15,7 @@ JOIN Dificultad_puntos dp ON dp.CLAVE = CASE
     WHEN LOWER(c.TIPO) LIKE 'cam%'   THEN 'camara'
     WHEN LOWER(c.TIPO) LIKE 'lcd%'   THEN 'pantalla'
     WHEN LOWER(c.TIPO) LIKE 'mc%'    THEN 'marco'
+    WHEN LOWER(c.TIPO) LIKE 'tapa%'  THEN 'tapa'
     WHEN LOWER(c.TIPO) LIKE 'g%'     THEN 'glass'
     ELSE 'otro' END
 WHERE (r.ID_REP LIKE 'R%' OR r.ID_REP LIKE 'G%') AND r.FECHA_FIN IS NOT NULL;
