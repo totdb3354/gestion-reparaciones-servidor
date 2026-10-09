@@ -28,6 +28,7 @@ public class CompraComponenteDAO {
     static final String MSG_NO_PARCIAL   = "El pedido ya no está en recepción parcial";
     static final String MSG_NO_RECIBIDO  = "El pedido ya no está recibido";
     static final String MSG_NO_EDITABLE  = "El pedido no se puede editar en su estado actual";
+    static final String MSG_LINEA_NO_EXISTE = "El pedido ya no existe";
 
     private final JdbcTemplate jdbc;
 
@@ -36,13 +37,17 @@ public class CompraComponenteDAO {
             " cc.CANTIDAD, cc.CANTIDAD_RECIBIDA, cc.ES_URGENTE," +
             " cc.FECHA_PEDIDO, cc.FECHA_LLEGADA," +
             " cc.PRECIO_UNIDAD_PEDIDO, cc.DIVISA, cc.PRECIO_EUR," +
-            " cc.ESTADO, cc.UPDATED_AT" +
+            " cc.ESTADO, cc.UPDATED_AT," +
+            " cc.ID_BLOQUE, b.FECHA AS FECHA_BLOQUE, b.NOTA AS NOTA_BLOQUE, b.UPDATED_AT AS UPDATED_AT_BLOQUE, b.RECONSTRUIDO" +
             " FROM Compra_componente cc" +
             " JOIN Componente c ON cc.ID_COM = c.ID_COM" +
-            " JOIN Proveedor p ON cc.ID_PROV = p.ID_PROV";
+            " JOIN Proveedor p ON cc.ID_PROV = p.ID_PROV" +
+            " LEFT JOIN Bloque_compra b ON b.ID_BLOQUE = cc.ID_BLOQUE";
 
     private static final RowMapper<CompraComponente> MAPPER = (rs, row) -> {
         Timestamp tsLlegada = rs.getTimestamp("FECHA_LLEGADA");
+        Timestamp tsBloque = rs.getTimestamp("FECHA_BLOQUE");
+        Timestamp tsBloqueAt = rs.getTimestamp("UPDATED_AT_BLOQUE");
         return new CompraComponente(
                 rs.getInt("ID_COMPRA"),
                 rs.getInt("ID_COM"),
@@ -59,7 +64,12 @@ public class CompraComponenteDAO {
                 rs.getDouble("PRECIO_EUR"),
                 rs.getString("ESTADO"),
                 rs.getTimestamp("UPDATED_AT").toLocalDateTime()
-        );
+        ).conBloque(
+                rs.getObject("ID_BLOQUE", Integer.class),
+                tsBloque != null ? tsBloque.toLocalDateTime() : null,
+                rs.getString("NOTA_BLOQUE"),
+                tsBloqueAt != null ? tsBloqueAt.toLocalDateTime() : null,
+                rs.getBoolean("RECONSTRUIDO"));
     };
 
     public CompraComponenteDAO(JdbcTemplate jdbc) {
@@ -187,6 +197,12 @@ public class CompraComponenteDAO {
                 "UPDATE Compra_componente SET ESTADO='en_camino' WHERE ID_COMPRA=? AND ESTADO='pendiente'",
                 idCompra);
         exigir(n, MSG_NO_PENDIENTE);
+    }
+
+    /** Cambia el bloque de una línea (0.9.9). UPDATED_AT cambia: es un cambio real de la línea. 409 si ya no existe. */
+    public void moverABloque(int idCompra, int idBloque) {
+        int n = jdbc.update("UPDATE Compra_componente SET ID_BLOQUE=? WHERE ID_COMPRA=?", idBloque, idCompra);
+        exigir(n, MSG_LINEA_NO_EXISTE);
     }
 
     /** Borra un pedido en estado 'pendiente' (aún no se pidió nada). */

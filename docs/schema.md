@@ -18,6 +18,7 @@ Tablas (generado con grep el 2026-09-14):
 - `TipoCambio`
 - `Dificultad_puntos`
 - `Parametro`
+- `Bloque_compra` (0.9.9: cabecera de pedido a un proveedor; `Compra_componente.ID_BLOQUE` apunta a ella)
 - `Compra_componente`
 - `Compra_otro`
 - `Reparacion_componente`

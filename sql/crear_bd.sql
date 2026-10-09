@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS Solicitud_Stock;
 DROP TABLE IF EXISTS Reparacion_componente;
 DROP TABLE IF EXISTS Compra_otro;
 DROP TABLE IF EXISTS Compra_componente;
+DROP TABLE IF EXISTS Bloque_compra;
 DROP TABLE IF EXISTS Reparacion_borrador;
 DROP TABLE IF EXISTS Reparacion;
 DROP TABLE IF EXISTS Usuario;
@@ -259,10 +260,22 @@ INSERT INTO Parametro (CLAVE, VALOR) VALUES
     ('PREVISION_PESO_2', 30),
     ('PREVISION_PESO_3', 20);
 
+CREATE TABLE Bloque_compra (
+    ID_BLOQUE    INT          NOT NULL AUTO_INCREMENT,
+    ID_PROV      INT          NOT NULL,
+    FECHA        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    NOTA         VARCHAR(200),
+    RECONSTRUIDO BOOLEAN      NOT NULL DEFAULT FALSE,
+    UPDATED_AT   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (ID_BLOQUE),
+    CONSTRAINT fk_bloque_proveedor FOREIGN KEY (ID_PROV) REFERENCES Proveedor (ID_PROV)
+);
+
 CREATE TABLE Compra_componente (
     ID_COMPRA            INT           NOT NULL AUTO_INCREMENT,
     ID_COM               INT           NOT NULL,
     ID_PROV              INT           NOT NULL,
+    ID_BLOQUE            INT,
     CANTIDAD             INT           NOT NULL,
     CANTIDAD_RECIBIDA    INT,
     ES_URGENTE           BOOLEAN       NOT NULL DEFAULT FALSE,
@@ -274,8 +287,10 @@ CREATE TABLE Compra_componente (
     ESTADO               ENUM('pendiente','en_camino','parcial','recibido','cancelado') NOT NULL DEFAULT 'pendiente',
     UPDATED_AT           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (ID_COMPRA),
-    CONSTRAINT fk_compra_componente FOREIGN KEY (ID_COM)  REFERENCES Componente (ID_COM),
-    CONSTRAINT fk_compra_proveedor  FOREIGN KEY (ID_PROV) REFERENCES Proveedor  (ID_PROV)
+    CONSTRAINT fk_compra_componente FOREIGN KEY (ID_COM)    REFERENCES Componente    (ID_COM),
+    CONSTRAINT fk_compra_proveedor  FOREIGN KEY (ID_PROV)   REFERENCES Proveedor     (ID_PROV),
+    CONSTRAINT fk_compra_bloque     FOREIGN KEY (ID_BLOQUE) REFERENCES Bloque_compra (ID_BLOQUE),
+    INDEX idx_compra_bloque (ID_BLOQUE)
 );
 
 CREATE TABLE Compra_otro (
