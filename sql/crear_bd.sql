@@ -242,6 +242,7 @@ INSERT INTO Dificultad_puntos (CLAVE, PUNTOS) VALUES
     ('chasis',   2.00),
     ('marco',    0.50),
     ('pantalla', 1.00),
+    ('tapa',     1.00),
     ('glass',    0.50),
     ('otro',     0.50),
     ('pulido',   0.25);

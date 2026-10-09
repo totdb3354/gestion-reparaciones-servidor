@@ -20,6 +20,7 @@ public final class PuntosCalculo {
     static {
         PREFIJO_CLAVE.put("bat", "bateria");
         PREFIJO_CLAVE.put("cha", "chasis");
+        PREFIJO_CLAVE.put("tapa", "tapa");
         PREFIJO_CLAVE.put("cam", "camara");
         PREFIJO_CLAVE.put("lcd", "pantalla");
         PREFIJO_CLAVE.put("mc",  "marco");
