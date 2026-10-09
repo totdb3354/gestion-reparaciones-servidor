@@ -137,9 +137,10 @@ GROUP BY CLIENTE_TELEFONO, GUARDADO ORDER BY CLIENTE_TELEFONO, TRABAJOS DESC;
 
 -- == Bloque 3: escribir y comprobar (una transaccion) ========================
 -- Pegar entero. 3.1 "Rows matched" = suma de TRABAJOS del 2.1 y "Changed" = suma de CON_CLIENTE del 2.1;
--- 3.2 = esa misma suma de CON_CLIENTE; 3.3 = el 2.5.
+-- 3.2 = esa misma suma de CON_CLIENTE; 3.3 = el 2.5; 3.4 UPDATED_AT_TOCADOS = 0.
 -- Terminar a mano con COMMIT; (cuadra) o ROLLBACK; (no cuadra o ha salido cualquier ERROR).
 START TRANSACTION;
+SET @inicio := NOW();
 
 -- 3.1 UPDATED_AT se conserva: es un dato anadido, no una edicion
 UPDATE relleno x STRAIGHT_JOIN Reparacion r ON r.ID_REP = x.ID_REP
@@ -158,6 +159,10 @@ JOIN Cliente ct ON ct.ID_CLI = t.ID_CLI
 LEFT JOIN Cliente cg ON cg.ID_CLI = r.ID_CLI
 WHERE r.FECHA_FIN IS NOT NULL AND r.FECHA_FIN < @corte AND ct.NOMBRE LIKE '%incidencia%'
 GROUP BY CLIENTE_TELEFONO, GUARDADO ORDER BY CLIENTE_TELEFONO, TRABAJOS DESC;
+
+-- 3.4 El relleno no ha tocado UPDATED_AT: UPDATED_AT_TOCADOS = 0 (si no, ROLLBACK y avisar)
+SELECT COUNT(*) AS UPDATED_AT_TOCADOS FROM Reparacion
+WHERE FECHA_FIN IS NOT NULL AND FECHA_FIN < @corte AND UPDATED_AT >= @inicio;
 
 -- Si cuadra:  COMMIT;
 -- Si no:      ROLLBACK;
