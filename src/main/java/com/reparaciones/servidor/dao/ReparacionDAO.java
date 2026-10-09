@@ -31,6 +31,10 @@ public class ReparacionDAO {
 
     private static final DateTimeFormatter FMT_ID = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    /** Spec 0.9.8 §4: al cerrar un trabajo se guarda el cliente que tiene su teléfono en ese momento. */
+    private static final String CLIENTE_DEL_IMEI   = "(SELECT tc.ID_CLI FROM Telefono tc WHERE tc.IMEI = ?)";
+    private static final String CLIENTE_DE_LA_FILA = "(SELECT tc.ID_CLI FROM Telefono tc WHERE tc.IMEI = Reparacion.IMEI)";
+
     private static final RowMapper<Reparacion> REP_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
         return new Reparacion(
@@ -462,8 +466,9 @@ public class ReparacionDAO {
     public String insertar(String imei, int idTec, LocalDateTime fechaAsig, LocalDateTime fechaFin) {
         ensureTelefono(imei);
         String idRep = nextId("R");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, FECHA_FIN) VALUES (?,?,?,?,?)",
-                idRep, imei, idTec, fechaAsig, fechaFin);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, FECHA_FIN, ID_CLI)"
+                        + " VALUES (?,?,?,?,?," + CLIENTE_DEL_IMEI + ")",
+                idRep, imei, idTec, fechaAsig, fechaFin, imei);
         return idRep;
     }
 
@@ -529,9 +534,9 @@ public class ReparacionDAO {
                 String idRep = nextId(idAsignacion == null && "G".equals(categoria)
                         ? "G" : resultPrefix(idAsignacion));
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR)" +
-                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?)",
-                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1]);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR, ID_CLI)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?," + CLIENTE_DEL_IMEI + ")",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1], imei);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -581,7 +586,7 @@ public class ReparacionDAO {
                     " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'",
                     Integer.class, idAsignacion);
             if (bloqueantes != null && bloqueantes == 0) {
-                jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAsignacion);
+                jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ?", idAsignacion);
                 List<String> prevs = jdbc.query(
                         "SELECT ID_REP_ANTERIOR FROM Reparacion" +
                         " WHERE ID_REP = ? AND ID_REP_ANTERIOR IS NOT NULL",
@@ -616,9 +621,9 @@ public class ReparacionDAO {
             if (!fila.esSolicitud) {
                 String idRep = nextId(resultPrefix(idAsignacion));
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR)" +
-                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?)",
-                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1]);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR, ID_CLI)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?," + CLIENTE_DEL_IMEI + ")",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1], imei);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -666,7 +671,7 @@ public class ReparacionDAO {
 
     public void completar(String idRep) {
         int filas = jdbc.update(
-                "UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
+                "UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La asignación ya fue eliminada o completada por otro usuario");
@@ -916,7 +921,7 @@ public class ReparacionDAO {
                         idRepOrig);
                 // Reabrir la A* si existe cerrada
                 jdbc.update(
-                        "UPDATE Reparacion SET FECHA_FIN = NULL" +
+                        "UPDATE Reparacion SET FECHA_FIN = NULL, ID_CLI = NULL" +
                         " WHERE ID_REP_ANTERIOR = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NOT NULL",
                         idRepOrig);
                 // Reconciliar urgencia: la fila reabierta conserva su URGENTE congelado;
@@ -1166,9 +1171,10 @@ public class ReparacionDAO {
         Map<String, Object> row = rows.get(0);
         String idP = nextId("P");
         jdbc.update(
-                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),NOW(),?,?)",
-                idP, row.get("IMEI"), row.get("ID_TEC"), idAP, row.get("COMENTARIO_ASIGNACION"), row.get("ID_TEC_ASIGNA"));
-        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAP);
+                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, ID_CLI)" +
+                " VALUES (?,?,?,?,NOW(),NOW(),?,?," + CLIENTE_DEL_IMEI + ")",
+                idP, row.get("IMEI"), row.get("ID_TEC"), idAP, row.get("COMENTARIO_ASIGNACION"), row.get("ID_TEC_ASIGNA"), row.get("IMEI"));
+        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ?", idAP);
     }
 
     @Transactional
