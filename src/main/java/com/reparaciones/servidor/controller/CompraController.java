@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraComponente;
+import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.ValorEntero;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.BloqueCompraService;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/compras")
@@ -92,9 +94,17 @@ public class CompraController {
         ValidacionPedidos.precioNoNegativo(req.precioUnidad());
         String divisa = ValidacionPedidos.divisaValida(req.divisa());
         ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
-        dao.getById(idCompra).ifPresent(c ->
-                ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
+        Optional<CompraComponente> actual = dao.getById(idCompra);
+        actual.ifPresent(c -> ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
         double precioEur = conversion.aEuros(req.precioUnidad(), divisa);
+        // 0.9.9: otro proveedor saca la línea de su bloque (regla 1: un proveedor por bloque), en la misma transacción.
+        if (actual.isPresent() && actual.get().getIdProv() != req.idProv()) {
+            BloqueCompraService.Movimiento m = bloques.editarCambiandoProveedor(idCompra, req.idProv(), req.cantidad(),
+                    req.esUrgente(), req.precioUnidad(), divisa, precioEur, req.updatedAt(), req.destino());
+            logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO", "ID_COMPRA: " + idCompra);
+            registroBloques.movimiento(principal.getIdUsu(), m);
+            return;
+        }
         dao.editar(idCompra, req.idProv(), req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), divisa, precioEur, req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO", "ID_COMPRA: " + idCompra);
@@ -163,8 +173,9 @@ public class CompraController {
     @DeleteMapping("/{idCompra}")
     public void borrar(@PathVariable int idCompra,
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.borrarPendiente(idCompra);
+        Optional<Integer> vaciado = bloques.borrarLineaPendiente(idCompra);
         logDao.insertar(principal.getIdUsu(), "BORRAR_PEDIDO", "ID_COMPRA: " + idCompra);
+        vaciado.ifPresent(idBloque -> registroBloques.vaciado(principal.getIdUsu(), idBloque));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -183,7 +194,9 @@ public class CompraController {
                          double precioUnidad, String divisa,
                          @Schema(nullable = true, description = "Ignorado: el servidor calcula el importe en euros")
                          Double precioEur,
-                         LocalDateTime updatedAt) {}
+                         LocalDateTime updatedAt,
+                         @Schema(nullable = true, description = "0.9.9: bloque destino si cambia el proveedor; nulo = regla por defecto")
+                         DestinoPedido destino) {}
     record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
     record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}
     record UpdatedAtRequest(LocalDateTime updatedAt) {}
