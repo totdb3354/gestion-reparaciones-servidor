@@ -19,6 +19,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
@@ -34,6 +35,7 @@ class CompraLoteServiceTransaccionTest {
     private static final CompraOtroDAO compraOtroDao = mock(CompraOtroDAO.class);
     private static final ReparacionComponenteDAO reparacionComponenteDao = mock(ReparacionComponenteDAO.class);
     private static final SolicitudStockDAO solicitudStockDao = mock(SolicitudStockDAO.class);
+    private static final DestinoBloque destinoBloque = mock(DestinoBloque.class);
 
     @Configuration
     @EnableTransactionManagement
@@ -50,7 +52,7 @@ class CompraLoteServiceTransaccionTest {
 
         @Bean
         CompraLoteService compraLoteService() {
-            return new CompraLoteService(compraDao, compraOtroDao, reparacionComponenteDao, solicitudStockDao);
+            return new CompraLoteService(compraDao, compraOtroDao, reparacionComponenteDao, solicitudStockDao, destinoBloque);
         }
     }
 
@@ -61,7 +63,8 @@ class CompraLoteServiceTransaccionTest {
 
     @BeforeEach
     void resetMocks() throws SQLException {
-        reset(dataSource, compraDao, compraOtroDao, reparacionComponenteDao, solicitudStockDao);
+        reset(dataSource, compraDao, compraOtroDao, reparacionComponenteDao, solicitudStockDao, destinoBloque);
+        when(destinoBloque.resolver(anyInt(), any(), anyBoolean())).thenReturn(new DestinoBloque.Destino(90, false));
         connection = mock(Connection.class);
         when(dataSource.getConnection()).thenReturn(connection);
     }
@@ -71,12 +74,12 @@ class CompraLoteServiceTransaccionTest {
     }
 
     @Test void unFalloEnLaSegundaLineaHaceRollbackYNuncaCommit() throws SQLException {
-        when(compraDao.insertar(anyInt(), anyInt(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble()))
+        when(compraDao.insertar(anyInt(), anyInt(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), anyInt()))
                 .thenReturn(41)
                 .thenThrow(new DataAccessResourceFailureException("BD caída"));
 
         assertThrows(DataAccessResourceFailureException.class,
-                () -> servicio.guardarCompras(List.of(linea(1), linea(7)), List.of(11), List.of()));
+                () -> servicio.guardarCompras(List.of(linea(1), linea(7)), List.of(11), List.of(), Map.of()));
 
         verify(connection).rollback();
         verify(connection, never()).commit();
@@ -84,10 +87,10 @@ class CompraLoteServiceTransaccionTest {
     }
 
     @Test void elCaminoFelizHaceCommitYNuncaRollback() throws SQLException {
-        when(compraDao.insertar(anyInt(), anyInt(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble()))
+        when(compraDao.insertar(anyInt(), anyInt(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), anyInt()))
                 .thenReturn(41);
 
-        servicio.guardarCompras(List.of(linea(1)), List.of(11), List.of(21));
+        servicio.guardarCompras(List.of(linea(1)), List.of(11), List.of(21), Map.of());
 
         verify(connection).commit();
         verify(connection, never()).rollback();

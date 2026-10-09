@@ -7,6 +7,7 @@ import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.dao.TipoCambioDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
+import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LoteCompras;
 import com.reparaciones.servidor.model.LoteComprasOtros;
 import com.reparaciones.servidor.model.Proveedor;
@@ -19,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -39,7 +41,8 @@ class CompraLoteControllerTest {
     private final TipoCambioDAO tipoCambio = mock(TipoCambioDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
     private final CompraLoteController ctl = new CompraLoteController(servicio, componenteDao, proveedorDao,
-            reparacionComponenteDao, solicitudStockDao, new ConversionEur(tipoCambio), logDao, new RegistroIdempotencia());
+            reparacionComponenteDao, solicitudStockDao, new ConversionEur(tipoCambio), logDao, new RegistroIdempotencia(),
+            new RegistroBloques(logDao, proveedorDao));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3);
 
     CompraLoteControllerTest() {
@@ -52,8 +55,12 @@ class CompraLoteControllerTest {
         when(proveedorDao.getById(3)).thenReturn(Optional.of(new Proveedor(3, "Proveedor B", true, "USD", null, "COMPONENTES")));
         when(proveedorDao.getById(6)).thenReturn(Optional.of(new Proveedor(6, "ACME", false, "EUR", null, "COMPONENTES")));
         when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
-        when(servicio.guardarCompras(anyList(), anyList(), anyList())).thenReturn(new LoteCompras.Respuesta(List.of(41)));
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(resultado(41));
         when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51)));
+    }
+
+    private static CompraLoteService.ResultadoLote resultado(Integer... ids) {
+        return new CompraLoteService.ResultadoLote(new LoteCompras.Respuesta(List.of(ids)), List.of());
     }
 
     private static LoteCompras.Linea linea(Integer idCom, Integer idProv, int cantidad, double precio) {
@@ -61,12 +68,12 @@ class CompraLoteControllerTest {
     }
 
     private static LoteCompras.Peticion lote(LoteCompras.Linea... lineas) {
-        return new LoteCompras.Peticion(Arrays.asList(lineas), null);
+        return new LoteCompras.Peticion(Arrays.asList(lineas), null, null);
     }
 
     private static LoteCompras.Peticion conSolicitudes(List<Integer> urgentes, List<Integer> preventivas,
                                                        LoteCompras.Linea... lineas) {
-        return new LoteCompras.Peticion(Arrays.asList(lineas), new LoteCompras.Solicitudes(urgentes, preventivas));
+        return new LoteCompras.Peticion(Arrays.asList(lineas), new LoteCompras.Solicitudes(urgentes, preventivas), null);
     }
 
     private String falla422(LoteCompras.Peticion peticion) {
@@ -92,7 +99,7 @@ class CompraLoteControllerTest {
 
     @Test void sinLineasEs422() {
         assertEquals("Añade al menos una línea.", falla422(lote()));
-        assertEquals("Añade al menos una línea.", falla422(new LoteCompras.Peticion(null, null)));
+        assertEquals("Añade al menos una línea.", falla422(new LoteCompras.Peticion(null, null, null)));
         nadaGuardadoNiRegistrado();
     }
 
@@ -141,14 +148,14 @@ class CompraLoteControllerTest {
         when(reparacionComponenteDao.getIdComDeSolicitud(11)).thenReturn(4);    // slave de 1
         when(solicitudStockDao.getIdCom(21)).thenReturn(1);
         ctl.guardarLoteCompras(conSolicitudes(List.of(11), List.of(21), linea(1, 2, 2, 0.0)), super7, CLAVE);
-        verify(servicio).guardarCompras(anyList(), eq(List.of(11)), eq(List.of(21)));
+        verify(servicio).guardarCompras(anyList(), eq(List.of(11)), eq(List.of(21)), anyMap());
     }
 
     @Test void laDivisaEsLaDelProveedorYElEurSeCalculaAntesDelServicio() {
         ctl.guardarLoteCompras(lote(linea(1, 3, 2, 10.0), linea(4, 2, 1, 5.5)), super7, CLAVE);
         verify(servicio).guardarCompras(eq(List.of(
                 new CompraLoteService.LineaCompra(1, 3, 2, false, 10.0, "USD", 8.8),
-                new CompraLoteService.LineaCompra(4, 2, 1, false, 5.5, "EUR", 5.5))), eq(List.of()), eq(List.of()));
+                new CompraLoteService.LineaCompra(4, 2, 1, false, 5.5, "EUR", 5.5))), eq(List.of()), eq(List.of()), eq(Map.of()));
     }
 
     @Test void laMismaClaveYLaMismaPeticionDevuelvenLaRespuestaGuardadaSinInsertar() {
@@ -156,12 +163,12 @@ class CompraLoteControllerTest {
         LoteCompras.Respuesta segunda = ctl.guardarLoteCompras(lote(linea(1, 2, 1, 0.0)), super7, CLAVE);
         assertSame(primera, segunda);
         assertEquals(List.of(41), segunda.idsCreados());
-        verify(servicio, times(1)).guardarCompras(anyList(), anyList(), anyList());
+        verify(servicio, times(1)).guardarCompras(anyList(), anyList(), anyList(), anyMap());
         verify(logDao, times(1)).insertar(eq(7), eq("CREAR_PEDIDO"), anyString());
     }
 
     @Test void registraUnLogPorLineaYOtroPorSolicitudUnaSolaVez() {
-        when(servicio.guardarCompras(anyList(), anyList(), anyList())).thenReturn(new LoteCompras.Respuesta(List.of(41, 42)));
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(resultado(41, 42));
         when(reparacionComponenteDao.getIdComDeSolicitud(11)).thenReturn(1);
         when(solicitudStockDao.getIdCom(21)).thenReturn(4);
         ctl.guardarLoteCompras(conSolicitudes(List.of(11), List.of(21),
@@ -185,7 +192,24 @@ class CompraLoteControllerTest {
         verifyNoInteractions(servicio, logDao);
         // La escritura no llegó a hacerse: RegistroIdempotencia liberó la clave y el reintento sí guarda
         ctl.guardarLoteCompras(peticion, super7, CLAVE);
-        verify(servicio).guardarCompras(anyList(), anyList(), anyList());
+        verify(servicio).guardarCompras(anyList(), anyList(), anyList(), anyMap());
+    }
+
+    @Test void losDestinosElegidosLleganAlServicioPorProveedor() {
+        LoteCompras.Peticion peticion = new LoteCompras.Peticion(List.of(linea(1, 2, 1, 0.0), linea(4, 3, 1, 0.0)), null,
+                List.of(new LoteCompras.Destino(2, 41), new LoteCompras.Destino(3, null)));
+        ctl.guardarLoteCompras(peticion, super7, CLAVE);
+        verify(servicio).guardarCompras(anyList(), eq(List.of()), eq(List.of()),
+                eq(Map.of(2, new DestinoPedido(41), 3, new DestinoPedido(null))));
+    }
+
+    @Test void cadaBloqueNuevoSeRegistraConSuProveedor() {
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(new CompraLoteService.ResultadoLote(
+                new LoteCompras.Respuesta(List.of(41)), List.of(new CompraLoteService.BloqueCreado(90, 2))));
+        when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
+        ctl.guardarLoteCompras(lote(linea(1, 2, 1, 0.0)), super7, CLAVE);
+        verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 90, PROVEEDOR: Proveedor A");
+        verify(logDao).insertar(7, "CREAR_PEDIDO", "COMPONENTE: lcd-x-negro, PROVEEDOR: Proveedor A, CANT: 1");
     }
 
     // ── Task 5: POST /api/compras-otros/lote ──

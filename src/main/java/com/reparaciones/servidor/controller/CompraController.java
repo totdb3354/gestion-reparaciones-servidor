@@ -7,7 +7,9 @@ import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.ValorEntero;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.BloqueCompraService;
 import com.reparaciones.servidor.service.ConversionEur;
+import com.reparaciones.servidor.service.DestinoBloque;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,15 +28,20 @@ public class CompraController {
     private final ComponenteDAO       componenteDao;
     private final ProveedorDAO        proveedorDao;
     private final ConversionEur       conversion;
+    private final BloqueCompraService bloques;
+    private final RegistroBloques     registroBloques;
 
     public CompraController(CompraComponenteDAO dao, LogDAO logDao,
                             ComponenteDAO componenteDao, ProveedorDAO proveedorDao,
-                            ConversionEur conversion) {
+                            ConversionEur conversion, BloqueCompraService bloques,
+                            RegistroBloques registroBloques) {
         this.dao           = dao;
         this.logDao        = logDao;
         this.componenteDao = componenteDao;
         this.proveedorDao  = proveedorDao;
         this.conversion    = conversion;
+        this.bloques       = bloques;
+        this.registroBloques = registroBloques;
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
@@ -67,10 +74,12 @@ public class CompraController {
         ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
         // P3: el importe en euros lo calcula el servidor; req.precioEur() se ignora
         double precioEur = conversion.aEuros(req.precioUnidad(), divisa);
-        dao.insertar(req.idCom(), req.idProv(), req.cantidad(), req.esUrgente(),
+        // 0.9.9: el alta cae en el bloque abierto del proveedor o en uno nuevo (regla por defecto).
+        DestinoBloque.Destino destino = bloques.altaSuelta(req.idCom(), req.idProv(), req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), divisa, precioEur);
         String tipo = componenteDao.getTipoById(req.idCom());
         String proveedor = proveedorDao.getNombreById(req.idProv());
+        if (destino.nuevo()) registroBloques.creado(principal.getIdUsu(), destino.idBloque(), req.idProv());
         logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO",
                 "COMPONENTE: " + tipo + ", PROVEEDOR: " + proveedor + ", CANT: " + req.cantidad());
     }

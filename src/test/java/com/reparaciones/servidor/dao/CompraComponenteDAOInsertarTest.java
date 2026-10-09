@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 /** El lote de pedidos devuelve los ids creados (spec 4b §4.4): insertar pasa a devolver la clave generada. */
 class CompraComponenteDAOInsertarTest {
 
-    @Test void insertaEnElMasterYDevuelveElIdGenerado() throws Exception {
+    @Test void insertaEnElMasterYEnSuBloqueYDevuelveElIdGenerado() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForObject(contains("COALESCE(ID_COM_MASTER, ID_COM)"), eq(Integer.class), eq(12))).thenReturn(3);
         when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
@@ -29,7 +29,7 @@ class CompraComponenteDAOInsertarTest {
             return 1;
         });
 
-        int id = new CompraComponenteDAO(jdbc).insertar(12, 2, 3, true, 10.0, "USD", 8.8);
+        int id = new CompraComponenteDAO(jdbc).insertar(12, 2, 3, true, 10.0, "USD", 8.8, 90);
 
         assertEquals(41, id);
         ArgumentCaptor<PreparedStatementCreator> sentencia = ArgumentCaptor.forClass(PreparedStatementCreator.class);
@@ -46,5 +46,6 @@ class CompraComponenteDAOInsertarTest {
         verify(ps).setDouble(5, 10.0);
         verify(ps).setString(6, "USD");
         verify(ps).setDouble(7, 8.8);
+        verify(ps).setInt(8, 90);
     }
 }

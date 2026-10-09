@@ -6,6 +6,7 @@ import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
+import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LoteCompras;
 import com.reparaciones.servidor.model.LoteComprasOtros;
 import com.reparaciones.servidor.model.Proveedor;
@@ -19,8 +20,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.reparaciones.servidor.controller.ValidacionPedidos.*;
@@ -43,10 +46,12 @@ public class CompraLoteController {
     private final ConversionEur conversion;
     private final LogDAO logDao;
     private final RegistroIdempotencia idempotencia;
+    private final RegistroBloques registroBloques;
 
     public CompraLoteController(CompraLoteService servicio, ComponenteDAO componenteDao, ProveedorDAO proveedorDao,
                                 ReparacionComponenteDAO reparacionComponenteDao, SolicitudStockDAO solicitudStockDao,
-                                ConversionEur conversion, LogDAO logDao, RegistroIdempotencia idempotencia) {
+                                ConversionEur conversion, LogDAO logDao, RegistroIdempotencia idempotencia,
+                                RegistroBloques registroBloques) {
         this.servicio = servicio;
         this.componenteDao = componenteDao;
         this.proveedorDao = proveedorDao;
@@ -55,6 +60,7 @@ public class CompraLoteController {
         this.conversion = conversion;
         this.logDao = logDao;
         this.idempotencia = idempotencia;
+        this.registroBloques = registroBloques;
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -68,11 +74,15 @@ public class CompraLoteController {
         List<Integer> urgentes = lista(req.solicitudes() == null ? null : req.solicitudes().urgentes());
         List<Integer> preventivas = lista(req.solicitudes() == null ? null : req.solicitudes().preventivas());
         validarSolicitudes(lineas, urgentes, preventivas);
+        Map<Integer, DestinoPedido> destinos = destinos(req.destinos());
         int idUsu = principal.getIdUsu();
         return idempotencia.ejecutar(idUsu, OP_COMPRAS, claveIdempotencia, req,
                 // La tasa (Frankfurter: lenta y externa) se resuelve aquí, ANTES de entrar en la transacción del servicio.
-                () -> servicio.guardarCompras(resolverCompras(lineas), urgentes, preventivas),
-                r -> registrarLogsCompras(lineas, urgentes, preventivas, idUsu));
+                () -> servicio.guardarCompras(resolverCompras(lineas), urgentes, preventivas, destinos),
+                r -> {
+                    for (CompraLoteService.BloqueCreado b : r.bloquesCreados()) registroBloques.creado(idUsu, b.idBloque(), b.idProv());
+                    registrarLogsCompras(lineas, urgentes, preventivas, idUsu);
+                }).respuesta();
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -160,6 +170,18 @@ public class CompraLoteController {
     private Integer masterDe(Integer idCom) {
         if (idCom == null) return null;
         return componenteDao.getBasico(idCom).map(ComponenteDAO.Basico::idMaster).orElse(null);
+    }
+
+    /** Destino por proveedor (0.9.9): estar en la lista = elegido por la web; idBloque nulo = bloque nuevo. Con un
+     *  proveedor repetido vale el último. */
+    static Map<Integer, DestinoPedido> destinos(List<LoteCompras.Destino> lista) {
+        Map<Integer, DestinoPedido> m = new HashMap<>();
+        if (lista != null) {
+            for (LoteCompras.Destino d : lista) {
+                if (d != null) m.put(d.idProv(), new DestinoPedido(d.idBloque()));
+            }
+        }
+        return m;
     }
 
     private static List<Integer> lista(List<Integer> ids) {

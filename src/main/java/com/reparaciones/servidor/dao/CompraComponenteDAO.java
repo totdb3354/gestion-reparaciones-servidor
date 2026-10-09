@@ -97,16 +97,16 @@ public class CompraComponenteDAO {
     }
 
     /** Devuelve el ID_COMPRA generado (el lote lo devuelve a la web, sub-proyecto 4b; el POST suelto lo ignora).
-     *  El pedido se guarda siempre en el master del SKU compartido. */
+     *  El pedido se guarda siempre en el master del SKU compartido y en el bloque `idBloque` (0.9.9). */
     public int insertar(int idCom, int idProv, int cantidad, boolean esUrgente,
-                        double precioUnidad, String divisa, double precioEur) {
+                        double precioUnidad, String divisa, double precioEur, int idBloque) {
         int idMaster = resolveToMasterId(idCom);
         KeyHolder claves = new GeneratedKeyHolder();
         jdbc.update((PreparedStatementCreator) con -> {
             PreparedStatement ps = con.prepareStatement(
                     "INSERT INTO Compra_componente" +
-                    " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
-                    " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
+                    " (ID_COM, ID_PROV, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO, ID_BLOQUE)" +
+                    " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente', ?)",
                     Statement.RETURN_GENERATED_KEYS);
             ps.setInt(1, idMaster);
             ps.setInt(2, idProv);
@@ -115,6 +115,7 @@ public class CompraComponenteDAO {
             ps.setDouble(5, precioUnidad);
             ps.setString(6, divisa);
             ps.setDouble(7, precioEur);
+            ps.setInt(8, idBloque);
             return ps;
         }, claves);
         Number id = claves.getKey();
