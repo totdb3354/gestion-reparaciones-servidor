@@ -1,8 +1,10 @@
 package com.reparaciones.servidor.controller;
 
+import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.DestinoPedido;
+import com.reparaciones.servidor.model.LineaVista;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.BloqueCompraService;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
@@ -54,5 +57,35 @@ class BloqueCompraControllerTest {
         assertThrows(ResponseStatusException.class,
                 () -> ctl.mover(5, new BloqueCompraController.MoverRequest(40, AT), super7));
         verifyNoInteractions(logDao);
+    }
+
+    static BloqueCompraDAO.LineaBloque lb(int id, String tipo, int cantidad) {
+        return new BloqueCompraDAO.LineaBloque(id, tipo, cantidad, "en_camino", AT);
+    }
+
+    @Test void recibirRegistraCadaLineaConSuStockYElBloque() {
+        List<LineaVista> vistas = List.of(new LineaVista(1, AT), new LineaVista(2, AT));
+        when(servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, vistas))
+                .thenReturn(new BloqueCompraService.Aplicada(41, List.of(lb(1, "lcd-x-negro", 3), lb(2, "bat-x", 1))));
+        ctl.recibir(41, new BloqueCompraController.LineasRequest(vistas), super7);
+        InOrder orden = inOrder(logDao);
+        orden.verify(logDao).insertar(7, "RECIBIR_PEDIDO", "ID_COMPRA: 1, COMPONENTE: lcd-x-negro, CANT: 3");
+        orden.verify(logDao).insertar(7, "RECIBIR_PEDIDO", "ID_COMPRA: 2, COMPONENTE: bat-x, CANT: 1");
+        orden.verify(logDao).insertar(7, "RECIBIR_BLOQUE", "BLOQUE: 41, ID_COMPRA: 1, 2");
+    }
+
+    @Test void confirmarCancelarYBorrarRegistranSusLogs() {
+        List<LineaVista> vistas = List.of(new LineaVista(1, AT));
+        BloqueCompraService.Aplicada una = new BloqueCompraService.Aplicada(41, List.of(lb(1, "lcd-x-negro", 3)));
+        when(servicio.aplicar(eq(41), any(), eq(vistas))).thenReturn(una);
+        ctl.confirmar(41, new BloqueCompraController.LineasRequest(vistas), super7);
+        ctl.cancelar(41, new BloqueCompraController.LineasRequest(vistas), super7);
+        ctl.borrar(41, new BloqueCompraController.LineasRequest(vistas), super7);
+        verify(logDao).insertar(7, "CONFIRMAR_PEDIDO", "ID_COMPRA: 1");
+        verify(logDao).insertar(7, "CONFIRMAR_BLOQUE", "BLOQUE: 41, ID_COMPRA: 1");
+        verify(logDao).insertar(7, "CANCELAR_PEDIDO", "ID_COMPRA: 1");
+        verify(logDao).insertar(7, "CANCELAR_BLOQUE", "BLOQUE: 41, ID_COMPRA: 1");
+        verify(logDao).insertar(7, "BORRAR_PEDIDO", "ID_COMPRA: 1");
+        verify(logDao).insertar(7, "BORRAR_BLOQUE", "BLOQUE: 41, ID_COMPRA: 1");
     }
 }

@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.DestinoPedido;
+import com.reparaciones.servidor.model.LineaVista;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Operaciones sobre bloques de pedido (0.9.9, spec «Pedidos por bloques» §5). Cada método es una transacción: un
@@ -18,6 +23,8 @@ import java.util.Optional;
 @Service
 public class BloqueCompraService {
 
+    public static final String MSG_MODIFICADO = "Este bloque fue modificado por otro usuario.";
+    static final String MSG_SIN_LINEAS = "No hay líneas a las que aplicar la acción.";
     static final String MSG_NO_EXISTE_LINEA = "El pedido no existe";
     static final String MSG_LINEA_MODIFICADA = "Dato modificado por otro usuario";
     static final String MSG_YA_EN_ESE = "La línea ya está en ese bloque.";
@@ -27,6 +34,31 @@ public class BloqueCompraService {
      *  borró). `de` es nulo para una línea que no tenía bloque (hueco de un despliegue). */
     public record Movimiento(int idCompra, String estado, Integer de, int a, boolean bloqueNuevo, int idProv,
                              boolean origenBorrado) {}
+
+    /** Acción de estado de un bloque: estado que tienen que tener las líneas y nombre del log del bloque. */
+    public enum Accion {
+        CONFIRMAR("pendiente", "CONFIRMAR_BLOQUE"),
+        RECIBIR("en_camino", "RECIBIR_BLOQUE"),
+        CANCELAR("en_camino", "CANCELAR_BLOQUE"),
+        BORRAR("pendiente", "BORRAR_BLOQUE");
+
+        private final String estado;
+        private final String log;
+
+        Accion(String estado, String log) {
+            this.estado = estado;
+            this.log = log;
+        }
+
+        public String log() {
+            return log;
+        }
+    }
+
+    /** Las líneas a las que se aplicó una acción, para sus logs. */
+    public record Aplicada(int idBloque, List<BloqueCompraDAO.LineaBloque> lineas) {}
+
+    private record Comprobadas(BloqueCompraDAO.Bloque bloque, List<BloqueCompraDAO.LineaBloque> elegidas, int total) {}
 
     private final BloqueCompraDAO bloqueDao;
     private final CompraComponenteDAO compraDao;
@@ -92,6 +124,50 @@ public class BloqueCompraService {
         Integer origen = compraDao.getById(idCompra).map(CompraComponente::getIdBloque).orElse(null);
         compraDao.borrarPendiente(idCompra);
         return origen != null && bloqueDao.borrarSiVacio(origen) ? Optional.of(origen) : Optional.empty();
+    }
+
+    /** Confirmar, recibir, cancelar o borrar (spec §5.3): solo las líneas de la lista, todas en el estado de la acción;
+     *  si no, 409 sin cambiar nada. Cada línea pasa por su transición de siempre (recibir suma stock como «Confirmar
+     *  recibido»). Borrar exige el bloque entero y lo borra. */
+    @Transactional
+    public Aplicada aplicar(int idBloque, Accion accion, List<LineaVista> vistas) {
+        Comprobadas c = comprobar(idBloque, vistas, accion == Accion.BORRAR);
+        for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
+            if (!accion.estado.equals(l.estado())) throw modificado();
+        }
+        for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
+            switch (accion) {
+                case CONFIRMAR -> compraDao.confirmar(l.idCompra(), l.updatedAt());
+                case RECIBIR -> compraDao.confirmarRecibido(l.idCompra(), l.updatedAt());
+                case CANCELAR -> compraDao.cancelar(l.idCompra(), l.updatedAt());
+                case BORRAR -> compraDao.borrarPendiente(l.idCompra());
+            }
+        }
+        if (accion == Accion.BORRAR) bloqueDao.borrarSiVacio(idBloque);
+        return new Aplicada(idBloque, c.elegidas());
+    }
+
+    /** La lista de la web contra la base (spec §5.3): lista vacía → 422; bloque inexistente, línea que no es del
+     *  bloque o con otra versión → 409. `exigirTodas` (borrar y juntar): la lista tiene que ser el bloque entero. */
+    private Comprobadas comprobar(int idBloque, List<LineaVista> vistas, boolean exigirTodas) {
+        if (vistas == null || vistas.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_SIN_LINEAS);
+        }
+        BloqueCompraDAO.Bloque bloque = bloqueDao.getById(idBloque).orElseThrow(BloqueCompraService::modificado);
+        Map<Integer, BloqueCompraDAO.LineaBloque> actuales = new LinkedHashMap<>();
+        for (BloqueCompraDAO.LineaBloque l : bloqueDao.lineas(idBloque)) actuales.put(l.idCompra(), l);
+        Map<Integer, BloqueCompraDAO.LineaBloque> elegidas = new LinkedHashMap<>();
+        for (LineaVista v : vistas) {
+            BloqueCompraDAO.LineaBloque l = actuales.get(v.idCompra());
+            if (l == null || !mismaVersion(l.updatedAt(), v.updatedAt())) throw modificado();
+            elegidas.put(l.idCompra(), l);
+        }
+        if (exigirTodas && elegidas.size() != actuales.size()) throw modificado();
+        return new Comprobadas(bloque, new ArrayList<>(elegidas.values()), actuales.size());
+    }
+
+    private static ResponseStatusException modificado() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, MSG_MODIFICADO);
     }
 
     /** Bloqueo optimista a segundos, como CompraComponenteDAO.checkUpdatedAt. */

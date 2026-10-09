@@ -4,12 +4,14 @@ import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.DestinoPedido;
+import com.reparaciones.servidor.model.LineaVista;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -148,5 +150,67 @@ class BloqueCompraServiceTest {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         assertEquals(Optional.empty(), servicio.borrarLineaPendiente(5));
         verify(compraDao).borrarPendiente(5);
+    }
+
+    // ── acciones de bloque ──
+    static final String MODIFICADO = "Este bloque fue modificado por otro usuario.";
+
+    static BloqueCompraDAO.LineaBloque lb(int id, String estado) {
+        return new BloqueCompraDAO.LineaBloque(id, "lcd-" + id, 2, estado, AT);
+    }
+
+    static LineaVista v(int id) {
+        return new LineaVista(id, AT);
+    }
+
+    void bloque41(BloqueCompraDAO.LineaBloque... lineas) {
+        when(bloqueDao.getById(41)).thenReturn(Optional.of(bloque(41, 2)));
+        when(bloqueDao.lineas(41)).thenReturn(List.of(lineas));
+    }
+
+    @Test void recibirSoloLasLineasDeLaListaConLaRecepcionDeSiempre() {
+        bloque41(lb(1, "en_camino"), lb(2, "en_camino"), lb(3, "recibido"));
+        BloqueCompraService.Aplicada a = servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(v(1), v(2)));
+        verify(compraDao).confirmarRecibido(1, AT);
+        verify(compraDao).confirmarRecibido(2, AT);
+        verify(compraDao, never()).confirmarRecibido(eq(3), any());
+        assertEquals(new BloqueCompraService.Aplicada(41, List.of(lb(1, "en_camino"), lb(2, "en_camino"))), a);
+        verify(bloqueDao, never()).borrarSiVacio(anyInt());
+    }
+
+    @Test void confirmarYCancelarUsanSuTransicionDeLinea() {
+        bloque41(lb(1, "pendiente"), lb(2, "en_camino"));
+        servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(v(1)));
+        servicio.aplicar(41, BloqueCompraService.Accion.CANCELAR, List.of(v(2)));
+        verify(compraDao).confirmar(1, AT);
+        verify(compraDao).cancelar(2, AT);
+    }
+
+    @Test void otraVersionOtroEstadoOUnaLineaAjenaEs409SinTocarNada() {
+        bloque41(lb(1, "en_camino"), lb(2, "recibido"));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(new LineaVista(1, AT.plusSeconds(1)))));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(v(1), v(2))));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(v(9))));
+        verify(compraDao, never()).confirmarRecibido(anyInt(), any());
+    }
+
+    @Test void unBloqueQueYaNoExisteEs409YUnaListaVaciaEs422() {
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(v(1))));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "No hay líneas a las que aplicar la acción.",
+                () -> servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of()));
+    }
+
+    @Test void borrarExigeElBloqueEnteroPendienteYLoBorra() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2)));
+        verify(compraDao).borrarPendiente(1);
+        verify(compraDao).borrarPendiente(2);
+        verify(bloqueDao).borrarSiVacio(41);
+    }
+
+    @Test void borrarConUnaListaIncompletaEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1))));
+        verify(compraDao, never()).borrarPendiente(anyInt());
     }
 }
