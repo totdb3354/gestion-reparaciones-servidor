@@ -87,7 +87,7 @@ public class ClienteController {
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
         if (dao.tieneTelefonos(idCli)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El cliente tiene teléfonos asociados; desactívalo en lugar de borrarlo");
+                    "El cliente tiene teléfonos o trabajos asociados; desactívalo en lugar de borrarlo");
         }
         String nombre;
         try {
