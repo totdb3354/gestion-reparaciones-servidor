@@ -67,6 +67,34 @@ public class BloqueCompraController {
         aplicar(idBloque, BloqueCompraService.Accion.BORRAR, req, principal);
     }
 
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PostMapping("/bloques-compra/{idBloque}/separar")
+    public SepararRespuesta separar(@PathVariable int idBloque, @RequestBody LineasRequest req,
+                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
+        BloqueCompraService.Separacion s = servicio.separar(idBloque, req.lineas());
+        int idUsu = principal.getIdUsu();
+        registro.creado(idUsu, s.nuevo(), s.idProv());
+        logDao.insertar(idUsu, "SEPARAR_BLOQUE", "DE: " + s.origen() + " A: " + s.nuevo() + ", ID_COMPRA: " + unir(s.ids()));
+        return new SepararRespuesta(s.nuevo());
+    }
+
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PostMapping("/bloques-compra/{idBloque}/juntar")
+    public void juntar(@PathVariable int idBloque, @RequestBody JuntarRequest req,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        BloqueCompraService.Union u = servicio.juntar(idBloque, req.destino(), req.lineas());
+        logDao.insertar(principal.getIdUsu(), "JUNTAR_BLOQUE",
+                "DE: " + u.origen() + " A: " + u.destino() + ", ID_COMPRA: " + unir(u.ids()));
+    }
+
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PatchMapping("/bloques-compra/{idBloque}/nota")
+    public void nota(@PathVariable int idBloque, @RequestBody NotaRequest req,
+                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+        servicio.cambiarNota(idBloque, req.nota(), req.updatedAt());
+        logDao.insertar(principal.getIdUsu(), "EDITAR_NOTA_BLOQUE", "BLOQUE: " + idBloque);
+    }
+
     /** Un log por línea (el de su transición de siempre, para rastrear el stock línea a línea) y otro del bloque. */
     private void aplicar(int idBloque, BloqueCompraService.Accion accion, LineasRequest req, UsuarioPrincipal principal) {
         BloqueCompraService.Aplicada a = servicio.aplicar(idBloque, accion, req.lineas());
@@ -100,4 +128,11 @@ public class BloqueCompraController {
 
     record MoverRequest(@Schema(nullable = true, description = "Nulo = bloque nuevo") Integer idBloque,
                         LocalDateTime updatedAt) {}
+
+    record JuntarRequest(int destino, List<LineaVista> lineas) {}
+
+    record NotaRequest(@Schema(nullable = true, description = "Vacía o nula = sin nota") String nota,
+                       LocalDateTime updatedAt) {}
+
+    record SepararRespuesta(int idBloque) {}
 }

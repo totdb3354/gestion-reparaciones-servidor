@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /** Operaciones sobre bloques de pedido (0.9.9, spec «Pedidos por bloques» §5). Cada método es una transacción: un
@@ -29,6 +30,10 @@ public class BloqueCompraService {
     static final String MSG_LINEA_MODIFICADA = "Dato modificado por otro usuario";
     static final String MSG_YA_EN_ESE = "La línea ya está en ese bloque.";
     static final String MSG_YA_SOLA = "La línea ya está sola en su bloque.";
+    static final String MSG_DEJA_UNA = "Deja al menos una línea en el bloque.";
+    static final String MSG_OTRO_BLOQUE = "Elige otro bloque.";
+    static final String MSG_NOTA_LARGA = "La nota no puede superar los 200 caracteres.";
+    static final int NOTA_MAX = 200; // VARCHAR(200) de Bloque_compra.NOTA
 
     /** Una línea que cambió de bloque: de dónde a dónde, si el destino es nuevo y si el origen se quedó vacío (y se
      *  borró). `de` es nulo para una línea que no tenía bloque (hueco de un despliegue). */
@@ -57,6 +62,10 @@ public class BloqueCompraService {
 
     /** Las líneas a las que se aplicó una acción, para sus logs. */
     public record Aplicada(int idBloque, List<BloqueCompraDAO.LineaBloque> lineas) {}
+
+    public record Separacion(int origen, int nuevo, int idProv, List<Integer> ids) {}
+
+    public record Union(int origen, int destino, List<Integer> ids) {}
 
     private record Comprobadas(BloqueCompraDAO.Bloque bloque, List<BloqueCompraDAO.LineaBloque> elegidas, int total) {}
 
@@ -145,6 +154,61 @@ public class BloqueCompraService {
         }
         if (accion == Accion.BORRAR) bloqueDao.borrarSiVacio(idBloque);
         return new Aplicada(idBloque, c.elegidas());
+    }
+
+    /** «Separar líneas…» (spec §5.3): las de la lista pasan a un bloque nuevo del mismo proveedor; al menos una se
+     *  queda. Los estados no cuentan (la web ya pidió confirmación por las ya pedidas). */
+    @Transactional
+    public Separacion separar(int idBloque, List<LineaVista> vistas) {
+        Comprobadas c = comprobar(idBloque, vistas, false);
+        if (c.elegidas().size() >= c.total()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_DEJA_UNA);
+        }
+        int nuevo = bloqueDao.crear(c.bloque().idProv());
+        List<Integer> ids = new ArrayList<>();
+        for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
+            compraDao.moverABloque(l.idCompra(), nuevo);
+            ids.add(l.idCompra());
+        }
+        return new Separacion(idBloque, nuevo, c.bloque().idProv(), ids);
+    }
+
+    /** «Juntar con…» (spec §5.3): todas las líneas (la lista tiene que ser el bloque entero) pasan a `destino`, del mismo
+     *  proveedor; la nota se añade a la del destino y el bloque desaparece. */
+    @Transactional
+    public Union juntar(int idBloque, int destino, List<LineaVista> vistas) {
+        if (destino == idBloque) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_OTRO_BLOQUE);
+        Comprobadas c = comprobar(idBloque, vistas, true);
+        destinoBloque.resolver(c.bloque().idProv(), new DestinoPedido(destino), false); // 409 si no existe, 422 si es de otro proveedor
+        BloqueCompraDAO.Bloque d = bloqueDao.getById(destino).orElseThrow(BloqueCompraService::modificado);
+        List<Integer> ids = new ArrayList<>();
+        for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
+            compraDao.moverABloque(l.idCompra(), destino);
+            ids.add(l.idCompra());
+        }
+        String nota = unirNotas(d.nota(), c.bloque().nota());
+        if (!Objects.equals(nota, d.nota())) bloqueDao.cambiarNota(destino, nota);
+        bloqueDao.borrarSiVacio(idBloque);
+        return new Union(idBloque, destino, ids);
+    }
+
+    /** Nota del destino con la del absorbido añadida tras « · », recortada a 200 (spec §5.3). */
+    static String unirNotas(String destino, String origen) {
+        boolean sinOrigen = origen == null || origen.isBlank();
+        if (sinOrigen) return destino;
+        boolean sinDestino = destino == null || destino.isBlank();
+        String unida = sinDestino ? origen : destino + " · " + origen;
+        return unida.length() > NOTA_MAX ? unida.substring(0, NOTA_MAX) : unida;
+    }
+
+    /** PATCH …/nota: recortada; vacía = sin nota; con la versión del bloque que vio la web. */
+    @Transactional
+    public void cambiarNota(int idBloque, String nota, LocalDateTime updatedAt) {
+        String limpia = nota == null ? "" : nota.trim();
+        if (limpia.length() > NOTA_MAX) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_NOTA_LARGA);
+        BloqueCompraDAO.Bloque b = bloqueDao.getById(idBloque).orElseThrow(BloqueCompraService::modificado);
+        if (!mismaVersion(b.updatedAt(), updatedAt)) throw modificado();
+        bloqueDao.cambiarNota(idBloque, limpia.isEmpty() ? null : limpia);
     }
 
     /** La lista de la web contra la base (spec §5.3): lista vacía → 422; bloque inexistente, línea que no es del

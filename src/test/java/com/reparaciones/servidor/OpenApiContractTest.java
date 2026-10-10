@@ -262,6 +262,42 @@ class OpenApiContractTest {
                 .writeValueAsString(ordenarCodigosDeRespuesta(doc)));
     }
 
+    /** 0.9.9 (spec «Pedidos por bloques» §5): rutas y esquemas de los bloques y los campos nuevos de compras. */
+    @Test void elContratoPublicaLosBloquesDePedidos() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        assertTrue(paths.path("/api/compras/{idCompra}/bloque").has("patch"), "falta PATCH /api/compras/{idCompra}/bloque");
+        for (String accion : List.of("confirmar", "recibir", "cancelar", "borrar", "separar", "juntar")) {
+            assertTrue(paths.path("/api/bloques-compra/{idBloque}/" + accion).has("post"), () -> "falta POST …/" + accion);
+        }
+        assertTrue(paths.path("/api/bloques-compra/{idBloque}/nota").has("patch"), "falta PATCH …/nota");
+        assertTrue(refDelCuerpo(paths, "/api/compras/{idCompra}/bloque", "patch").endsWith("/BloqueCompraMoverRequest"));
+        assertTrue(refDelCuerpo(paths, "/api/bloques-compra/{idBloque}/recibir", "post").endsWith("/BloqueCompraLineasRequest"));
+        assertTrue(refDelCuerpo(paths, "/api/bloques-compra/{idBloque}/juntar", "post").endsWith("/BloqueCompraJuntarRequest"));
+        assertTrue(refDelCuerpo(paths, "/api/bloques-compra/{idBloque}/nota", "patch").endsWith("/BloqueCompraNotaRequest"));
+        assertTrue(refDeLaRespuesta(paths, "/api/bloques-compra/{idBloque}/separar", "post", "200").endsWith("/BloqueCompraSepararRespuesta"));
+
+        assertNullable(esquemas, "CompraComponente", "idBloque", "fechaBloque", "notaBloque", "bloqueUpdatedAt");
+        assertNoNullable(esquemas, "CompraComponente", "bloqueAntiguo");
+        assertNullable(esquemas, "LoteComprasPeticion", "destinos");
+        assertNullable(esquemas, "LoteComprasDestino", "idBloque");
+        assertNoNullable(esquemas, "LoteComprasDestino", "idProv");
+        // destino es una $ref: OpenAPI 3.0 ignora "nullable" junto a un $ref, asi que el contrato lo publica como
+        // DestinoPedido requerido aunque el servidor acepta nulo (regla por defecto). La web debe enviar {idBloque: null}.
+        assertTrue(esquemas.path("CompraEditarRequest").path("properties").path("destino").path("$ref").asText().endsWith("/DestinoPedido"));
+        assertNullable(esquemas, "DestinoPedido", "idBloque");
+        assertNoNullable(esquemas, "LineaVista", "idCompra", "updatedAt");
+        assertNullable(esquemas, "BloqueCompraMoverRequest", "idBloque");
+        assertNoNullable(esquemas, "BloqueCompraJuntarRequest", "destino", "lineas");
+        assertNullable(esquemas, "BloqueCompraNotaRequest", "nota");
+        assertNoNullable(esquemas, "BloqueCompraSepararRespuesta", "idBloque");
+    }
+
     /**
      * Sub-proyecto 4b (spec §4.5): los dos lotes de pedidos con sus esquemas, los nulos que el servidor ya mandaba en
      * los pedidos (el tipo generado mentía: inventario de Pedidos §22) y el precioEur ignorado de las cuatro peticiones.

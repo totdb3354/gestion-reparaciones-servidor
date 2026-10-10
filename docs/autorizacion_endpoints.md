@@ -63,6 +63,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 | Regla de propiedad de la asignación | `security/PropiedadAsignacionTest`, `controller/PropiedadAsignacionControllersTest` |
 | Roles de la edición y del borrador (cadena de seguridad real, MockMvc) | `controller/RolesReparacionFormularioTest` |
 | Roles de solicitudes de stock y del ajuste de stock (MockMvc) | `controller/RolesSolicitudesStockTest` |
+| Roles de los bloques de pedidos (cadena de seguridad real, MockMvc) | `controller/RolesBloquesCompraTest` |
 | Mínimo y parámetros solo ADMIN | `controller/RolesParametrosPrevisionTest`, `controller/ParametroControllerTest` |
 | Dueño de la asignación en la entrega y la llegada de glass | `controller/ReparacionControllerEntregaGlassTest` |
 | Sin sesión (`403`) y token inválido (`401`) | `OpenApiContractTest.elContextoArrancaYElContratoExigeSesion` |

@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.*;
 
@@ -87,5 +88,23 @@ class BloqueCompraControllerTest {
         verify(logDao).insertar(7, "CANCELAR_BLOQUE", "BLOQUE: 41, ID_COMPRA: 1");
         verify(logDao).insertar(7, "BORRAR_PEDIDO", "ID_COMPRA: 1");
         verify(logDao).insertar(7, "BORRAR_BLOQUE", "BLOQUE: 41, ID_COMPRA: 1");
+    }
+
+    @Test void separarRegistraElBloqueNuevoYLaSeparacion() {
+        List<LineaVista> vistas = List.of(new LineaVista(1, AT), new LineaVista(2, AT));
+        when(servicio.separar(41, vistas)).thenReturn(new BloqueCompraService.Separacion(41, 90, 2, List.of(1, 2)));
+        assertEquals(90, ctl.separar(41, new BloqueCompraController.LineasRequest(vistas), super7).idBloque());
+        verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 90, PROVEEDOR: Proveedor A");
+        verify(logDao).insertar(7, "SEPARAR_BLOQUE", "DE: 41 A: 90, ID_COMPRA: 1, 2");
+    }
+
+    @Test void juntarYNotaRegistranSusLogs() {
+        List<LineaVista> vistas = List.of(new LineaVista(1, AT));
+        when(servicio.juntar(41, 40, vistas)).thenReturn(new BloqueCompraService.Union(41, 40, List.of(1)));
+        ctl.juntar(41, new BloqueCompraController.JuntarRequest(40, vistas), super7);
+        ctl.nota(41, new BloqueCompraController.NotaRequest("Ped. 123", AT), super7);
+        verify(servicio).cambiarNota(41, "Ped. 123", AT);
+        verify(logDao).insertar(7, "JUNTAR_BLOQUE", "DE: 41 A: 40, ID_COMPRA: 1");
+        verify(logDao).insertar(7, "EDITAR_NOTA_BLOQUE", "BLOQUE: 41");
     }
 }
