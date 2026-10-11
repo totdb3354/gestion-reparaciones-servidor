@@ -19,6 +19,7 @@ Tablas (generado con grep el 2026-09-14):
 - `Dificultad_puntos`
 - `Parametro`
 - `Bloque_compra` (0.9.9: cabecera de pedido a un proveedor; `Compra_componente.ID_BLOQUE` apunta a ella)
+- `Proveedor_componente` (0.9.9: piezas que vende cada proveedor, guardadas por el master; la usa la previsión por proveedor de «Nuevo pedido»)
 - `Compra_componente`
 - `Compra_otro`
 - `Reparacion_componente`
