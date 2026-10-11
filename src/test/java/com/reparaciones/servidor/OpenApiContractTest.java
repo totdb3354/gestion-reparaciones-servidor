@@ -158,6 +158,9 @@ class OpenApiContractTest {
         assertTrue(esquemas.path("TelefonoImeiRequest").path("properties").path("clienteExplicito").path("nullable").asBoolean(false));
         assertTrue(esquemas.path("ValorTexto").path("properties").path("value").path("nullable").asBoolean(false));
         assertTrue(refDeLaRespuesta(paths, "/api/reparaciones/{idRep}/referenciadora", "get", "200").endsWith("/ValorTexto"));
+        assertTrue(paths.has("/api/reparaciones/imei/{imei}/cerrados"), "falta GET /imei/{imei}/cerrados (0.9.8)");
+        assertTrue(paths.path("/api/reparaciones/cliente").has("patch"), "falta PATCH /api/reparaciones/cliente (0.9.8)");
+        assertTrue(esquemas.has("TrabajoCerrado"), "falta el esquema TrabajoCerrado (0.9.8)");
 
         // Fix tras revisión (spec §5.3): comentario/motivo genuinamente opcionales en los cuerpos
         // de petición, verificado contra el DAO caso a caso (ver task-3-report.md).
