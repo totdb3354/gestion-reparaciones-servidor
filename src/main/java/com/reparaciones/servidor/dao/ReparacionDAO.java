@@ -279,14 +279,15 @@ public class ReparacionDAO {
     }
 
     /** Trabajos cerrados de un IMEI, de cualquier tipo, con su cliente guardado, del más reciente al más antiguo
-     *  (spec 0.9.8 añadido §3.1). La descripción: tipo de pieza en R/G, «Pulido» en P, «Asignación» en las A… */
+     *  (spec 0.9.8 añadido §3.1). La descripción: tipo de pieza en R/G, «Pulido» en P, «Asignación» en las A…
+     *  Subconsulta y no JOIN: una asignación cerrada puede tener varias filas de pieza (solicitudes resueltas) y saldría repetida. */
     public List<TrabajoCerrado> getCerradosPorImei(String imei) {
         return jdbc.query(
                 "SELECT r.ID_REP, r.FECHA_FIN, r.ID_CLI, cli.NOMBRE AS CLIENTE," +
-                " CASE WHEN r.ID_REP LIKE 'P%' THEN 'Pulido' WHEN r.ID_REP LIKE 'A%' THEN 'Asignación' ELSE c.TIPO END AS DESCRIPCION" +
+                " CASE WHEN r.ID_REP LIKE 'P%' THEN 'Pulido' WHEN r.ID_REP LIKE 'A%' THEN 'Asignación'" +
+                " ELSE (SELECT c.TIPO FROM Reparacion_componente rc JOIN Componente c ON c.ID_COM = rc.ID_COM" +
+                " WHERE rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0 ORDER BY rc.ID_RC LIMIT 1) END AS DESCRIPCION" +
                 " FROM Reparacion r" +
-                " LEFT JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0" +
-                " LEFT JOIN Componente c ON c.ID_COM = rc.ID_COM" +
                 " LEFT JOIN Cliente cli ON cli.ID_CLI = r.ID_CLI" +
                 " WHERE r.IMEI = ? AND r.FECHA_FIN IS NOT NULL" +
                 " ORDER BY r.FECHA_FIN DESC, r.ID_REP DESC",

@@ -32,6 +32,8 @@ class ReparacionDAOCorregirClienteTest {
         assertTrue(q.contains("LEFT JOIN Cliente cli ON cli.ID_CLI = r.ID_CLI"), q);
         assertTrue(q.contains("ORDER BY r.FECHA_FIN DESC"), q);
         assertFalse(q.contains("LIKE 'R%' AND"), "no se limita a un tipo");
+        assertFalse(q.contains("JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP"), "sin JOIN a las piezas: no repite trabajos");
+        assertTrue(q.contains("ORDER BY rc.ID_RC LIMIT 1"), "una sola descripción por trabajo");
     }
 
     @Test void corregirCambiaElClienteConservandoUpdatedAt() {
