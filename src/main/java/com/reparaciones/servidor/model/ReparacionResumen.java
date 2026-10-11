@@ -36,6 +36,8 @@ public class ReparacionResumen {
     @Schema(nullable = true) private String        nombreTecnicoAsigna;
     @Schema(nullable = true) private LocalDateTime telefonoUpdatedAt;
     @Schema(nullable = true) private String        cliente;
+    /** Cliente actual del teléfono (spec 0.9.8 §5): la vista IMEIs es por teléfono. {@code cliente} es el del trabajo. */
+    @Schema(nullable = true) private String        clienteTelefono;
 
     // Entrega a glass (spec 2026-08-28): reales en filas AG, derivados en filas A.
     @Schema(nullable = true) private LocalDateTime entregadoAt;              // AG: cuándo bajó el teléfono
@@ -124,6 +126,8 @@ public class ReparacionResumen {
     public void          setTelefonoUpdatedAt(LocalDateTime v){ this.telefonoUpdatedAt = v; }
     public String        getCliente()                         { return cliente; }
     public void          setCliente(String cliente)           { this.cliente = cliente; }
+    public String        getClienteTelefono()                 { return clienteTelefono; }
+    public void          setClienteTelefono(String v)         { this.clienteTelefono = v; }
     public LocalDateTime getEntregadoAt()                          { return entregadoAt; }
     public void          setEntregadoAt(LocalDateTime v)           { this.entregadoAt = v; }
     public String        getEntregadoPorNombre()                   { return entregadoPorNombre; }

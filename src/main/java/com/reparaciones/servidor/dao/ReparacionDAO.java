@@ -31,6 +31,17 @@ public class ReparacionDAO {
 
     private static final DateTimeFormatter FMT_ID = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    /** Spec 0.9.8 §4: al cerrar un trabajo se guarda el cliente que tiene su teléfono en ese momento. */
+    private static final String CLIENTE_DEL_IMEI   = "(SELECT tc.ID_CLI FROM Telefono tc WHERE tc.IMEI = ?)";
+    private static final String CLIENTE_DE_LA_FILA = "(SELECT tc.ID_CLI FROM Telefono tc WHERE tc.IMEI = Reparacion.IMEI)";
+
+    /** Spec 0.9.8 §2: el cliente de un trabajo abierto es el de su teléfono; el de uno cerrado, el guardado al cerrarlo.
+     *  Con IS NOT NULL a propósito: getAsignacionesCompletadasHoy reescribe "r.FECHA_FIN IS NULL" en ASIGNACION_SELECT. */
+    private static final String JOIN_CLIENTES =
+            " LEFT JOIN Cliente cli ON cli.ID_CLI = CASE WHEN r.FECHA_FIN IS NOT NULL THEN r.ID_CLI ELSE tel.ID_CLI END" +
+            " LEFT JOIN Cliente cliTel ON cliTel.ID_CLI = tel.ID_CLI";
+    private static final String COLUMNAS_CLIENTE = " cli.NOMBRE AS CLIENTE, cliTel.NOMBRE AS CLIENTE_TELEFONO";
+
     private static final RowMapper<Reparacion> REP_MAPPER = (rs, row) -> {
         Timestamp fin = rs.getTimestamp("FECHA_FIN");
         return new Reparacion(
@@ -60,14 +71,14 @@ public class ReparacionDAO {
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
             "  AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
             " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'R%'";
 
     private static final String ASIGNACION_SELECT =
@@ -115,13 +126,13 @@ public class ReparacionDAO {
             "  WHERE g.IMEI = r.IMEI AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL" +
             "  ORDER BY g.FECHA_ASIG ASC LIMIT 1) AS GLASS_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AP%' AND r.ID_REP NOT LIKE 'AG%' AND r.FECHA_FIN IS NULL";
 
     private static final RowMapper<ReparacionResumen> RESUMEN_MAPPER = (rs, row) -> {
@@ -171,6 +182,7 @@ public class ReparacionDAO {
         try { rr.setNormalAbierta(rs.getInt("NORMAL_ABIERTAS") > 0); } catch (Exception ignored) {}
         try { rr.setNormalTecnicoNombre(rs.getString("NORMAL_TECNICO_NOMBRE")); } catch (Exception ignored) {}
         rr.setCliente(rs.getString("CLIENTE"));
+        rr.setClienteTelefono(rs.getString("CLIENTE_TELEFONO"));
         return rr;
     };
 
@@ -220,7 +232,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
         String sql = ASIGNACION_SELECT;
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null) {
             return jdbc.query(sql + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         }
@@ -236,7 +248,7 @@ public class ReparacionDAO {
         if (!sql.contains("r.FECHA_FIN >= ?"))
             throw new IllegalStateException("ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
                          " ORDER BY r.FECHA_FIN ASC";
         List<ReparacionResumen> result = new ArrayList<>(jdbc.query(sql + groupBy, RESUMEN_MAPPER, cutoff));
 
@@ -244,7 +256,7 @@ public class ReparacionDAO {
         if (!sqlGlass.contains("r.FECHA_FIN >= ?"))
             throw new IllegalStateException("GLASS_ASIGNACION_SELECT cambió: revisar getAsignacionesCompletadasHoy");
         String groupByGlass = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
                          " ORDER BY r.FECHA_FIN ASC";
         result.addAll(jdbc.query(sqlGlass + groupByGlass, RESUMEN_MAPPER, cutoff));
 
@@ -254,16 +266,49 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionById(String idRep) {
         String sql = ASIGNACION_SELECT + " AND r.ID_REP = ?" +
                 " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE";
+                " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
 
     public List<ReparacionResumen> getAsignacionesPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE" +
+                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
                          " ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
+    }
+
+    /** Trabajos cerrados de un IMEI, de cualquier tipo, con su cliente guardado, del más reciente al más antiguo
+     *  (spec 0.9.8 añadido §3.1). La descripción: tipo de pieza en R/G, «Pulido» en P, «Asignación» en las A…
+     *  Subconsulta y no JOIN: una asignación cerrada puede tener varias filas de pieza (solicitudes resueltas) y saldría repetida. */
+    public List<TrabajoCerrado> getCerradosPorImei(String imei) {
+        return jdbc.query(
+                "SELECT r.ID_REP, r.FECHA_FIN, r.ID_CLI, cli.NOMBRE AS CLIENTE," +
+                " CASE WHEN r.ID_REP LIKE 'P%' THEN 'Pulido' WHEN r.ID_REP LIKE 'A%' THEN 'Asignación'" +
+                " ELSE (SELECT c.TIPO FROM Reparacion_componente rc JOIN Componente c ON c.ID_COM = rc.ID_COM" +
+                " WHERE rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0 ORDER BY rc.ID_RC LIMIT 1) END AS DESCRIPCION" +
+                " FROM Reparacion r" +
+                " LEFT JOIN Cliente cli ON cli.ID_CLI = r.ID_CLI" +
+                " WHERE r.IMEI = ? AND r.FECHA_FIN IS NOT NULL" +
+                " ORDER BY r.FECHA_FIN DESC, r.ID_REP DESC",
+                (rs, n) -> new TrabajoCerrado(rs.getString("ID_REP"), rs.getTimestamp("FECHA_FIN").toLocalDateTime(),
+                        rs.getString("DESCRIPCION"), (Integer) rs.getObject("ID_CLI"), rs.getString("CLIENTE")),
+                imei);
+    }
+
+    /** Cliente guardado de cada trabajo (null = sin cliente), para el registro de «Corregir cliente». */
+    public Map<String, Integer> getClienteGuardado(List<String> idReps) {
+        String marcas = String.join(",", Collections.nCopies(idReps.size(), "?"));
+        Map<String, Integer> out = new HashMap<>();
+        jdbc.query("SELECT ID_REP, ID_CLI FROM Reparacion WHERE ID_REP IN (" + marcas + ")",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getString("ID_REP"), (Integer) rs.getObject("ID_CLI")),
+                idReps.toArray());
+        return out;
+    }
+
+    public boolean existeCliente(int idCli) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM Cliente WHERE ID_CLI = ?", Integer.class, idCli);
+        return n != null && n > 0;
     }
 
     public record DetalleEdicion(String imei, int idTec, int idCom,
@@ -462,8 +507,9 @@ public class ReparacionDAO {
     public String insertar(String imei, int idTec, LocalDateTime fechaAsig, LocalDateTime fechaFin) {
         ensureTelefono(imei);
         String idRep = nextId("R");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, FECHA_FIN) VALUES (?,?,?,?,?)",
-                idRep, imei, idTec, fechaAsig, fechaFin);
+        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, FECHA_FIN, ID_CLI)"
+                        + " VALUES (?,?,?,?,?," + CLIENTE_DEL_IMEI + ")",
+                idRep, imei, idTec, fechaAsig, fechaFin, imei);
         return idRep;
     }
 
@@ -490,6 +536,27 @@ public class ReparacionDAO {
         resetRevisionAlAsignar(imei, idUsu);
         if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
+    }
+
+    /** «Corregir cliente» (spec 0.9.8 añadido §3.2): todo o nada. Si alguno no existe, no es del IMEI o no está cerrado,
+     *  409 sin cambiar nada. UPDATED_AT se conserva: es el dato derivado del cierre, no una edición. */
+    @Transactional
+    public void corregirCliente(String imei, List<String> idReps, Integer idCli) {
+        String marcas = String.join(",", Collections.nCopies(idReps.size(), "?"));
+        List<Object> filtro = new ArrayList<>();
+        filtro.add(imei);
+        filtro.addAll(idReps);
+        Integer cerrados = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND FECHA_FIN IS NOT NULL AND ID_REP IN (" + marcas + ") FOR UPDATE",
+                Integer.class, filtro.toArray());
+        if (cerrados == null || cerrados != idReps.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Algún trabajo ya no está cerrado o no es de este teléfono");
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(idCli);
+        params.addAll(filtro);
+        jdbc.update("UPDATE Reparacion SET ID_CLI = ?, UPDATED_AT = UPDATED_AT"
+                + " WHERE IMEI = ? AND FECHA_FIN IS NOT NULL AND ID_REP IN (" + marcas + ")", params.toArray());
     }
 
     @Transactional
@@ -529,9 +596,9 @@ public class ReparacionDAO {
                 String idRep = nextId(idAsignacion == null && "G".equals(categoria)
                         ? "G" : resultPrefix(idAsignacion));
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR)" +
-                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?)",
-                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1]);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR, ID_CLI)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?," + CLIENTE_DEL_IMEI + ")",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1], imei);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -581,7 +648,7 @@ public class ReparacionDAO {
                     " WHERE ID_REP = ? AND ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'",
                     Integer.class, idAsignacion);
             if (bloqueantes != null && bloqueantes == 0) {
-                jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAsignacion);
+                jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ?", idAsignacion);
                 List<String> prevs = jdbc.query(
                         "SELECT ID_REP_ANTERIOR FROM Reparacion" +
                         " WHERE ID_REP = ? AND ID_REP_ANTERIOR IS NOT NULL",
@@ -616,9 +683,9 @@ public class ReparacionDAO {
             if (!fila.esSolicitud) {
                 String idRep = nextId(resultPrefix(idAsignacion));
                 jdbc.update(
-                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR)" +
-                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?)",
-                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1]);
+                        "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, ID_TEC_ASIGNA, ENTREGADO_AT, ENTREGADO_POR, ID_CLI)" +
+                        " VALUES (?,?,?,?,NOW(),NOW(),?,?,?," + CLIENTE_DEL_IMEI + ")",
+                        idRep, imei, idTec, idRepAnterior, idTecAsigna, entrega[0], entrega[1], imei);
                 jdbc.update(
                         "INSERT INTO Reparacion_componente" +
                         " (ID_REP, ID_COM, ES_REUTILIZADO, OBSERVACIONES, ES_SOLICITUD, CANTIDAD)" +
@@ -666,7 +733,7 @@ public class ReparacionDAO {
 
     public void completar(String idRep) {
         int filas = jdbc.update(
-                "UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
+                "UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
         if (filas == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "La asignación ya fue eliminada o completada por otro usuario");
@@ -916,7 +983,7 @@ public class ReparacionDAO {
                         idRepOrig);
                 // Reabrir la A* si existe cerrada
                 jdbc.update(
-                        "UPDATE Reparacion SET FECHA_FIN = NULL" +
+                        "UPDATE Reparacion SET FECHA_FIN = NULL, ID_CLI = NULL" +
                         " WHERE ID_REP_ANTERIOR = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NOT NULL",
                         idRepOrig);
                 // Reconciliar urgencia: la fila reabierta conserva su URGENTE congelado;
@@ -977,12 +1044,12 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT, r.URGENTE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'AP%' AND r.FECHA_FIN IS NULL";
 
     private static final String HISTORIAL_PULIDO_SELECT =
@@ -996,12 +1063,12 @@ public class ReparacionDAO {
             " r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
             " tel.OBSERVACION AS OBSERVACION_TELEFONO, tel.UPDATED_AT AS TELEFONO_UPDATED_AT," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'P%'";
 
     // ── glass ─────────────────────────────────────────────────────────────────
@@ -1047,13 +1114,13 @@ public class ReparacionDAO {
             "  WHERE n.IMEI = r.IMEI AND n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL" +
             "  ORDER BY n.FECHA_ASIG ASC LIMIT 1) AS NORMAL_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP AND rc.ES_SOLICITUD = 1 AND rc.ESTADO_SOLICITUD != 'RECHAZADA'" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'AG%' AND r.FECHA_FIN IS NULL";
 
     private static final String GLASS_HISTORIAL_SELECT =
@@ -1075,20 +1142,20 @@ public class ReparacionDAO {
             " (SELECT COUNT(*) FROM Reparacion r2" +
             "  WHERE r2.IMEI = r.IMEI AND r2.ID_REP LIKE 'A%'" +
             "  AND r2.FECHA_FIN IS NULL) AS TIENE_ASIGNACIONES," +
-            " cli.NOMBRE AS CLIENTE" +
+            COLUMNAS_CLIENTE +
             " FROM Reparacion r" +
             " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
             " LEFT JOIN Tecnico ta ON r.ID_TEC_ASIGNA = ta.ID_TEC" +
             " LEFT JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
             " LEFT JOIN Componente c ON rc.ID_COM = c.ID_COM" +
             " LEFT JOIN Telefono tel ON r.IMEI = tel.IMEI" +
-            " LEFT JOIN Cliente cli ON tel.ID_CLI = cli.ID_CLI" +
+            JOIN_CLIENTES +
             " WHERE r.ID_REP LIKE 'G%'";
 
     public List<ReparacionResumen> getAsignacionesGlass(Integer idTecFilter) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         if (idTecFilter != null)
             return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_TEC = ?" + groupBy, RESUMEN_MAPPER, idTecFilter);
         return jdbc.query(GLASS_ASIGNACION_SELECT + groupBy, RESUMEN_MAPPER);
@@ -1103,7 +1170,7 @@ public class ReparacionDAO {
     public List<ReparacionResumen> getAsignacionesGlassPorImei(String imei) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE ORDER BY r.FECHA_ASIG ASC";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE ORDER BY r.FECHA_ASIG ASC";
         return jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
 
@@ -1166,9 +1233,10 @@ public class ReparacionDAO {
         Map<String, Object> row = rows.get(0);
         String idP = nextId("P");
         jdbc.update(
-                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA) VALUES (?,?,?,?,NOW(),NOW(),?,?)",
-                idP, row.get("IMEI"), row.get("ID_TEC"), idAP, row.get("COMENTARIO_ASIGNACION"), row.get("ID_TEC_ASIGNA"));
-        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW() WHERE ID_REP = ?", idAP);
+                "INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, ID_REP_ANTERIOR, FECHA_ASIG, FECHA_FIN, COMENTARIO_ASIGNACION, ID_TEC_ASIGNA, ID_CLI)" +
+                " VALUES (?,?,?,?,NOW(),NOW(),?,?," + CLIENTE_DEL_IMEI + ")",
+                idP, row.get("IMEI"), row.get("ID_TEC"), idAP, row.get("COMENTARIO_ASIGNACION"), row.get("ID_TEC_ASIGNA"), row.get("IMEI"));
+        jdbc.update("UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ?", idAP);
     }
 
     @Transactional
@@ -1311,7 +1379,7 @@ public class ReparacionDAO {
     public Optional<ReparacionResumen> getAsignacionGlassById(String idRep) {
         String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION," +
-                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE";
+                " tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.ENTREGADO_AT, r.ENTREGADO_POR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(GLASS_ASIGNACION_SELECT + " AND r.ID_REP = ?" + groupBy, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
     }
