@@ -1,7 +1,8 @@
 -- 0.9.9: reconstrucción de los bloques de las líneas que no tienen (spec «Pedidos por bloques» §4).
 -- REPETIBLE: toca líneas sin bloque y repara lo que un 0.9.8 deja sobre el esquema nuevo (líneas en el bloque de otro
--- proveedor y bloques vacíos); es seguro con el 0.9.9 funcionando. Se ejecuta tras migracion-bloques-compra.sql, otra vez después de desplegar
--- el servidor 0.9.9 (recoge las líneas que el 0.9.8 creó en el hueco) y después de cualquier vuelta atrás al 0.9.8.
+-- proveedor y bloques vacíos); es seguro con el 0.9.9 funcionando. Se ejecuta tras migracion-bloques-compra.sql, otra
+-- vez después de desplegar el servidor 0.9.9 (recoge las líneas que el 0.9.8 creó en el hueco) y después de cualquier
+-- vuelta atrás al 0.9.8.
 USE gestion_reparaciones;
 
 -- ── Reparación ────────────────────────────────────────────────────────────────
@@ -40,4 +41,4 @@ SELECT COUNT(*) AS bloques_vacios FROM Bloque_compra b
 SELECT COUNT(*) AS lineas_de_otro_proveedor FROM Compra_componente cc
   JOIN Bloque_compra b ON b.ID_BLOQUE = cc.ID_BLOQUE WHERE b.ID_PROV <> cc.ID_PROV;                       -- 0
 SELECT COUNT(*) AS reconstruidos FROM Bloque_compra WHERE RECONSTRUIDO;
-SELECT MAX(UPDATED_AT) AS ultima_modificacion FROM Compra_componente;  -- igual que antes de la migración
+SELECT MAX(UPDATED_AT) AS ultima_modificacion FROM Compra_componente;  -- igual que antes de ejecutar este script

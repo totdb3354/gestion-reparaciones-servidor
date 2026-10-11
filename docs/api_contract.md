@@ -68,7 +68,9 @@ de `model/` conservan su nombre.
   lo deja vivo (borrar/juntar) o vacío (separar), `409` y se revierte. `PATCH /api/bloques-compra/{idBloque}/nota`
   (`{nota, updatedAt}`): `422` si pasa de 200 caracteres, `409` si el bloque cambió. `PATCH /api/compras/{idCompra}/bloque`
   (`{idBloque, updatedAt}`, `idBloque` nulo = bloque nuevo): `404` si la línea no existe, `409` si cambió (versión o
-  bloque). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
+  bloque) o si el bloque de destino ya no existe («El bloque N ya no existe; elige otro destino.»), `422` si ya está
+  en ese bloque («La línea ya está en ese bloque.»), si ya está sola en su bloque y el destino es uno nuevo («La línea
+  ya está sola en su bloque.») o si el destino es de otro proveedor («El bloque N es de otro proveedor.»). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
   bloque nuevo; un proveedor sin entrada va a su bloque abierto más reciente o a uno nuevo) y `PUT /api/compras/{id}`
   acepta `destino: {idBloque}` cuando cambia el proveedor. Solo SUPERTECNICO.
 - Sin sesión: una petición sin cabecera `Authorization` recibe `403` (Spring Security sin entry point);

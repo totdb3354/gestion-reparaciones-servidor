@@ -149,7 +149,7 @@ public class BloqueCompraService {
                 case CONFIRMAR -> compraDao.confirmar(l.idCompra(), l.updatedAt());
                 case RECIBIR -> compraDao.confirmarRecibido(l.idCompra(), l.updatedAt());
                 case CANCELAR -> compraDao.cancelar(l.idCompra(), l.updatedAt());
-                case BORRAR -> compraDao.borrarPendiente(l.idCompra());
+                case BORRAR -> compraDao.borrarPendiente(l.idCompra(), idBloque);
             }
         }
         // Borrar exige el bloque entero: si no queda vacío, otro escribió entre la lectura y el borrado (409, revierte).

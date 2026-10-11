@@ -214,22 +214,12 @@ public class CompraComponenteDAO {
         }
     }
 
-    /** Como {@link #borrarPendiente(int)}, pero solo si la línea sigue en el bloque `origen` que leyó quien llama (nulo =
-     *  sin bloque): si cambió de bloque entre la lectura y el DELETE, 409 y el bloque no se vacía por error. */
+    /** Borra un pedido 'pendiente' (aún no se pidió nada), pero solo si sigue en el bloque `origen` que leyó quien llama
+     *  (nulo = sin bloque): si cambió de bloque entre la lectura y el DELETE, 409 y el bloque no se vacía por error. */
     public void borrarPendiente(int idCompra, Integer origen) {
         int n = jdbc.update(
                 "DELETE FROM Compra_componente WHERE ID_COMPRA=? AND ESTADO='pendiente' AND ID_BLOQUE <=> ?",
                 idCompra, origen);
-        if (n == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente (no se puede borrar)");
-        }
-    }
-
-    /** Borra un pedido en estado 'pendiente' (aún no se pidió nada). */
-    public void borrarPendiente(int idCompra) {
-        int n = jdbc.update(
-                "DELETE FROM Compra_componente WHERE ID_COMPRA=? AND ESTADO='pendiente'",
-                idCompra);
         if (n == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente (no se puede borrar)");
         }

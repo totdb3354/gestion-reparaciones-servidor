@@ -146,6 +146,13 @@ class BloqueCompraServiceTest {
         verify(compraDao).borrarPendiente(5, 41);
     }
 
+    @Test void borrarUnaLineaSinBloqueUsaOrigenNuloYNoTocaBloques() {
+        when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", null)));
+        assertEquals(Optional.empty(), servicio.borrarLineaPendiente(5));
+        verify(compraDao).borrarPendiente(5, null);
+        verify(bloqueDao, never()).borrarSiVacio(anyInt());
+    }
+
     @Test void borrarUnaLineaDeUnBloqueConMasNoLoBorra() {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         assertEquals(Optional.empty(), servicio.borrarLineaPendiente(5));
@@ -204,22 +211,31 @@ class BloqueCompraServiceTest {
         bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
         when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
         servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2)));
-        verify(compraDao).borrarPendiente(1);
-        verify(compraDao).borrarPendiente(2);
+        verify(compraDao).borrarPendiente(1, 41);
+        verify(compraDao).borrarPendiente(2, 41);
         verify(bloqueDao).borrarSiVacio(41);
     }
 
     @Test void borrarConUnaLineaNoPendienteEs409() {
         bloque41(lb(1, "pendiente"), lb(2, "en_camino"));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2))));
-        verify(compraDao, never()).borrarPendiente(anyInt());
+        verify(compraDao, never()).borrarPendiente(anyInt(), any());
     }
 
     @Test void borrarConOtraVersionEs409() {
         bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR,
                 List.of(v(1), new LineaVista(2, AT.plusSeconds(1)))));
-        verify(compraDao, never()).borrarPendiente(anyInt());
+        verify(compraDao, never()).borrarPendiente(anyInt(), any());
+    }
+
+    @Test void borrarSiUnaLineaSeMovioDeBloqueEntreLaLecturaYElDeleteEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente (no se puede borrar)"))
+                .when(compraDao).borrarPendiente(2, 41);
+        falla(HttpStatus.CONFLICT, "El pedido ya no está pendiente (no se puede borrar)",
+                () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2))));
+        verify(bloqueDao, never()).borrarSiVacio(anyInt());
     }
 
     @Test void borrarSiElBloqueNoQuedaVacioEs409() {
@@ -254,7 +270,7 @@ class BloqueCompraServiceTest {
     @Test void borrarConUnaListaIncompletaEs409() {
         bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1))));
-        verify(compraDao, never()).borrarPendiente(anyInt());
+        verify(compraDao, never()).borrarPendiente(anyInt(), any());
     }
 
     // ── separar, juntar y nota ──
