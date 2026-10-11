@@ -13,12 +13,12 @@
 -- Solo ASCII fuera de los comentarios: no depende de como envie la terminal los caracteres.
 
 -- == Bloque 0: parametros y comprobaciones ===================================
-SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+SET NAMES utf8mb4 COLLATE utf8mb4_uca1400_ai_ci;
 SET time_zone = '+00:00';   -- FECHA_FIN (DATETIME) y Log_Actividad.FECHA (TIMESTAMP) se comparan en UTC
 
 -- 0.0 BASE = gestion_reparaciones (si no, PARAR)
 SELECT DATABASE() AS BASE;
--- 0.0b Las 4 tablas deben salir con TABLE_COLLATION = utf8mb4_unicode_ci; si alguna sale con otra, PARAR
+-- 0.0b Las 4 tablas deben salir con TABLE_COLLATION = utf8mb4_uca1400_ai_ci; si alguna sale con otra, PARAR
 SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('Cliente', 'Telefono', 'Reparacion', 'Log_Actividad');
 
@@ -37,10 +37,10 @@ FROM Reparacion WHERE FECHA_FIN IS NOT NULL AND FECHA_FIN < @corte;
 DROP TEMPORARY TABLE IF EXISTS apunte_cliente, imei_con_apuntes, relleno;
 
 CREATE TEMPORARY TABLE apunte_cliente (
-    IMEI    VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+    IMEI    VARCHAR(30) COLLATE utf8mb4_uca1400_ai_ci NOT NULL,
     FECHA   DATETIME    NOT NULL,
     ID_LOG  INT         NOT NULL,
-    CLI_TXT VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL,
+    CLI_TXT VARCHAR(30) COLLATE utf8mb4_uca1400_ai_ci NOT NULL,
     ID_CLI  INT         NULL,
     KEY (IMEI, FECHA, ID_LOG)
 );
@@ -55,7 +55,7 @@ FROM (SELECT TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(l.DETALLE, 'IMEI: ', -1), ',',
          OR (l.ACCION = 'QUITAR_CLIENTE' AND l.DETALLE LIKE 'IMEI: %')) a
 LEFT JOIN Cliente c ON c.ID_CLI = CASE WHEN a.CLI_TXT REGEXP '^[0-9]+$' THEN CAST(a.CLI_TXT AS UNSIGNED) END;
 
-CREATE TEMPORARY TABLE imei_con_apuntes (IMEI VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL PRIMARY KEY)
+CREATE TEMPORARY TABLE imei_con_apuntes (IMEI VARCHAR(30) COLLATE utf8mb4_uca1400_ai_ci NOT NULL PRIMARY KEY)
 SELECT DISTINCT IMEI FROM apunte_cliente;
 
 -- 1.1 Filas del registro de cada accion (referencia)
@@ -74,9 +74,9 @@ WHERE (ACCION IN ('ASIGNAR_CLIENTE', 'CAMBIAR_CLIENTE') AND DETALLE NOT LIKE 'IM
 
 -- == Bloque 2: propuesta y analisis (solo lectura) ===========================
 CREATE TEMPORARY TABLE relleno (
-    ID_REP VARCHAR(30) COLLATE utf8mb4_unicode_ci NOT NULL PRIMARY KEY,
+    ID_REP VARCHAR(30) COLLATE utf8mb4_uca1400_ai_ci NOT NULL PRIMARY KEY,
     ID_CLI INT         NULL,
-    FUENTE VARCHAR(10) COLLATE utf8mb4_unicode_ci NOT NULL
+    FUENTE VARCHAR(10) COLLATE utf8mb4_uca1400_ai_ci NOT NULL
 );
 INSERT INTO relleno (ID_REP, ID_CLI, FUENTE)
 SELECT r.ID_REP,
