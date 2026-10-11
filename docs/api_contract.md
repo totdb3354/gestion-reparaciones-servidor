@@ -73,6 +73,13 @@ de `model/` conservan su nombre.
   ya está sola en su bloque.») o si el destino es de otro proveedor («El bloque N es de otro proveedor.»). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
   bloque nuevo; un proveedor sin entrada va a su bloque abierto más reciente o a uno nuevo) y `PUT /api/compras/{id}`
   acepta `destino: {idBloque}` cuando cambia el proveedor. Solo SUPERTECNICO.
+- Piezas de cada proveedor (0.9.9): `PUT /api/proveedores/{idProv}/componentes` con cuerpo `{ "idsCom": [int] }` sustituye
+  la lista entera de piezas que vende el proveedor (todo o nada; un slave se guarda como su master; duplicados se
+  ignoran) y responde `204`. `404` «Proveedor no encontrado.»; `422` «Solo los proveedores de componentes tienen
+  piezas.», «Falta la lista de piezas.» (sin `idsCom`) o «Alguna pieza ya no existe.» (id inexistente o nulo, sin
+  cambiar nada). Registra `EDITAR_PIEZAS_PROVEEDOR` con `ID_PROV: <id>, PIEZAS: +<añadidas> -<quitadas>`. Solo
+  SUPERTECNICO. En `Componente` (`GET /api/componentes/gestionados`), `pendiente` (unidades en pedidos pendientes) y
+  `proveedores` (ids de proveedor de la pieza) son nulos para TECNICO.
 - Sin sesión: una petición sin cabecera `Authorization` recibe `403` (Spring Security sin entry point);
   con token inválido o caducado, `401` (filtro JWT). Los clientes tratan ambos como "sin sesión" cuando
   no hay token, y `401` como sesión caducada.

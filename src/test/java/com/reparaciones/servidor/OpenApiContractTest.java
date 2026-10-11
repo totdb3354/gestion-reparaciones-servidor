@@ -303,6 +303,24 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "BloqueCompraSepararRespuesta", "idBloque");
     }
 
+    /** 0.9.9 (ampliacion): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4). */
+    @Test void elContratoPublicaLasPiezasDeCadaProveedor() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        assertTrue(paths.path("/api/proveedores/{idProv}/componentes").has("put"), "falta PUT /api/proveedores/{idProv}/componentes");
+        assertTrue(refDelCuerpo(paths, "/api/proveedores/{idProv}/componentes", "put").endsWith("/ProveedorPiezasRequest"));
+        assertNoNullable(esquemas, "ProveedorPiezasRequest", "idsCom");
+        assertNullable(esquemas, "Componente", "pendiente", "proveedores");
+        JsonNode items = esquemas.path("Componente").path("properties").path("proveedores").path("items");
+        assertEquals("integer", items.path("type").asText());
+        assertFalse(items.path("nullable").asBoolean(), "los ids de proveedor no son nulos");
+    }
+
     /**
      * Sub-proyecto 4b (spec §4.5): los dos lotes de pedidos con sus esquemas, los nulos que el servidor ya mandaba en
      * los pedidos (el tipo generado mentía: inventario de Pedidos §22) y el precioEur ignorado de las cuatro peticiones.
