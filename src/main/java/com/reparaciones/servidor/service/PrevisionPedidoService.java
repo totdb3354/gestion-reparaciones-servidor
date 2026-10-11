@@ -12,7 +12,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
-/** Rellena la previsión de pedidos del listado de Stock (spec 0.9.5 §3.3). Stock, mínimo y en camino ya vienen
+/** Rellena la previsión de pedidos del listado de Stock (spec 0.9.5 §3.3). Stock, mínimo, en camino y pendiente ya vienen
  *  resueltos al master del grupo compartido; el consumo se busca también por master. */
 @Service
 public class PrevisionPedidoService {
@@ -32,8 +32,9 @@ public class PrevisionPedidoService {
         for (Componente c : componentes) {
             if (!c.isActivo()) continue;
             int master = c.getIdComMaster() != null ? c.getIdComMaster() : c.getIdCom();
+            int pendiente = c.getPendiente() != null ? c.getPendiente() : 0;
             Resultado r = PrevisionPedido.calcular(porMaster.getOrDefault(master, Tramos.CERO), pesos,
-                    c.getStockMinimo(), c.getStock(), c.getEnCamino());
+                    c.getStockMinimo(), c.getStock(), c.getEnCamino() + pendiente);
             c.setPrevision(r.consumoDiario(), r.pedir60());
         }
     }

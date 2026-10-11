@@ -64,6 +64,7 @@ public final class PrevisionPedido {
         return resultado;
     }
 
+    /** {@code enCamino} = en camino + pendiente (0.9.9): lo ya pedido o apuntado no se vuelve a pedir. */
     public static Resultado calcular(Tramos t, Pesos p, int minimo, int stock, int enCamino) {
         long ponderado = (long) p.p1() * t.t1() + (long) p.p2() * t.t2() + (long) p.p3() * t.t3();
         double consumoDiario = BigDecimal.valueOf(ponderado)

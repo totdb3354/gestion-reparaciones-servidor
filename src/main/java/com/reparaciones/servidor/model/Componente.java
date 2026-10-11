@@ -1,8 +1,10 @@
 package com.reparaciones.servidor.model;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class Componente {
     private int           idCom;
@@ -22,6 +24,13 @@ public class Componente {
 
     // Pedido automático (spec 0.9.6 §4): la marca del master; solo para SUPERTECNICO y ADMIN.
     @Schema(nullable = true) private Boolean autoPedido;
+
+    // Cantidad en líneas pendientes del master (0.9.9): solo para SUPERTECNICO y ADMIN, como la previsión.
+    @Schema(nullable = true) private Integer pendiente;
+
+    // Proveedores que tienen la pieza (su master) en su lista (0.9.9): solo para SUPERTECNICO y ADMIN.
+    @ArraySchema(arraySchema = @Schema(nullable = true), schema = @Schema(implementation = Integer.class))
+    private List<Integer> proveedores;
 
     public Componente() {}
 
@@ -61,4 +70,8 @@ public class Componente {
 
     public Boolean getAutoPedido()                { return autoPedido; }
     public void    setAutoPedido(Boolean autoPedido) { this.autoPedido = autoPedido; }
+    public Integer       getPendiente()                        { return pendiente; }
+    public void          setPendiente(Integer pendiente)       { this.pendiente = pendiente; }
+    public List<Integer> getProveedores()                      { return proveedores; }
+    public void          setProveedores(List<Integer> proveedores) { this.proveedores = proveedores; }
 }

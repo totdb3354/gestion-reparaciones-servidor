@@ -53,6 +53,7 @@ public class ComponenteDAO {
                        COALESCE(SUM(CASE WHEN cc.ESTADO IN ('en_camino','parcial')
                                          THEN cc.CANTIDAD - COALESCE(cc.CANTIDAD_RECIBIDA, 0)
                                          ELSE 0 END), 0) AS EN_CAMINO,
+                       COALESCE(SUM(CASE WHEN cc.ESTADO = 'pendiente' THEN cc.CANTIDAD ELSE 0 END), 0) AS PENDIENTE,
                        MAX(cc.FECHA_PEDIDO) AS ULTIMO_PEDIDO
                 FROM Componente c
                 LEFT JOIN Componente master ON c.ID_COM_MASTER = master.ID_COM
@@ -70,6 +71,7 @@ public class ComponenteDAO {
             int masterId = rs.getInt("ID_COM_MASTER");
             if (!rs.wasNull()) c.setIdComMaster(masterId);
             c.setEnCamino(rs.getInt("EN_CAMINO"));
+            c.setPendiente(rs.getInt("PENDIENTE"));
             c.setAutoPedido(rs.getBoolean("AUTO_PEDIDO"));
             Timestamp up = rs.getTimestamp("ULTIMO_PEDIDO");
             c.setUltimoPedido(up != null ? up.toLocalDateTime() : null);
