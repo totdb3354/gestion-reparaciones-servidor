@@ -292,7 +292,7 @@ class OpenApiContractTest {
         assertNullable(esquemas, "LoteComprasPeticion", "destinos");
         assertNullable(esquemas, "LoteComprasDestino", "idBloque");
         assertNoNullable(esquemas, "LoteComprasDestino", "idProv");
-        // destino es una $ref: OpenAPI 3.0 ignora "nullable" junto a un $ref, asi que el contrato lo publica como
+        // destino es una $ref: OpenAPI 3.0 ignora "nullable" junto a un $ref, así que el contrato lo publica como
         // DestinoPedido requerido aunque el servidor acepta nulo (regla por defecto). La web debe enviar {idBloque: null}.
         assertTrue(esquemas.path("CompraEditarRequest").path("properties").path("destino").path("$ref").asText().endsWith("/DestinoPedido"));
         assertNullable(esquemas, "DestinoPedido", "idBloque");
@@ -303,7 +303,7 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "BloqueCompraSepararRespuesta", "idBloque");
     }
 
-    /** 0.9.9 (ampliacion): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4). */
+    /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4). */
     @Test void elContratoPublicaLasPiezasDeCadaProveedor() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
         var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();

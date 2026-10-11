@@ -65,7 +65,7 @@ class ProveedorComponenteDAOTest {
     @Test void anadirYQuitarVanEnLote() {
         dao.anadir(7, List.of(5, 6));
         dao.quitar(7, List.of(8));
-        verify(jdbc).batchUpdate(eq("INSERT INTO Proveedor_componente (ID_PROV, ID_COM) VALUES (?, ?)"),
+        verify(jdbc).batchUpdate(eq("INSERT IGNORE INTO Proveedor_componente (ID_PROV, ID_COM) VALUES (?, ?)"),
                 argThat((List<Object[]> l) -> l.size() == 2 && l.get(0)[0].equals(7) && l.get(0)[1].equals(5) && l.get(1)[1].equals(6)));
         verify(jdbc).batchUpdate(eq("DELETE FROM Proveedor_componente WHERE ID_PROV = ? AND ID_COM = ?"),
                 argThat((List<Object[]> l) -> l.size() == 1 && l.get(0)[0].equals(7) && l.get(0)[1].equals(8)));

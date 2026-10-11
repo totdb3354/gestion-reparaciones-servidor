@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/** Piezas que vende un proveedor (0.9.9, spec 2026-10-11 §4.3). El registro va tras la transaccion del servicio. */
+/** Piezas que vende un proveedor (0.9.9, spec 2026-10-11 §4.3). El registro va tras la transacción del servicio. */
 @RestController
 @RequestMapping("/api/proveedores")
 public class ProveedorPiezasController {

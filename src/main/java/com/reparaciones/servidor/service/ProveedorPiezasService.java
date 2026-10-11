@@ -31,7 +31,7 @@ public class ProveedorPiezasService {
 
     @Transactional
     public Cambios reemplazar(int idProv, List<Integer> idsCom) {
-        Proveedor p = proveedorDao.getById(idProv)
+        Proveedor p = proveedorDao.getByIdParaEditar(idProv)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, MSG_NO_ENCONTRADO));
         if (!ProveedorDAO.TIPO_COMPONENTES.equals(p.getTipo())) throw regla(MSG_SOLO_COMPONENTES);
         if (idsCom == null) throw regla(MSG_SIN_LISTA);

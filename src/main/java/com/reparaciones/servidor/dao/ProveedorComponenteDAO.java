@@ -13,7 +13,7 @@ public class ProveedorComponenteDAO {
 
     static final String SQL_TODAS = "SELECT ID_PROV, ID_COM FROM Proveedor_componente";
     static final String SQL_DE_PROVEEDOR = "SELECT ID_COM FROM Proveedor_componente WHERE ID_PROV = ?";
-    static final String SQL_INSERTAR = "INSERT INTO Proveedor_componente (ID_PROV, ID_COM) VALUES (?, ?)";
+    static final String SQL_INSERTAR = "INSERT IGNORE INTO Proveedor_componente (ID_PROV, ID_COM) VALUES (?, ?)";
     static final String SQL_QUITAR = "DELETE FROM Proveedor_componente WHERE ID_PROV = ? AND ID_COM = ?";
     /** `%s` = una marca `?` por id. */
     static final String SQL_MASTERS = "SELECT ID_COM, COALESCE(ID_COM_MASTER, ID_COM) AS ID_MASTER FROM Componente WHERE ID_COM IN (%s)";

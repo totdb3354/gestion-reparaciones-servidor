@@ -26,7 +26,7 @@ class ProveedorPiezasServiceTest {
 
     private void existe(int idProv, String tipo) {
         Proveedor p = proveedor(tipo);
-        when(proveedorDao.getById(idProv)).thenReturn(Optional.of(p));
+        when(proveedorDao.getByIdParaEditar(idProv)).thenReturn(Optional.of(p));
     }
 
     private static int estado(ResponseStatusException e) { return e.getStatusCode().value(); }
@@ -40,6 +40,9 @@ class ProveedorPiezasServiceTest {
         verify(catalogo).anadir(7, List.of(3));
         verify(catalogo).quitar(7, List.of(8));
         verify(catalogo).mastersDe(new LinkedHashSet<>(List.of(5, 12)));
+        // La lectura es con bloqueo (FOR UPDATE): nunca la de instantánea.
+        verify(proveedorDao).getByIdParaEditar(7);
+        verify(proveedorDao, never()).getById(anyInt());
     }
 
     @Test void sinCambiosNoEscribe() {
@@ -59,7 +62,7 @@ class ProveedorPiezasServiceTest {
     }
 
     @Test void proveedorInexistenteEs404() {
-        when(proveedorDao.getById(99)).thenReturn(Optional.empty());
+        when(proveedorDao.getByIdParaEditar(99)).thenReturn(Optional.empty());
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> servicio.reemplazar(99, List.of(5)));
         assertEquals(404, estado(e));
         assertEquals(ProveedorPiezasService.MSG_NO_ENCONTRADO, e.getReason());
@@ -78,6 +81,7 @@ class ProveedorPiezasServiceTest {
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> servicio.reemplazar(7, null));
         assertEquals(422, estado(e));
         assertEquals("Falta la lista de piezas.", e.getReason());
+        verifyNoInteractions(catalogo);
     }
 
     @Test void unaPiezaQueNoExisteEs422YNoEscribe() {
@@ -96,5 +100,6 @@ class ProveedorPiezasServiceTest {
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> servicio.reemplazar(7, conNulo));
         assertEquals(422, estado(e));
         assertEquals("Alguna pieza ya no existe.", e.getReason());
+        verifyNoInteractions(catalogo);
     }
 }

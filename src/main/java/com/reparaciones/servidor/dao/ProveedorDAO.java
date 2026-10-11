@@ -75,6 +75,14 @@ public class ProveedorDAO {
         jdbc.update("DELETE FROM Proveedor WHERE ID_PROV = ?", idProv);
     }
 
+    /**
+     * Lee el proveedor bloqueando su fila (FOR UPDATE): serializa los PUT de piezas del mismo proveedor, de modo que
+     * la instantánea del segundo se toma tras confirmar el primero y gana el último. Solo dentro de una transacción.
+     */
+    public Optional<Proveedor> getByIdParaEditar(int idProv) {
+        return jdbc.query(SELECT_BASE + " WHERE ID_PROV = ? FOR UPDATE", MAPPER, idProv).stream().findFirst();
+    }
+
     /** Vacío si no existe (getNombreById lanza; CompraController depende de que lance, así que no se toca). */
     public Optional<Proveedor> getById(int idProv) {
         return jdbc.query(SELECT_BASE + " WHERE ID_PROV = ?", MAPPER, idProv).stream().findFirst();
