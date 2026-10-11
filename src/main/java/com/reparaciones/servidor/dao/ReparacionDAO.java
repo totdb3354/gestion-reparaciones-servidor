@@ -278,6 +278,38 @@ public class ReparacionDAO {
         return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
 
+    /** Trabajos cerrados de un IMEI, de cualquier tipo, con su cliente guardado, del más reciente al más antiguo
+     *  (spec 0.9.8 añadido §3.1). La descripción: tipo de pieza en R/G, «Pulido» en P, «Asignación» en las A… */
+    public List<TrabajoCerrado> getCerradosPorImei(String imei) {
+        return jdbc.query(
+                "SELECT r.ID_REP, r.FECHA_FIN, r.ID_CLI, cli.NOMBRE AS CLIENTE," +
+                " CASE WHEN r.ID_REP LIKE 'P%' THEN 'Pulido' WHEN r.ID_REP LIKE 'A%' THEN 'Asignación' ELSE c.TIPO END AS DESCRIPCION" +
+                " FROM Reparacion r" +
+                " LEFT JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0" +
+                " LEFT JOIN Componente c ON c.ID_COM = rc.ID_COM" +
+                " LEFT JOIN Cliente cli ON cli.ID_CLI = r.ID_CLI" +
+                " WHERE r.IMEI = ? AND r.FECHA_FIN IS NOT NULL" +
+                " ORDER BY r.FECHA_FIN DESC, r.ID_REP DESC",
+                (rs, n) -> new TrabajoCerrado(rs.getString("ID_REP"), rs.getTimestamp("FECHA_FIN").toLocalDateTime(),
+                        rs.getString("DESCRIPCION"), (Integer) rs.getObject("ID_CLI"), rs.getString("CLIENTE")),
+                imei);
+    }
+
+    /** Cliente guardado de cada trabajo (null = sin cliente), para el registro de «Corregir cliente». */
+    public Map<String, Integer> getClienteGuardado(List<String> idReps) {
+        String marcas = String.join(",", Collections.nCopies(idReps.size(), "?"));
+        Map<String, Integer> out = new HashMap<>();
+        jdbc.query("SELECT ID_REP, ID_CLI FROM Reparacion WHERE ID_REP IN (" + marcas + ")",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(rs.getString("ID_REP"), (Integer) rs.getObject("ID_CLI")),
+                idReps.toArray());
+        return out;
+    }
+
+    public boolean existeCliente(int idCli) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM Cliente WHERE ID_CLI = ?", Integer.class, idCli);
+        return n != null && n > 0;
+    }
+
     public record DetalleEdicion(String imei, int idTec, int idCom,
                                   boolean esReutilizado, @Schema(nullable = true) String observacion, int cantidad,
                                   LocalDateTime updatedAt) {}
@@ -503,6 +535,27 @@ public class ReparacionDAO {
         resetRevisionAlAsignar(imei, idUsu);
         if (urgenteFinal) propagarUrgente(imei, true);
         return idRep;
+    }
+
+    /** «Corregir cliente» (spec 0.9.8 añadido §3.2): todo o nada. Si alguno no existe, no es del IMEI o no está cerrado,
+     *  409 sin cambiar nada. UPDATED_AT se conserva: es el dato derivado del cierre, no una edición. */
+    @Transactional
+    public void corregirCliente(String imei, List<String> idReps, Integer idCli) {
+        String marcas = String.join(",", Collections.nCopies(idReps.size(), "?"));
+        List<Object> filtro = new ArrayList<>();
+        filtro.add(imei);
+        filtro.addAll(idReps);
+        Integer cerrados = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ? AND FECHA_FIN IS NOT NULL AND ID_REP IN (" + marcas + ") FOR UPDATE",
+                Integer.class, filtro.toArray());
+        if (cerrados == null || cerrados != idReps.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Algún trabajo ya no está cerrado o no es de este teléfono");
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(idCli);
+        params.addAll(filtro);
+        jdbc.update("UPDATE Reparacion SET ID_CLI = ?, UPDATED_AT = UPDATED_AT"
+                + " WHERE IMEI = ? AND FECHA_FIN IS NOT NULL AND ID_REP IN (" + marcas + ")", params.toArray());
     }
 
     @Transactional

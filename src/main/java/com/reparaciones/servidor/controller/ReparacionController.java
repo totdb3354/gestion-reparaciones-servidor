@@ -83,6 +83,37 @@ public class ReparacionController {
 
     // ── historial ─────────────────────────────────────────────────────────────
 
+    /** Trabajos cerrados de un IMEI para el modal «Corregir cliente» (spec 0.9.8 añadido §3.1). */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @GetMapping("/imei/{imei}/cerrados")
+    public List<TrabajoCerrado> getCerradosPorImei(@PathVariable String imei) {
+        return dao.getCerradosPorImei(imei);
+    }
+
+    /** Corrige el cliente guardado de unos trabajos cerrados de un IMEI (spec 0.9.8 añadido §3.2). */
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @PatchMapping("/cliente")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void corregirCliente(@RequestBody CorregirClienteRequest req,
+                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+        if (req.idReps() == null || req.idReps().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No hay trabajos que corregir");
+        }
+        if (req.idCli() != null && !dao.existeCliente(req.idCli())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El cliente no existe");
+        }
+        Map<String, Integer> antes = dao.getClienteGuardado(req.idReps());
+        dao.corregirCliente(req.imei(), req.idReps(), req.idCli());
+        for (String idRep : req.idReps()) {
+            logDao.insertar(principal.getIdUsu(), "CORREGIR_CLIENTE_TRABAJO",
+                    "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", ID_CLI: " + idCliTexto(antes.get(idRep)) + " → " + idCliTexto(req.idCli()));
+        }
+    }
+
+    private static String idCliTexto(Integer idCli) {
+        return idCli == null ? "—" : String.valueOf(idCli);
+    }
+
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(
             @RequestParam(required = false) Integer tecnico,
@@ -724,6 +755,7 @@ public class ReparacionController {
     // ── request records ───────────────────────────────────────────────────────
 
     record BorradorRequest(String contenido) {}   // package-private: lo construye el test
+    record CorregirClienteRequest(String imei, List<String> idReps, @Schema(nullable = true) Integer idCli) {}
     private record InsertarRequest(String imei, int idTec,
                                    LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
     private record AsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente, boolean esChasis) {}
