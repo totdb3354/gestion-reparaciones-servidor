@@ -61,9 +61,14 @@ de `model/` conservan su nombre.
 - Bloques de pedidos (0.9.9): `GET /api/compras` trae en cada línea su bloque (`idBloque`, `fechaBloque`, `notaBloque`,
   `bloqueUpdatedAt`, `bloqueAntiguo`). `POST /api/bloques-compra/{idBloque}/confirmar|recibir|cancelar|borrar|separar` y
   `…/juntar` reciben la lista exacta de líneas que vio el cliente (`lineas: [{idCompra, updatedAt}]`) y son todo o nada:
-  si una no existe, no es del bloque, cambió o no está en el estado de la acción, `409` "Este bloque fue modificado por
-  otro usuario." sin cambiar nada; `borrar` y `juntar` exigen el bloque entero. Un bloque que se queda sin líneas
-  desaparece en la misma operación. `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
+  si una no existe, no es del bloque o cambió (y, en confirmar/recibir/cancelar/borrar, si no está en el estado de la
+  acción), `409` "Este bloque fue modificado por
+  otro usuario." sin cambiar nada; `borrar` y `juntar` exigen el bloque entero; `separar` devuelve `{idBloque}` (el bloque nuevo) y no puede llevarse todas
+  las líneas (`422`). Un bloque que se queda sin líneas desaparece en la misma operación; si una escritura concurrente
+  lo deja vivo (borrar/juntar) o vacío (separar), `409` y se revierte. `PATCH /api/bloques-compra/{idBloque}/nota`
+  (`{nota, updatedAt}`): `422` si pasa de 200 caracteres, `409` si el bloque cambió. `PATCH /api/compras/{idCompra}/bloque`
+  (`{idBloque, updatedAt}`, `idBloque` nulo = bloque nuevo): `404` si la línea no existe, `409` si cambió (versión o
+  bloque). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
   bloque nuevo; un proveedor sin entrada va a su bloque abierto más reciente o a uno nuevo) y `PUT /api/compras/{id}`
   acepta `destino: {idBloque}` cuando cambia el proveedor. Solo SUPERTECNICO.
 - Sin sesión: una petición sin cabecera `Authorization` recibe `403` (Spring Security sin entry point);

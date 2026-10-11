@@ -1,7 +1,15 @@
 -- 0.9.9: reconstrucción de los bloques de las líneas que no tienen (spec «Pedidos por bloques» §4).
--- REPETIBLE: solo toca líneas sin bloque. Se ejecuta tras migracion-bloques-compra.sql, otra vez después de desplegar
+-- REPETIBLE: toca líneas sin bloque y repara lo que un 0.9.8 deja sobre el esquema nuevo (líneas en el bloque de otro
+-- proveedor y bloques vacíos); es seguro con el 0.9.9 funcionando. Se ejecuta tras migracion-bloques-compra.sql, otra vez después de desplegar
 -- el servidor 0.9.9 (recoge las líneas que el 0.9.8 creó en el hueco) y después de cualquier vuelta atrás al 0.9.8.
 USE gestion_reparaciones;
+
+-- ── Reparación ────────────────────────────────────────────────────────────────
+-- Lo que un 0.9.8 hace sobre el esquema nuevo (hueco del despliegue o vuelta atrás): editar el proveedor de una línea
+-- la deja en el bloque de otro proveedor. Se suelta (sin tocar UPDATED_AT) y la reconstrucción de abajo la recoge.
+UPDATE Compra_componente cc JOIN Bloque_compra b ON b.ID_BLOQUE = cc.ID_BLOQUE
+SET cc.ID_BLOQUE = NULL, cc.UPDATED_AT = cc.UPDATED_AT
+WHERE b.ID_PROV <> cc.ID_PROV;
 
 -- ── Reconstrucción ────────────────────────────────────────────────────────────
 -- Un bloque RECONSTRUIDO por cada (proveedor, día de FECHA_PEDIDO) con líneas sin bloque que aún no tenga uno; su
@@ -20,6 +28,10 @@ UPDATE Compra_componente cc
 JOIN Bloque_compra b ON b.RECONSTRUIDO AND b.ID_PROV = cc.ID_PROV AND DATE(b.FECHA) = DATE(cc.FECHA_PEDIDO)
 SET cc.ID_BLOQUE = b.ID_BLOQUE, cc.UPDATED_AT = cc.UPDATED_AT
 WHERE cc.ID_BLOQUE IS NULL;
+
+-- Borrar una línea pendiente en el 0.9.8 puede haber vaciado un bloque: un bloque sin líneas no existe.
+DELETE b FROM Bloque_compra b
+WHERE NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE);
 
 -- ── Comprobación ──────────────────────────────────────────────────────────────
 SELECT COUNT(*) AS lineas_sin_bloque FROM Compra_componente WHERE ID_BLOQUE IS NULL;                         -- 0

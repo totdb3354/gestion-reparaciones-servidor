@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 class CompraComponenteDAOBloqueTest {
 
     private static final LocalDateTime AT = LocalDateTime.of(2026, 10, 9, 10, 0, 0);
-    private static final String MOVER = "UPDATE Compra_componente SET ID_BLOQUE=? WHERE ID_COMPRA=?";
+    private static final String MOVER = "UPDATE Compra_componente SET ID_BLOQUE=? WHERE ID_COMPRA=? AND ID_BLOQUE <=> ?";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final CompraComponenteDAO dao = new CompraComponenteDAO(jdbc);
 
@@ -69,15 +69,38 @@ class CompraComponenteDAOBloqueTest {
         assertFalse(c.isBloqueAntiguo());
     }
 
-    @Test void moverABloqueCambiaElBloqueDeLaLinea() {
-        when(jdbc.update(MOVER, 41, 5)).thenReturn(1);
-        dao.moverABloque(5, 41);
-        verify(jdbc).update(MOVER, 41, 5);
+    @Test void moverABloqueCambiaElBloqueDeLaLineaSoloSiSigueEnElOrigenLeido() {
+        when(jdbc.update(MOVER, 41, 5, 7)).thenReturn(1);
+        dao.moverABloque(5, 7, 41);
+        verify(jdbc).update(MOVER, 41, 5, 7);
+    }
+
+    @Test void moverUnaLineaSinBloqueUsaOrigenNulo() {
+        when(jdbc.update(MOVER, 41, 5, null)).thenReturn(1);
+        dao.moverABloque(5, null, 41);
+        verify(jdbc).update(MOVER, 41, 5, null);
     }
 
     @Test void moverUnaLineaQueYaNoExisteEs409() {
-        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> dao.moverABloque(5, 41));
+        when(jdbc.queryForObject("SELECT COUNT(*) FROM Compra_componente WHERE ID_COMPRA=?", Integer.class, 5)).thenReturn(0);
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> dao.moverABloque(5, 7, 41));
         assertEquals(HttpStatus.CONFLICT, e.getStatusCode());
         assertEquals("El pedido ya no existe", e.getReason());
+    }
+
+    @Test void moverUnaLineaQueCambioDeBloqueEs409() {
+        when(jdbc.queryForObject("SELECT COUNT(*) FROM Compra_componente WHERE ID_COMPRA=?", Integer.class, 5)).thenReturn(1);
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> dao.moverABloque(5, 7, 41));
+        assertEquals(HttpStatus.CONFLICT, e.getStatusCode());
+        assertEquals("El pedido cambió de bloque, vuelve a cargar", e.getReason());
+    }
+
+    @Test void borrarPendienteDeUnBloqueComparaElOrigenEnElDelete() {
+        String sql = "DELETE FROM Compra_componente WHERE ID_COMPRA=? AND ESTADO='pendiente' AND ID_BLOQUE <=> ?";
+        when(jdbc.update(sql, 5, 7)).thenReturn(1);
+        dao.borrarPendiente(5, 7);
+        verify(jdbc).update(sql, 5, 7);
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> dao.borrarPendiente(5, 8));
+        assertEquals(HttpStatus.CONFLICT, e.getStatusCode());
     }
 }

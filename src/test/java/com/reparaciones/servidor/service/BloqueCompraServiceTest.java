@@ -60,7 +60,7 @@ class BloqueCompraServiceTest {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
         BloqueCompraService.Movimiento m = servicio.mover(5, new DestinoPedido(40), AT);
-        verify(compraDao).moverABloque(5, 40);
+        verify(compraDao).moverABloque(5, 41, 40);
         verify(bloqueDao).borrarSiVacio(41);
         assertEquals(new BloqueCompraService.Movimiento(5, "pendiente", 41, 40, false, 2, false), m);
     }
@@ -71,7 +71,7 @@ class BloqueCompraServiceTest {
         when(bloqueDao.crear(2)).thenReturn(90);
         assertEquals(new BloqueCompraService.Movimiento(5, "en_camino", 41, 90, true, 2, false),
                 servicio.mover(5, new DestinoPedido(null), AT));
-        verify(compraDao).moverABloque(5, 90);
+        verify(compraDao).moverABloque(5, 41, 90);
     }
 
     @Test void elOrigenQueSeQuedaVacioSeBorra() {
@@ -86,7 +86,7 @@ class BloqueCompraServiceTest {
         when(bloqueDao.contarLineas(41)).thenReturn(1);
         falla(HttpStatus.UNPROCESSABLE_ENTITY, "La línea ya está en ese bloque.", () -> servicio.mover(5, new DestinoPedido(41), AT));
         falla(HttpStatus.UNPROCESSABLE_ENTITY, "La línea ya está sola en su bloque.", () -> servicio.mover(5, new DestinoPedido(null), AT));
-        verify(compraDao, never()).moverABloque(anyInt(), anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
         verify(bloqueDao, never()).crear(anyInt());
     }
 
@@ -94,14 +94,14 @@ class BloqueCompraServiceTest {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 3)));
         falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 40 es de otro proveedor.", () -> servicio.mover(5, new DestinoPedido(40), AT));
-        verify(compraDao, never()).moverABloque(anyInt(), anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
     @Test void moverConOtraVersionEs409YUnaLineaInexistenteEs404() {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         falla(HttpStatus.CONFLICT, "Dato modificado por otro usuario", () -> servicio.mover(5, new DestinoPedido(40), AT.plusSeconds(1)));
         falla(HttpStatus.NOT_FOUND, "El pedido no existe", () -> servicio.mover(6, new DestinoPedido(40), AT));
-        verify(compraDao, never()).moverABloque(anyInt(), anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
     // ── editar cambiando el proveedor ──
@@ -111,7 +111,7 @@ class BloqueCompraServiceTest {
         BloqueCompraService.Movimiento m = servicio.editarCambiandoProveedor(5, 3, 4, false, 12.0, "EUR", 12.0, AT, null);
         InOrder orden = inOrder(compraDao);
         orden.verify(compraDao).editar(5, 3, 4, false, 12.0, "EUR", 12.0, AT);
-        orden.verify(compraDao).moverABloque(5, 60);
+        orden.verify(compraDao).moverABloque(5, 41, 60);
         assertEquals(new BloqueCompraService.Movimiento(5, "pendiente", 41, 60, false, 3, false), m);
     }
 
@@ -135,7 +135,7 @@ class BloqueCompraServiceTest {
         assertThrows(ResponseStatusException.class,
                 () -> servicio.editarCambiandoProveedor(5, 3, 4, false, 12.0, "EUR", 12.0, AT, null));
         verify(bloqueDao, never()).crear(anyInt());
-        verify(compraDao, never()).moverABloque(anyInt(), anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
     // ── borrar una línea pendiente ──
@@ -143,13 +143,13 @@ class BloqueCompraServiceTest {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
         assertEquals(Optional.of(41), servicio.borrarLineaPendiente(5));
-        verify(compraDao).borrarPendiente(5);
+        verify(compraDao).borrarPendiente(5, 41);
     }
 
     @Test void borrarUnaLineaDeUnBloqueConMasNoLoBorra() {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         assertEquals(Optional.empty(), servicio.borrarLineaPendiente(5));
-        verify(compraDao).borrarPendiente(5);
+        verify(compraDao).borrarPendiente(5, 41);
     }
 
     // ── acciones de bloque ──
@@ -202,10 +202,53 @@ class BloqueCompraServiceTest {
 
     @Test void borrarExigeElBloqueEnteroPendienteYLoBorra() {
         bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
         servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2)));
         verify(compraDao).borrarPendiente(1);
         verify(compraDao).borrarPendiente(2);
         verify(bloqueDao).borrarSiVacio(41);
+    }
+
+    @Test void borrarConUnaLineaNoPendienteEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "en_camino"));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2))));
+        verify(compraDao, never()).borrarPendiente(anyInt());
+    }
+
+    @Test void borrarConOtraVersionEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR,
+                List.of(v(1), new LineaVista(2, AT.plusSeconds(1)))));
+        verify(compraDao, never()).borrarPendiente(anyInt());
+    }
+
+    @Test void borrarSiElBloqueNoQuedaVacioEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(false);
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1), v(2))));
+    }
+
+    @Test void separarSiElOrigenQuedaVacioEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        when(bloqueDao.crear(2)).thenReturn(90);
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.separar(41, List.of(v(1))));
+    }
+
+    @Test void juntarSiElBloqueNoQuedaVacioEs409() {
+        bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(false);
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.juntar(41, 40, List.of(v(1), v(2))));
+    }
+
+    @Test void moverSiLaLineaYaNoEstaEnElOrigenLeidoEs409() {
+        when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "El pedido cambió de bloque, vuelve a cargar"))
+                .when(compraDao).moverABloque(5, 41, 40);
+        falla(HttpStatus.CONFLICT, "El pedido cambió de bloque, vuelve a cargar", () -> servicio.mover(5, new DestinoPedido(40), AT));
+        verify(bloqueDao, never()).borrarSiVacio(anyInt());
     }
 
     @Test void borrarConUnaListaIncompletaEs409() {
@@ -219,9 +262,9 @@ class BloqueCompraServiceTest {
         bloque41(lb(1, "pendiente"), lb(2, "en_camino"), lb(3, "pendiente"));
         when(bloqueDao.crear(2)).thenReturn(90);
         assertEquals(new BloqueCompraService.Separacion(41, 90, 2, List.of(1, 2)), servicio.separar(41, List.of(v(1), v(2))));
-        verify(compraDao).moverABloque(1, 90);
-        verify(compraDao).moverABloque(2, 90);
-        verify(compraDao, never()).moverABloque(eq(3), anyInt());
+        verify(compraDao).moverABloque(1, 41, 90);
+        verify(compraDao).moverABloque(2, 41, 90);
+        verify(compraDao, never()).moverABloque(eq(3), any(), anyInt());
     }
 
     @Test void separarTodasEs422YUnaCambiadaEs409() {
@@ -235,9 +278,10 @@ class BloqueCompraServiceTest {
         when(bloqueDao.getById(41)).thenReturn(Optional.of(new BloqueCompraDAO.Bloque(41, 2, AT, "Ped. 2", false, AT)));
         when(bloqueDao.lineas(41)).thenReturn(List.of(lb(1, "pendiente"), lb(2, "en_camino")));
         when(bloqueDao.getById(40)).thenReturn(Optional.of(new BloqueCompraDAO.Bloque(40, 2, AT, "Ped. 1", false, AT)));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
         assertEquals(new BloqueCompraService.Union(41, 40, List.of(1, 2)), servicio.juntar(41, 40, List.of(v(1), v(2))));
-        verify(compraDao).moverABloque(1, 40);
-        verify(compraDao).moverABloque(2, 40);
+        verify(compraDao).moverABloque(1, 41, 40);
+        verify(compraDao).moverABloque(2, 41, 40);
         verify(bloqueDao).cambiarNota(40, "Ped. 1 · Ped. 2");
         verify(bloqueDao).borrarSiVacio(41);
     }
@@ -248,7 +292,7 @@ class BloqueCompraServiceTest {
         falla(HttpStatus.UNPROCESSABLE_ENTITY, "Elige otro bloque.", () -> servicio.juntar(41, 41, List.of(v(1), v(2))));
         falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 50 es de otro proveedor.", () -> servicio.juntar(41, 50, List.of(v(1), v(2))));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.juntar(41, 40, List.of(v(1))));
-        verify(compraDao, never()).moverABloque(anyInt(), anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
     @Test void unirNotas() {

@@ -105,7 +105,7 @@ public class BloqueCompraService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_YA_EN_ESE);
         }
         DestinoBloque.Destino d = destinoBloque.resolver(l.getIdProv(), destino, false);
-        compraDao.moverABloque(idCompra, d.idBloque());
+        compraDao.moverABloque(idCompra, origen, d.idBloque());
         boolean borrado = origen != null && bloqueDao.borrarSiVacio(origen);
         return new Movimiento(idCompra, l.getEstado(), origen, d.idBloque(), d.nuevo(), l.getIdProv(), borrado);
     }
@@ -121,8 +121,8 @@ public class BloqueCompraService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, MSG_NO_EXISTE_LINEA));
         compraDao.editar(idCompra, idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur, updatedAt);
         DestinoBloque.Destino d = destinoBloque.resolver(idProv, destino, "pendiente".equals(l.getEstado()));
-        compraDao.moverABloque(idCompra, d.idBloque());
         Integer origen = l.getIdBloque();
+        compraDao.moverABloque(idCompra, origen, d.idBloque());
         boolean borrado = origen != null && bloqueDao.borrarSiVacio(origen);
         return new Movimiento(idCompra, l.getEstado(), origen, d.idBloque(), d.nuevo(), idProv, borrado);
     }
@@ -131,7 +131,7 @@ public class BloqueCompraService {
     @Transactional
     public Optional<Integer> borrarLineaPendiente(int idCompra) {
         Integer origen = compraDao.getById(idCompra).map(CompraComponente::getIdBloque).orElse(null);
-        compraDao.borrarPendiente(idCompra);
+        compraDao.borrarPendiente(idCompra, origen);
         return origen != null && bloqueDao.borrarSiVacio(origen) ? Optional.of(origen) : Optional.empty();
     }
 
@@ -152,7 +152,8 @@ public class BloqueCompraService {
                 case BORRAR -> compraDao.borrarPendiente(l.idCompra());
             }
         }
-        if (accion == Accion.BORRAR) bloqueDao.borrarSiVacio(idBloque);
+        // Borrar exige el bloque entero: si no queda vacío, otro escribió entre la lectura y el borrado (409, revierte).
+        if (accion == Accion.BORRAR && !bloqueDao.borrarSiVacio(idBloque)) throw modificado();
         return new Aplicada(idBloque, c.elegidas());
     }
 
@@ -167,9 +168,11 @@ public class BloqueCompraService {
         int nuevo = bloqueDao.crear(c.bloque().idProv());
         List<Integer> ids = new ArrayList<>();
         for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
-            compraDao.moverABloque(l.idCompra(), nuevo);
+            compraDao.moverABloque(l.idCompra(), idBloque, nuevo);
             ids.add(l.idCompra());
         }
+        // Separar no se lleva todas: si el origen quedó vacío, otro lo cambió entre la lectura y el movimiento (409).
+        if (bloqueDao.borrarSiVacio(idBloque)) throw modificado();
         return new Separacion(idBloque, nuevo, c.bloque().idProv(), ids);
     }
 
@@ -183,12 +186,13 @@ public class BloqueCompraService {
         BloqueCompraDAO.Bloque d = bloqueDao.getById(destino).orElseThrow(BloqueCompraService::modificado);
         List<Integer> ids = new ArrayList<>();
         for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
-            compraDao.moverABloque(l.idCompra(), destino);
+            compraDao.moverABloque(l.idCompra(), idBloque, destino);
             ids.add(l.idCompra());
         }
         String nota = unirNotas(d.nota(), c.bloque().nota());
         if (!Objects.equals(nota, d.nota())) bloqueDao.cambiarNota(destino, nota);
-        bloqueDao.borrarSiVacio(idBloque);
+        // Se movió el bloque entero: si no queda vacío, otro añadió una línea en medio (409, revierte).
+        if (!bloqueDao.borrarSiVacio(idBloque)) throw modificado();
         return new Union(idBloque, destino, ids);
     }
 

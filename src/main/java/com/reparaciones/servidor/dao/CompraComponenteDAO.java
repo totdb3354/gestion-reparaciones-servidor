@@ -29,6 +29,7 @@ public class CompraComponenteDAO {
     static final String MSG_NO_RECIBIDO  = "El pedido ya no está recibido";
     static final String MSG_NO_EDITABLE  = "El pedido no se puede editar en su estado actual";
     static final String MSG_LINEA_NO_EXISTE = "El pedido ya no existe";
+    static final String MSG_LINEA_CAMBIO_BLOQUE = "El pedido cambió de bloque, vuelve a cargar";
 
     private final JdbcTemplate jdbc;
 
@@ -200,10 +201,28 @@ public class CompraComponenteDAO {
         exigir(n, MSG_NO_PENDIENTE);
     }
 
-    /** Cambia el bloque de una línea (0.9.9). UPDATED_AT cambia: es un cambio real de la línea. 409 si ya no existe. */
-    public void moverABloque(int idCompra, int idBloque) {
-        int n = jdbc.update("UPDATE Compra_componente SET ID_BLOQUE=? WHERE ID_COMPRA=?", idBloque, idCompra);
-        exigir(n, MSG_LINEA_NO_EXISTE);
+    /** Cambia el bloque de una línea (0.9.9). UPDATED_AT cambia: es un cambio real de la línea. `origen` es el bloque
+     *  que leyó quien llama (nulo = sin bloque, el hueco del despliegue): si la línea ya está en otro, 409. */
+    public void moverABloque(int idCompra, Integer origen, int idBloque) {
+        int n = jdbc.update("UPDATE Compra_componente SET ID_BLOQUE=? WHERE ID_COMPRA=? AND ID_BLOQUE <=> ?",
+                idBloque, idCompra, origen);
+        if (n == 0) {
+            Integer existe = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM Compra_componente WHERE ID_COMPRA=?", Integer.class, idCompra);
+            boolean sigueExistiendo = existe != null && existe > 0;
+            exigir(0, sigueExistiendo ? MSG_LINEA_CAMBIO_BLOQUE : MSG_LINEA_NO_EXISTE);
+        }
+    }
+
+    /** Como {@link #borrarPendiente(int)}, pero solo si la línea sigue en el bloque `origen` que leyó quien llama (nulo =
+     *  sin bloque): si cambió de bloque entre la lectura y el DELETE, 409 y el bloque no se vacía por error. */
+    public void borrarPendiente(int idCompra, Integer origen) {
+        int n = jdbc.update(
+                "DELETE FROM Compra_componente WHERE ID_COMPRA=? AND ESTADO='pendiente' AND ID_BLOQUE <=> ?",
+                idCompra, origen);
+        if (n == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El pedido ya no está pendiente (no se puede borrar)");
+        }
     }
 
     /** Borra un pedido en estado 'pendiente' (aún no se pidió nada). */
