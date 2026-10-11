@@ -35,7 +35,6 @@ class CompraComponenteDAOTransicionesTest {
     private static final String CANCELAR = "UPDATE Compra_componente SET ESTADO='cancelado' WHERE ID_COMPRA=? AND ESTADO='en_camino'";
     private static final String DESRECIBIR = "UPDATE Compra_componente SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL WHERE ID_COMPRA=? AND ESTADO='recibido'";
     private static final String EDITAR = "UPDATE Compra_componente SET ID_PROV=?, CANTIDAD=?, ES_URGENTE=?, PRECIO_UNIDAD_PEDIDO=?, DIVISA=?, PRECIO_EUR=? WHERE ID_COMPRA=? AND (ESTADO IN ('pendiente','en_camino') OR (ESTADO='recibido' AND CANTIDAD=?))";
-    private static final String BORRAR = "DELETE FROM Compra_componente WHERE ID_COMPRA=? AND ESTADO='pendiente'";
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final CompraComponenteDAO dao = new CompraComponenteDAO(jdbc);
@@ -189,17 +188,6 @@ class CompraComponenteDAOTransicionesTest {
         fila(4, null);
         conflicto("El pedido no se puede editar en su estado actual",
                 () -> dao.editar(ID, 2, 4, true, 10.0, "USD", 8.8, AT));
-    }
-
-    // ── borrar (pendiente; sin updatedAt, como hoy) ──
-    @Test void borrarUnPendienteBorra() {
-        when(jdbc.update(BORRAR, ID)).thenReturn(1);
-        dao.borrarPendiente(ID);
-        verify(jdbc).update(BORRAR, ID);
-    }
-
-    @Test void borrarFueraDePendienteEs409() {
-        conflicto("El pedido ya no está pendiente (no se puede borrar)", () -> dao.borrarPendiente(ID));
     }
 
     // ── orden: updatedAt antes que el estado ──

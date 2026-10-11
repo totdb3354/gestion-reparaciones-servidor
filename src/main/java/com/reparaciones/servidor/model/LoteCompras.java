@@ -12,7 +12,12 @@ public final class LoteCompras {
 
     /** solicitudes: las urgentes (ID_RC) y preventivas (ID_SOL) que originan las líneas; se marcan GESTIONADA en la
      *  misma transacción. Si llega null se trata como vacía. */
-    public record Peticion(List<Linea> lineas, Solicitudes solicitudes) {}
+    public record Peticion(List<Linea> lineas, Solicitudes solicitudes,
+                           @Schema(nullable = true) List<Destino> destinos) {}
+
+    /** 0.9.9 (spec «Pedidos por bloques» §5.2): bloque al que van las líneas de un proveedor; `idBloque` nulo = bloque
+     *  nuevo. Un proveedor sin entrada sigue la regla por defecto (su abierto más reciente o uno nuevo). */
+    public record Destino(int idProv, @Schema(nullable = true) Integer idBloque) {}
 
     /** idCom e idProv nulos = sin elegir en el formulario (422 "Línea i: selecciona …"). */
     public record Linea(@Schema(nullable = true) Integer idCom, @Schema(nullable = true) Integer idProv,

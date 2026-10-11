@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -82,7 +83,7 @@ class RolesCompraLoteTest {
 
     @Test void comprasSupertecnicoGuardaYDevuelveLosIds() throws Exception {
         catalogo();
-        when(servicio.guardarCompras(anyList(), anyList(), anyList())).thenReturn(new LoteCompras.Respuesta(List.of(41)));
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(new CompraLoteService.ResultadoLote(new LoteCompras.Respuesta(List.of(41)), List.of()));
         lote("/api/compras/lote", CUERPO_COMPRAS, supertecnico(), "c3")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.idsCreados[0]").value(41));
