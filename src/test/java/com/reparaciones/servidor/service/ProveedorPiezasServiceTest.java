@@ -128,7 +128,13 @@ class ProveedorPiezasServiceTest {
         modeloNulo.add(null);
         falla422(List.of(new Entrada("bat", modeloNulo)), "Algún modelo no existe.");
         falla422(List.of(e("bat", "12", "13")), "Si no vende ningún modelo de un tipo, desmarca el tipo.");
-        falla422(List.of(e("lcd", "15")), "Si no vende ningún modelo de un tipo, desmarca el tipo.");
+    }
+
+    @Test void unTipoSinPiezasActivasSeGuardaConSusExcluidos() {
+        existe(7, "COMPONENTES");
+        catalogo();
+        assertEquals("lcd (sin 15)", servicio.reemplazar(7, List.of(e("lcd", "15"))));
+        verify(tiposDao).reemplazar(7, Map.of("lcd", Set.of("15")));
     }
 
     @Test void reemplazarProveedorInexistenteEs404YDeOtrosEs422() {

@@ -73,7 +73,9 @@ public class ProveedorPiezasService {
             if (e.excluidos().stream().anyMatch(m -> m == null || !CatalogoPiezas.esModelo(m))) throw regla(MSG_MODELO_NO_EXISTE);
             Set<String> excluidos = new TreeSet<>(e.excluidos());
             Set<String> activos = cat.modelosActivos().getOrDefault(e.prefijo(), Set.of());
-            if (!excluidos.isEmpty() && excluidos.containsAll(activos)) throw regla(MSG_NINGUN_MODELO);
+            // Un tipo sin piezas activas se guarda tal cual (spec 2026-10-12 §6): sus excluidos no dejan fuera
+            // ningún modelo que hoy se pueda pedir.
+            if (!excluidos.isEmpty() && !activos.isEmpty() && excluidos.containsAll(activos)) throw regla(MSG_NINGUN_MODELO);
             nuevos.put(e.prefijo(), excluidos);
         }
         tiposDao.reemplazar(idProv, nuevos);
