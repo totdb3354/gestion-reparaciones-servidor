@@ -2,6 +2,7 @@ package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
+import com.reparaciones.servidor.util.CatalogoPiezas;
 import com.reparaciones.servidor.util.PrevisionPedido;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -140,12 +141,11 @@ public class ComponenteDAO {
                 });
         Map<String, List<Componente>> agrupados = new LinkedHashMap<>();
         for (Componente c : todos) {
-            String prefijo = extraerPrefijo(c.getTipo());
+            String prefijo = CatalogoPiezas.prefijo(c.getTipo());
             agrupados.computeIfAbsent(prefijo, k -> new ArrayList<>()).add(c);
         }
-        List<String> orden = List.of("bat", "cha", "tapa", "g", "mc", "lcd");
         Map<String, List<Componente>> ordenado = new LinkedHashMap<>();
-        for (String prefijo : orden)
+        for (String prefijo : CatalogoPiezas.ORDEN_TIPOS)
             if (agrupados.containsKey(prefijo)) ordenado.put(prefijo, agrupados.get(prefijo));
         agrupados.forEach((k, v) -> ordenado.putIfAbsent(k, v));
         return ordenado;
@@ -252,12 +252,6 @@ public class ComponenteDAO {
                 "SELECT COALESCE(ID_COM_MASTER, ID_COM) FROM Componente WHERE ID_COM = ?",
                 Integer.class, idCom);
         return master != null ? master : idCom;
-    }
-
-    private String extraerPrefijo(String tipo) {
-        if (tipo.startsWith("otro")) return "otro";
-        int idx = tipo.indexOf('i');
-        return idx > 0 ? tipo.substring(0, idx) : tipo;
     }
 
     private List<LocalDate> generarPeriodos(LocalDate desde, LocalDate hasta, String granularidad) {

@@ -10,7 +10,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/** Piezas que vende un proveedor (0.9.9, spec 2026-10-11 §4.3). El registro va tras la transacción del servicio. */
+/** Tipos de pieza que vende un proveedor (0.9.9, spec 2026-10-12 §4.3). El registro va tras la transacción del
+ *  servicio. */
 @RestController
 @RequestMapping("/api/proveedores")
 public class ProveedorPiezasController {
@@ -23,15 +24,28 @@ public class ProveedorPiezasController {
         this.logDao = logDao;
     }
 
+    @PreAuthorize("hasAnyRole('SUPERTECNICO','ADMIN')")
+    @GetMapping("/{idProv}/piezas")
+    public List<Tipo> leer(@PathVariable int idProv) {
+        return servicio.leer(idProv).stream().map(t -> new Tipo(t.prefijo(), t.vende(), t.modelos(), t.excluidos())).toList();
+    }
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
-    @PutMapping("/{idProv}/componentes")
+    @PutMapping("/{idProv}/piezas")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void reemplazar(@PathVariable int idProv, @RequestBody Request req,
                            @AuthenticationPrincipal UsuarioPrincipal principal) {
-        ProveedorPiezasService.Cambios c = servicio.reemplazar(idProv, req.idsCom());
-        logDao.insertar(principal.getIdUsu(), "EDITAR_PIEZAS_PROVEEDOR",
-                "ID_PROV: " + idProv + ", PIEZAS: +" + c.anadidas() + " -" + c.quitadas());
+        // Los nulos llegan tal cual al servicio, que responde 422 (Stream.toList admite nulos).
+        List<ProveedorPiezasService.Entrada> tipos = req.tipos() == null ? null : req.tipos().stream()
+                .map(t -> t == null ? null : new ProveedorPiezasService.Entrada(t.prefijo(), t.excluidos())).toList();
+        String resumen = servicio.reemplazar(idProv, tipos);
+        logDao.insertar(principal.getIdUsu(), "EDITAR_PIEZAS_PROVEEDOR", "ID_PROV: " + idProv + ", PIEZAS: " + resumen);
     }
 
-    record Request(List<Integer> idsCom) {}
+    /** Un tipo que existe: sus modelos (en el orden de la tienda), si el proveedor lo vende y qué modelos excluye. */
+    record Tipo(String prefijo, boolean vende, List<String> modelos, List<String> excluidos) {}
+
+    record Request(List<TipoRequest> tipos) {}
+
+    record TipoRequest(String prefijo, List<String> excluidos) {}
 }

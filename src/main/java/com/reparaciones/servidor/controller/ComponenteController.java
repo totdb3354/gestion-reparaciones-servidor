@@ -2,7 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
-import com.reparaciones.servidor.dao.ProveedorComponenteDAO;
+import com.reparaciones.servidor.service.ProveedorPiezasService;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -30,10 +30,10 @@ public class ComponenteController {
     private final ComponenteDAO          dao;
     private final LogDAO                 logDao;
     private final PrevisionPedidoService prevision;
-    private final ProveedorComponenteDAO catalogo;
+    private final ProveedorPiezasService catalogo;
 
     public ComponenteController(ComponenteDAO dao, LogDAO logDao, PrevisionPedidoService prevision,
-                                ProveedorComponenteDAO catalogo) {
+                                ProveedorPiezasService catalogo) {
         this.dao       = dao;
         this.logDao    = logDao;
         this.prevision = prevision;
@@ -47,14 +47,14 @@ public class ComponenteController {
 
     /** Listado de Stock. La previsión de pedidos, la marca del pedido automático, lo pendiente y los proveedores de cada
      *  pieza son información de compras: solo para SUPERTECNICO y ADMIN; a un TECNICO le llegan nulos
-     *  (spec 0.9.5 §3.3, spec 0.9.6 §4.2, spec 2026-10-11 §4). */
+     *  (spec 0.9.5 §3.3, spec 0.9.6 §4.2, spec 2026-10-11 §4, spec 2026-10-12 §4.2). */
     @GetMapping("/gestionados")
     public List<Componente> getAllGestionados(@AuthenticationPrincipal UsuarioPrincipal principal) {
         List<Componente> lista = dao.getAllGestionados();
         if (principal != null && ("SUPERTECNICO".equals(principal.getRol()) || "ADMIN".equals(principal.getRol()))) {
             prevision.rellenar(lista, LocalDate.now(MADRID));
-            Map<Integer, List<Integer>> porPieza = catalogo.proveedoresPorPieza();
-            lista.forEach(c -> c.setProveedores(porPieza.getOrDefault(
+            Map<Integer, List<Integer>> porMaster = catalogo.proveedoresPorMaster(lista);
+            lista.forEach(c -> c.setProveedores(porMaster.getOrDefault(
                     c.getIdComMaster() != null ? c.getIdComMaster() : c.getIdCom(), List.of())));
         } else {
             lista.forEach(c -> { c.setAutoPedido(null); c.setPendiente(null); });

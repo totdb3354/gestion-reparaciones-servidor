@@ -2,7 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
-import com.reparaciones.servidor.dao.ProveedorComponenteDAO;
+import com.reparaciones.servidor.service.ProveedorPiezasService;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.PrevisionPedidoService;
@@ -22,7 +22,7 @@ class ComponenteControllerPrevisionTest {
 
     private final ComponenteDAO dao = mock(ComponenteDAO.class);
     private final PrevisionPedidoService prevision = mock(PrevisionPedidoService.class);
-    private final ProveedorComponenteDAO catalogo = mock(ProveedorComponenteDAO.class);
+    private final ProveedorPiezasService catalogo = mock(ProveedorPiezasService.class);
     private final ComponenteController ctl = new ComponenteController(dao, mock(LogDAO.class), prevision, catalogo);
 
     @Test void alTecnicoNoSeLeCalcula() {
@@ -55,7 +55,7 @@ class ComponenteControllerPrevisionTest {
         slave.setIdComMaster(2);
         Componente sinLista = new Componente(7, "flex-x", null, 0, 1, true, null);
         when(dao.getAllGestionados()).thenReturn(List.of(master, slave, sinLista));
-        when(catalogo.proveedoresPorPieza()).thenReturn(Map.of(2, List.of(1, 3)));
+        when(catalogo.proveedoresPorMaster(List.of(master, slave, sinLista))).thenReturn(Map.of(2, List.of(1, 3)));
         ctl.getAllGestionados(new UsuarioPrincipal(7, "tecnico_f", "", "SUPERTECNICO", 3));
         assertEquals(List.of(1, 3), master.getProveedores());
         assertEquals(List.of(1, 3), slave.getProveedores());
