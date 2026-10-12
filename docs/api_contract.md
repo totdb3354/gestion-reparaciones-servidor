@@ -70,7 +70,7 @@ de `model/` conservan su nombre.
   (`{idBloque, updatedAt}`, `idBloque` nulo = bloque nuevo): `404` si la línea no existe, `409` si cambió (versión o
   bloque) o si el bloque de destino ya no existe («El bloque N ya no existe; elige otro destino.»), `422` si ya está
   en ese bloque («La línea ya está en ese bloque.»), si ya está sola en su bloque y el destino es uno nuevo («La línea
-  ya está sola en su bloque.») o si el destino es de otro proveedor («El bloque N es de otro proveedor.»). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
+  ya está sola en su bloque.») o si el destino es de otro proveedor («El bloque N es de otro proveedor.»). `422` «El bloque N ya está terminado.» si el destino (lote, mover, editar, juntar) o el origen (juntar, separar) no tiene ninguna línea pendiente, en camino ni parcial, y `422` «Una línea recibida o cancelada no se puede mover.» al mover o separar una línea en esos estados (spec 2026-10-12). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
   bloque nuevo; un proveedor sin entrada va a su bloque abierto más reciente o a uno nuevo) y `PUT /api/compras/{id}`
   acepta `destino: {idBloque}` cuando cambia el proveedor. Solo SUPERTECNICO.
 - Tipos de pieza de cada proveedor (0.9.9, spec 2026-10-12): `GET /api/proveedores/{idProv}/piezas` (SUPERTECNICO y

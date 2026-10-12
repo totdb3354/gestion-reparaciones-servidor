@@ -36,6 +36,8 @@ public class BloqueCompraDAO {
             "SELECT cc.ID_COMPRA, c.TIPO, cc.CANTIDAD, cc.ESTADO, cc.UPDATED_AT FROM Compra_componente cc" +
             " JOIN Componente c ON c.ID_COM = cc.ID_COM WHERE cc.ID_BLOQUE = ? ORDER BY cc.FECHA_PEDIDO, cc.ID_COMPRA";
     static final String SQL_CONTAR = "SELECT COUNT(*) FROM Compra_componente WHERE ID_BLOQUE = ?";
+    static final String SQL_VIVAS =
+            "SELECT COUNT(*) FROM Compra_componente WHERE ID_BLOQUE = ? AND ESTADO IN ('pendiente','en_camino','parcial')";
     static final String SQL_BORRAR_SI_VACIO =
             "DELETE FROM Bloque_compra WHERE ID_BLOQUE = ?" +
             " AND NOT EXISTS (SELECT 1 FROM Compra_componente WHERE ID_BLOQUE = ?)";
@@ -85,6 +87,13 @@ public class BloqueCompraDAO {
     public int contarLineas(int idBloque) {
         Integer n = jdbc.queryForObject(SQL_CONTAR, Integer.class, idBloque);
         return n == null ? 0 : n;
+    }
+
+    /** Terminado = sin ninguna línea pendiente, en camino ni parcial: todo recibido o cancelado (spec 2026-10-12
+     *  «un proveedor por pedido» §4). Un bloque terminado está cerrado: no entra ni sale ninguna línea. */
+    public boolean estaTerminado(int idBloque) {
+        Integer n = jdbc.queryForObject(SQL_VIVAS, Integer.class, idBloque);
+        return n == null || n == 0;
     }
 
     /** Borra el bloque si se ha quedado sin líneas (regla §3.2). Devuelve si lo borró. */

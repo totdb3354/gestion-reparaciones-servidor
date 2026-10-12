@@ -60,6 +60,16 @@ class DestinoBloqueTest {
         assertEquals("El bloque 41 es de otro proveedor.", e.getReason());
     }
 
+    @Test void unBloqueTerminadoEs422() {
+        when(dao.getById(41)).thenReturn(Optional.of(bloque(41, 2)));
+        when(dao.estaTerminado(41)).thenReturn(true);
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> destino.resolver(2, new DestinoPedido(41), true));
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, e.getStatusCode());
+        assertEquals("El bloque 41 ya está terminado.", e.getReason());
+        verify(dao, never()).crear(anyInt());
+    }
+
     @Test void unBloqueQueYaNoExisteEs409() {
         ResponseStatusException e = assertThrows(ResponseStatusException.class,
                 () -> destino.resolver(2, new DestinoPedido(99), true));

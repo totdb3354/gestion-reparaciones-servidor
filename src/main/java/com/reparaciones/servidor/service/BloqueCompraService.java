@@ -32,6 +32,7 @@ public class BloqueCompraService {
     static final String MSG_YA_SOLA = "La línea ya está sola en su bloque.";
     static final String MSG_DEJA_UNA = "Deja al menos una línea en el bloque.";
     static final String MSG_OTRO_BLOQUE = "Elige otro bloque.";
+    static final String MSG_LINEA_CERRADA = "Una línea recibida o cancelada no se puede mover.";
     static final String MSG_NOTA_LARGA = "La nota no puede superar los 200 caracteres.";
     static final int NOTA_MAX = 200; // VARCHAR(200) de Bloque_compra.NOTA
 
@@ -88,14 +89,19 @@ public class BloqueCompraService {
         return d;
     }
 
-    /** PATCH /api/compras/{id}/bloque (spec §5.3). `destino.idBloque()` nulo = bloque nuevo. El servidor no distingue
-     *  estados: mover no toca el stock (spec §2); la confirmación de una línea ya pedida la pide la web. */
+    /** PATCH /api/compras/{id}/bloque (spec §5.3). `destino.idBloque()` nulo = bloque nuevo. Una línea recibida o
+     *  cancelada no se mueve (422); de las demás, mover no toca el stock (spec §2) y la confirmación de una línea ya
+     *  pedida la pide la web. */
     @Transactional
     public Movimiento mover(int idCompra, DestinoPedido destino, LocalDateTime updatedAt) {
         CompraComponente l = compraDao.getById(idCompra)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, MSG_NO_EXISTE_LINEA));
         if (!mismaVersion(l.getUpdatedAt(), updatedAt)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_LINEA_MODIFICADA);
+        }
+        // Lo recibido y lo cancelado es historial: no cambia de bloque (spec 2026-10-12 §2).
+        if ("recibido".equals(l.getEstado()) || "cancelado".equals(l.getEstado())) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_LINEA_CERRADA);
         }
         Integer origen = l.getIdBloque();
         if (destino.idBloque() == null && origen != null && bloqueDao.contarLineas(origen) <= 1) {
@@ -158,10 +164,17 @@ public class BloqueCompraService {
     }
 
     /** «Separar líneas…» (spec §5.3): las de la lista pasan a un bloque nuevo del mismo proveedor; al menos una se
-     *  queda. Los estados no cuentan (la web ya pidió confirmación por las ya pedidas). */
+     *  queda. Solo líneas vivas (pendiente, en camino o parcial): una recibida o cancelada es 422, igual que un bloque terminado; la web avisa de las ya pedidas. */
     @Transactional
     public Separacion separar(int idBloque, List<LineaVista> vistas) {
         Comprobadas c = comprobar(idBloque, vistas, false);
+        if (bloqueDao.estaTerminado(idBloque)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, DestinoBloque.MSG_TERMINADO.formatted(idBloque));
+        }
+        // Solo se separan líneas vivas: lo recibido y lo cancelado es historial (decisión del usuario 2026-10-12).
+        if (c.elegidas().stream().anyMatch(l -> "recibido".equals(l.estado()) || "cancelado".equals(l.estado()))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_LINEA_CERRADA);
+        }
         if (c.elegidas().size() >= c.total()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_DEJA_UNA);
         }
@@ -182,7 +195,10 @@ public class BloqueCompraService {
     public Union juntar(int idBloque, int destino, List<LineaVista> vistas) {
         if (destino == idBloque) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_OTRO_BLOQUE);
         Comprobadas c = comprobar(idBloque, vistas, true);
-        destinoBloque.resolver(c.bloque().idProv(), new DestinoPedido(destino), false); // 409 si no existe, 422 si es de otro proveedor
+        if (bloqueDao.estaTerminado(idBloque)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, DestinoBloque.MSG_TERMINADO.formatted(idBloque));
+        }
+        destinoBloque.resolver(c.bloque().idProv(), new DestinoPedido(destino), false); // 409 si no existe, 422 si es de otro proveedor o está terminado
         BloqueCompraDAO.Bloque d = bloqueDao.getById(destino).orElseThrow(BloqueCompraService::modificado);
         List<Integer> ids = new ArrayList<>();
         for (BloqueCompraDAO.LineaBloque l : c.elegidas()) {
