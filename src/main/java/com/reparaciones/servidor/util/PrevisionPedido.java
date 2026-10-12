@@ -64,11 +64,12 @@ public final class PrevisionPedido {
         return resultado;
     }
 
-    public static Resultado calcular(Tramos t, Pesos p, int minimo, int stock, int enCamino) {
+    /** {@code yaPedido} = lo ya pedido o apuntado: en camino + pendiente (0.9.9); no se vuelve a pedir. */
+    public static Resultado calcular(Tramos t, Pesos p, int minimo, int stock, int yaPedido) {
         long ponderado = (long) p.p1() * t.t1() + (long) p.p2() * t.t2() + (long) p.p3() * t.t3();
         double consumoDiario = BigDecimal.valueOf(ponderado)
                 .divide(BigDecimal.valueOf(ESCALA), 2, RoundingMode.HALF_UP).doubleValue();
-        return new Resultado(consumoDiario, pedir(ponderado, minimo, stock + enCamino));
+        return new Resultado(consumoDiario, pedir(ponderado, minimo, stock + yaPedido));
     }
 
     private static int pedir(long ponderado, int minimo, int disponible) {

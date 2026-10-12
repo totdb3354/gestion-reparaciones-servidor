@@ -55,4 +55,23 @@ class ComponenteDAOAutoPedidoTest {
         when(rs.wasNull()).thenReturn(true);
         assertEquals(Boolean.TRUE, mapper.getValue().mapRow(rs, 0).getAutoPedido());
     }
+
+    @Test void elListadoSumaLoPendienteDelMaster() throws Exception {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<RowMapper<Componente>> mapper = ArgumentCaptor.forClass(RowMapper.class);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        when(jdbc.query(sql.capture(), mapper.capture())).thenReturn(List.of());
+        dao.getAllGestionados();
+        assertTrue(sql.getValue().contains("COALESCE(SUM(CASE WHEN cc.ESTADO = 'pendiente' THEN cc.CANTIDAD ELSE 0 END), 0) AS PENDIENTE"));
+
+        ResultSet rs = mock(ResultSet.class);
+        Timestamp t = Timestamp.valueOf(LocalDateTime.of(2026, 10, 11, 10, 0));
+        when(rs.getInt("ID_COM")).thenReturn(5);
+        when(rs.getString("TIPO")).thenReturn("bat-y");
+        when(rs.getTimestamp("FECHA_REGISTRO")).thenReturn(t);
+        when(rs.getTimestamp("UPDATED_AT")).thenReturn(t);
+        when(rs.getInt("PENDIENTE")).thenReturn(4);
+        when(rs.wasNull()).thenReturn(true);
+        assertEquals(4, mapper.getValue().mapRow(rs, 0).getPendiente());
+    }
 }

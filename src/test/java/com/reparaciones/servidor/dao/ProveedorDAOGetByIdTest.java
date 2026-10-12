@@ -39,4 +39,18 @@ class ProveedorDAOGetByIdTest {
     @Test void unIdInexistenteDevuelveVacio() {
         assertTrue(new ProveedorDAO(mock(JdbcTemplate.class)).getById(99).isEmpty());
     }
+
+    @Test void leerParaEditarBloqueaLaFilaConForUpdate() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getInt("ID_PROV")).thenReturn(3);
+        when(rs.getString("TIPO")).thenReturn("COMPONENTES");
+        when(jdbc.query(eq("SELECT ID_PROV, NOMBRE, ACTIVO, DIVISA, COMENTARIO, TIPO FROM Proveedor WHERE ID_PROV = ? FOR UPDATE"),
+                any(RowMapper.class), eq(3)))
+                .thenAnswer(inv -> List.of(((RowMapper<?>) inv.getArgument(1)).mapRow(rs, 0)));
+
+        Proveedor p = new ProveedorDAO(jdbc).getByIdParaEditar(3).orElseThrow();
+        assertEquals(3, p.getIdProv());
+        assertTrue(new ProveedorDAO(mock(JdbcTemplate.class)).getByIdParaEditar(99).isEmpty());
+    }
 }

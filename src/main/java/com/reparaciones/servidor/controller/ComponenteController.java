@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.dao.ProveedorComponenteDAO;
 import com.reparaciones.servidor.model.Componente;
 import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -29,11 +30,14 @@ public class ComponenteController {
     private final ComponenteDAO          dao;
     private final LogDAO                 logDao;
     private final PrevisionPedidoService prevision;
+    private final ProveedorComponenteDAO catalogo;
 
-    public ComponenteController(ComponenteDAO dao, LogDAO logDao, PrevisionPedidoService prevision) {
+    public ComponenteController(ComponenteDAO dao, LogDAO logDao, PrevisionPedidoService prevision,
+                                ProveedorComponenteDAO catalogo) {
         this.dao       = dao;
         this.logDao    = logDao;
         this.prevision = prevision;
+        this.catalogo  = catalogo;
     }
 
     @GetMapping
@@ -41,16 +45,20 @@ public class ComponenteController {
         return dao.getAll();
     }
 
-    /** Listado de Stock. La previsión de pedidos (consumo/día y pedir para 60 días) y la marca del pedido automático son
-     *  información de compras: solo para SUPERTECNICO y ADMIN; a un TECNICO le llegan los tres campos nulos
-     *  (spec 0.9.5 §3.3, spec 0.9.6 §4.2). */
+    /** Listado de Stock. La previsión de pedidos, la marca del pedido automático, lo pendiente y los proveedores de cada
+     *  pieza son información de compras: solo para SUPERTECNICO y ADMIN; a un TECNICO le llegan nulos
+     *  (spec 0.9.5 §3.3, spec 0.9.6 §4.2, spec 2026-10-11 §4). */
     @GetMapping("/gestionados")
     public List<Componente> getAllGestionados(@AuthenticationPrincipal UsuarioPrincipal principal) {
         List<Componente> lista = dao.getAllGestionados();
-        if (principal != null && ("SUPERTECNICO".equals(principal.getRol()) || "ADMIN".equals(principal.getRol())))
+        if (principal != null && ("SUPERTECNICO".equals(principal.getRol()) || "ADMIN".equals(principal.getRol()))) {
             prevision.rellenar(lista, LocalDate.now(MADRID));
-        else
-            lista.forEach(c -> c.setAutoPedido(null));
+            Map<Integer, List<Integer>> porPieza = catalogo.proveedoresPorPieza();
+            lista.forEach(c -> c.setProveedores(porPieza.getOrDefault(
+                    c.getIdComMaster() != null ? c.getIdComMaster() : c.getIdCom(), List.of())));
+        } else {
+            lista.forEach(c -> { c.setAutoPedido(null); c.setPendiente(null); });
+        }
         return lista;
     }
 

@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS Solicitud_Stock;
 DROP TABLE IF EXISTS Reparacion_componente;
 DROP TABLE IF EXISTS Compra_otro;
 DROP TABLE IF EXISTS Compra_componente;
+DROP TABLE IF EXISTS Proveedor_componente;
 DROP TABLE IF EXISTS Bloque_compra;
 DROP TABLE IF EXISTS Reparacion_borrador;
 DROP TABLE IF EXISTS Reparacion;
@@ -271,6 +272,15 @@ CREATE TABLE Bloque_compra (
     UPDATED_AT   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (ID_BLOQUE),
     CONSTRAINT fk_bloque_proveedor FOREIGN KEY (ID_PROV) REFERENCES Proveedor (ID_PROV)
+);
+
+CREATE TABLE Proveedor_componente (
+    ID_PROV INT NOT NULL,
+    ID_COM  INT NOT NULL,
+    PRIMARY KEY (ID_PROV, ID_COM),
+    CONSTRAINT fk_provcom_proveedor  FOREIGN KEY (ID_PROV) REFERENCES Proveedor  (ID_PROV) ON DELETE CASCADE,
+    CONSTRAINT fk_provcom_componente FOREIGN KEY (ID_COM)  REFERENCES Componente (ID_COM)  ON DELETE CASCADE,
+    INDEX idx_provcom_componente (ID_COM)
 );
 
 CREATE TABLE Compra_componente (

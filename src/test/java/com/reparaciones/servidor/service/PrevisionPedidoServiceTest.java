@@ -53,4 +53,13 @@ class PrevisionPedidoServiceTest {
         assertNull(desactivado.getConsumoDiario());
         assertNull(desactivado.getPedir60());
     }
+
+    @Test void loPendienteSeDescuentaComoLoEnCamino() {
+        when(parametroDao.getPesosPrevision()).thenReturn(Pesos.POR_DEFECTO);
+        when(componenteDao.getConsumoDiario(HOY.minusDays(90), HOY)).thenReturn(List.of());
+        Componente c = comp(1, null, 2, 10, true, 3);   // mínimo 10, stock 2, en camino 3
+        c.setPendiente(4);
+        servicio.rellenar(List.of(c), HOY);
+        assertEquals(1, c.getPedir60());                 // 10 - (2 + 3 + 4)
+    }
 }
