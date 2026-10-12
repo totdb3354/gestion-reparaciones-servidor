@@ -97,6 +97,24 @@ class BloqueCompraServiceTest {
         verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
+    @Test void moverUnaRecibidaOUnaCanceladaEs422SinTocarNada() {
+        for (String estado : List.of("recibido", "cancelado")) {
+            when(compraDao.getById(5)).thenReturn(Optional.of(linea(estado, 41)));
+            falla(HttpStatus.UNPROCESSABLE_ENTITY, "Una línea recibida o cancelada no se puede mover.",
+                    () -> servicio.mover(5, new DestinoPedido(40), AT));
+        }
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+        verify(bloqueDao, never()).crear(anyInt());
+    }
+
+    @Test void moverAUnBloqueTerminadoEs422() {
+        when(compraDao.getById(5)).thenReturn(Optional.of(linea("en_camino", 41)));
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        when(bloqueDao.estaTerminado(40)).thenReturn(true);
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 40 ya está terminado.", () -> servicio.mover(5, new DestinoPedido(40), AT));
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
     @Test void moverConOtraVersionEs409YUnaLineaInexistenteEs404() {
         when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
         falla(HttpStatus.CONFLICT, "Dato modificado por otro usuario", () -> servicio.mover(5, new DestinoPedido(40), AT.plusSeconds(1)));
@@ -135,6 +153,15 @@ class BloqueCompraServiceTest {
         assertThrows(ResponseStatusException.class,
                 () -> servicio.editarCambiandoProveedor(5, 3, 4, false, 12.0, "EUR", 12.0, AT, null));
         verify(bloqueDao, never()).crear(anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
+    @Test void editarHaciaUnBloqueTerminadoEs422() {
+        when(compraDao.getById(5)).thenReturn(Optional.of(linea("pendiente", 41)));
+        when(bloqueDao.getById(60)).thenReturn(Optional.of(bloque(60, 3)));
+        when(bloqueDao.estaTerminado(60)).thenReturn(true);
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 60 ya está terminado.",
+                () -> servicio.editarCambiandoProveedor(5, 3, 3, false, 10.0, "EUR", 10.0, AT, new DestinoPedido(60)));
         verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
@@ -256,6 +283,25 @@ class BloqueCompraServiceTest {
         when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
         when(bloqueDao.borrarSiVacio(41)).thenReturn(false);
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.juntar(41, 40, List.of(v(1), v(2))));
+    }
+
+    @Test void separarUnBloqueTerminadoEs422() {
+        bloque41(lb(1, "recibido"), lb(2, "cancelado"));
+        when(bloqueDao.estaTerminado(41)).thenReturn(true);
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 41 ya está terminado.", () -> servicio.separar(41, List.of(v(1))));
+        verify(bloqueDao, never()).crear(anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
+    @Test void juntarDesdeOHaciaUnBloqueTerminadoEs422() {
+        bloque41(lb(1, "recibido"), lb(2, "recibido"));
+        when(bloqueDao.estaTerminado(41)).thenReturn(true);
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 41 ya está terminado.", () -> servicio.juntar(41, 40, List.of(v(1), v(2))));
+        when(bloqueDao.estaTerminado(41)).thenReturn(false);
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        when(bloqueDao.estaTerminado(40)).thenReturn(true);
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 40 ya está terminado.", () -> servicio.juntar(41, 40, List.of(v(1), v(2))));
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
     }
 
     @Test void moverSiLaLineaYaNoEstaEnElOrigenLeidoEs409() {

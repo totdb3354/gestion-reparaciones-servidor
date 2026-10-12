@@ -15,6 +15,7 @@ public class DestinoBloque {
 
     static final String MSG_OTRO_PROVEEDOR = "El bloque %d es de otro proveedor.";
     static final String MSG_NO_EXISTE = "El bloque %d ya no existe; elige otro destino.";
+    static final String MSG_TERMINADO = "El bloque %d ya está terminado.";
 
     public record Destino(int idBloque, boolean nuevo) {}
 
@@ -26,8 +27,8 @@ public class DestinoBloque {
 
     /** `pedido` nulo = regla por defecto: con `preferirAbierto`, el abierto más reciente del proveedor o uno nuevo; sin
      *  él, siempre uno nuevo. `pedido` con `idBloque` nulo = bloque nuevo; con número, ese bloque (409 si ya no existe,
-     *  422 si es de otro proveedor). Un destino que dejó de estar abierto se acepta: añadir líneas pendientes siempre es
-     *  seguro (es lo que hace «Añadir líneas…»). */
+     *  422 si es de otro proveedor o si está terminado, 2026-10-12). Un destino que dejó de estar abierto se acepta
+     *  mientras no esté terminado: añadir líneas pendientes siempre es seguro (es lo que hace «Añadir líneas…»). */
     public Destino resolver(int idProv, DestinoPedido pedido, boolean preferirAbierto) {
         if (pedido == null) {
             if (preferirAbierto) {
@@ -42,6 +43,9 @@ public class DestinoBloque {
                 new ResponseStatusException(HttpStatus.CONFLICT, MSG_NO_EXISTE.formatted(idBloque)));
         if (b.idProv() != idProv) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_OTRO_PROVEEDOR.formatted(idBloque));
+        }
+        if (dao.estaTerminado(idBloque)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_TERMINADO.formatted(idBloque));
         }
         return new Destino(idBloque, false);
     }

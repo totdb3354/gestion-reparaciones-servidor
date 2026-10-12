@@ -90,6 +90,15 @@ class BloqueCompraDAOTest {
         assertEquals(3, dao.contarLineas(41));
     }
 
+    @Test void estaTerminadoCuentaLasLineasVivas() {
+        assertEquals("SELECT COUNT(*) FROM Compra_componente WHERE ID_BLOQUE = ? AND ESTADO IN ('pendiente','en_camino','parcial')",
+                BloqueCompraDAO.SQL_VIVAS);
+        when(jdbc.queryForObject(BloqueCompraDAO.SQL_VIVAS, Integer.class, 41)).thenReturn(0);
+        when(jdbc.queryForObject(BloqueCompraDAO.SQL_VIVAS, Integer.class, 42)).thenReturn(2);
+        assertTrue(dao.estaTerminado(41));
+        assertFalse(dao.estaTerminado(42));
+    }
+
     @Test void borrarSiVacioSoloBorraUnBloqueSinLineas() {
         when(jdbc.update(BloqueCompraDAO.SQL_BORRAR_SI_VACIO, 41, 41)).thenReturn(1);
         assertTrue(dao.borrarSiVacio(41));
