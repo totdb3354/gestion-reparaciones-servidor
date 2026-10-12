@@ -34,7 +34,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 
 - **Lecturas (GET):** exigen sesión y, donde su controller lo anota, también rol: las de administración (usuarios y logs: ADMIN), las solicitudes de pieza (SUPERTECNICO), las solicitudes de stock (SUPERTECNICO y ADMIN) y el detalle de edición de una reparación (SUPERTECNICO). Las listas del taller se acotan además por técnico con `FiltroTecnico`. La previsión de pedidos de `GET /api/componentes/gestionados` (consumo/día y cuánto pedir) solo se rellena para SUPERTECNICO y ADMIN; a un TECNICO le llega nula. `GET /api/componentes/gestionados` trae además `pendiente` (unidades en pedidos pendientes) y `proveedores` (ids de los proveedores que venden la pieza) solo para SUPERTECNICO y ADMIN; a un TECNICO le llegan nulos.
 - **Escrituras (POST, PUT, PATCH, DELETE):** exigen el rol al que los clientes ofrecen esa acción.
-  - **Gestión del taller** — asignar, reasignar, editar o eliminar trabajos, catálogo y stock de componentes, compras, gestión de solicitudes, piezas que vende cada proveedor (`PUT /api/proveedores/{idProv}/componentes`, 0.9.9): **SUPERTECNICO**.
+  - **Gestión del taller** — asignar, reasignar, editar o eliminar trabajos, catálogo y stock de componentes, compras, gestión de solicitudes, tipos de pieza que vende cada proveedor (`PUT /api/proveedores/{idProv}/piezas`, 0.9.9; el `GET` también lo lee ADMIN): **SUPERTECNICO**.
   - **Administración** — usuarios, logs, valores de dificultad, stock mínimo de los componentes y parámetros de la previsión de pedidos: **ADMIN**.
   - **Trabajo propio del técnico** — completar, guardar una fila, registrar un componente agotado, borrador del formulario, "por cerrar", entrega y llegada de glass, crear una solicitud de stock: **TECNICO y SUPERTECNICO**, siempre sobre sus propias asignaciones.
 - Un endpoint nuevo se anota en el mismo cambio que lo crea, con un test que compruebe al menos un rol admitido y uno no admitido.
@@ -64,7 +64,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 | Roles de la edición y del borrador (cadena de seguridad real, MockMvc) | `controller/RolesReparacionFormularioTest` |
 | Roles de solicitudes de stock y del ajuste de stock (MockMvc) | `controller/RolesSolicitudesStockTest` |
 | Roles de los bloques de pedidos (cadena de seguridad real, MockMvc) | `controller/RolesBloquesCompraTest` |
-| Roles del PUT de las piezas de un proveedor (cadena de seguridad real, MockMvc) | `controller/RolesPiezasProveedorTest` |
+| Roles del GET y el PUT de las piezas de un proveedor (cadena de seguridad real, MockMvc) | `controller/RolesPiezasProveedorTest` |
 | Mínimo y parámetros solo ADMIN | `controller/RolesParametrosPrevisionTest`, `controller/ParametroControllerTest` |
 | Dueño de la asignación en la entrega y la llegada de glass | `controller/ReparacionControllerEntregaGlassTest` |
 | Sin sesión (`403`) y token inválido (`401`) | `OpenApiContractTest.elContextoArrancaYElContratoExigeSesion` |

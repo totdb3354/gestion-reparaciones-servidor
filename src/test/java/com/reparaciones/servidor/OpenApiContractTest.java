@@ -303,7 +303,7 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "BloqueCompraSepararRespuesta", "idBloque");
     }
 
-    /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4). */
+    /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4 y 2026-10-12 §4.3). */
     @Test void elContratoPublicaLasPiezasDeCadaProveedor() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
         var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
@@ -312,9 +312,16 @@ class OpenApiContractTest {
         JsonNode paths = doc.get("paths");
         JsonNode esquemas = doc.path("components").path("schemas");
 
-        assertTrue(paths.path("/api/proveedores/{idProv}/componentes").has("put"), "falta PUT /api/proveedores/{idProv}/componentes");
-        assertTrue(refDelCuerpo(paths, "/api/proveedores/{idProv}/componentes", "put").endsWith("/ProveedorPiezasRequest"));
-        assertNoNullable(esquemas, "ProveedorPiezasRequest", "idsCom");
+        JsonNode piezas = paths.path("/api/proveedores/{idProv}/piezas");
+        assertTrue(piezas.has("get"), "falta GET /api/proveedores/{idProv}/piezas");
+        assertTrue(piezas.has("put"), "falta PUT /api/proveedores/{idProv}/piezas");
+        assertFalse(paths.has("/api/proveedores/{idProv}/componentes"), "el PUT por referencias ya no existe");
+        assertTrue(refDelCuerpo(paths, "/api/proveedores/{idProv}/piezas", "put").endsWith("/ProveedorPiezasRequest"));
+        assertNoNullable(esquemas, "ProveedorPiezasRequest", "tipos");
+        assertNoNullable(esquemas, "ProveedorPiezasTipoRequest", "prefijo", "excluidos");
+        assertNoNullable(esquemas, "ProveedorPiezasTipo", "prefijo", "vende", "modelos", "excluidos");
+        assertTrue(piezas.path("get").path("responses").path("200").toString().contains("/ProveedorPiezasTipo\""),
+                "el GET devuelve una lista de ProveedorPiezasTipo");
         assertNullable(esquemas, "Componente", "pendiente", "proveedores");
         JsonNode items = esquemas.path("Componente").path("properties").path("proveedores").path("items");
         assertEquals("integer", items.path("type").asText());

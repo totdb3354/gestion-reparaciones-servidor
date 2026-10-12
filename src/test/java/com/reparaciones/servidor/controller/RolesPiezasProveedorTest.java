@@ -23,7 +23,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** PUT de las piezas de un proveedor (0.9.9): solo SUPERTECNICO, con la cadena de seguridad real y el servicio mockeado. */
+/** GET y PUT de las piezas de un proveedor (0.9.9): el GET SUPERTECNICO y ADMIN, el PUT solo SUPERTECNICO, con la cadena de seguridad real y el servicio mockeado. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(UsuariosOperativosTestConfig.class)
@@ -47,20 +47,32 @@ class RolesPiezasProveedorTest {
         return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "u", "", rol, idTec));
     }
 
-    private ResultActions put(String token) throws Exception {
-        return mvc.perform(MockMvcRequestBuilders.put("/api/proveedores/5/componentes").header("Authorization", token)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"idsCom\":[1,2]}"));
+    private ResultActions get(String token) throws Exception {
+        return mvc.perform(MockMvcRequestBuilders.get("/api/proveedores/5/piezas").header("Authorization", token));
     }
 
-    @Test void tecnicoYAdminReciben403() throws Exception {
+    private ResultActions put(String token) throws Exception {
+        return mvc.perform(MockMvcRequestBuilders.put("/api/proveedores/5/piezas").header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"tipos\":[{\"prefijo\":\"bat\",\"excluidos\":[\"12mini\"]}]}"));
+    }
+
+    @Test void leenElSupertecnicoYElAdminPeroNoElTecnico() throws Exception {
+        when(servicio.leer(anyInt())).thenReturn(List.of());
+        get(token("TECNICO", 4)).andExpect(status().isForbidden());
+        get(token("SUPERTECNICO", 3)).andExpect(status().isOk());
+        get(token("ADMIN", null)).andExpect(status().isOk());
+        verify(servicio, times(2)).leer(5);
+    }
+
+    @Test void tecnicoYAdminReciben403AlGuardar() throws Exception {
         put(token("TECNICO", 4)).andExpect(status().isForbidden());
         put(token("ADMIN", null)).andExpect(status().isForbidden());
-        verifyNoInteractions(servicio);
+        verify(servicio, never()).reemplazar(anyInt(), any());
     }
 
     @Test void elSupertecnicoGuardaY204() throws Exception {
-        when(servicio.reemplazar(anyInt(), any())).thenReturn(new ProveedorPiezasService.Cambios(2, 0));
+        when(servicio.reemplazar(anyInt(), any())).thenReturn("bat (sin 12mini)");
         put(token("SUPERTECNICO", 3)).andExpect(status().isNoContent());
-        verify(servicio).reemplazar(5, List.of(1, 2));
+        verify(servicio).reemplazar(5, List.of(new ProveedorPiezasService.Entrada("bat", List.of("12mini"))));
     }
 }
