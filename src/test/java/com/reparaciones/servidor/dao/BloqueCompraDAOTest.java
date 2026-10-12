@@ -54,7 +54,7 @@ class BloqueCompraDAOTest {
         assertEquals(Optional.empty(), dao.abiertoMasReciente(3));
         assertTrue(BloqueCompraDAO.SQL_ABIERTO.contains("cc.ESTADO <> 'pendiente'"));
         assertTrue(BloqueCompraDAO.SQL_ABIERTO.contains("EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE)"));
-        assertTrue(BloqueCompraDAO.SQL_ABIERTO.endsWith("ORDER BY b.FECHA DESC, b.ID_BLOQUE DESC LIMIT 1"));
+        assertTrue(BloqueCompraDAO.SQL_ABIERTO.endsWith("ORDER BY b.ID_BLOQUE DESC LIMIT 1"));
     }
 
     @Test void getByIdLeeLaCabeceraConElUpdatedAtEnSegundos() throws Exception {
