@@ -34,7 +34,8 @@ class ProveedorPiezasServiceTest {
         when(tiposDao.piezas()).thenReturn(List.of(
                 new ProveedorTipoDAO.Pieza("bati12", true), new ProveedorTipoDAO.Pieza("bati13", true),
                 new ProveedorTipoDAO.Pieza("bati11", false), new ProveedorTipoDAO.Pieza("gi14negra", true),
-                new ProveedorTipoDAO.Pieza("cami13", true), new ProveedorTipoDAO.Pieza("lcdi15negraic", false)));
+                new ProveedorTipoDAO.Pieza("cami13", true), new ProveedorTipoDAO.Pieza("lcdi15negraic", false),
+                new ProveedorTipoDAO.Pieza("tapai15black", true)));
     }
 
     private static Entrada e(String prefijo, String... excluidos) { return new Entrada(prefijo, List.of(excluidos)); }
@@ -56,6 +57,7 @@ class ProveedorPiezasServiceTest {
         List<TipoProveedor> r = servicio.leer(7);
         assertEquals(List.of(
                 new TipoProveedor("bat", true, List.of("12", "13"), List.of("13")),
+                new TipoProveedor("tapa", false, List.of("15"), List.of()),
                 new TipoProveedor("g", false, List.of("14"), List.of()),
                 new TipoProveedor("lcd", true, List.of(), List.of()),          // sin piezas activas: sigue saliendo
                 new TipoProveedor("cam", false, List.of("13"), List.of())), r);
@@ -89,6 +91,12 @@ class ProveedorPiezasServiceTest {
         verify(tiposDao).reemplazar(7, Map.of("bat", Set.of("12mini", "13"), "g", Set.of()));
         verify(proveedorDao).getByIdParaEditar(7);
         verify(proveedorDao, never()).getById(anyInt());
+    }
+
+    @Test void elResumenVaEnElOrdenDeTiposYDeModelosNoAlfabetico() {
+        existe(7, "COMPONENTES");
+        catalogo();
+        assertEquals("tapa (todos), g (sin 8, 11)", servicio.reemplazar(7, List.of(e("g", "11", "8"), e("tapa"))));
     }
 
     @Test void listaVaciaNoVendeNada() {

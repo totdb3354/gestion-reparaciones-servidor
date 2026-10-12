@@ -22,7 +22,7 @@ class ComponenteControllerAutoPedidoTest {
 
     private final ComponenteDAO dao = mock(ComponenteDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final ComponenteController ctl = new ComponenteController(dao, logDao, mock(PrevisionPedidoService.class), mock(com.reparaciones.servidor.dao.ProveedorComponenteDAO.class));
+    private final ComponenteController ctl = new ComponenteController(dao, logDao, mock(PrevisionPedidoService.class), mock(com.reparaciones.servidor.service.ProveedorPiezasService.class));
 
     @Test void marcarGuardaEnElMasterYLoApunta() {
         when(dao.setAutoPedido(12, true)).thenReturn(3);

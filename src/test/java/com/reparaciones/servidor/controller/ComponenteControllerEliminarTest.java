@@ -17,7 +17,7 @@ class ComponenteControllerEliminarTest {
 
     private final ComponenteDAO dao = mock(ComponenteDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
-    private final ComponenteController ctl = new ComponenteController(dao, logDao, mock(com.reparaciones.servidor.service.PrevisionPedidoService.class), mock(com.reparaciones.servidor.dao.ProveedorComponenteDAO.class));
+    private final ComponenteController ctl = new ComponenteController(dao, logDao, mock(com.reparaciones.servidor.service.PrevisionPedidoService.class), mock(com.reparaciones.servidor.service.ProveedorPiezasService.class));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "super_j", "x", "SUPERTECNICO", 3);
 
     @Test void eliminarInexistenteEs404YNoEscribeNada() {
