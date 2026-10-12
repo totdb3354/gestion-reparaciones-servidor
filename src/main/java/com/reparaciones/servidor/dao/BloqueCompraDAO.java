@@ -31,7 +31,7 @@ public class BloqueCompraDAO {
             " WHERE b.ID_PROV = ?" +
             " AND EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE)" +
             " AND NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE AND cc.ESTADO <> 'pendiente')" +
-            " ORDER BY b.FECHA DESC, b.ID_BLOQUE DESC LIMIT 1";
+            " ORDER BY b.ID_BLOQUE DESC LIMIT 1";
     static final String SQL_LINEAS =
             "SELECT cc.ID_COMPRA, c.TIPO, cc.CANTIDAD, cc.ESTADO, cc.UPDATED_AT FROM Compra_componente cc" +
             " JOIN Componente c ON c.ID_COM = cc.ID_COM WHERE cc.ID_BLOQUE = ? ORDER BY cc.FECHA_PEDIDO, cc.ID_COMPRA";

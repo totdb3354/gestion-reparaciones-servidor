@@ -15,13 +15,15 @@ WHERE b.ID_PROV <> cc.ID_PROV;
 -- ── Reconstrucción ────────────────────────────────────────────────────────────
 -- Un bloque RECONSTRUIDO por cada (proveedor, día de FECHA_PEDIDO) con líneas sin bloque que aún no tenga uno; su
 -- FECHA es la FECHA_PEDIDO más antigua del grupo.
+-- Se insertan por orden de fecha para que el número del bloque siga el orden cronológico (los bloques se ordenan por número).
 INSERT INTO Bloque_compra (ID_PROV, FECHA, RECONSTRUIDO)
 SELECT cc.ID_PROV, MIN(cc.FECHA_PEDIDO), TRUE
 FROM Compra_componente cc
 WHERE cc.ID_BLOQUE IS NULL
   AND NOT EXISTS (SELECT 1 FROM Bloque_compra b
                   WHERE b.RECONSTRUIDO AND b.ID_PROV = cc.ID_PROV AND DATE(b.FECHA) = DATE(cc.FECHA_PEDIDO))
-GROUP BY cc.ID_PROV, DATE(cc.FECHA_PEDIDO);
+GROUP BY cc.ID_PROV, DATE(cc.FECHA_PEDIDO)
+ORDER BY MIN(cc.FECHA_PEDIDO), cc.ID_PROV;
 
 -- Cada línea sin bloque, al reconstruido de su proveedor y día. UPDATED_AT = UPDATED_AT: sin él, el
 -- ON UPDATE CURRENT_TIMESTAMP cambiaría la fecha de modificación de todas las líneas.
