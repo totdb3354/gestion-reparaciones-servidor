@@ -320,6 +320,14 @@ class BloqueCompraServiceTest {
     }
 
     // ── separar, juntar y nota ──
+    @Test void separarUnaRecibidaOCanceladaEs422SinTocarNada() {
+        bloque41(lb(1, "en_camino"), lb(2, "recibido"), lb(3, "cancelado"));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "Una línea recibida o cancelada no se puede mover.", () -> servicio.separar(41, List.of(v(2))));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "Una línea recibida o cancelada no se puede mover.", () -> servicio.separar(41, List.of(v(3))));
+        verify(bloqueDao, never()).crear(anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
     @Test void separarCreaUnBloqueDelProveedorYMueveLasMarcadas() {
         bloque41(lb(1, "pendiente"), lb(2, "en_camino"), lb(3, "pendiente"));
         when(bloqueDao.crear(2)).thenReturn(90);

@@ -164,12 +164,16 @@ public class BloqueCompraService {
     }
 
     /** «Separar líneas…» (spec §5.3): las de la lista pasan a un bloque nuevo del mismo proveedor; al menos una se
-     *  queda. Los estados no cuentan (la web ya pidió confirmación por las ya pedidas). */
+     *  queda. Solo líneas vivas (pendiente, en camino o parcial): una recibida o cancelada es 422, igual que un bloque terminado; la web avisa de las ya pedidas. */
     @Transactional
     public Separacion separar(int idBloque, List<LineaVista> vistas) {
         Comprobadas c = comprobar(idBloque, vistas, false);
         if (bloqueDao.estaTerminado(idBloque)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, DestinoBloque.MSG_TERMINADO.formatted(idBloque));
+        }
+        // Solo se separan líneas vivas: lo recibido y lo cancelado es historial (decisión del usuario 2026-10-12).
+        if (c.elegidas().stream().anyMatch(l -> "recibido".equals(l.estado()) || "cancelado".equals(l.estado()))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_LINEA_CERRADA);
         }
         if (c.elegidas().size() >= c.total()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_DEJA_UNA);
