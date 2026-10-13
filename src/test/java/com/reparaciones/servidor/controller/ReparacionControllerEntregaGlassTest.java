@@ -2,9 +2,12 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.*;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
+import com.reparaciones.servidor.model.EstadoAbrir;
 import com.reparaciones.servidor.model.ReparacionResumen;
+import com.reparaciones.servidor.model.ResultadoEntregaGlass;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
+import com.reparaciones.servidor.service.EntregaGlassService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,10 +22,11 @@ class ReparacionControllerEntregaGlassTest {
     private static final String IMEI = "351111112222333";
     private final ReparacionDAO dao = mock(ReparacionDAO.class);
     private final LogDAO logDao = mock(LogDAO.class);
+    private final EntregaGlassService servicio = mock(EntregaGlassService.class);
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, mock(BorradorDAO.class), mock(ComponenteDAO.class),
             mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
-            mock(CargaAsignacionesService.class));
+            mock(CargaAsignacionesService.class), servicio);
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(42, "tecnico_j", "x", "TECNICO", 7);
 
     private ReparacionResumen asigDe(int idTec) {
@@ -38,10 +42,22 @@ class ReparacionControllerEntregaGlassTest {
         return ex.getStatusCode().value();
     }
 
+    private static ReparacionController.EntregaGlassRequest req(boolean entregado) {
+        return new ReparacionController.EntregaGlassRequest(entregado);
+    }
+
+    /** Asignación A… propia con una glass abierta de «Técnico H». */
+    private ReparacionResumen propiaConGlass() {
+        ReparacionResumen asig = asigDe(7);
+        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(asig));
+        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Técnico H")));
+        return asig;
+    }
+
     @Test void rechazaIdsQueNoSonReparacionNormal() {
         assertEquals(422, statusDe(() -> ctl.actualizarEntregaGlass("AG20260828_1", req(true), tecnico)));
         assertEquals(422, statusDe(() -> ctl.actualizarEntregaGlass("AP20260828_1", req(true), tecnico)));
-        verifyNoInteractions(logDao);
+        verifyNoInteractions(logDao, servicio);
     }
 
     @Test void asignacionInexistenteOCerradaEs404() {
@@ -55,7 +71,7 @@ class ReparacionControllerEntregaGlassTest {
         assertEquals(403, statusDe(() -> ctl.actualizarEntregaGlass("A20260828_1", req(true), tecnico)));
         UsuarioPrincipal admin = new UsuarioPrincipal(1, "admin", "x", "ADMIN", null);
         assertEquals(403, statusDe(() -> ctl.actualizarEntregaGlass("A20260828_1", req(true), admin)));
-        verify(dao, never()).entregarGlass(anyString(), anyInt());
+        verifyNoInteractions(servicio);
     }
 
     @Test void sinGlassAbiertaEs422YNoEscribe() {
@@ -66,70 +82,81 @@ class ReparacionControllerEntregaGlassTest {
                 () -> ctl.actualizarEntregaGlass("A20260828_1", req(true), tecnico));
         assertEquals(422, ex.getStatusCode().value());
         assertEquals("Sin glass abierta para este IMEI", ex.getReason());
-        verify(dao, never()).entregarGlass(anyString(), anyInt());
-        verifyNoInteractions(logDao);
+        verifyNoInteractions(logDao, servicio);
     }
 
-    @Test void entregarSellaYRegistraEnElLog() {
-        ReparacionResumen asig = asigDe(7);
-        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(asig));
-        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Técnico H")));
-        ctl.actualizarEntregaGlass("A20260828_1", req(true), tecnico);
-        verify(dao).entregarGlass(IMEI, 7);
-        verify(dao, never()).deshacerEntregaGlass(anyString());
+    @Test void entregarLlamaAlServicioDevuelveSuResultadoYAnotaElAbrir() {
+        propiaConGlass();
+        ResultadoEntregaGlass creado = ResultadoEntregaGlass.creado("R20260828_9", "Técnico J");
+        when(servicio.entregar(IMEI, 7, "A20260828_1")).thenReturn(creado);
+        assertEquals(creado, ctl.actualizarEntregaGlass("A20260828_1", req(true), tecnico));
+        verify(servicio, never()).deshacer(anyString());
         verify(logDao).insertar(42, "ENTREGAR_GLASS",
-                "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Técnico H");
+                "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Técnico H, ABRIR: R20260828_9");
     }
 
-    @Test void deshacerLimpiaYRegistraEnElLog() {
-        ReparacionResumen propia = asigDe(7);
+    @Test void entregarSinAbrirAnotaElMotivo() {
+        propiaConGlass();
+        when(servicio.entregar(IMEI, 7, "A20260828_1"))
+                .thenReturn(ResultadoEntregaGlass.sinCrear(EstadoAbrir.SIN_PIEZA_OTRO, "Técnico J"));
+        ctl.actualizarEntregaGlass("A20260828_1", req(true), tecnico);
+        verify(logDao).insertar(42, "ENTREGAR_GLASS",
+                "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Técnico H, ABRIR: SIN_PIEZA_OTRO");
+    }
+
+    @Test void deshacerLlamaAlServicioYAnotaElAbrirBorrado() {
+        ReparacionResumen propia = propiaConGlass();
         when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
         when(propia.getGlassEntregadoPor()).thenReturn(7);
-        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(propia));
-        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Técnico H")));
+        when(servicio.deshacer(IMEI)).thenReturn(ResultadoEntregaGlass.deshecho("R20260828_9"));
+        assertEquals(ResultadoEntregaGlass.deshecho("R20260828_9"), ctl.actualizarEntregaGlass("A20260828_1", req(false), tecnico));
+        verify(servicio, never()).entregar(anyString(), anyInt(), anyString());
+        verify(logDao).insertar(42, "DESHACER_ENTREGA_GLASS",
+                "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Técnico H, ABRIR BORRADO: R20260828_9");
+    }
+
+    @Test void deshacerSinAbrirQueBorrarDejaElLogComoAntes() {
+        ReparacionResumen propia = propiaConGlass();
+        when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        when(propia.getGlassEntregadoPor()).thenReturn(7);
+        when(servicio.deshacer(IMEI)).thenReturn(ResultadoEntregaGlass.deshecho(null));
         ctl.actualizarEntregaGlass("A20260828_1", req(false), tecnico);
-        verify(dao).deshacerEntregaGlass(IMEI);
-        verify(dao, never()).entregarGlass(anyString(), anyInt());
         verify(logDao).insertar(42, "DESHACER_ENTREGA_GLASS",
                 "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Técnico H");
     }
 
     @Test void deshacerConFirmaAjenaEs403() {
-        ReparacionResumen propia = asigDe(7);
+        ReparacionResumen propia = propiaConGlass();
         when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
-        when(propia.getGlassEntregadoPor()).thenReturn(9);   // la marco el de glass
-        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(propia));
-        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Técnico H")));
+        when(propia.getGlassEntregadoPor()).thenReturn(9);   // la marcó el de glass
         assertEquals(403, statusDe(() -> ctl.actualizarEntregaGlass("A20260828_1", req(false), tecnico)));
-        verify(dao, never()).deshacerEntregaGlass(anyString());
+        verifyNoInteractions(servicio);
     }
 
     @Test void deshacerSinEntregaEs422() {
-        ReparacionResumen propia = asigDe(7);
-        when(dao.getAsignacionAnyById("A20260828_1")).thenReturn(Optional.of(propia));
-        when(dao.getGlassAbiertas(IMEI)).thenReturn(List.of(new ReparacionDAO.GlassAbierta("AG20260828_3", "Técnico H")));
+        propiaConGlass();
         assertEquals(422, statusDe(() -> ctl.actualizarEntregaGlass("A20260828_1", req(false), tecnico)));
-        verify(dao, never()).deshacerEntregaGlass(anyString());
+        verifyNoInteractions(servicio);
     }
 
-    @Test void deshacerLlegadaSoloConFirmaPropia() {
+    @Test void deshacerLlegadaSoloConFirmaPropiaYAnotaElAbrirBorrado() {
         ReparacionResumen propia = asigDe(7);
         when(propia.getEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
         when(propia.getEntregadoPor()).thenReturn(7);
         when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
-        ctl.deshacerLlegadaGlass("AG20260828_3", tecnico);
-        verify(dao).deshacerEntregaGlass(IMEI);
+        when(servicio.deshacer(IMEI)).thenReturn(ResultadoEntregaGlass.deshecho("R20260828_9"));
+        assertEquals(ResultadoEntregaGlass.deshecho("R20260828_9"), ctl.deshacerLlegadaGlass("AG20260828_3", tecnico));
         verify(logDao).insertar(42, "DESHACER_ENTREGA_GLASS",
-                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA deshecha por el tecnico de glass");
+                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA deshecha por el tecnico de glass, ABRIR BORRADO: R20260828_9");
     }
 
     @Test void deshacerLlegadaConFirmaAjenaEs403() {
         ReparacionResumen propia = asigDe(7);
         when(propia.getEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
-        when(propia.getEntregadoPor()).thenReturn(3);   // la entrego el de rep
+        when(propia.getEntregadoPor()).thenReturn(3);   // la entregó el de rep
         when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
         assertEquals(403, statusDe(() -> ctl.deshacerLlegadaGlass("AG20260828_3", tecnico)));
-        verify(dao, never()).deshacerEntregaGlass(anyString());
+        verifyNoInteractions(servicio);
     }
 
     @Test void deshacerLlegadaValidaTipoYExistencia() {
@@ -138,13 +165,9 @@ class ReparacionControllerEntregaGlassTest {
         assertEquals(404, statusDe(() -> ctl.deshacerLlegadaGlass("AG20260828_9", tecnico)));
     }
 
-    private static ReparacionController.EntregaGlassRequest req(boolean entregado) {
-        return new ReparacionController.EntregaGlassRequest(entregado);
-    }
-
     @Test void llegadaRechazaIdsQueNoSonGlass() {
         assertEquals(422, statusDe(() -> ctl.marcarLlegadaGlass("A20260828_1", tecnico)));
-        verifyNoInteractions(logDao);
+        verifyNoInteractions(logDao, servicio);
     }
 
     @Test void llegadaInexistenteEs404() {
@@ -156,7 +179,7 @@ class ReparacionControllerEntregaGlassTest {
         ReparacionResumen ajena = asigDe(99);
         when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(ajena));
         assertEquals(403, statusDe(() -> ctl.marcarLlegadaGlass("AG20260828_3", tecnico)));
-        verify(dao, never()).entregarGlass(anyString(), anyInt());
+        verifyNoInteractions(servicio);
     }
 
     @Test void llegadaYaEntregadaEs422() {
@@ -167,15 +190,25 @@ class ReparacionControllerEntregaGlassTest {
                 () -> ctl.marcarLlegadaGlass("AG20260828_3", tecnico));
         assertEquals(422, ex.getStatusCode().value());
         assertEquals("La entrega ya está registrada", ex.getReason());
-        verify(dao, never()).entregarGlass(anyString(), anyInt());
+        verifyNoInteractions(servicio);
     }
 
-    @Test void llegadaSellaYFirmaElPropioTecnico() {
+    @Test void llegadaFirmaElPropioTecnicoYAnotaElAbrir() {
         ReparacionResumen propia = asigDe(7);
         when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
-        ctl.marcarLlegadaGlass("AG20260828_3", tecnico);
-        verify(dao).entregarGlass(IMEI, 7);
+        ResultadoEntregaGlass creado = ResultadoEntregaGlass.creado("R20260828_9", "Técnico L");
+        when(servicio.marcarLlegada(IMEI, 7)).thenReturn(creado);
+        assertEquals(creado, ctl.marcarLlegadaGlass("AG20260828_3", tecnico));
         verify(logDao).insertar(42, "ENTREGAR_GLASS",
-                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA registrada por el tecnico de glass");
+                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA registrada por el tecnico de glass, ABRIR: R20260828_9");
+    }
+
+    @Test void llegadaSinNormalAnotaSinNormal() {
+        ReparacionResumen propia = asigDe(7);
+        when(dao.getAsignacionAnyById("AG20260828_3")).thenReturn(Optional.of(propia));
+        when(servicio.marcarLlegada(IMEI, 7)).thenReturn(ResultadoEntregaGlass.sinCrear(EstadoAbrir.SIN_NORMAL, null));
+        ctl.marcarLlegadaGlass("AG20260828_3", tecnico);
+        verify(logDao).insertar(42, "ENTREGAR_GLASS",
+                "ID_REP: AG20260828_3, IMEI: " + IMEI + ", LLEGADA registrada por el tecnico de glass, ABRIR: SIN_NORMAL");
     }
 }

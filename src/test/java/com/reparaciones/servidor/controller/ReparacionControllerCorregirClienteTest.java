@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.*;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
+import com.reparaciones.servidor.service.EntregaGlassService;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,7 +25,7 @@ class ReparacionControllerCorregirClienteTest {
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, mock(BorradorDAO.class), mock(ComponenteDAO.class),
             mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
-            mock(CargaAsignacionesService.class));
+            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class));
     private final UsuarioPrincipal admin = new UsuarioPrincipal(1, "admin", "x", "ADMIN", null);
 
     private int statusDe(Runnable r) {

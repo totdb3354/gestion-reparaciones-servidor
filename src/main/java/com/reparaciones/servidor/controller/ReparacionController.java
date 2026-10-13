@@ -14,6 +14,7 @@ import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.CargaTecnicos;
+import com.reparaciones.servidor.service.EntregaGlassService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -43,11 +44,12 @@ public class ReparacionController {
     private final TecnicoDAO            tecnicoDao;
     private final RegistroIdempotencia  idempotencia;
     private final CargaAsignacionesService cargaAsignaciones;
+    private final EntregaGlassService entregaGlass;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
                                 DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia,
-                                CargaAsignacionesService cargaAsignaciones) {
+                                CargaAsignacionesService cargaAsignaciones, EntregaGlassService entregaGlass) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
@@ -57,6 +59,7 @@ public class ReparacionController {
         this.tecnicoDao   = tecnicoDao;
         this.idempotencia = idempotencia;
         this.cargaAsignaciones = cargaAsignaciones;
+        this.entregaGlass = entregaGlass;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -429,11 +432,11 @@ public class ReparacionController {
      * Entrega del teléfono a la glass abierta del IMEI (spec entrega-glass 2026-08-28 §4).
      * Solo el dueño de la reparación normal; sella (o limpia) ENTREGADO_AT/ENTREGADO_POR en
      * TODAS las AG abiertas del IMEI. Sin lock optimista (toggle, último gana).
+     * Al entregar apunta el «Abrir» automático a quien entrega y al deshacer lo borra (spec 2026-10-13); responde con lo que pasó.
      */
     @PatchMapping("/asignaciones/{idRep}/entrega-glass")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void actualizarEntregaGlass(@PathVariable String idRep, @RequestBody EntregaGlassRequest req,
-                                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+    public ResultadoEntregaGlass actualizarEntregaGlass(@PathVariable String idRep, @RequestBody EntregaGlassRequest req,
+                                                        @AuthenticationPrincipal UsuarioPrincipal principal) {
         boolean esRepNormal = idRep != null && idRep.startsWith("A")
                 && !idRep.startsWith("AG") && !idRep.startsWith("AP");
         if (!esRepNormal) {
@@ -464,8 +467,9 @@ public class ReparacionController {
                         "Solo quien registró la entrega puede deshacerla");
             }
         }
-        if (req.entregado()) dao.entregarGlass(asig.getImei(), principal.getIdTec());
-        else                 dao.deshacerEntregaGlass(asig.getImei());
+        ResultadoEntregaGlass resultado = req.entregado()
+                ? entregaGlass.entregar(asig.getImei(), principal.getIdTec(), idRep)
+                : entregaGlass.deshacer(asig.getImei());
 
         String ids  = glass.stream().map(ReparacionDAO.GlassAbierta::idRep)
                 .collect(java.util.stream.Collectors.joining(","));
@@ -473,7 +477,9 @@ public class ReparacionController {
                 .collect(java.util.stream.Collectors.joining(","));
         logDao.insertar(principal.getIdUsu(),
                 req.entregado() ? "ENTREGAR_GLASS" : "DESHACER_ENTREGA_GLASS",
-                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", GLASS: " + ids + ", TECNICO_GLASS: " + tecs);
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", GLASS: " + ids + ", TECNICO_GLASS: " + tecs
+                        + detalleAbrir(resultado));
+        return resultado;
     }
 
     /**
@@ -482,9 +488,8 @@ public class ReparacionController {
      * él como ENTREGADO_POR. Solo el dueño de la AG y solo si aún no hay entrega registrada.
      */
     @PatchMapping("/asignaciones/{idRep}/llegada")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void marcarLlegadaGlass(@PathVariable String idRep,
-                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
+    public ResultadoEntregaGlass marcarLlegadaGlass(@PathVariable String idRep,
+                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
         if (idRep == null || !idRep.startsWith("AG")) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Solo aplica a asignaciones de glass");
@@ -501,16 +506,17 @@ public class ReparacionController {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "La entrega ya está registrada");
         }
-        dao.entregarGlass(asig.getImei(), principal.getIdTec());
+        ResultadoEntregaGlass resultado = entregaGlass.marcarLlegada(asig.getImei(), principal.getIdTec());
         logDao.insertar(principal.getIdUsu(), "ENTREGAR_GLASS",
-                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA registrada por el tecnico de glass");
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA registrada por el tecnico de glass"
+                        + detalleAbrir(resultado));
+        return resultado;
     }
 
     /** Deshacer la llegada: solo el dueño de la AG y solo si la firma (ENTREGADO_POR) es suya. */
     @DeleteMapping("/asignaciones/{idRep}/llegada")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deshacerLlegadaGlass(@PathVariable String idRep,
-                                     @AuthenticationPrincipal UsuarioPrincipal principal) {
+    public ResultadoEntregaGlass deshacerLlegadaGlass(@PathVariable String idRep,
+                                                      @AuthenticationPrincipal UsuarioPrincipal principal) {
         if (idRep == null || !idRep.startsWith("AG")) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Solo aplica a asignaciones de glass");
@@ -531,9 +537,17 @@ public class ReparacionController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Solo quien registró la entrega puede deshacerla");
         }
-        dao.deshacerEntregaGlass(asig.getImei());
+        ResultadoEntregaGlass resultado = entregaGlass.deshacer(asig.getImei());
         logDao.insertar(principal.getIdUsu(), "DESHACER_ENTREGA_GLASS",
-                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA deshecha por el tecnico de glass");
+                "ID_REP: " + idRep + ", IMEI: " + asig.getImei() + ", LLEGADA deshecha por el tecnico de glass"
+                        + detalleAbrir(resultado));
+        return resultado;
+    }
+
+    /** Coletilla del log con lo que pasó con el «Abrir» automático (spec 2026-10-13 §4.1). */
+    private static String detalleAbrir(ResultadoEntregaGlass r) {
+        if (r.abrir() == null) return r.idRepBorrado() != null ? ", ABRIR BORRADO: " + r.idRepBorrado() : "";
+        return ", ABRIR: " + (r.abrir() == EstadoAbrir.CREADO ? r.idRepAbrir() : r.abrir().name());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
