@@ -370,17 +370,21 @@ public class ReparacionDAO {
     }
 
     /** Descripciones de las acciones "otro" ya guardadas del IMEI en la categoría (R/G),
-     *  excluyendo una reparación (la que se edita). Se precargan bloqueadas al editar. */
-    public List<String> getAccionesOtro(String imei, String categoria, String excluir) {
+     *  excluyendo una reparación (la que se edita). Se precargan bloqueadas al editar.
+     *  Con {@code desde} solo cuentan las guardadas desde esa fecha (FECHA_FIN >= desde). */
+    public List<String> getAccionesOtro(String imei, String categoria, String excluir, LocalDateTime desde) {
         String like = "G".equals(categoria) ? "G%" : "R%";
-        return jdbc.query(
-                "SELECT rc.OBSERVACIONES FROM Reparacion r" +
+        String sql = "SELECT rc.OBSERVACIONES FROM Reparacion r" +
                 " JOIN Reparacion_componente rc ON r.ID_REP = rc.ID_REP" +
                 " JOIN Componente c ON rc.ID_COM = c.ID_COM" +
                 " WHERE r.IMEI = ? AND r.ID_REP LIKE ? AND r.ID_REP != ?" +
                 " AND c.TIPO LIKE 'otro%' AND rc.OBSERVACIONES IS NOT NULL" +
-                " ORDER BY r.FECHA_FIN",
-                (rs, row) -> rs.getString(1), imei, like, excluir != null ? excluir : "");
+                (desde != null ? " AND r.FECHA_FIN >= ?" : "") +
+                " ORDER BY r.FECHA_FIN";
+        String ex = excluir != null ? excluir : "";
+        return desde != null
+                ? jdbc.query(sql, (rs, row) -> rs.getString(1), imei, like, ex, Timestamp.valueOf(desde))
+                : jdbc.query(sql, (rs, row) -> rs.getString(1), imei, like, ex);
     }
 
     /** Incidencia abierta del IMEI por categoría ("G" = glass, resto = reparación);
@@ -844,7 +848,7 @@ public class ReparacionDAO {
 
     /** La reparación normal abierta más antigua del IMEI (la de la píldora «Rep: …»): a ella va el «Abrir» de una llegada. */
     public Optional<NormalAbierta> getNormalAbiertaMasAntigua(String imei) {
-        return jdbc.query(NORMAL_ABIERTA_SELECT + " AND r.IMEI = ? ORDER BY r.FECHA_ASIG ASC LIMIT 1", NORMAL_ABIERTA_MAPPER, imei)
+        return jdbc.query(NORMAL_ABIERTA_SELECT + " AND r.IMEI = ? ORDER BY r.FECHA_ASIG ASC, r.ID_REP ASC LIMIT 1", NORMAL_ABIERTA_MAPPER, imei)
                 .stream().findFirst();
     }
 
@@ -860,7 +864,9 @@ public class ReparacionDAO {
                 (rs, row) -> new ComponenteOtro(rs.getInt("ID_COM"), rs.getString("TIPO")));
     }
 
-    /** ¿El técnico ya apuntó a mano una apertura («abr…»/«abi…») en el IMEI desde que se le asignó la normal? (spec §2.3) */
+    /** ¿El técnico ya apuntó a mano una apertura («abr…»/«abi…») en el IMEI desde que se le asignó la normal? (spec §2.3)
+     *  Solo cuentan las escritas a mano: se excluyen los «Abrir» automáticos de entregas anteriores (los que
+     *  apuntan las AG por {@code ID_REP_ABRIR}), para que cada bajada a glass tenga el suyo. */
     public boolean tieneAperturaManual(String imei, int idTec, LocalDateTime desde) {
         Integer n = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM Reparacion r" +
@@ -868,7 +874,8 @@ public class ReparacionDAO {
                 " JOIN Componente c ON c.ID_COM = rc.ID_COM" +
                 " WHERE r.IMEI = ? AND r.ID_REP LIKE 'R%' AND r.ID_TEC = ? AND r.FECHA_FIN >= ?" +
                 " AND c.TIPO LIKE 'otro%'" +
-                " AND (LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abr%' OR LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abi%')",
+                " AND (LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abr%' OR LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abi%')" +
+                " AND r.ID_REP NOT IN (SELECT g.ID_REP_ABRIR FROM Reparacion g WHERE g.ID_REP_ABRIR IS NOT NULL)",
                 Integer.class, imei, idTec, Timestamp.valueOf(desde));
         return n != null && n > 0;
     }
@@ -1182,7 +1189,7 @@ public class ReparacionDAO {
             "  WHERE n.IMEI = r.IMEI AND n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL) AS NORMAL_ABIERTAS," +
             " (SELECT tn.NOMBRE FROM Reparacion n JOIN Tecnico tn ON n.ID_TEC = tn.ID_TEC" +
             "  WHERE n.IMEI = r.IMEI AND n.ID_REP LIKE 'A%' AND n.ID_REP NOT LIKE 'AG%' AND n.ID_REP NOT LIKE 'AP%' AND n.FECHA_FIN IS NULL" +
-            "  ORDER BY n.FECHA_ASIG ASC LIMIT 1) AS NORMAL_TECNICO_NOMBRE," +
+            "  ORDER BY n.FECHA_ASIG ASC, n.ID_REP ASC LIMIT 1) AS NORMAL_TECNICO_NOMBRE," +
             " ta.NOMBRE AS NOMBRE_TEC_ASIGNA," +
             COLUMNAS_CLIENTE +
             " FROM Reparacion r" +

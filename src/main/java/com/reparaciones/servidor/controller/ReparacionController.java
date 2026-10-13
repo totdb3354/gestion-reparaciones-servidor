@@ -251,8 +251,12 @@ public class ReparacionController {
     @GetMapping("/imei/{imei}/acciones")
     public List<String> getAccionesOtro(@PathVariable String imei,
                                         @RequestParam(required = false) String categoria,
-                                        @RequestParam(required = false) String excluir) {
-        return dao.getAccionesOtro(imei, categoria, excluir);
+                                        @RequestParam(required = false) String excluir,
+                                        @RequestParam(required = false)
+                                        @org.springframework.format.annotation.DateTimeFormat(
+                                                iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+                                        java.time.LocalDateTime desde) {
+        return dao.getAccionesOtro(imei, categoria, excluir, desde);
     }
 
     @GetMapping("/imei/{imei}/incidencia-activa")
@@ -455,6 +459,11 @@ public class ReparacionController {
         if (glass.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Sin glass abierta para este IMEI");
+        }
+        if (req.entregado() && asig.getGlassEntregadoAt() != null) {
+            // Desde una lista sin refrescar se podría crear un segundo «Abrir» huérfano que deshacer no borra.
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "La entrega ya está registrada");
         }
         if (!req.entregado()) {
             // Quien marca, desmarca (decisión 2026-08-31): la firma ENTREGADO_POR manda.

@@ -32,7 +32,7 @@ class ReparacionDAOAbrirGlassTest {
         verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(IMEI));
         String q = sql.getValue();
         assertTrue(q.contains("r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AG%' AND r.ID_REP NOT LIKE 'AP%' AND r.FECHA_FIN IS NULL"), q);
-        assertTrue(q.endsWith(" AND r.IMEI = ? ORDER BY r.FECHA_ASIG ASC LIMIT 1"), q);
+        assertTrue(q.endsWith(" AND r.IMEI = ? ORDER BY r.FECHA_ASIG ASC, r.ID_REP ASC LIMIT 1"), q);
         assertTrue(q.contains("r.ID_REP_ANTERIOR"), "lleva la incidencia de la asignación");
     }
 
@@ -77,6 +77,29 @@ class ReparacionDAOAbrirGlassTest {
         assertTrue(q.contains("c.TIPO LIKE 'otro%'"), q);
         assertTrue(q.contains("LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abr%'"), q);
         assertTrue(q.contains("LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abi%'"), q);
+        assertTrue(q.contains("AND r.ID_REP NOT IN (SELECT g.ID_REP_ABRIR FROM Reparacion g WHERE g.ID_REP_ABRIR IS NOT NULL)"),
+                "excluye los Abrir automaticos de entregas anteriores: " + q);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void accionesOtroSinDesdeQuedaComoAntes() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        dao(jdbc).getAccionesOtro(IMEI, "R", "A1", null);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(IMEI), eq("R%"), eq("A1"));
+        assertFalse(sql.getValue().contains("FECHA_FIN >= ?"), sql.getValue());
+        assertTrue(sql.getValue().endsWith(" ORDER BY r.FECHA_FIN"), sql.getValue());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void accionesOtroConDesdeFiltraPorFechaFin() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        LocalDateTime desde = LocalDateTime.of(2026, 10, 13, 8, 40);
+        dao(jdbc).getAccionesOtro(IMEI, "G", null, desde);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(IMEI), eq("G%"), eq(""), eq(Timestamp.valueOf(desde)));
+        assertTrue(sql.getValue().contains("AND r.FECHA_FIN >= ?"), sql.getValue());
+        assertTrue(sql.getValue().endsWith(" ORDER BY r.FECHA_FIN"), sql.getValue());
     }
 
     @Test void marcarAbrirLoApuntaEnLasGlassAbiertasDelImei() {

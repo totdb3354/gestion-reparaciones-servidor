@@ -104,6 +104,16 @@ class ReparacionControllerEntregaGlassTest {
                 "ID_REP: A20260828_1, IMEI: " + IMEI + ", GLASS: AG20260828_3, TECNICO_GLASS: Técnico H, ABRIR: SIN_PIEZA_OTRO");
     }
 
+    @Test void reEntregarUnaYaEntregadaEs422SinServicioNiLog() {
+        ReparacionResumen propia = propiaConGlass();
+        when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> ctl.actualizarEntregaGlass("A20260828_1", req(true), tecnico));
+        assertEquals(422, ex.getStatusCode().value());
+        assertEquals("La entrega ya está registrada", ex.getReason());
+        verifyNoInteractions(servicio, logDao);
+    }
+
     @Test void deshacerLlamaAlServicioYAnotaElAbrirBorrado() {
         ReparacionResumen propia = propiaConGlass();
         when(propia.getGlassEntregadoAt()).thenReturn(java.time.LocalDateTime.of(2026, 8, 31, 10, 0));
