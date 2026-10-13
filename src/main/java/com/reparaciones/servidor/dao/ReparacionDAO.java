@@ -478,7 +478,7 @@ public class ReparacionDAO {
         Timestamp desdeUtc = Timestamp.from(desde.atStartOfDay(Jornada.MADRID).toInstant());
         Timestamp hastaUtc = Timestamp.from(hasta.plusDays(1).atStartOfDay(Jornada.MADRID).toInstant());
         List<PuntosCalculo.FilaPuntos> filas = jdbc.query(
-                "SELECT t.NOMBRE, r.FECHA_FIN, r.ID_REP, r.IMEI, c.TIPO, rc.CANTIDAD" +
+                "SELECT t.NOMBRE, r.FECHA_FIN, r.ID_REP, r.IMEI, c.TIPO, rc.CANTIDAD, rc.OBSERVACIONES" +
                 " FROM Reparacion r" +
                 " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
                 " LEFT JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0" +
@@ -494,7 +494,8 @@ public class ReparacionDAO {
                             rs.getString("IMEI"),
                             rs.getString("TIPO"),
                             (Integer) rs.getObject("CANTIDAD"),
-                            Jornada.enJornada(cierre));
+                            Jornada.enJornada(cierre),
+                            rs.getString("OBSERVACIONES"));
                 },
                 desdeUtc, hastaUtc);
         return PuntosCalculo.agregar(filas, valores,

@@ -27,17 +27,27 @@ public final class PuntosCalculo {
         PREFIJO_CLAVE.put("g",   "glass");
     }
 
-    public record Pieza(String tipo, int cantidad) {}
+    /** Pieza de una reparación; {@code observacion} es el texto de la fila (en las acciones «otro», lo que se hizo). */
+    public record Pieza(String tipo, int cantidad, String observacion) {
+        public Pieza(String tipo, int cantidad) {
+            this(tipo, cantidad, null);
+        }
+    }
 
     /** Fila cruda de la query (una por pieza; reparación sin piezas = una fila con tipoPieza null).
      *  {@code fecha} es la del cierre en Madrid; {@code enJornada} = cierre dentro del horario
-     *  ({@link Jornada}), la misma para todas las filas de una reparación. */
+     *  ({@link Jornada}), la misma para todas las filas de una reparación; {@code observacion}, el texto de la fila. */
     public record FilaPuntos(String tecnico, LocalDate fecha, String idRep, String imei,
-                             String tipoPieza, Integer cantidad, boolean enJornada) {
+                             String tipoPieza, Integer cantidad, boolean enJornada, String observacion) {
+        /** Sin observación (compatibilidad: usos previos al «Abrir» automático). */
+        public FilaPuntos(String tecnico, LocalDate fecha, String idRep, String imei,
+                          String tipoPieza, Integer cantidad, boolean enJornada) {
+            this(tecnico, fecha, idRep, imei, tipoPieza, cantidad, enJornada, null);
+        }
         /** Fila en jornada (compatibilidad: tests previos y usos sin horario). */
         public FilaPuntos(String tecnico, LocalDate fecha, String idRep, String imei,
                           String tipoPieza, Integer cantidad) {
-            this(tecnico, fecha, idRep, imei, tipoPieza, cantidad, true);
+            this(tecnico, fecha, idRep, imei, tipoPieza, cantidad, true, null);
         }
     }
 
@@ -49,8 +59,28 @@ public final class PuntosCalculo {
         return "otro";
     }
 
+    /**
+     * Clave de una pieza (spec 2026-10-13 §2.8): la de su tipo, salvo en las acciones «otro» (SKU {@code otro…}), donde el
+     * texto decide: empieza por «abr»/«abi» → {@code abrir}; por «cerr» → {@code cerrar}; cualquier otro → {@code otro}.
+     */
+    public static String claveDePieza(String tipo, String observacion) {
+        String clave = claveDeTipo(tipo);
+        if (tipo == null || observacion == null || !tipo.toLowerCase(Locale.ROOT).startsWith("otro")) return clave;
+        String texto = observacion.trim().toLowerCase(Locale.ROOT);
+        if (texto.startsWith("abr") || texto.startsWith("abi")) return "abrir";
+        if (texto.startsWith("cerr")) return "cerrar";
+        return clave;
+    }
+
     private static double valor(Map<String, Double> valores, String clave) {
         return valores.getOrDefault(clave, 0.0);
+    }
+
+    /** Valor de una pieza; {@code abrir} y {@code cerrar} sin fila en la tabla puntúan como {@code otro}, nunca 0. */
+    private static double valorDePieza(Map<String, Double> valores, Pieza p) {
+        String clave = claveDePieza(p.tipo(), p.observacion());
+        if (("abrir".equals(clave) || "cerrar".equals(clave)) && !valores.containsKey(clave)) clave = "otro";
+        return valor(valores, clave);
     }
 
     public static double puntosDeReparacion(String idRep, List<Pieza> piezas, Map<String, Double> valores) {
@@ -61,7 +91,7 @@ public final class PuntosCalculo {
                 // 2026-09-03): cantidad>1 suele ser pieza rota o venida defectuosa, y
                 // multiplicar premiaba la rotura. Cubre también las acciones "otro",
                 // guardadas con CANTIDAD=0 (stock neutro), que antes puntuaban cero.
-                .mapToDouble(p -> valor(valores, claveDeTipo(p.tipo())))
+                .mapToDouble(p -> valorDePieza(valores, p))
                 .sum();
     }
 
@@ -75,7 +105,7 @@ public final class PuntosCalculo {
             Rep rep = new Rep(f.tecnico(), f.fecha(), f.idRep(), f.imei(), f.enJornada());
             List<Pieza> lista = piezasPorRep.computeIfAbsent(rep, k -> new ArrayList<>());
             if (f.tipoPieza() != null || f.cantidad() != null)
-                lista.add(new Pieza(f.tipoPieza(), f.cantidad() == null ? 1 : f.cantidad()));
+                lista.add(new Pieza(f.tipoPieza(), f.cantidad() == null ? 1 : f.cantidad(), f.observacion()));
         }
 
         // 2) acumular por técnico + periodo. Lo de fuera de horario suma en el total pero no
