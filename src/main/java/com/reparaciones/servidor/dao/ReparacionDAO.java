@@ -811,12 +811,81 @@ public class ReparacionDAO {
                 idTecEntrega, imei);
     }
 
-    /** Deshace la entrega en TODAS las AG abiertas del IMEI. */
+    /** Deshace la entrega en TODAS las AG abiertas del IMEI (también olvida el «Abrir» que creó, spec 2026-10-13). */
     public void deshacerEntregaGlass(String imei) {
         jdbc.update(
-                "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, UPDATED_AT = UPDATED_AT" +
+                "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, ID_REP_ABRIR = NULL, UPDATED_AT = UPDATED_AT" +
                 " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
                 imei);
+    }
+
+    // ── «Abrir» automático al entregar a glass (spec 2026-10-13) ─────────────
+
+    /** Reparación normal abierta a la que se apunta el «Abrir» automático. */
+    public record NormalAbierta(String idRep, int idTec, String nombreTecnico, LocalDateTime fechaAsig, String idRepAnterior) {}
+
+    /** Componente del grupo «otro» (uno por modelo). */
+    public record ComponenteOtro(int idCom, String tipo) {}
+
+    private static final String NORMAL_ABIERTA_SELECT =
+            "SELECT r.ID_REP, r.ID_TEC, t.NOMBRE, r.FECHA_ASIG, r.ID_REP_ANTERIOR FROM Reparacion r" +
+            " JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
+            " WHERE r.ID_REP LIKE 'A%' AND r.ID_REP NOT LIKE 'AG%' AND r.ID_REP NOT LIKE 'AP%' AND r.FECHA_FIN IS NULL";
+
+    private static final RowMapper<NormalAbierta> NORMAL_ABIERTA_MAPPER = (rs, row) -> new NormalAbierta(
+            rs.getString("ID_REP"), rs.getInt("ID_TEC"), rs.getString("NOMBRE"),
+            rs.getTimestamp("FECHA_ASIG").toLocalDateTime(), rs.getString("ID_REP_ANTERIOR"));
+
+    /** La reparación normal abierta {@code idRep} (la del que pulsa «Entregar»). */
+    public Optional<NormalAbierta> getNormalAbierta(String idRep) {
+        return jdbc.query(NORMAL_ABIERTA_SELECT + " AND r.ID_REP = ?", NORMAL_ABIERTA_MAPPER, idRep).stream().findFirst();
+    }
+
+    /** La reparación normal abierta más antigua del IMEI (la de la píldora «Rep: …»): a ella va el «Abrir» de una llegada. */
+    public Optional<NormalAbierta> getNormalAbiertaMasAntigua(String imei) {
+        return jdbc.query(NORMAL_ABIERTA_SELECT + " AND r.IMEI = ? ORDER BY r.FECHA_ASIG ASC LIMIT 1", NORMAL_ABIERTA_MAPPER, imei)
+                .stream().findFirst();
+    }
+
+    /** Código de modelo del teléfono; {@code null} si no existe o no tiene. */
+    public String getModeloTelefono(String imei) {
+        List<String> modelos = jdbc.query("SELECT MODELO FROM Telefono WHERE IMEI = ?", (rs, row) -> rs.getString(1), imei);
+        return modelos.isEmpty() ? null : modelos.get(0);
+    }
+
+    /** Componentes del grupo «otro», sin mirar ACTIVO (igual que el formulario). */
+    public List<ComponenteOtro> getComponentesOtro() {
+        return jdbc.query("SELECT ID_COM, TIPO FROM Componente WHERE TIPO LIKE 'otro%'",
+                (rs, row) -> new ComponenteOtro(rs.getInt("ID_COM"), rs.getString("TIPO")));
+    }
+
+    /** ¿El técnico ya apuntó a mano una apertura («abr…»/«abi…») en el IMEI desde que se le asignó la normal? (spec §2.3) */
+    public boolean tieneAperturaManual(String imei, int idTec, LocalDateTime desde) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM Reparacion r" +
+                " JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP" +
+                " JOIN Componente c ON c.ID_COM = rc.ID_COM" +
+                " WHERE r.IMEI = ? AND r.ID_REP LIKE 'R%' AND r.ID_TEC = ? AND r.FECHA_FIN >= ?" +
+                " AND c.TIPO LIKE 'otro%'" +
+                " AND (LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abr%' OR LOWER(TRIM(rc.OBSERVACIONES)) LIKE 'abi%')",
+                Integer.class, imei, idTec, Timestamp.valueOf(desde));
+        return n != null && n > 0;
+    }
+
+    /** Apunta en las AG abiertas del IMEI el «Abrir» que creó su entrega, para que deshacer borre justo ese. */
+    public void marcarAbrir(String imei, String idRepAbrir) {
+        jdbc.update(
+                "UPDATE Reparacion SET ID_REP_ABRIR = ?, UPDATED_AT = UPDATED_AT" +
+                " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
+                idRepAbrir, imei);
+    }
+
+    /** «Abrir» creados por la entrega de las AG abiertas del IMEI que siguen existiendo (uno borrado a mano no sale). */
+    public List<String> getAbrirDeEntrega(String imei) {
+        return jdbc.query(
+                "SELECT DISTINCT g.ID_REP_ABRIR FROM Reparacion g JOIN Reparacion r ON r.ID_REP = g.ID_REP_ABRIR" +
+                " WHERE g.IMEI = ? AND g.ID_REP LIKE 'AG%' AND g.FECHA_FIN IS NULL",
+                (rs, row) -> rs.getString(1), imei);
     }
 
     /** Entrega sellada en una AG (o {ts, id} nulos si no es AG o no hay entrega): la hereda la G al completar. */

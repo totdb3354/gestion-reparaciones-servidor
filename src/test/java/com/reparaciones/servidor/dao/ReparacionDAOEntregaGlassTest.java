@@ -81,7 +81,7 @@ class ReparacionDAOEntregaGlassTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         dao(jdbc).deshacerEntregaGlass(IMEI);
         verify(jdbc).update(
-                "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, UPDATED_AT = UPDATED_AT" +
+                "UPDATE Reparacion SET ENTREGADO_AT = NULL, ENTREGADO_POR = NULL, ID_REP_ABRIR = NULL, UPDATED_AT = UPDATED_AT" +
                 " WHERE IMEI = ? AND ID_REP LIKE 'AG%' AND FECHA_FIN IS NULL",
                 IMEI);
     }

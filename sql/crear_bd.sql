@@ -180,6 +180,7 @@ CREATE TABLE Reparacion (
     POR_CERRAR           BOOLEAN      NOT NULL DEFAULT FALSE,
     ENTREGADO_AT         DATETIME     NULL,
     ENTREGADO_POR        INT          NULL,
+    ID_REP_ABRIR         VARCHAR(30)  NULL COMMENT 'Solo filas AG: el R… del «Abrir» que creó su entrega (2026-10-13)',
     ID_CLI               INT          NULL COMMENT 'Cliente con el que se cerró el trabajo (0.9.8); abierto: NULL',
     UPDATED_AT           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (ID_REP),
@@ -250,7 +251,9 @@ INSERT INTO Dificultad_puntos (CLAVE, PUNTOS) VALUES
     ('tapa',     1.00),
     ('glass',    0.50),
     ('otro',     0.50),
-    ('pulido',   0.25);
+    ('pulido',   0.25),
+    ('abrir',    0.25),
+    ('cerrar',   0.17);
 
 CREATE TABLE Parametro (
     CLAVE      VARCHAR(50) NOT NULL,
