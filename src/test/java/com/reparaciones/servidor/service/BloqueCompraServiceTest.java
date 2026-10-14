@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
 import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.model.CompraComponente;
+import com.reparaciones.servidor.model.CompraOtro;
 import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
 import com.reparaciones.servidor.model.TipoLinea;
@@ -516,5 +517,106 @@ class BloqueCompraServiceTest {
         assertEquals(TipoLinea.PIEZA, BloqueCompraService.tipoDe(v(1)));
         assertEquals(TipoLinea.PIEZA, BloqueCompraService.tipoDe(vp(1)));
         assertEquals(TipoLinea.OTRO, BloqueCompraService.tipoDe(vo(1)));
+    }
+
+    // ── 0.9.15: un otro por línea ──
+    /** Otro 88 del proveedor 2 en el bloque `idBloque`, con UPDATED_AT = AT. */
+    static CompraOtro otroLinea(String estado, Integer idBloque) {
+        return new CompraOtro(88, 2, "Proveedor A", "Cinta de embalar", 3, null, false, AT, null, 1.5, "EUR", 1.5,
+                estado, AT).conBloque(idBloque, AT, null, AT, false);
+    }
+
+    @Test void moverUnOtroAOtroBloqueDelProveedorYBorrarElOrigenVacio() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
+        assertEquals(new BloqueCompraService.Movimiento(88, "pendiente", 41, 40, false, 2, true, TipoLinea.OTRO),
+                servicio.moverOtro(88, new DestinoPedido(40), AT));
+        verify(compraOtroDao).moverABloque(88, 41, 40);
+        verify(compraDao, never()).getById(anyInt());
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
+    @Test void moverUnOtroABloqueNuevoCreaUnoDelMismoProveedor() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("en_camino", 41)));
+        when(bloqueDao.contarLineas(41)).thenReturn(2);
+        when(bloqueDao.crear(2)).thenReturn(90);
+        assertEquals(new BloqueCompraService.Movimiento(88, "en_camino", 41, 90, true, 2, false, TipoLinea.OTRO),
+                servicio.moverOtro(88, new DestinoPedido(null), AT));
+        verify(compraOtroDao).moverABloque(88, 41, 90);
+    }
+
+    @Test void moverUnOtroTieneLasReglasYLosMensajesDeLasPiezas() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        when(bloqueDao.contarLineas(41)).thenReturn(1);
+        when(bloqueDao.getById(50)).thenReturn(Optional.of(bloque(50, 3)));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "La línea ya está en ese bloque.", () -> servicio.moverOtro(88, new DestinoPedido(41), AT));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "La línea ya está sola en su bloque.", () -> servicio.moverOtro(88, new DestinoPedido(null), AT));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 50 es de otro proveedor.", () -> servicio.moverOtro(88, new DestinoPedido(50), AT));
+        falla(HttpStatus.CONFLICT, "Dato modificado por otro usuario", () -> servicio.moverOtro(88, new DestinoPedido(40), AT.plusSeconds(1)));
+        falla(HttpStatus.NOT_FOUND, "El pedido no existe", () -> servicio.moverOtro(89, new DestinoPedido(40), AT));
+        verify(compraOtroDao, never()).moverABloque(anyInt(), any(), anyInt());
+        verify(bloqueDao, never()).crear(anyInt());
+    }
+
+    @Test void moverUnOtroRecibidoOCanceladoOAUnBloqueTerminadoEs422() {
+        for (String estado : List.of("recibido", "cancelado")) {
+            when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea(estado, 41)));
+            falla(HttpStatus.UNPROCESSABLE_ENTITY, "Una línea recibida o cancelada no se puede mover.",
+                    () -> servicio.moverOtro(88, new DestinoPedido(40), AT));
+        }
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("en_camino", 41)));
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        when(bloqueDao.estaTerminado(40)).thenReturn(true);
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "El bloque 40 ya está terminado.", () -> servicio.moverOtro(88, new DestinoPedido(40), AT));
+        verify(compraOtroDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
+    @Test void editarUnOtroPendienteAOtroProveedorVaASuAbierto() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        when(bloqueDao.abiertoMasReciente(3)).thenReturn(Optional.of(60));
+        BloqueCompraService.Movimiento m = servicio.editarOtroCambiandoProveedor(88, 3, "Cinta de embalar", 4, false,
+                2.0, "EUR", 2.0, AT, null);
+        InOrder orden = inOrder(compraOtroDao);
+        orden.verify(compraOtroDao).editar(88, 3, "Cinta de embalar", 4, false, 2.0, "EUR", 2.0, AT);
+        orden.verify(compraOtroDao).moverABloque(88, 41, 60);
+        assertEquals(new BloqueCompraService.Movimiento(88, "pendiente", 41, 60, false, 3, false, TipoLinea.OTRO), m);
+    }
+
+    @Test void editarUnOtroYaPedidoSinDestinoCreaUnBloqueYConDestinoUsaEse() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("en_camino", 41)));
+        when(bloqueDao.crear(3)).thenReturn(91);
+        assertEquals(91, servicio.editarOtroCambiandoProveedor(88, 3, "Cinta de embalar", 4, false, 2.0, "EUR", 2.0, AT, null).a());
+        verify(bloqueDao, never()).abiertoMasReciente(anyInt());
+        when(bloqueDao.getById(60)).thenReturn(Optional.of(bloque(60, 3)));
+        assertEquals(60, servicio.editarOtroCambiandoProveedor(88, 3, "Cinta de embalar", 4, false, 2.0, "EUR", 2.0, AT,
+                new DestinoPedido(60)).a());
+    }
+
+    @Test void siEditarElOtroFallaNoSeTocaNingunBloque() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Dato modificado por otro usuario"))
+                .when(compraOtroDao).editar(88, 3, "Cinta de embalar", 4, false, 2.0, "EUR", 2.0, AT);
+        assertThrows(ResponseStatusException.class, () -> servicio.editarOtroCambiandoProveedor(88, 3, "Cinta de embalar", 4,
+                false, 2.0, "EUR", 2.0, AT, null));
+        verify(bloqueDao, never()).crear(anyInt());
+        verify(compraOtroDao, never()).moverABloque(anyInt(), any(), anyInt());
+    }
+
+    @Test void borrarElUltimoOtroBorraSuBloque() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
+        assertEquals(Optional.of(41), servicio.borrarOtroPendiente(88));
+        verify(compraOtroDao).borrarPendiente(88, 41);
+    }
+
+    @Test void borrarUnOtroDeUnBloqueConMasNoLoBorra() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        assertEquals(Optional.empty(), servicio.borrarOtroPendiente(88));
+        verify(compraOtroDao).borrarPendiente(88, 41);
+    }
+
+    @Test void unMovimientoConLaFormaDeLa099EsDeUnaPieza() {
+        assertEquals(TipoLinea.PIEZA, new BloqueCompraService.Movimiento(5, "pendiente", 41, 40, false, 2, false).tipo());
     }
 }

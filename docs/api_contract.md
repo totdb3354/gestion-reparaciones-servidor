@@ -73,6 +73,19 @@ de `model/` conservan su nombre.
   ya está sola en su bloque.») o si el destino es de otro proveedor («El bloque N es de otro proveedor.»). `422` «El bloque N ya está terminado.» si el destino (lote, mover, editar, juntar) o el origen (juntar, separar) no tiene ninguna línea pendiente, en camino ni parcial, y `422` «Una línea recibida o cancelada no se puede mover.» al mover o separar una línea en esos estados (spec 2026-10-12). `POST /api/compras/lote` acepta `destinos: [{idProv, idBloque}]` (`idBloque` nulo =
   bloque nuevo; un proveedor sin entrada va a su bloque abierto más reciente o a uno nuevo) y `PUT /api/compras/{id}`
   acepta `destino: {idBloque}` cuando cambia el proveedor. Solo SUPERTECNICO.
+- Otros pedidos en bloques (0.9.15): un otro (`Compra_otro`) es una línea más del bloque de su proveedor.
+  `GET /api/compras-otros` trae en cada otro su bloque (los cinco campos de `GET /api/compras`). En las acciones de
+  bloque cada línea lleva `tipo` (`PIEZA` u `OTRO`; nulo o ausente = `PIEZA`) e `idCompra` es el id en su tabla
+  (`ID_COMPRA` o `ID_COMPRA_OTRO`): las reglas y los `409` son los de siempre, comparando por tipo + id; recibir un otro
+  no toca el stock. `POST /api/compras/lote` acepta `otros: [{idProv, concepto, cantidad, esUrgente, precioUnidad}]`
+  (nulo = ninguno; `lineas` puede ir vacía si hay otros): van al mismo bloque que las piezas de su proveedor, se
+  validan después de las piezas con `422` «Otro n: …» y la respuesta añade `idsOtrosCreados`.
+  `POST /api/compras-otros/lote` y `POST /api/compras-otros` meten cada otro en el bloque abierto más reciente de su
+  proveedor o en uno nuevo. Un concepto que, recortado, pasa de 255 caracteres es `422` («El concepto no puede pasar de
+  255 caracteres.»; en los lotes, «Línea n: …» u «Otro n: …»); se guarda recortado.
+  `PATCH /api/compras-otros/{id}/bloque` (`{idBloque, updatedAt}`) tiene las reglas y los mensajes del de piezas;
+  `PUT /api/compras-otros/{id}` acepta `destino: {idBloque}` cuando cambia el proveedor y `DELETE /api/compras-otros/{id}`
+  borra también el bloque si se queda vacío. Solo SUPERTECNICO.
 - Tipos de pieza de cada proveedor (0.9.9, spec 2026-10-12): `GET /api/proveedores/{idProv}/piezas` (SUPERTECNICO y
   ADMIN) devuelve todos los tipos que existen (prefijo de las referencias no «otro», activas o no; orden bat, cha,
   tapa, g, mc, lcd y el resto alfabético) como `[{prefijo, vende, modelos, excluidos}]`: `modelos` = los de sus piezas

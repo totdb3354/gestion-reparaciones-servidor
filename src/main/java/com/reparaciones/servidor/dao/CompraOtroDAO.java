@@ -170,12 +170,6 @@ public class CompraOtroDAO {
         exigir(n, MSG_NO_RECIBIDO);
     }
 
-    public void borrarPendiente(int id) {
-        int n = jdbc.update("DELETE FROM Compra_otro WHERE ID_COMPRA_OTRO=? AND ESTADO='pendiente'", id);
-        if (n == 0) throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "El pedido ya no está pendiente (no se puede borrar)");
-    }
-
     /** Borra un otro 'pendiente' solo si sigue en el bloque `origen` que leyó quien llama (nulo = sin bloque), como
      *  CompraComponenteDAO.borrarPendiente (0.9.15): si cambió de bloque en medio, 409 y el bloque no se vacía por error. */
     public void borrarPendiente(int id, Integer origen) {

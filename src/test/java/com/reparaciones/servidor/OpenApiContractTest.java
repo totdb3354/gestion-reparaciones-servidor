@@ -303,6 +303,40 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "BloqueCompraSepararRespuesta", "idBloque");
     }
 
+    /** 0.9.15 (spec «Añadir otro» §4): los otros pedidos dentro del bloque de su proveedor. */
+    @Test void elContratoPublicaLosOtrosEnBloques() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        assertTrue(paths.path("/api/compras-otros/{id}/bloque").has("patch"), "falta PATCH /api/compras-otros/{id}/bloque");
+        assertTrue(refDelCuerpo(paths, "/api/compras-otros/{id}/bloque", "patch").endsWith("/BloqueCompraMoverRequest"));
+
+        assertNullable(esquemas, "CompraOtro", "idBloque", "fechaBloque", "notaBloque", "bloqueUpdatedAt");
+        assertNoNullable(esquemas, "CompraOtro", "bloqueAntiguo");
+
+        assertNullable(esquemas, "LoteComprasPeticion", "otros");
+        assertTrue(esquemas.path("LoteComprasPeticion").path("properties").path("otros").path("items").path("$ref").asText()
+                .endsWith("/LoteComprasOtrosLinea"), "otros es una lista de LoteComprasOtrosLinea");
+        assertNoNullable(esquemas, "LoteComprasRespuesta", "idsCreados", "idsOtrosCreados");
+        assertEquals("integer", esquemas.path("LoteComprasRespuesta").path("properties").path("idsOtrosCreados")
+                .path("items").path("type").asText(), "idsOtrosCreados debe ser una lista de enteros");
+
+        // tipo: required como todas las propiedades (OpenApiConfig) y nullable; el servidor también lo acepta ausente.
+        assertNullable(esquemas, "LineaVista", "tipo");
+        assertTrue(esquemas.path("LineaVista").path("required").toString().contains("\"tipo\""), "LineaVista.tipo debe ser required");
+        List<String> valores = new ArrayList<>();
+        esquemas.path("LineaVista").path("properties").path("tipo").path("enum").forEach(v -> valores.add(v.asText()));
+        assertEquals(List.of("PIEZA", "OTRO"), valores);
+
+        // destino es una $ref (OpenAPI 3.0 ignora "nullable" junto a un $ref), como CompraEditarRequest.destino.
+        assertTrue(esquemas.path("CompraOtroEditarRequest").path("properties").path("destino").path("$ref").asText()
+                .endsWith("/DestinoPedido"), "CompraOtroEditarRequest.destino referencia DestinoPedido");
+    }
+
     /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4 y 2026-10-12 §4.3). */
     @Test void elContratoPublicaLasPiezasDeCadaProveedor() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));

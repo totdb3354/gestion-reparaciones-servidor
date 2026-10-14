@@ -156,4 +156,23 @@ class BloqueCompraControllerTest {
         assertEquals("BLOQUE: 41, ID_COMPRA: 12, ID_COMPRA_OTRO: 88, 89",
                 BloqueCompraController.conIds("BLOQUE: 41", List.of(12), List.of(88, 89)));
     }
+
+    @Test void moverUnOtroRegistraElMovimientoConSuIdDeOtro() {
+        when(servicio.moverOtro(88, new DestinoPedido(null), AT))
+                .thenReturn(new BloqueCompraService.Movimiento(88, "en_camino", 41, 90, true, 2, true, TipoLinea.OTRO));
+        ctl.moverOtro(88, new BloqueCompraController.MoverRequest(null, AT), super7);
+        InOrder orden = inOrder(logDao);
+        orden.verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 90, PROVEEDOR: Proveedor A");
+        orden.verify(logDao).insertar(7, "MOVER_LINEA_BLOQUE", "ID_COMPRA_OTRO: 88, ESTADO: en_camino, DE: 41 A: 90");
+        orden.verify(logDao).insertar(7, "BORRAR_BLOQUE", "BLOQUE: 41 (se quedó sin líneas)");
+        verify(servicio, never()).mover(anyInt(), any(), any());
+    }
+
+    @Test void unFalloAlMoverUnOtroNoRegistraNada() {
+        when(servicio.moverOtro(88, new DestinoPedido(40), AT))
+                .thenThrow(new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Una línea recibida o cancelada no se puede mover."));
+        assertThrows(ResponseStatusException.class,
+                () -> ctl.moverOtro(88, new BloqueCompraController.MoverRequest(40, AT), super7));
+        verifyNoInteractions(logDao);
+    }
 }

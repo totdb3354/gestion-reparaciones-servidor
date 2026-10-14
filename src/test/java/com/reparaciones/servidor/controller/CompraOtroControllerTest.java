@@ -5,7 +5,9 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.dao.TipoCambioDAO;
 import com.reparaciones.servidor.model.CompraOtro;
+import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.Proveedor;
+import com.reparaciones.servidor.model.TipoLinea;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.BloqueCompraService;
 import com.reparaciones.servidor.service.ConversionEur;
@@ -53,7 +55,7 @@ class CompraOtroControllerTest {
     }
 
     private static CompraOtroController.EditarRequest edicion(int idProv, String concepto, int cantidad, double precio) {
-        return new CompraOtroController.EditarRequest(idProv, concepto, cantidad, false, precio, "EUR", precio, AT);
+        return new CompraOtroController.EditarRequest(idProv, concepto, cantidad, false, precio, "EUR", precio, AT, null);
     }
 
     private static CompraOtro pedido(String estado, int cantidad, Integer recibida) {
@@ -152,7 +154,7 @@ class CompraOtroControllerTest {
         assertEquals("Cantidad no válida (debe ser > 0).", falla422(() -> ctl.editar(5, edicion(2, CINTA, 0, 1.5), super7)));
         assertEquals("Precio no válido.", falla422(() -> ctl.editar(5, edicion(2, CINTA, 3, -1.0), super7)));
         assertEquals("Divisa no válida (EUR o USD).", falla422(() ->
-                ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 3, false, 1.5, "CNY", 1.5, AT), super7)));
+                ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 3, false, 1.5, "CNY", 1.5, AT, null), super7)));
         nadaEscritoNiRegistrado();
     }
 
@@ -183,7 +185,7 @@ class CompraOtroControllerTest {
 
     @Test void editarEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
         when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
-        ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT), super7);
+        ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT, null), super7);
         verify(dao).editar(5, 2, CINTA, 4, false, 10.0, "USD", 8.8, AT);
     }
 
@@ -201,7 +203,7 @@ class CompraOtroControllerTest {
         when(tipoCambio.getTasa("USD")).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                 "No se pudo obtener el tipo de cambio de USD. Inténtalo de nuevo."));
         ResponseStatusException e = assertThrows(ResponseStatusException.class,
-                () -> ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT), super7));
+                () -> ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT, null), super7));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
         nadaEscritoNiRegistrado();
     }
@@ -229,5 +231,55 @@ class CompraOtroControllerTest {
         verify(bloques).altaOtroSuelta(2, justo, 3, false, 1.5, "EUR", 1.5);
         ctl.editar(5, edicion(2, " " + CINTA + " ", 3, 1.5), super7);
         verify(dao).editar(5, 2, CINTA, 3, false, 1.5, "EUR", 1.5, AT);
+    }
+
+    // ── 0.9.15: editar cambiando el proveedor y borrar con su bloque ──
+    @Test void editarCambiandoElProveedorMueveElOtroYLoRegistra() {
+        when(dao.getById(5)).thenReturn(Optional.of(pedido("en_camino", 4, null)));   // proveedor 2
+        when(proveedorDao.getById(3)).thenReturn(Optional.of(new Proveedor(3, "Proveedor B", true, "EUR", null, "COMPONENTES")));
+        when(proveedorDao.getNombreById(3)).thenReturn("Proveedor B");
+        when(bloques.editarOtroCambiandoProveedor(5, 3, CINTA, 4, false, 1.5, "EUR", 1.5, AT, null))
+                .thenReturn(new BloqueCompraService.Movimiento(5, "en_camino", 41, 91, true, 3, true, TipoLinea.OTRO));
+
+        ctl.editar(5, edicion(3, CINTA, 4, 1.5), super7);
+
+        verify(dao, never()).editar(anyInt(), anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), any());
+        InOrder orden = inOrder(logDao);
+        orden.verify(logDao).insertar(7, "EDITAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: 5");
+        orden.verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 91, PROVEEDOR: Proveedor B");
+        orden.verify(logDao).insertar(7, "MOVER_LINEA_BLOQUE", "ID_COMPRA_OTRO: 5, ESTADO: en_camino, DE: 41 A: 91");
+        orden.verify(logDao).insertar(7, "BORRAR_BLOQUE", "BLOQUE: 41 (se quedó sin líneas)");
+    }
+
+    @Test void editarConElBloqueElegidoLoPasaAlServicio() {
+        when(dao.getById(5)).thenReturn(Optional.of(pedido("pendiente", 4, null)));
+        when(proveedorDao.getById(3)).thenReturn(Optional.of(new Proveedor(3, "Proveedor B", true, "EUR", null, "COMPONENTES")));
+        when(bloques.editarOtroCambiandoProveedor(anyInt(), anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(),
+                anyDouble(), any(), any()))
+                .thenReturn(new BloqueCompraService.Movimiento(5, "pendiente", 41, 60, false, 3, false, TipoLinea.OTRO));
+        ctl.editar(5, new CompraOtroController.EditarRequest(3, CINTA, 4, false, 1.5, "EUR", 1.5, AT, new DestinoPedido(60)), super7);
+        verify(bloques).editarOtroCambiandoProveedor(5, 3, CINTA, 4, false, 1.5, "EUR", 1.5, AT, new DestinoPedido(60));
+    }
+
+    @Test void editarSinCambiarElProveedorNoTocaLosBloques() {
+        when(dao.getById(5)).thenReturn(Optional.of(pedido("en_camino", 4, null)));
+        ctl.editar(5, edicion(2, CINTA, 4, 1.5), super7);
+        verify(dao).editar(5, 2, CINTA, 4, false, 1.5, "EUR", 1.5, AT);
+        verify(bloques, never()).editarOtroCambiandoProveedor(anyInt(), anyInt(), any(), anyInt(), anyBoolean(), anyDouble(),
+                any(), anyDouble(), any(), any());
+    }
+
+    @Test void borrarElUltimoOtroDeUnBloqueRegistraElBloqueBorrado() {
+        when(bloques.borrarOtroPendiente(5)).thenReturn(Optional.of(41));
+        ctl.borrar(5, super7);
+        verify(logDao).insertar(7, "BORRAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: 5");
+        verify(logDao).insertar(7, "BORRAR_BLOQUE", "BLOQUE: 41 (se quedó sin líneas)");
+    }
+
+    @Test void borrarUnOtroDeUnBloqueConMasSoloRegistraElPedido() {
+        when(bloques.borrarOtroPendiente(5)).thenReturn(Optional.empty());
+        ctl.borrar(5, super7);
+        verify(logDao).insertar(7, "BORRAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: 5");
+        verifyNoMoreInteractions(logDao);
     }
 }

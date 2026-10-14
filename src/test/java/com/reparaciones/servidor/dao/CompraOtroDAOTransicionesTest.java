@@ -31,7 +31,6 @@ class CompraOtroDAOTransicionesTest {
     private static final String CANCELAR = "UPDATE Compra_otro SET ESTADO='cancelado' WHERE ID_COMPRA_OTRO=? AND ESTADO='en_camino'";
     private static final String DESRECIBIR = "UPDATE Compra_otro SET ESTADO='en_camino', FECHA_LLEGADA=NULL, CANTIDAD_RECIBIDA=NULL WHERE ID_COMPRA_OTRO=? AND ESTADO='recibido'";
     private static final String EDITAR = "UPDATE Compra_otro SET ID_PROV=?, CONCEPTO=?, CANTIDAD=?, ES_URGENTE=?, PRECIO_UNIDAD_PEDIDO=?, DIVISA=?, PRECIO_EUR=? WHERE ID_COMPRA_OTRO=? AND (ESTADO IN ('pendiente','en_camino') OR (ESTADO='recibido' AND CANTIDAD=?))";
-    private static final String BORRAR = "DELETE FROM Compra_otro WHERE ID_COMPRA_OTRO=? AND ESTADO='pendiente'";
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final CompraOtroDAO dao = new CompraOtroDAO(jdbc);
@@ -145,15 +144,6 @@ class CompraOtroDAOTransicionesTest {
                 () -> dao.editar(ID, 2, "Cinta de embalar", 4, false, 1.5, "EUR", 1.5, AT));
     }
 
-    @Test void borrarUnPendienteBorra() {
-        when(jdbc.update(BORRAR, ID)).thenReturn(1);
-        dao.borrarPendiente(ID);
-        verify(jdbc).update(BORRAR, ID);
-    }
-
-    @Test void borrarFueraDePendienteEs409() {
-        conflicto("El pedido ya no está pendiente (no se puede borrar)", () -> dao.borrarPendiente(ID));
-    }
 
     @Test void unUpdatedAtViejoEs409AntesDeTocarNada() {
         fila(3, null);

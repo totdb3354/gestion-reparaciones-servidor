@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
 import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.model.CompraComponente;
+import com.reparaciones.servidor.model.CompraOtro;
 import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
 import com.reparaciones.servidor.model.TipoLinea;
@@ -39,9 +40,16 @@ public class BloqueCompraService {
     static final int NOTA_MAX = 200; // VARCHAR(200) de Bloque_compra.NOTA
 
     /** Una línea que cambió de bloque: de dónde a dónde, si el destino es nuevo y si el origen se quedó vacío (y se
-     *  borró). `de` es nulo para una línea que no tenía bloque (hueco de un despliegue). */
+     *  borró). `de` es nulo para una línea que no tenía bloque (hueco de un despliegue). `idCompra` es el id en su tabla
+     *  y `tipo` dice cuál (0.9.15: el log de un otro lleva ID_COMPRA_OTRO). */
     public record Movimiento(int idCompra, String estado, Integer de, int a, boolean bloqueNuevo, int idProv,
-                             boolean origenBorrado) {}
+                             boolean origenBorrado, TipoLinea tipo) {
+        /** Una pieza (la forma de la 0.9.9). */
+        public Movimiento(int idCompra, String estado, Integer de, int a, boolean bloqueNuevo, int idProv,
+                          boolean origenBorrado) {
+            this(idCompra, estado, de, a, bloqueNuevo, idProv, origenBorrado, TipoLinea.PIEZA);
+        }
+    }
 
     /** Acción de estado de un bloque: estado que tienen que tener las líneas y nombre del log del bloque. */
     public enum Accion {
@@ -126,24 +134,43 @@ public class BloqueCompraService {
     public Movimiento mover(int idCompra, DestinoPedido destino, LocalDateTime updatedAt) {
         CompraComponente l = compraDao.getById(idCompra)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, MSG_NO_EXISTE_LINEA));
-        if (!mismaVersion(l.getUpdatedAt(), updatedAt)) {
+        return moverLinea(new LineaLeida(TipoLinea.PIEZA, idCompra, l.getIdProv(), l.getEstado(), l.getIdBloque(),
+                l.getUpdatedAt()), destino, updatedAt);
+    }
+
+    /** PATCH /api/compras-otros/{id}/bloque (0.9.15, spec «Añadir otro» §4.3): un otro, con las mismas reglas y los mismos
+     *  mensajes que una pieza. */
+    @Transactional
+    public Movimiento moverOtro(int idCompraOtro, DestinoPedido destino, LocalDateTime updatedAt) {
+        CompraOtro o = compraOtroDao.getById(idCompraOtro)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, MSG_NO_EXISTE_LINEA));
+        return moverLinea(new LineaLeida(TipoLinea.OTRO, idCompraOtro, o.getIdProv(), o.getEstado(), o.getIdBloque(),
+                o.getUpdatedAt()), destino, updatedAt);
+    }
+
+    /** Lo que mover necesita de una línea de cualquier tipo, leído antes de cambiar nada. */
+    private record LineaLeida(TipoLinea tipo, int id, int idProv, String estado, Integer idBloque,
+                              LocalDateTime updatedAt) {}
+
+    private Movimiento moverLinea(LineaLeida l, DestinoPedido destino, LocalDateTime updatedAt) {
+        if (!mismaVersion(l.updatedAt(), updatedAt)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_LINEA_MODIFICADA);
         }
         // Lo recibido y lo cancelado es historial: no cambia de bloque (spec 2026-10-12 §2).
-        if ("recibido".equals(l.getEstado()) || "cancelado".equals(l.getEstado())) {
+        if ("recibido".equals(l.estado()) || "cancelado".equals(l.estado())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_LINEA_CERRADA);
         }
-        Integer origen = l.getIdBloque();
+        Integer origen = l.idBloque();
         if (destino.idBloque() == null && origen != null && bloqueDao.contarLineas(origen) <= 1) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_YA_SOLA);
         }
         if (destino.idBloque() != null && destino.idBloque().equals(origen)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, MSG_YA_EN_ESE);
         }
-        DestinoBloque.Destino d = destinoBloque.resolver(l.getIdProv(), destino, false);
-        compraDao.moverABloque(idCompra, origen, d.idBloque());
+        DestinoBloque.Destino d = destinoBloque.resolver(l.idProv(), destino, false);
+        moverEnSuTabla(l.tipo(), l.id(), origen, d.idBloque());
         boolean borrado = origen != null && bloqueDao.borrarSiVacio(origen);
-        return new Movimiento(idCompra, l.getEstado(), origen, d.idBloque(), d.nuevo(), l.getIdProv(), borrado);
+        return new Movimiento(l.id(), l.estado(), origen, d.idBloque(), d.nuevo(), l.idProv(), borrado, l.tipo());
     }
 
     /** PUT /api/compras/{id} con otro proveedor (spec §5.2): edita, lleva la línea a un bloque del proveedor nuevo y
@@ -168,6 +195,32 @@ public class BloqueCompraService {
     public Optional<Integer> borrarLineaPendiente(int idCompra) {
         Integer origen = compraDao.getById(idCompra).map(CompraComponente::getIdBloque).orElse(null);
         compraDao.borrarPendiente(idCompra, origen);
+        return origen != null && bloqueDao.borrarSiVacio(origen) ? Optional.of(origen) : Optional.empty();
+    }
+
+    /** PUT /api/compras-otros/{id} con otro proveedor (0.9.15): como {@link #editarCambiandoProveedor}, edita, lleva el
+     *  otro a un bloque del proveedor nuevo y borra el de origen si se queda vacío, todo junto. Sin `destino`, la regla
+     *  por defecto: pendiente → su abierto más reciente o uno nuevo; ya pedido → uno nuevo. */
+    @Transactional
+    public Movimiento editarOtroCambiandoProveedor(int idCompraOtro, int idProv, String concepto, int cantidad,
+                                                   boolean esUrgente, double precioUnidad, String divisa,
+                                                   double precioEur, LocalDateTime updatedAt, DestinoPedido destino) {
+        CompraOtro o = compraOtroDao.getById(idCompraOtro)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, MSG_NO_EXISTE_LINEA));
+        compraOtroDao.editar(idCompraOtro, idProv, concepto, cantidad, esUrgente, precioUnidad, divisa, precioEur, updatedAt);
+        DestinoBloque.Destino d = destinoBloque.resolver(idProv, destino, "pendiente".equals(o.getEstado()));
+        Integer origen = o.getIdBloque();
+        compraOtroDao.moverABloque(idCompraOtro, origen, d.idBloque());
+        boolean borrado = origen != null && bloqueDao.borrarSiVacio(origen);
+        return new Movimiento(idCompraOtro, o.getEstado(), origen, d.idBloque(), d.nuevo(), idProv, borrado, TipoLinea.OTRO);
+    }
+
+    /** DELETE /api/compras-otros/{id} (0.9.15): borra el otro pendiente y, si era la última línea, su bloque. Devuelve
+     *  ese bloque. */
+    @Transactional
+    public Optional<Integer> borrarOtroPendiente(int idCompraOtro) {
+        Integer origen = compraOtroDao.getById(idCompraOtro).map(CompraOtro::getIdBloque).orElse(null);
+        compraOtroDao.borrarPendiente(idCompraOtro, origen);
         return origen != null && bloqueDao.borrarSiVacio(origen) ? Optional.of(origen) : Optional.empty();
     }
 

@@ -40,6 +40,15 @@ public class BloqueCompraController {
         registro.movimiento(principal.getIdUsu(), m);
     }
 
+    /** 0.9.15 (spec «Añadir otro» §4.3): mover un otro, con las reglas y los mensajes de mover una pieza. */
+    @PreAuthorize("hasRole('SUPERTECNICO')")
+    @PatchMapping("/compras-otros/{id}/bloque")
+    public void moverOtro(@PathVariable int id, @RequestBody MoverRequest req,
+                          @AuthenticationPrincipal UsuarioPrincipal principal) {
+        BloqueCompraService.Movimiento m = servicio.moverOtro(id, new DestinoPedido(req.idBloque()), req.updatedAt());
+        registro.movimiento(principal.getIdUsu(), m);
+    }
+
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping("/bloques-compra/{idBloque}/confirmar")
     public void confirmar(@PathVariable int idBloque, @RequestBody LineasRequest req,

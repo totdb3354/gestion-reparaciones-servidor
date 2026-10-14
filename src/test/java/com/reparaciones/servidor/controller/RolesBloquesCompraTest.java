@@ -3,6 +3,7 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.UsuariosOperativosTestConfig;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
+import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
 import com.reparaciones.servidor.model.TipoLinea;
 import com.reparaciones.servidor.security.JwtUtil;
@@ -29,7 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Las ocho escrituras de bloques (0.9.9): solo SUPERTECNICO, con la cadena de seguridad real y el servicio mockeado. */
+/** Las nueve escrituras de bloques (0.9.9; mover un otro, 0.9.15): solo SUPERTECNICO, con la cadena de seguridad real y el servicio mockeado. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(UsuariosOperativosTestConfig.class)
@@ -67,7 +68,8 @@ class RolesBloquesCompraTest {
             new Op("POST", "/api/bloques-compra/41/borrar", LINEAS),
             new Op("POST", "/api/bloques-compra/41/separar", LINEAS),
             new Op("POST", "/api/bloques-compra/41/juntar", "{\"destino\":40,\"lineas\":[{\"idCompra\":5," + AT + "}]}"),
-            new Op("PATCH", "/api/bloques-compra/41/nota", "{\"nota\":\"Ped. 1\"," + AT + "}"));
+            new Op("PATCH", "/api/bloques-compra/41/nota", "{\"nota\":\"Ped. 1\"," + AT + "}"),
+            new Op("PATCH", "/api/compras-otros/88/bloque", "{\"idBloque\":40," + AT + "}"));
 
     private ResultActions llamar(Op op, String token) throws Exception {
         return mvc.perform(request(HttpMethod.valueOf(op.metodo()), op.ruta()).header("Authorization", token)
@@ -84,12 +86,14 @@ class RolesBloquesCompraTest {
 
     @Test void elSupertecnicoLlegaAlServicioEnTodas() throws Exception {
         when(servicio.mover(anyInt(), any(), any())).thenReturn(new BloqueCompraService.Movimiento(5, "pendiente", 41, 40, false, 2, false));
+        when(servicio.moverOtro(anyInt(), any(), any())).thenReturn(new BloqueCompraService.Movimiento(88, "pendiente", 41, 40, false, 2, false, TipoLinea.OTRO));
         when(servicio.aplicar(anyInt(), any(), anyList())).thenReturn(new BloqueCompraService.Aplicada(41, List.of()));
         when(servicio.separar(anyInt(), anyList())).thenReturn(new BloqueCompraService.Separacion(41, 90, 2, List.of(5)));
         when(servicio.juntar(anyInt(), anyInt(), anyList())).thenReturn(new BloqueCompraService.Union(41, 40, List.of(5)));
         when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
         for (Op op : ESCRITURAS) llamar(op, supertecnico()).andExpect(status().isOk());
         verify(servicio).separar(41, List.of(new LineaVista(5, LocalDateTime.of(2026, 10, 9, 10, 0), null)));
+        verify(servicio).moverOtro(88, new DestinoPedido(40), LocalDateTime.of(2026, 10, 9, 10, 0));
     }
 
     @Test void separarDevuelveElNumeroDelBloqueNuevo() throws Exception {
