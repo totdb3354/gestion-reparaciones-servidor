@@ -6,6 +6,7 @@ import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
+import com.reparaciones.servidor.model.TipoLinea;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.http.HttpStatus;
@@ -212,12 +213,25 @@ class BloqueCompraServiceTest {
     }
 
     static LineaVista v(int id) {
-        return new LineaVista(id, AT);
+        return new LineaVista(id, AT, null);
     }
 
     void bloque41(BloqueCompraDAO.LineaBloque... lineas) {
         when(bloqueDao.getById(41)).thenReturn(Optional.of(bloque(41, 2)));
         when(bloqueDao.lineas(41)).thenReturn(List.of(lineas));
+    }
+
+    /** Otro `id` del bloque (0.9.15), con UPDATED_AT = AT. */
+    static BloqueCompraDAO.LineaBloque lo(int id, String estado) {
+        return new BloqueCompraDAO.LineaBloque(id, "otro-" + id, 1, estado, AT, TipoLinea.OTRO);
+    }
+
+    static LineaVista vo(int id) {
+        return new LineaVista(id, AT, TipoLinea.OTRO);
+    }
+
+    static LineaVista vp(int id) {
+        return new LineaVista(id, AT, TipoLinea.PIEZA);
     }
 
     @Test void recibirSoloLasLineasDeLaListaConLaRecepcionDeSiempre() {
@@ -240,7 +254,7 @@ class BloqueCompraServiceTest {
 
     @Test void otraVersionOtroEstadoOUnaLineaAjenaEs409SinTocarNada() {
         bloque41(lb(1, "en_camino"), lb(2, "recibido"));
-        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(new LineaVista(1, AT.plusSeconds(1)))));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(new LineaVista(1, AT.plusSeconds(1), null))));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(v(1), v(2))));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(v(9))));
         verify(compraDao, never()).confirmarRecibido(anyInt(), any());
@@ -270,7 +284,7 @@ class BloqueCompraServiceTest {
     @Test void borrarConOtraVersionEs409() {
         bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR,
-                List.of(v(1), new LineaVista(2, AT.plusSeconds(1)))));
+                List.of(v(1), new LineaVista(2, AT.plusSeconds(1), null))));
         verify(compraDao, never()).borrarPendiente(anyInt(), any());
     }
 
@@ -358,7 +372,7 @@ class BloqueCompraServiceTest {
     @Test void separarTodasEs422YUnaCambiadaEs409() {
         bloque41(lb(1, "pendiente"), lb(2, "pendiente"));
         falla(HttpStatus.UNPROCESSABLE_ENTITY, "Deja al menos una línea en el bloque.", () -> servicio.separar(41, List.of(v(1), v(2))));
-        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.separar(41, List.of(new LineaVista(1, AT.plusSeconds(1)))));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.separar(41, List.of(new LineaVista(1, AT.plusSeconds(1), null))));
         verify(bloqueDao, never()).crear(anyInt());
     }
 
@@ -405,5 +419,102 @@ class BloqueCompraServiceTest {
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.cambiarNota(41, "Ped.", AT.plusSeconds(1)));
         falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.cambiarNota(42, "Ped.", AT));
         verify(bloqueDao, never()).cambiarNota(anyInt(), any());
+    }
+
+    // ── 0.9.15: bloques con piezas y otros ──
+    @Test void confirmarUnBloqueMixtoUsaLaTransicionDeCadaTipo() {
+        bloque41(lb(1, "pendiente"), lo(88, "pendiente"));
+        BloqueCompraService.Aplicada a = servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(vp(1), vo(88)));
+        verify(compraDao).confirmar(1, AT);
+        verify(compraOtroDao).confirmar(88, AT);
+        verify(compraDao, never()).confirmar(eq(88), any());
+        assertEquals(List.of(lb(1, "pendiente"), lo(88, "pendiente")), a.lineas());
+    }
+
+    @Test void recibirUnOtroNoPasaPorLaRecepcionDeLasPiezas() {
+        bloque41(lb(1, "en_camino"), lo(88, "en_camino"));
+        servicio.aplicar(41, BloqueCompraService.Accion.RECIBIR, List.of(vo(88)));
+        verify(compraOtroDao).confirmarRecibido(88, AT);
+        verify(compraDao, never()).confirmarRecibido(anyInt(), any());
+    }
+
+    @Test void cancelarYBorrarUnBloqueMixto() {
+        bloque41(lb(1, "en_camino"), lo(88, "en_camino"));
+        servicio.aplicar(41, BloqueCompraService.Accion.CANCELAR, List.of(v(1), vo(88)));
+        verify(compraDao).cancelar(1, AT);
+        verify(compraOtroDao).cancelar(88, AT);
+
+        bloque41(lb(2, "pendiente"), lo(89, "pendiente"));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
+        servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(2), vo(89)));
+        verify(compraDao).borrarPendiente(2, 41);
+        verify(compraOtroDao).borrarPendiente(89, 41);
+        verify(bloqueDao).borrarSiVacio(41);
+    }
+
+    @Test void borrarConUnOtroFueraDeLaListaEs409() {
+        bloque41(lb(1, "pendiente"), lo(88, "pendiente"));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.BORRAR, List.of(v(1))));
+        verify(compraDao, never()).borrarPendiente(anyInt(), any());
+        verify(compraOtroDao, never()).borrarPendiente(anyInt(), any());
+    }
+
+    @Test void unaLineaSinTipoEsUnaPieza() {
+        bloque41(lb(5, "pendiente"), lo(5, "pendiente"));
+        servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(v(5)));
+        verify(compraDao).confirmar(5, AT);
+        verify(compraOtroDao, never()).confirmar(anyInt(), any());
+    }
+
+    @Test void unOtroConElMismoIdQueUnaPiezaNoSeConfunde() {
+        bloque41(lb(5, "pendiente"), lo(5, "pendiente"));
+        servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(vo(5)));
+        verify(compraOtroDao).confirmar(5, AT);
+        verify(compraDao, never()).confirmar(anyInt(), any());
+    }
+
+    @Test void unOtroQueNoEstaEnElBloqueEs409AunqueHayaUnaPiezaConEseId() {
+        bloque41(lb(7, "pendiente"));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(vo(7))));
+        verify(compraDao, never()).confirmar(anyInt(), any());
+        verify(compraOtroDao, never()).confirmar(anyInt(), any());
+    }
+
+    @Test void separarMueveCadaLineaEnSuTablaYDevuelveLosIdsPorTipo() {
+        bloque41(lb(1, "pendiente"), lo(88, "en_camino"), lb(3, "pendiente"));
+        when(bloqueDao.crear(2)).thenReturn(90);
+        assertEquals(new BloqueCompraService.Separacion(41, 90, 2, List.of(1), List.of(88)),
+                servicio.separar(41, List.of(vp(1), vo(88))));
+        verify(compraDao).moverABloque(1, 41, 90);
+        verify(compraOtroDao).moverABloque(88, 41, 90);
+        verify(compraDao, never()).moverABloque(eq(88), any(), anyInt());
+        verify(compraDao, never()).moverABloque(eq(3), any(), anyInt());
+    }
+
+    @Test void separarUnOtroRecibidoEs422YDejarSoloOtrosEsValido() {
+        bloque41(lb(1, "pendiente"), lo(88, "recibido"), lo(89, "pendiente"));
+        falla(HttpStatus.UNPROCESSABLE_ENTITY, "Una línea recibida o cancelada no se puede mover.",
+                () -> servicio.separar(41, List.of(vo(88))));
+        when(bloqueDao.crear(2)).thenReturn(90);
+        assertEquals(new BloqueCompraService.Separacion(41, 90, 2, List.of(1), List.of()), servicio.separar(41, List.of(v(1))));
+    }
+
+    @Test void juntarMueveLasDosClasesDeLineaYExigeTambienLosOtros() {
+        bloque41(lb(1, "pendiente"), lo(88, "pendiente"));
+        when(bloqueDao.getById(40)).thenReturn(Optional.of(bloque(40, 2)));
+        falla(HttpStatus.CONFLICT, MODIFICADO, () -> servicio.juntar(41, 40, List.of(v(1))));
+        verify(compraDao, never()).moverABloque(anyInt(), any(), anyInt());
+
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
+        assertEquals(new BloqueCompraService.Union(41, 40, List.of(1), List.of(88)),
+                servicio.juntar(41, 40, List.of(v(1), vo(88))));
+        verify(compraDao).moverABloque(1, 41, 40);
+        verify(compraOtroDao).moverABloque(88, 41, 40);
+    }
+
+    @Test void tipoDeTomaPiezaSiNoViene() {
+        assertEquals(TipoLinea.PIEZA, BloqueCompraService.tipoDe(v(1)));
+        assertEquals(TipoLinea.PIEZA, BloqueCompraService.tipoDe(vp(1)));
+        assertEquals(TipoLinea.OTRO, BloqueCompraService.tipoDe(vo(1)));
     }
 }

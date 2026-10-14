@@ -4,6 +4,7 @@ import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
+import com.reparaciones.servidor.model.TipoLinea;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.BloqueCompraService;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -74,7 +75,7 @@ public class BloqueCompraController {
         BloqueCompraService.Separacion s = servicio.separar(idBloque, req.lineas());
         int idUsu = principal.getIdUsu();
         registro.creado(idUsu, s.nuevo(), s.idProv());
-        logDao.insertar(idUsu, "SEPARAR_BLOQUE", "DE: " + s.origen() + " A: " + s.nuevo() + ", ID_COMPRA: " + unir(s.ids()));
+        logDao.insertar(idUsu, "SEPARAR_BLOQUE", conIds("DE: " + s.origen() + " A: " + s.nuevo(), s.ids(), s.idsOtros()));
         return new SepararRespuesta(s.nuevo());
     }
 
@@ -84,7 +85,7 @@ public class BloqueCompraController {
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
         BloqueCompraService.Union u = servicio.juntar(idBloque, req.destino(), req.lineas());
         logDao.insertar(principal.getIdUsu(), "JUNTAR_BLOQUE",
-                "DE: " + u.origen() + " A: " + u.destino() + ", ID_COMPRA: " + unir(u.ids()));
+                conIds("DE: " + u.origen() + " A: " + u.destino(), u.ids(), u.idsOtros()));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -95,29 +96,50 @@ public class BloqueCompraController {
         logDao.insertar(principal.getIdUsu(), "EDITAR_NOTA_BLOQUE", "BLOQUE: " + idBloque);
     }
 
-    /** Un log por línea (el de su transición de siempre, para rastrear el stock línea a línea) y otro del bloque. */
+    /** Un log por línea (el de su transición de siempre, de pieza o de otro, para rastrear el stock línea a línea) y
+     *  otro del bloque con los ids por tipo (0.9.15). */
     private void aplicar(int idBloque, BloqueCompraService.Accion accion, LineasRequest req, UsuarioPrincipal principal) {
         BloqueCompraService.Aplicada a = servicio.aplicar(idBloque, accion, req.lineas());
         int idUsu = principal.getIdUsu();
-        for (BloqueCompraDAO.LineaBloque l : a.lineas()) logDao.insertar(idUsu, logDeLinea(accion), detalleDeLinea(accion, l));
-        logDao.insertar(idUsu, accion.log(), "BLOQUE: " + a.idBloque() + ", ID_COMPRA: "
-                + unir(a.lineas().stream().map(BloqueCompraDAO.LineaBloque::idCompra).toList()));
+        for (BloqueCompraDAO.LineaBloque l : a.lineas()) {
+            logDao.insertar(idUsu, logDeLinea(accion, l.tipoLinea()), detalleDeLinea(accion, l));
+        }
+        logDao.insertar(idUsu, accion.log(), conIds("BLOQUE: " + a.idBloque(),
+                idsDe(a.lineas(), TipoLinea.PIEZA), idsDe(a.lineas(), TipoLinea.OTRO)));
     }
 
-    static String logDeLinea(BloqueCompraService.Accion accion) {
-        return switch (accion) {
+    /** La acción de siempre de la línea: CONFIRMAR_PEDIDO, RECIBIR_PEDIDO…; la de un otro con «_OTRO», como
+     *  CompraOtroController (0.9.15). */
+    static String logDeLinea(BloqueCompraService.Accion accion, TipoLinea tipo) {
+        String base = switch (accion) {
             case CONFIRMAR -> "CONFIRMAR_PEDIDO";
             case RECIBIR -> "RECIBIR_PEDIDO";
             case CANCELAR -> "CANCELAR_PEDIDO";
             case BORRAR -> "BORRAR_PEDIDO";
         };
+        return tipo == TipoLinea.OTRO ? base + "_OTRO" : base;
     }
 
-    /** Los mismos detalles que las transiciones por línea de CompraController (RECIBIR_PEDIDO lleva componente y cantidad). */
+    /** Los mismos detalles que las transiciones por línea de CompraController y CompraOtroController: recibir lleva el
+     *  componente (o el concepto) y la cantidad. */
     static String detalleDeLinea(BloqueCompraService.Accion accion, BloqueCompraDAO.LineaBloque l) {
-        return accion == BloqueCompraService.Accion.RECIBIR
-                ? "ID_COMPRA: " + l.idCompra() + ", COMPONENTE: " + l.tipo() + ", CANT: " + l.cantidad()
-                : "ID_COMPRA: " + l.idCompra();
+        boolean otro = l.tipoLinea() == TipoLinea.OTRO;
+        String id = (otro ? "ID_COMPRA_OTRO: " : "ID_COMPRA: ") + l.idCompra();
+        if (accion != BloqueCompraService.Accion.RECIBIR) return id;
+        return id + (otro ? ", CONCEPTO: " : ", COMPONENTE: ") + l.tipo() + ", CANT: " + l.cantidad();
+    }
+
+    static List<Integer> idsDe(List<BloqueCompraDAO.LineaBloque> lineas, TipoLinea tipo) {
+        return lineas.stream().filter(l -> l.tipoLinea() == tipo).map(BloqueCompraDAO.LineaBloque::idCompra).toList();
+    }
+
+    /** «{cabecera}, ID_COMPRA: 12, 13, ID_COMPRA_OTRO: 88» (0.9.15): la parte de otros solo si hay otros, y la de piezas
+     *  si hay piezas o si no hay nada (el texto de siempre). */
+    static String conIds(String cabecera, List<Integer> piezas, List<Integer> otros) {
+        StringBuilder s = new StringBuilder(cabecera);
+        if (!piezas.isEmpty() || otros.isEmpty()) s.append(", ID_COMPRA: ").append(unir(piezas));
+        if (!otros.isEmpty()) s.append(", ID_COMPRA_OTRO: ").append(unir(otros));
+        return s.toString();
     }
 
     static String unir(List<Integer> ids) {

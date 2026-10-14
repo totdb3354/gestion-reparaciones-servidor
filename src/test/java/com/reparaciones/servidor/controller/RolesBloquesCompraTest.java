@@ -4,6 +4,7 @@ import com.reparaciones.servidor.UsuariosOperativosTestConfig;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.LineaVista;
+import com.reparaciones.servidor.model.TipoLinea;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.BloqueCompraService;
@@ -88,12 +89,30 @@ class RolesBloquesCompraTest {
         when(servicio.juntar(anyInt(), anyInt(), anyList())).thenReturn(new BloqueCompraService.Union(41, 40, List.of(5)));
         when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
         for (Op op : ESCRITURAS) llamar(op, supertecnico()).andExpect(status().isOk());
-        verify(servicio).separar(41, List.of(new LineaVista(5, LocalDateTime.of(2026, 10, 9, 10, 0))));
+        verify(servicio).separar(41, List.of(new LineaVista(5, LocalDateTime.of(2026, 10, 9, 10, 0), null)));
     }
 
     @Test void separarDevuelveElNumeroDelBloqueNuevo() throws Exception {
         when(servicio.separar(anyInt(), anyList())).thenReturn(new BloqueCompraService.Separacion(41, 90, 2, List.of(5)));
         when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
         llamar(ESCRITURAS.get(5), supertecnico()).andExpect(status().isOk()).andExpect(jsonPath("$.idBloque").value(90));
+    }
+
+    /** 0.9.15: el tipo de cada línea viaja en el JSON; sin él llega nulo (el servicio lo trata como pieza). */
+    @Test void elTipoDeCadaLineaLlegaAlServicio() throws Exception {
+        when(servicio.aplicar(anyInt(), any(), anyList())).thenReturn(new BloqueCompraService.Aplicada(41, List.of()));
+        llamar(new Op("POST", "/api/bloques-compra/41/confirmar", "{\"lineas\":[{\"idCompra\":5," + AT + ",\"tipo\":\"PIEZA\"},"
+                + "{\"idCompra\":88," + AT + ",\"tipo\":\"OTRO\"},{\"idCompra\":6," + AT + "}]}"), supertecnico())
+                .andExpect(status().isOk());
+        LocalDateTime at = LocalDateTime.of(2026, 10, 9, 10, 0);
+        verify(servicio).aplicar(41, BloqueCompraService.Accion.CONFIRMAR, List.of(
+                new LineaVista(5, at, TipoLinea.PIEZA), new LineaVista(88, at, TipoLinea.OTRO), new LineaVista(6, at, null)));
+    }
+
+    @Test void unTipoDesconocidoEs400SinLlegarAlServicio() throws Exception {
+        llamar(new Op("POST", "/api/bloques-compra/41/confirmar",
+                "{\"lineas\":[{\"idCompra\":5," + AT + ",\"tipo\":\"CAJA\"}]}"), supertecnico())
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(servicio);
     }
 }
