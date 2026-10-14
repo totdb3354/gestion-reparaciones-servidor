@@ -55,7 +55,7 @@ class BloqueCompraDAOTest {
         when(jdbc.query(eq(BloqueCompraDAO.SQL_ABIERTO), any(RowMapper.class), eq(2))).thenReturn(List.of(41));
         assertEquals(Optional.of(41), dao.abiertoMasReciente(2));
         assertEquals(Optional.empty(), dao.abiertoMasReciente(3));
-        assertTrue(BloqueCompraDAO.SQL_ABIERTO.endsWith("ORDER BY b.ID_BLOQUE DESC LIMIT 1"));
+        assertTrue(BloqueCompraDAO.SQL_ABIERTO.endsWith("ORDER BY b.RECONSTRUIDO, b.ID_BLOQUE DESC LIMIT 1"));
     }
 
     /** Abierto = tiene alguna línea (pieza u otro) y ninguna, de ninguna de las dos tablas, distinta de pendiente. */

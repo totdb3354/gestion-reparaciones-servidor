@@ -35,7 +35,9 @@ public class BloqueCompraDAO {
         }
     }
 
-    /** Abierto = tiene alguna línea (pieza u otro) y ninguna distinta de pendiente, en ninguna de las dos tablas. */
+    /** Abierto = tiene alguna línea (pieza u otro) y ninguna distinta de pendiente, en ninguna de las dos tablas. Los
+     *  bloques actuales van antes que los antiguos (RECONSTRUIDO): uno antiguo solo si no hay otro abierto (la
+     *  reconstrucción de los otros puede crear uno antiguo solo con otros pendientes y con el ID más alto). */
     static final String SQL_ABIERTO =
             "SELECT b.ID_BLOQUE FROM Bloque_compra b" +
             " WHERE b.ID_PROV = ?" +
@@ -43,7 +45,7 @@ public class BloqueCompraDAO {
             " OR EXISTS (SELECT 1 FROM Compra_otro co WHERE co.ID_BLOQUE = b.ID_BLOQUE))" +
             " AND NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE AND cc.ESTADO <> 'pendiente')" +
             " AND NOT EXISTS (SELECT 1 FROM Compra_otro co WHERE co.ID_BLOQUE = b.ID_BLOQUE AND co.ESTADO <> 'pendiente')" +
-            " ORDER BY b.ID_BLOQUE DESC LIMIT 1";
+            " ORDER BY b.RECONSTRUIDO, b.ID_BLOQUE DESC LIMIT 1";
     /** Piezas y otros del bloque, por FECHA_PEDIDO y, a igual fecha, piezas antes que otros ('PIEZA' > 'OTRO') y por id. */
     static final String SQL_LINEAS =
             "SELECT 'PIEZA' AS TIPO_LINEA, cc.ID_COMPRA AS ID_LINEA, c.TIPO AS NOMBRE, cc.CANTIDAD, cc.ESTADO, cc.UPDATED_AT," +
@@ -92,7 +94,8 @@ public class BloqueCompraDAO {
                 idBloque).stream().findFirst();
     }
 
-    /** El bloque abierto (todas sus líneas, piezas y otros, pendientes) más reciente del proveedor, si lo hay. */
+    /** El bloque abierto (todas sus líneas, piezas y otros, pendientes) más reciente del proveedor, si lo hay: los
+     *  bloques actuales antes que los antiguos (RECONSTRUIDO); uno antiguo solo si no hay otro abierto. */
     public Optional<Integer> abiertoMasReciente(int idProv) {
         return jdbc.query(SQL_ABIERTO, (rs, row) -> rs.getInt("ID_BLOQUE"), idProv).stream().findFirst();
     }
