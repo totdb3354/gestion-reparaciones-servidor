@@ -20,6 +20,14 @@ public class CompraOtro {
     private String        estado;
     private LocalDateTime updatedAt;
 
+    // 0.9.15: datos del bloque del otro, igual que CompraComponente (spec «Añadir otro» §4.4). Nulos solo en el hueco de
+    // un despliegue.
+    @Schema(nullable = true) private Integer       idBloque;
+    @Schema(nullable = true) private LocalDateTime fechaBloque;
+    @Schema(nullable = true) private String        notaBloque;
+    @Schema(nullable = true) private LocalDateTime bloqueUpdatedAt;
+    private boolean       bloqueAntiguo;
+
     public CompraOtro() {}
 
     public CompraOtro(int idCompraOtro, int idProv, String nombreProveedor, String concepto,
@@ -57,4 +65,22 @@ public class CompraOtro {
     public double        getPrecioEur()          { return precioEur; }
     public String        getEstado()             { return estado; }
     public LocalDateTime getUpdatedAt()          { return updatedAt; }
+
+    /** Rellena los datos del bloque (los pone el MAPPER del DAO). Los tests que no los necesitan usan solo el
+     *  constructor, que los deja vacíos. */
+    public CompraOtro conBloque(Integer idBloque, LocalDateTime fechaBloque, String notaBloque,
+                                LocalDateTime bloqueUpdatedAt, boolean bloqueAntiguo) {
+        this.idBloque        = idBloque;
+        this.fechaBloque     = fechaBloque;
+        this.notaBloque      = notaBloque;
+        this.bloqueUpdatedAt = bloqueUpdatedAt;
+        this.bloqueAntiguo   = bloqueAntiguo;
+        return this;
+    }
+
+    public Integer       getIdBloque()           { return idBloque; }
+    public LocalDateTime getFechaBloque()        { return fechaBloque; }
+    public String        getNotaBloque()         { return notaBloque; }
+    public LocalDateTime getBloqueUpdatedAt()    { return bloqueUpdatedAt; }
+    public boolean       isBloqueAntiguo()       { return bloqueAntiguo; }
 }
