@@ -7,8 +7,11 @@ import com.reparaciones.servidor.dao.TipoCambioDAO;
 import com.reparaciones.servidor.model.CompraOtro;
 import com.reparaciones.servidor.model.Proveedor;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.BloqueCompraService;
 import com.reparaciones.servidor.service.ConversionEur;
+import com.reparaciones.servidor.service.DestinoBloque;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -33,14 +36,16 @@ class CompraOtroControllerTest {
     private final LogDAO logDao = mock(LogDAO.class);
     private final ProveedorDAO proveedorDao = mock(ProveedorDAO.class);
     private final TipoCambioDAO tipoCambio = mock(TipoCambioDAO.class);
+    private final BloqueCompraService bloques = mock(BloqueCompraService.class);
     private final CompraOtroController ctl = new CompraOtroController(dao, logDao, proveedorDao,
-            new ConversionEur(tipoCambio));
+            new ConversionEur(tipoCambio), bloques, new RegistroBloques(logDao, proveedorDao));
     private final UsuarioPrincipal super7 = new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3);
 
     CompraOtroControllerTest() {
         when(proveedorDao.getById(2)).thenReturn(Optional.of(new Proveedor(2, "Proveedor A", true, "EUR", null, "COMPONENTES")));
         when(proveedorDao.getById(8)).thenReturn(Optional.of(new Proveedor(8, "ACME", false, "EUR", null, "COMPONENTES")));
         when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
+        when(bloques.altaOtroSuelta(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble())).thenReturn(new DestinoBloque.Destino(90, false));
     }
 
     private static CompraOtroController.InsertarRequest alta(int idProv, String concepto, int cantidad, double precio, String divisa) {
@@ -62,7 +67,7 @@ class CompraOtroControllerTest {
     }
 
     private void nadaEscritoNiRegistrado() {
-        verify(dao, never()).insertar(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble());
+        verify(bloques, never()).altaOtroSuelta(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble());
         verify(dao, never()).editar(anyInt(), anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), any());
         verify(dao, never()).confirmarParcial(anyInt(), anyInt(), any());
         verify(dao, never()).recibirResto(anyInt(), anyInt(), any());
@@ -105,10 +110,11 @@ class CompraOtroControllerTest {
         nadaEscritoNiRegistrado();
     }
 
-    @Test void altaValidaEscribeYRegistra() {
+    @Test void altaValidaEscribeEnElBloqueDelProveedorYRegistra() {
         ctl.insertar(alta(2, CINTA, 3, 1.5, "EUR"), super7);
-        verify(dao).insertar(2, CINTA, 3, false, 1.5, "EUR", 1.5);
-        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3");
+        verify(bloques).altaOtroSuelta(2, CINTA, 3, false, 1.5, "EUR", 1.5);
+        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3, BLOQUE: 90");
+        verifyNoMoreInteractions(logDao);
     }
 
     @Test void editarValidaConceptoYProveedor() {
@@ -172,7 +178,7 @@ class CompraOtroControllerTest {
     @Test void altaEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
         when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
         ctl.insertar(new CompraOtroController.InsertarRequest(2, CINTA, 3, false, 10.0, "USD", 999.0), super7);
-        verify(dao).insertar(2, CINTA, 3, false, 10.0, "USD", 8.8);
+        verify(bloques).altaOtroSuelta(2, CINTA, 3, false, 10.0, "USD", 8.8);
     }
 
     @Test void editarEnDolaresCalculaElEurYIgnoraElDeLaPeticion() {
@@ -198,5 +204,30 @@ class CompraOtroControllerTest {
                 () -> ctl.editar(5, new CompraOtroController.EditarRequest(2, CINTA, 4, false, 10.0, "USD", 999.0, AT), super7));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
         nadaEscritoNiRegistrado();
+    }
+
+    // ── 0.9.15: alta en su bloque y concepto de 255 como mucho ──
+    @Test void altaQueCreaBloqueLoRegistraAntesQueElPedido() {
+        when(bloques.altaOtroSuelta(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble()))
+                .thenReturn(new DestinoBloque.Destino(91, true));
+        ctl.insertar(alta(2, CINTA, 3, 1.5, "EUR"), super7);
+        InOrder orden = inOrder(logDao);
+        orden.verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 91, PROVEEDOR: Proveedor A");
+        orden.verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3, BLOQUE: 91");
+    }
+
+    @Test void unConceptoDeMasDe255EsUn422EnElAltaYEnLaEdicion() {
+        String largo = "x".repeat(256);
+        assertEquals("El concepto no puede pasar de 255 caracteres.", falla422(() -> ctl.insertar(alta(2, largo, 3, 1.5, "EUR"), super7)));
+        assertEquals("El concepto no puede pasar de 255 caracteres.", falla422(() -> ctl.editar(5, edicion(2, largo, 3, 1.5), super7)));
+        nadaEscritoNiRegistrado();
+    }
+
+    @Test void elConceptoSeGuardaRecortadoY255CabenJusto() {
+        String justo = "x".repeat(255);
+        ctl.insertar(alta(2, "  " + justo + "  ", 3, 1.5, "EUR"), super7);
+        verify(bloques).altaOtroSuelta(2, justo, 3, false, 1.5, "EUR", 1.5);
+        ctl.editar(5, edicion(2, " " + CINTA + " ", 3, 1.5), super7);
+        verify(dao).editar(5, 2, CINTA, 3, false, 1.5, "EUR", 1.5, AT);
     }
 }

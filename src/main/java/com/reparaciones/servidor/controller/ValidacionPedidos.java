@@ -21,6 +21,9 @@ final class ValidacionPedidos {
     static final String MSG_CANTIDAD            = "Cantidad no válida (debe ser > 0).";
     static final String MSG_PRECIO              = "Precio no válido.";
     static final String MSG_CONCEPTO            = "El concepto no puede estar vacío.";
+    /** 0.9.15: VARCHAR(255) de Compra_otro.CONCEPTO; hasta ahora un concepto más largo daba un 500. */
+    static final int    CONCEPTO_MAX            = 255;
+    static final String MSG_CONCEPTO_LARGO      = "El concepto no puede pasar de 255 caracteres.";
     static final String MSG_DIVISA              = "Divisa no válida (EUR o USD).";
     static final String MSG_COMPONENTE_INACTIVO = "El componente no está activo.";
     static final String MSG_PROVEEDOR_INACTIVO  = "El proveedor no está activo.";
@@ -32,6 +35,7 @@ final class ValidacionPedidos {
     static final String MSG_SOLICITUD_SIN_LINEA = "La solicitud no corresponde a ninguna línea del pedido.";
     static final String L_COMPONENTE            = "selecciona un componente.";
     static final String L_CONCEPTO              = "el concepto no puede estar vacío.";
+    static final String L_CONCEPTO_LARGO        = "el concepto no puede pasar de 255 caracteres.";
     static final String L_PROVEEDOR             = "selecciona un proveedor.";
     static final String L_COMPONENTE_OFF        = "el componente está desactivado.";
     static final String L_PROVEEDOR_OFF         = "el proveedor está desactivado.";
@@ -49,6 +53,15 @@ final class ValidacionPedidos {
 
     static void conceptoInformado(String concepto) {
         if (concepto == null || concepto.isBlank()) throw regla(MSG_CONCEPTO);
+    }
+
+    /** Concepto informado y, recortado, de 255 caracteres como mucho (0.9.15). Devuelve el recortado, que es el que se
+     *  guarda. */
+    static String conceptoValido(String concepto) {
+        conceptoInformado(concepto);
+        String recortado = concepto.trim();
+        if (recortado.length() > CONCEPTO_MAX) throw regla(MSG_CONCEPTO_LARGO);
+        return recortado;
     }
 
     /** Devuelve la divisa normalizada (recortada y en mayúsculas), que es la que se guarda. */
@@ -92,6 +105,11 @@ final class ValidacionPedidos {
     /** "Línea {n}: {texto}" con n 1-based, como el aviso del formulario. */
     static ResponseStatusException enLinea(int numero, String texto) {
         return regla("Línea " + numero + ": " + texto);
+    }
+
+    /** "Otro {n}: {texto}" con n 1-based: un otro de «Nuevo pedido» (0.9.15), numerado aparte de las piezas. */
+    static ResponseStatusException enOtro(int numero, String texto) {
+        return regla("Otro " + numero + ": " + texto);
     }
 
     static ResponseStatusException regla(String mensaje) {

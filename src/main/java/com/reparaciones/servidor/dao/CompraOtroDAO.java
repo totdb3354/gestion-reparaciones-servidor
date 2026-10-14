@@ -74,30 +74,6 @@ public class CompraOtroDAO {
         return rows.stream().findFirst();
     }
 
-    /** Devuelve el ID_COMPRA_OTRO generado (el lote lo devuelve a la web, sub-proyecto 4b; el POST suelto lo ignora). */
-    public int insertar(int idProv, String concepto, int cantidad, boolean esUrgente,
-                        double precioUnidad, String divisa, double precioEur) {
-        KeyHolder claves = new GeneratedKeyHolder();
-        jdbc.update((PreparedStatementCreator) con -> {
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO Compra_otro" +
-                    " (ID_PROV, CONCEPTO, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO)" +
-                    " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente')",
-                    Statement.RETURN_GENERATED_KEYS);
-            ps.setInt(1, idProv);
-            ps.setString(2, concepto);
-            ps.setInt(3, cantidad);
-            ps.setBoolean(4, esUrgente);
-            ps.setDouble(5, precioUnidad);
-            ps.setString(6, divisa);
-            ps.setDouble(7, precioEur);
-            return ps;
-        }, claves);
-        Number id = claves.getKey();
-        if (id == null) throw new IllegalStateException("La BD no devolvió el ID_COMPRA_OTRO del pedido insertado");
-        return id.intValue();
-    }
-
     /** Alta de un otro en el bloque `idBloque` de su proveedor (0.9.15, como CompraComponenteDAO.insertar). Devuelve el
      *  ID_COMPRA_OTRO generado (el lote lo devuelve a la web; el POST suelto lo ignora). */
     public int insertar(int idProv, String concepto, int cantidad, boolean esUrgente,

@@ -2,6 +2,7 @@ package com.reparaciones.servidor.service;
 
 import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
+import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
@@ -72,11 +73,14 @@ public class BloqueCompraService {
 
     private final BloqueCompraDAO bloqueDao;
     private final CompraComponenteDAO compraDao;
+    private final CompraOtroDAO compraOtroDao;
     private final DestinoBloque destinoBloque;
 
-    public BloqueCompraService(BloqueCompraDAO bloqueDao, CompraComponenteDAO compraDao, DestinoBloque destinoBloque) {
+    public BloqueCompraService(BloqueCompraDAO bloqueDao, CompraComponenteDAO compraDao, CompraOtroDAO compraOtroDao,
+                               DestinoBloque destinoBloque) {
         this.bloqueDao = bloqueDao;
         this.compraDao = compraDao;
+        this.compraOtroDao = compraOtroDao;
         this.destinoBloque = destinoBloque;
     }
 
@@ -86,6 +90,16 @@ public class BloqueCompraService {
                                             double precioUnidad, String divisa, double precioEur) {
         DestinoBloque.Destino d = destinoBloque.resolver(idProv, null, true);
         compraDao.insertar(idCom, idProv, cantidad, esUrgente, precioUnidad, divisa, precioEur, d.idBloque());
+        return d;
+    }
+
+    /** POST /api/compras-otros (alta suelta de un otro, 0.9.15): como {@link #altaSuelta}, regla por defecto (el abierto
+     *  más reciente del proveedor o uno nuevo) y alta en la misma transacción. */
+    @Transactional
+    public DestinoBloque.Destino altaOtroSuelta(int idProv, String concepto, int cantidad, boolean esUrgente,
+                                                double precioUnidad, String divisa, double precioEur) {
+        DestinoBloque.Destino d = destinoBloque.resolver(idProv, null, true);
+        compraOtroDao.insertar(idProv, concepto, cantidad, esUrgente, precioUnidad, divisa, precioEur, d.idBloque());
         return d;
     }
 

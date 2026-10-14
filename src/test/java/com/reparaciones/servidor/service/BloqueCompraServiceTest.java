@@ -2,6 +2,7 @@ package com.reparaciones.servidor.service;
 
 import com.reparaciones.servidor.dao.BloqueCompraDAO;
 import com.reparaciones.servidor.dao.CompraComponenteDAO;
+import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.model.CompraComponente;
 import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.model.LineaVista;
@@ -24,7 +25,8 @@ class BloqueCompraServiceTest {
     static final LocalDateTime AT = LocalDateTime.of(2026, 10, 9, 10, 0, 0);
     final BloqueCompraDAO bloqueDao = mock(BloqueCompraDAO.class);
     final CompraComponenteDAO compraDao = mock(CompraComponenteDAO.class);
-    final BloqueCompraService servicio = new BloqueCompraService(bloqueDao, compraDao, new DestinoBloque(bloqueDao));
+    final CompraOtroDAO compraOtroDao = mock(CompraOtroDAO.class);
+    final BloqueCompraService servicio = new BloqueCompraService(bloqueDao, compraDao, compraOtroDao, new DestinoBloque(bloqueDao));
 
     static BloqueCompraDAO.Bloque bloque(int id, int idProv) {
         return new BloqueCompraDAO.Bloque(id, idProv, AT, null, false, AT);
@@ -53,6 +55,22 @@ class BloqueCompraServiceTest {
         when(bloqueDao.crear(2)).thenReturn(90);
         assertEquals(new DestinoBloque.Destino(90, true), servicio.altaSuelta(1, 2, 3, false, 10.0, "EUR", 10.0));
         verify(compraDao).insertar(1, 2, 3, false, 10.0, "EUR", 10.0, 90);
+    }
+
+    // ── 0.9.15: alta suelta de un otro ──
+    @Test void altaOtroSueltaVaAlAbiertoDelProveedor() {
+        when(bloqueDao.abiertoMasReciente(2)).thenReturn(Optional.of(41));
+        assertEquals(new DestinoBloque.Destino(41, false),
+                servicio.altaOtroSuelta(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5));
+        verify(compraOtroDao).insertar(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5, 41);
+        verifyNoInteractions(compraDao);
+    }
+
+    @Test void altaOtroSueltaSinAbiertoCreaUnBloque() {
+        when(bloqueDao.crear(2)).thenReturn(90);
+        assertEquals(new DestinoBloque.Destino(90, true),
+                servicio.altaOtroSuelta(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5));
+        verify(compraOtroDao).insertar(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5, 90);
     }
 
     // ── mover ──
