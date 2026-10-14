@@ -188,4 +188,43 @@ class PuntosCalculoTest {
         assertEquals(p.getPuntos(), p.getPuntosJornada(), 0.001);
         assertEquals(p.getnImeis(), p.getnImeisJornada());
     }
+
+    // ── abrir / cerrar (spec 2026-10-13 §2.8) ────────────────────────────────
+    private static final Map<String, Double> CON_ABRIR_CERRAR =
+            Map.of("otro", 0.25, "abrir", 0.25, "cerrar", 0.17, "bateria", 1.00);
+
+    @Test void unaAccionOtroPuntuaAbrirOCerrarSegunSuTexto() {
+        assertEquals("abrir",   PuntosCalculo.claveDePieza("otroi13pro", "Abrir"));
+        assertEquals("abrir",   PuntosCalculo.claveDePieza("otroi13pro", " abierto para glass"));
+        assertEquals("cerrar",  PuntosCalculo.claveDePieza("otroi13pro", "CERRAR"));
+        assertEquals("otro",    PuntosCalculo.claveDePieza("otroi13pro", "Limpieza de conector"));
+        assertEquals("otro",    PuntosCalculo.claveDePieza("otroi13pro", null));
+        assertEquals("otro",    PuntosCalculo.claveDePieza(null, "Abrir"));      // sin pieza: no es una acción «otro»
+        assertEquals("bateria", PuntosCalculo.claveDePieza("bati13", "Abrir"));  // solo las acciones «otro» miran el texto
+        assertEquals("otro",    PuntosCalculo.claveDePieza("xyz13", "Abrir"));   // SKU no reconocido: sigue siendo «otro»
+    }
+
+    @Test void abrirValeCeroVeinticincoYCerrarCeroDiecisiete() {
+        double p = PuntosCalculo.puntosDeReparacion("R20261013_1", List.of(
+                new PuntosCalculo.Pieza("otroi13pro", 0, "Abrir"),
+                new PuntosCalculo.Pieza("otroi13pro", 0, "Cerrar")), CON_ABRIR_CERRAR);
+        assertEquals(0.42, p, 0.001);
+    }
+
+    @Test void sinLaClaveAbrirOCerrarPuntuanComoOtro() {
+        Map<String, Double> soloOtro = Map.of("otro", 0.25);
+        assertEquals(0.25, PuntosCalculo.puntosDeReparacion("R1",
+                List.of(new PuntosCalculo.Pieza("otroi13", 0, "Cerrar")), soloOtro), 0.001);
+        assertEquals(0.25, PuntosCalculo.puntosDeReparacion("R1",
+                List.of(new PuntosCalculo.Pieza("otroi13", 0, "Abrir")), soloOtro), 0.001);
+    }
+
+    @Test void agregarLlevaLaObservacionDeCadaFilaAlCalculo() {
+        LocalDate d = LocalDate.of(2026, 10, 13);
+        List<PuntosCalculo.FilaPuntos> filas = List.of(
+                new PuntosCalculo.FilaPuntos("Técnico L", d, "R20261013_1", "111", "otroi13pro", 0, true, "Abrir"),
+                new PuntosCalculo.FilaPuntos("Técnico L", d, "R20261013_2", "111", "otroi13pro", 0, true, "Cerrar"));
+        PuntoEstadisticaPuntos p = PuntosCalculo.agregar(filas, CON_ABRIR_CERRAR, LocalDate::toString).get(0);
+        assertEquals(0.42, p.getPuntos(), 0.001);
+    }
 }
