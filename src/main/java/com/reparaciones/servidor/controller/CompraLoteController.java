@@ -29,11 +29,11 @@ import java.util.function.BiFunction;
 
 import static com.reparaciones.servidor.controller.ValidacionPedidos.*;
 
-/** Alta por lotes de los formularios "Nuevo pedido" y "Nuevo otro pedido" (spec 4b §4.4, P5): una petición, una
- *  transacción y una clave de idempotencia por guardado. Los POST sueltos de CompraController y CompraOtroController
- *  siguen para el JavaFX. Controlador propio para no tocar los constructores de los otros dos. Desde la 0.9.15 (spec
- *  «Añadir otro» §4.2) «Nuevo pedido» manda también sus otros (`otros`), que van al bloque de su proveedor con las
- *  piezas, y el lote de otros mete cada otro en un bloque. */
+/** Alta por lotes del formulario "Nuevo pedido" (spec 4b §4.4, P5): una petición, una transacción y una clave de
+ *  idempotencia por guardado. Los POST sueltos de CompraController y CompraOtroController siguen para el JavaFX.
+ *  Desde la 0.9.15 (spec «Añadir otro» §4.2) `POST /api/compras/lote` es «Nuevo pedido» con piezas y otros (`otros`),
+ *  y cada otro va al bloque de su proveedor con las piezas. `POST /api/compras-otros/lote` sigue para la web anterior
+ *  durante los despliegues (cada otro al bloque abierto por defecto de su proveedor). */
 @RestController
 @RequestMapping("/api")
 public class CompraLoteController {

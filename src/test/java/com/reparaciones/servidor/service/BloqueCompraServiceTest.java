@@ -580,7 +580,18 @@ class BloqueCompraServiceTest {
         InOrder orden = inOrder(compraOtroDao);
         orden.verify(compraOtroDao).editar(88, 3, "Cinta de embalar", 4, false, 2.0, "EUR", 2.0, AT);
         orden.verify(compraOtroDao).moverABloque(88, 41, 60);
+        verify(bloqueDao).borrarSiVacio(41);
         assertEquals(new BloqueCompraService.Movimiento(88, "pendiente", 41, 60, false, 3, false, TipoLinea.OTRO), m);
+    }
+
+    @Test void editarElUltimoOtroAOtroProveedorBorraElBloqueOrigenVacio() {
+        when(compraOtroDao.getById(88)).thenReturn(Optional.of(otroLinea("pendiente", 41)));
+        when(bloqueDao.abiertoMasReciente(3)).thenReturn(Optional.of(60));
+        when(bloqueDao.borrarSiVacio(41)).thenReturn(true);
+        BloqueCompraService.Movimiento m = servicio.editarOtroCambiandoProveedor(88, 3, "Cinta de embalar", 4, false,
+                2.0, "EUR", 2.0, AT, null);
+        verify(bloqueDao).borrarSiVacio(41);
+        assertEquals(new BloqueCompraService.Movimiento(88, "pendiente", 41, 60, false, 3, true, TipoLinea.OTRO), m);
     }
 
     @Test void editarUnOtroYaPedidoSinDestinoCreaUnBloqueYConDestinoUsaEse() {
