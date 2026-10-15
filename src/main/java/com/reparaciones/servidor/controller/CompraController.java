@@ -46,13 +46,13 @@ public class CompraController {
         this.registroBloques = registroBloques;
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping
     public List<CompraComponente> getAll() {
         return dao.getAll();
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping("/en-camino")
     public List<CompraComponente> getEnCamino() {
         return dao.getEnCamino();

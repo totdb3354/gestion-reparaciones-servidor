@@ -41,7 +41,7 @@ public class ProveedorController {
         this.idempotencia = idempotencia;
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping
     public List<Proveedor> getAll(@RequestParam(required = false) String tipo) {
         return dao.getAll(tipo);

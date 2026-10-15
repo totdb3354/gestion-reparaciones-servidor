@@ -41,7 +41,7 @@ public class CompraOtroController {
         this.registroBloques = registroBloques;
     }
 
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
+    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping
     public List<CompraOtro> getAll() {
         return dao.getAll();
