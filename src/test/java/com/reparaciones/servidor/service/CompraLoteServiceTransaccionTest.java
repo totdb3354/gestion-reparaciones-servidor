@@ -79,7 +79,7 @@ class CompraLoteServiceTransaccionTest {
                 .thenThrow(new DataAccessResourceFailureException("BD caída"));
 
         assertThrows(DataAccessResourceFailureException.class,
-                () -> servicio.guardarCompras(List.of(linea(1), linea(7)), List.of(11), List.of(), Map.of()));
+                () -> servicio.guardarCompras(List.of(linea(1), linea(7)), List.of(11), List.of(), Map.of(), List.of()));
 
         verify(connection).rollback();
         verify(connection, never()).commit();
@@ -90,14 +90,14 @@ class CompraLoteServiceTransaccionTest {
         when(compraDao.insertar(anyInt(), anyInt(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), anyInt()))
                 .thenReturn(41);
 
-        servicio.guardarCompras(List.of(linea(1)), List.of(11), List.of(21), Map.of());
+        servicio.guardarCompras(List.of(linea(1)), List.of(11), List.of(21), Map.of(), List.of());
 
         verify(connection).commit();
         verify(connection, never()).rollback();
     }
 
     @Test void unFalloEnElLoteDeOtrosHaceRollbackYNuncaCommit() throws SQLException {
-        when(compraOtroDao.insertar(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble()))
+        when(compraOtroDao.insertar(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), anyInt()))
                 .thenReturn(51)
                 .thenThrow(new DataAccessResourceFailureException("BD caída"));
 
@@ -107,5 +107,20 @@ class CompraLoteServiceTransaccionTest {
 
         verify(connection).rollback();
         verify(connection, never()).commit();
+    }
+
+    /** 0.9.15: un otro que falla deshace también las piezas del mismo guardado. */
+    @Test void unFalloEnUnOtroDelLoteDeComprasHaceRollbackYNuncaCommit() throws SQLException {
+        when(compraDao.insertar(anyInt(), anyInt(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), anyInt()))
+                .thenReturn(41);
+        when(compraOtroDao.insertar(anyInt(), any(), anyInt(), anyBoolean(), anyDouble(), any(), anyDouble(), anyInt()))
+                .thenThrow(new DataAccessResourceFailureException("BD caída"));
+
+        assertThrows(DataAccessResourceFailureException.class, () -> servicio.guardarCompras(List.of(linea(1)), List.of(11),
+                List.of(), Map.of(), List.of(new CompraLoteService.LineaOtro(2, "Cinta de embalar", 1, false, 0.0, "EUR", 0.0))));
+
+        verify(connection).rollback();
+        verify(connection, never()).commit();
+        verifyNoInteractions(reparacionComponenteDao);
     }
 }

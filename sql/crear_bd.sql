@@ -318,6 +318,7 @@ CREATE TABLE Compra_componente (
 CREATE TABLE Compra_otro (
     ID_COMPRA_OTRO       INT           NOT NULL AUTO_INCREMENT,
     ID_PROV              INT           NOT NULL,
+    ID_BLOQUE            INT,
     CONCEPTO             VARCHAR(255)  NOT NULL,
     CANTIDAD             INT           NOT NULL,
     CANTIDAD_RECIBIDA    INT,
@@ -330,7 +331,9 @@ CREATE TABLE Compra_otro (
     ESTADO               ENUM('pendiente','en_camino','parcial','recibido','cancelado') NOT NULL DEFAULT 'pendiente',
     UPDATED_AT           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (ID_COMPRA_OTRO),
-    CONSTRAINT fk_compra_otro_proveedor FOREIGN KEY (ID_PROV) REFERENCES Proveedor (ID_PROV)
+    CONSTRAINT fk_compra_otro_proveedor FOREIGN KEY (ID_PROV)   REFERENCES Proveedor     (ID_PROV),
+    CONSTRAINT fk_compra_otro_bloque    FOREIGN KEY (ID_BLOQUE) REFERENCES Bloque_compra (ID_BLOQUE),
+    INDEX idx_compra_otro_bloque (ID_BLOQUE)
 );
 
 -- ── Tablas de reparaciones ────────────────────────────────────────────────────

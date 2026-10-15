@@ -3,6 +3,8 @@
 -- proveedor y bloques vacíos); es seguro con el 0.9.9 funcionando. Se ejecuta tras migracion-bloques-compra.sql, otra
 -- vez después de desplegar el servidor 0.9.9 (recoge las líneas que el 0.9.8 creó en el hueco) y después de cualquier
 -- vuelta atrás al 0.9.8.
+-- 0.9.15: un bloque también puede llevar otros (Compra_otro.ID_BLOQUE): un bloque solo está vacío si no le queda ni
+-- pieza ni otro. Desde entonces el script necesita migracion-otros-en-bloques.sql aplicada.
 USE gestion_reparaciones;
 
 -- ── Reparación ────────────────────────────────────────────────────────────────
@@ -32,14 +34,17 @@ JOIN Bloque_compra b ON b.RECONSTRUIDO AND b.ID_PROV = cc.ID_PROV AND DATE(b.FEC
 SET cc.ID_BLOQUE = b.ID_BLOQUE, cc.UPDATED_AT = cc.UPDATED_AT
 WHERE cc.ID_BLOQUE IS NULL;
 
--- Borrar una línea pendiente en el 0.9.8 puede haber vaciado un bloque: un bloque sin líneas no existe.
+-- Borrar una línea pendiente en el 0.9.8 puede haber vaciado un bloque: un bloque sin líneas (ni piezas ni otros,
+-- 0.9.15) no existe. Sin la condición de los otros se borraría un bloque que solo lleva otros.
 DELETE b FROM Bloque_compra b
-WHERE NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE);
+WHERE NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE)
+  AND NOT EXISTS (SELECT 1 FROM Compra_otro co WHERE co.ID_BLOQUE = b.ID_BLOQUE);
 
 -- ── Comprobación ──────────────────────────────────────────────────────────────
 SELECT COUNT(*) AS lineas_sin_bloque FROM Compra_componente WHERE ID_BLOQUE IS NULL;                         -- 0
 SELECT COUNT(*) AS bloques_vacios FROM Bloque_compra b
- WHERE NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE);                  -- 0
+ WHERE NOT EXISTS (SELECT 1 FROM Compra_componente cc WHERE cc.ID_BLOQUE = b.ID_BLOQUE)
+   AND NOT EXISTS (SELECT 1 FROM Compra_otro co WHERE co.ID_BLOQUE = b.ID_BLOQUE);                         -- 0
 SELECT COUNT(*) AS lineas_de_otro_proveedor FROM Compra_componente cc
   JOIN Bloque_compra b ON b.ID_BLOQUE = cc.ID_BLOQUE WHERE b.ID_PROV <> cc.ID_PROV;                       -- 0
 SELECT COUNT(*) AS reconstruidos FROM Bloque_compra WHERE RECONSTRUIDO;

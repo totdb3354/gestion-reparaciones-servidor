@@ -25,12 +25,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 
 import static com.reparaciones.servidor.controller.ValidacionPedidos.*;
 
-/** Alta por lotes de los formularios "Nuevo pedido" y "Nuevo otro pedido" (spec 4b §4.4, P5): una petición, una
- *  transacción y una clave de idempotencia por guardado. Los POST sueltos de CompraController y CompraOtroController
- *  siguen para el JavaFX. Controlador propio para no tocar los constructores de los otros dos. */
+/** Alta por lotes del formulario "Nuevo pedido" (spec 4b §4.4, P5): una petición, una transacción y una clave de
+ *  idempotencia por guardado. Los POST sueltos de CompraController y CompraOtroController siguen para el JavaFX.
+ *  Desde la 0.9.15 (spec «Añadir otro» §4.2) `POST /api/compras/lote` es «Nuevo pedido» con piezas y otros (`otros`),
+ *  y cada otro va al bloque de su proveedor con las piezas. `POST /api/compras-otros/lote` sigue para la web anterior
+ *  durante los despliegues (cada otro al bloque abierto por defecto de su proveedor). */
 @RestController
 @RequestMapping("/api")
 public class CompraLoteController {
@@ -70,7 +73,11 @@ public class CompraLoteController {
                                                     @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false)
                                                     String claveIdempotencia) {
         exigirClave(claveIdempotencia);
-        List<LineaValidada> lineas = validarLineasCompra(req.lineas());
+        List<LoteComprasOtros.Linea> pedidosOtros = req.otros() == null ? List.of() : req.otros();
+        // 0.9.15: primero todas las piezas («Línea n: …», como siempre) y después los otros («Otro n: …»). Sin piezas
+        // vale si hay otros.
+        List<LineaValidada> lineas = validarLineasCompra(req.lineas(), pedidosOtros.isEmpty());
+        List<OtroValidado> otros = validarOtros(pedidosOtros, ValidacionPedidos::enOtro);
         List<Integer> urgentes = lista(req.solicitudes() == null ? null : req.solicitudes().urgentes());
         List<Integer> preventivas = lista(req.solicitudes() == null ? null : req.solicitudes().preventivas());
         validarSolicitudes(lineas, urgentes, preventivas);
@@ -78,10 +85,11 @@ public class CompraLoteController {
         int idUsu = principal.getIdUsu();
         return idempotencia.ejecutar(idUsu, OP_COMPRAS, claveIdempotencia, req,
                 // La tasa (Frankfurter: lenta y externa) se resuelve aquí, ANTES de entrar en la transacción del servicio.
-                () -> servicio.guardarCompras(resolverCompras(lineas), urgentes, preventivas, destinos),
+                () -> servicio.guardarCompras(resolverCompras(lineas), urgentes, preventivas, destinos, resolverOtros(otros)),
                 r -> {
                     for (CompraLoteService.BloqueCreado b : r.bloquesCreados()) registroBloques.creado(idUsu, b.idBloque(), b.idProv());
                     registrarLogsCompras(lineas, urgentes, preventivas, idUsu);
+                    registrarLogsOtros(otros, r.bloquePorProveedor(), idUsu);
                 }).respuesta();
     }
 
@@ -92,11 +100,16 @@ public class CompraLoteController {
                                                   @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false)
                                                   String claveIdempotencia) {
         exigirClave(claveIdempotencia);
-        List<OtroValidado> lineas = validarLineasOtro(req.lineas());
+        if (req.lineas() == null || req.lineas().isEmpty()) throw regla(MSG_SIN_LINEAS);
+        List<OtroValidado> lineas = validarOtros(req.lineas(), ValidacionPedidos::enLinea);
         int idUsu = principal.getIdUsu();
+        // 0.9.15: cada otro va al bloque abierto más reciente de su proveedor o a uno nuevo (la web 0.9.14 usa este lote).
         return idempotencia.ejecutar(idUsu, OP_OTROS, claveIdempotencia, req,
                 () -> servicio.guardarOtros(resolverOtros(lineas)),
-                r -> registrarLogsOtros(lineas, idUsu));
+                r -> {
+                    for (CompraLoteService.BloqueCreado b : r.bloquesCreados()) registroBloques.creado(idUsu, b.idBloque(), b.idProv());
+                    registrarLogsOtros(lineas, r.bloquePorProveedor(), idUsu);
+                }).respuesta();
     }
 
     // ── validación ───────────────────────────────────────────────────────────
@@ -109,13 +122,15 @@ public class CompraLoteController {
 
     private record LineaValidada(LoteCompras.Linea linea, ComponenteDAO.Basico componente, Proveedor proveedor) {}
 
-    /** Por línea y en el orden de la spec: componente, proveedor, desactivados, cantidad, precio. */
-    private List<LineaValidada> validarLineasCompra(List<LoteCompras.Linea> lineas) {
-        if (lineas == null || lineas.isEmpty()) throw regla(MSG_SIN_LINEAS);
+    /** Por línea y en el orden de la spec: componente, proveedor, desactivados, cantidad, precio. Sin piezas es 422
+     *  salvo que el lote traiga otros (0.9.15): `exigirAlguna` = no trae otros. */
+    private List<LineaValidada> validarLineasCompra(List<LoteCompras.Linea> lineas, boolean exigirAlguna) {
+        List<LoteCompras.Linea> lista = lineas == null ? List.of() : lineas;
+        if (lista.isEmpty() && exigirAlguna) throw regla(MSG_SIN_LINEAS);
         List<LineaValidada> validadas = new ArrayList<>();
-        for (int i = 0; i < lineas.size(); i++) {
+        for (int i = 0; i < lista.size(); i++) {
             int n = i + 1;
-            LoteCompras.Linea l = lineas.get(i);
+            LoteCompras.Linea l = lista.get(i);
             ComponenteDAO.Basico c = l == null || l.idCom() == null ? null : componenteDao.getBasico(l.idCom()).orElse(null);
             if (c == null) throw enLinea(n, L_COMPONENTE);
             Proveedor p = proveedor(l.idProv());
@@ -133,22 +148,26 @@ public class CompraLoteController {
         return idProv == null ? null : proveedorDao.getById(idProv).orElse(null);
     }
 
-    private record OtroValidado(LoteComprasOtros.Linea linea, Proveedor proveedor) {}
+    /** `concepto` es el de la línea recortado (0.9.15): el que se mide, se guarda y se registra. */
+    private record OtroValidado(LoteComprasOtros.Linea linea, String concepto, Proveedor proveedor) {}
 
-    /** Por línea y en el orden de la spec: concepto, proveedor, proveedor desactivado, cantidad, precio. */
-    private List<OtroValidado> validarLineasOtro(List<LoteComprasOtros.Linea> lineas) {
-        if (lineas == null || lineas.isEmpty()) throw regla(MSG_SIN_LINEAS);
+    /** Por línea y en el orden de la spec: concepto, concepto de más de 255 (0.9.15), proveedor, proveedor
+     *  desactivado, cantidad, precio. `error` da el «Línea n: …» del lote de otros o el «Otro n: …» de «Nuevo pedido». */
+    private List<OtroValidado> validarOtros(List<LoteComprasOtros.Linea> lineas,
+                                            BiFunction<Integer, String, ResponseStatusException> error) {
         List<OtroValidado> validadas = new ArrayList<>();
         for (int i = 0; i < lineas.size(); i++) {
             int n = i + 1;
             LoteComprasOtros.Linea l = lineas.get(i);
-            if (l == null || l.concepto() == null || l.concepto().isBlank()) throw enLinea(n, L_CONCEPTO);
+            if (l == null || l.concepto() == null || l.concepto().isBlank()) throw error.apply(n, L_CONCEPTO);
+            String concepto = l.concepto().trim();
+            if (concepto.length() > CONCEPTO_MAX) throw error.apply(n, L_CONCEPTO_LARGO);
             Proveedor p = proveedor(l.idProv());
-            if (p == null) throw enLinea(n, L_PROVEEDOR);
-            if (!p.isActivo()) throw enLinea(n, L_PROVEEDOR_OFF);
-            if (l.cantidad() <= 0) throw enLinea(n, L_CANTIDAD);
-            if (!Double.isFinite(l.precioUnidad()) || l.precioUnidad() < 0) throw enLinea(n, L_PRECIO);
-            validadas.add(new OtroValidado(l, p));
+            if (p == null) throw error.apply(n, L_PROVEEDOR);
+            if (!p.isActivo()) throw error.apply(n, L_PROVEEDOR_OFF);
+            if (l.cantidad() <= 0) throw error.apply(n, L_CANTIDAD);
+            if (!Double.isFinite(l.precioUnidad()) || l.precioUnidad() < 0) throw error.apply(n, L_PRECIO);
+            validadas.add(new OtroValidado(l, concepto, p));
         }
         return validadas;
     }
@@ -173,7 +192,7 @@ public class CompraLoteController {
     }
 
     /** Destino por proveedor (0.9.9): estar en la lista = elegido por la web; idBloque nulo = bloque nuevo. Con un
-     *  proveedor repetido vale el último. */
+     *  proveedor repetido vale el último. Vale para sus piezas y sus otros (0.9.15). */
     static Map<Integer, DestinoPedido> destinos(List<LoteCompras.Destino> lista) {
         Map<Integer, DestinoPedido> m = new HashMap<>();
         if (lista != null) {
@@ -212,7 +231,7 @@ public class CompraLoteController {
         for (OtroValidado v : lineas) {
             String divisa = divisaDe(v.proveedor());
             LoteComprasOtros.Linea l = v.linea();
-            resueltas.add(new CompraLoteService.LineaOtro(v.proveedor().getIdProv(), l.concepto(), l.cantidad(),
+            resueltas.add(new CompraLoteService.LineaOtro(v.proveedor().getIdProv(), v.concepto(), l.cantidad(),
                     l.esUrgente(), l.precioUnidad(), divisa, conversion.aEuros(l.precioUnidad(), divisa)));
         }
         return resueltas;
@@ -235,11 +254,12 @@ public class CompraLoteController {
         }
     }
 
-    /** El mismo texto que POST /api/compras-otros. */
-    private void registrarLogsOtros(List<OtroValidado> lineas, int idUsu) {
+    /** El mismo texto que POST /api/compras-otros, con el bloque al que fue (0.9.15). */
+    private void registrarLogsOtros(List<OtroValidado> lineas, Map<Integer, Integer> bloquePorProveedor, int idUsu) {
         for (OtroValidado v : lineas) {
-            logDao.insertar(idUsu, "CREAR_PEDIDO_OTRO", "CONCEPTO: " + v.linea().concepto()
-                    + ", PROVEEDOR: " + v.proveedor().getNombre() + ", CANT: " + v.linea().cantidad());
+            logDao.insertar(idUsu, "CREAR_PEDIDO_OTRO", "CONCEPTO: " + v.concepto()
+                    + ", PROVEEDOR: " + v.proveedor().getNombre() + ", CANT: " + v.linea().cantidad()
+                    + ", BLOQUE: " + bloquePorProveedor.get(v.proveedor().getIdProv()));
         }
     }
 }

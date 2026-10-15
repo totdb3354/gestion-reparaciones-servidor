@@ -13,29 +13,31 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /** El lote de otros pedidos devuelve los ids creados (spec 4b §4.4). */
 class CompraOtroDAOInsertarTest {
 
-    @Test void insertaYDevuelveElIdGenerado() throws Exception {
+    /** 0.9.15: el alta lleva el bloque del otro. */
+    @Test void insertaEnSuBloqueYDevuelveElIdGenerado() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
             KeyHolder claves = inv.getArgument(1);
-            claves.getKeyList().add(Map.of("insert_id", 51));
+            claves.getKeyList().add(Map.of("insert_id", 52));
             return 1;
         });
 
-        int id = new CompraOtroDAO(jdbc).insertar(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5);
+        int id = new CompraOtroDAO(jdbc).insertar(2, "Cinta de embalar", 3, false, 1.5, "EUR", 1.5, 90);
 
-        assertEquals(51, id);
+        assertEquals(52, id);
         ArgumentCaptor<PreparedStatementCreator> sentencia = ArgumentCaptor.forClass(PreparedStatementCreator.class);
         verify(jdbc).update(sentencia.capture(), any(KeyHolder.class));
         Connection con = mock(Connection.class);
         PreparedStatement ps = mock(PreparedStatement.class);
-        when(con.prepareStatement(contains("INSERT INTO Compra_otro"), eq(Statement.RETURN_GENERATED_KEYS))).thenReturn(ps);
+        when(con.prepareStatement(eq("INSERT INTO Compra_otro"
+                + " (ID_PROV, CONCEPTO, CANTIDAD, ES_URGENTE, FECHA_PEDIDO, PRECIO_UNIDAD_PEDIDO, DIVISA, PRECIO_EUR, ESTADO, ID_BLOQUE)"
+                + " VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'pendiente', ?)"), eq(Statement.RETURN_GENERATED_KEYS))).thenReturn(ps);
         sentencia.getValue().createPreparedStatement(con);
         verify(ps).setInt(1, 2);
         verify(ps).setString(2, "Cinta de embalar");
@@ -44,5 +46,6 @@ class CompraOtroDAOInsertarTest {
         verify(ps).setDouble(5, 1.5);
         verify(ps).setString(6, "EUR");
         verify(ps).setDouble(7, 1.5);
+        verify(ps).setInt(8, 90);
     }
 }

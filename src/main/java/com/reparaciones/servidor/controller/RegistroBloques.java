@@ -2,6 +2,7 @@ package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
+import com.reparaciones.servidor.model.TipoLinea;
 import com.reparaciones.servidor.service.BloqueCompraService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.stereotype.Component;
@@ -27,10 +28,12 @@ public class RegistroBloques {
         logDao.insertar(idUsu, "BORRAR_BLOQUE", "BLOQUE: " + idBloque + " (se quedó sin líneas)");
     }
 
-    /** CREAR_BLOQUE si el destino es nuevo, MOVER_LINEA_BLOQUE y BORRAR_BLOQUE si el origen se quedó vacío. */
+    /** CREAR_BLOQUE si el destino es nuevo, MOVER_LINEA_BLOQUE (con ID_COMPRA_OTRO si es un otro, 0.9.15) y
+     *  BORRAR_BLOQUE si el origen se quedó vacío. */
     public void movimiento(int idUsu, BloqueCompraService.Movimiento m) {
         if (m.bloqueNuevo()) creado(idUsu, m.a(), m.idProv());
-        logDao.insertar(idUsu, "MOVER_LINEA_BLOQUE", "ID_COMPRA: " + m.idCompra() + ", ESTADO: " + m.estado()
+        String id = (m.tipo() == TipoLinea.OTRO ? "ID_COMPRA_OTRO: " : "ID_COMPRA: ") + m.idCompra();
+        logDao.insertar(idUsu, "MOVER_LINEA_BLOQUE", id + ", ESTADO: " + m.estado()
                 + ", DE: " + (m.de() == null ? "-" : m.de()) + " A: " + m.a());
         if (m.origenBorrado() && m.de() != null) vaciado(idUsu, m.de());
     }

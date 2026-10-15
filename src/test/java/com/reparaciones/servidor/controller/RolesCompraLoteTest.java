@@ -21,10 +21,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -64,6 +67,11 @@ class RolesCompraLoteTest {
     private static final String CUERPO_OTROS = """
             {"lineas":[{"idProv":2,"concepto":"Cinta de embalar","cantidad":1,"esUrgente":false,"precioUnidad":0.0}]}""";
 
+    /** 0.9.15: «Nuevo pedido» con solo un otro (sin piezas). */
+    private static final String CUERPO_SOLO_OTROS = """
+            {"lineas":[],"solicitudes":{"urgentes":[],"preventivas":[]},"destinos":null,
+             "otros":[{"idProv":2,"concepto":"Cinta de embalar","cantidad":2,"esUrgente":false,"precioUnidad":1.5}]}""";
+
     private ResultActions lote(String ruta, String cuerpo, String token, String clave) throws Exception {
         var peticion = post(ruta).header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON).content(cuerpo);
@@ -83,15 +91,28 @@ class RolesCompraLoteTest {
 
     @Test void comprasSupertecnicoGuardaYDevuelveLosIds() throws Exception {
         catalogo();
-        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(new CompraLoteService.ResultadoLote(new LoteCompras.Respuesta(List.of(41)), List.of()));
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList())).thenReturn(new CompraLoteService.ResultadoLote(new LoteCompras.Respuesta(List.of(41)), List.of()));
         lote("/api/compras/lote", CUERPO_COMPRAS, supertecnico(), "c3")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.idsCreados[0]").value(41));
+                .andExpect(jsonPath("$.idsCreados[0]").value(41))
+                .andExpect(jsonPath("$.idsOtrosCreados").isEmpty());
     }
 
     @Test void comprasSinClaveEs400() throws Exception {
         catalogo();
         lote("/api/compras/lote", CUERPO_COMPRAS, supertecnico(), null).andExpect(status().isBadRequest());
+    }
+
+    @Test void comprasConSoloOtrosGuardaYDevuelveLosIdsDeLosOtros() throws Exception {
+        catalogo();
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList())).thenReturn(new CompraLoteService.ResultadoLote(
+                new LoteCompras.Respuesta(List.of(), List.of(88)), List.of(), Map.of(2, 90)));
+        lote("/api/compras/lote", CUERPO_SOLO_OTROS, supertecnico(), "c4")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.idsCreados").isEmpty())
+                .andExpect(jsonPath("$.idsOtrosCreados[0]").value(88));
+        verify(servicio).guardarCompras(eq(List.of()), eq(List.of()), eq(List.of()), eq(Map.of()),
+                eq(List.of(new CompraLoteService.LineaOtro(2, "Cinta de embalar", 2, false, 1.5, "EUR", 1.5))));
     }
 
     @Test void otrosTecnicoYAdminReciben403() throws Exception {
@@ -101,7 +122,7 @@ class RolesCompraLoteTest {
 
     @Test void otrosSupertecnicoGuardaYDevuelveLosIds() throws Exception {
         catalogo();
-        when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51)));
+        when(servicio.guardarOtros(anyList())).thenReturn(new CompraLoteService.ResultadoLote(new LoteCompras.Respuesta(List.of(51)), List.of(), Map.of(2, 90)));
         lote("/api/compras-otros/lote", CUERPO_OTROS, supertecnico(), "o3")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.idsCreados[0]").value(51));

@@ -15,6 +15,7 @@ import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CompraLoteService;
 import com.reparaciones.servidor.service.ConversionEur;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -55,8 +56,8 @@ class CompraLoteControllerTest {
         when(proveedorDao.getById(3)).thenReturn(Optional.of(new Proveedor(3, "Proveedor B", true, "USD", null, "COMPONENTES")));
         when(proveedorDao.getById(6)).thenReturn(Optional.of(new Proveedor(6, "ACME", false, "EUR", null, "COMPONENTES")));
         when(tipoCambio.getTasa("USD")).thenReturn(1.1367);
-        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(resultado(41));
-        when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51)));
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList())).thenReturn(resultado(41));
+        when(servicio.guardarOtros(anyList())).thenReturn(new CompraLoteService.ResultadoLote(new LoteCompras.Respuesta(List.of(51)), List.of(), Map.of(2, 90)));
     }
 
     private static CompraLoteService.ResultadoLote resultado(Integer... ids) {
@@ -68,12 +69,12 @@ class CompraLoteControllerTest {
     }
 
     private static LoteCompras.Peticion lote(LoteCompras.Linea... lineas) {
-        return new LoteCompras.Peticion(Arrays.asList(lineas), null, null);
+        return new LoteCompras.Peticion(Arrays.asList(lineas), null, null, null);
     }
 
     private static LoteCompras.Peticion conSolicitudes(List<Integer> urgentes, List<Integer> preventivas,
                                                        LoteCompras.Linea... lineas) {
-        return new LoteCompras.Peticion(Arrays.asList(lineas), new LoteCompras.Solicitudes(urgentes, preventivas), null);
+        return new LoteCompras.Peticion(Arrays.asList(lineas), new LoteCompras.Solicitudes(urgentes, preventivas), null, null);
     }
 
     private String falla422(LoteCompras.Peticion peticion) {
@@ -99,7 +100,7 @@ class CompraLoteControllerTest {
 
     @Test void sinLineasEs422() {
         assertEquals("Añade al menos una línea.", falla422(lote()));
-        assertEquals("Añade al menos una línea.", falla422(new LoteCompras.Peticion(null, null, null)));
+        assertEquals("Añade al menos una línea.", falla422(new LoteCompras.Peticion(null, null, null, null)));
         nadaGuardadoNiRegistrado();
     }
 
@@ -148,14 +149,14 @@ class CompraLoteControllerTest {
         when(reparacionComponenteDao.getIdComDeSolicitud(11)).thenReturn(4);    // slave de 1
         when(solicitudStockDao.getIdCom(21)).thenReturn(1);
         ctl.guardarLoteCompras(conSolicitudes(List.of(11), List.of(21), linea(1, 2, 2, 0.0)), super7, CLAVE);
-        verify(servicio).guardarCompras(anyList(), eq(List.of(11)), eq(List.of(21)), anyMap());
+        verify(servicio).guardarCompras(anyList(), eq(List.of(11)), eq(List.of(21)), anyMap(), anyList());
     }
 
     @Test void laDivisaEsLaDelProveedorYElEurSeCalculaAntesDelServicio() {
         ctl.guardarLoteCompras(lote(linea(1, 3, 2, 10.0), linea(4, 2, 1, 5.5)), super7, CLAVE);
         verify(servicio).guardarCompras(eq(List.of(
                 new CompraLoteService.LineaCompra(1, 3, 2, false, 10.0, "USD", 8.8),
-                new CompraLoteService.LineaCompra(4, 2, 1, false, 5.5, "EUR", 5.5))), eq(List.of()), eq(List.of()), eq(Map.of()));
+                new CompraLoteService.LineaCompra(4, 2, 1, false, 5.5, "EUR", 5.5))), eq(List.of()), eq(List.of()), eq(Map.of()), eq(List.of()));
     }
 
     @Test void laMismaClaveYLaMismaPeticionDevuelvenLaRespuestaGuardadaSinInsertar() {
@@ -163,12 +164,12 @@ class CompraLoteControllerTest {
         LoteCompras.Respuesta segunda = ctl.guardarLoteCompras(lote(linea(1, 2, 1, 0.0)), super7, CLAVE);
         assertSame(primera, segunda);
         assertEquals(List.of(41), segunda.idsCreados());
-        verify(servicio, times(1)).guardarCompras(anyList(), anyList(), anyList(), anyMap());
+        verify(servicio, times(1)).guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList());
         verify(logDao, times(1)).insertar(eq(7), eq("CREAR_PEDIDO"), anyString());
     }
 
     @Test void registraUnLogPorLineaYOtroPorSolicitudUnaSolaVez() {
-        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(resultado(41, 42));
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList())).thenReturn(resultado(41, 42));
         when(reparacionComponenteDao.getIdComDeSolicitud(11)).thenReturn(1);
         when(solicitudStockDao.getIdCom(21)).thenReturn(4);
         ctl.guardarLoteCompras(conSolicitudes(List.of(11), List.of(21),
@@ -192,19 +193,19 @@ class CompraLoteControllerTest {
         verifyNoInteractions(servicio, logDao);
         // La escritura no llegó a hacerse: RegistroIdempotencia liberó la clave y el reintento sí guarda
         ctl.guardarLoteCompras(peticion, super7, CLAVE);
-        verify(servicio).guardarCompras(anyList(), anyList(), anyList(), anyMap());
+        verify(servicio).guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList());
     }
 
     @Test void losDestinosElegidosLleganAlServicioPorProveedor() {
         LoteCompras.Peticion peticion = new LoteCompras.Peticion(List.of(linea(1, 2, 1, 0.0), linea(4, 3, 1, 0.0)), null,
-                List.of(new LoteCompras.Destino(2, 41), new LoteCompras.Destino(3, null)));
+                List.of(new LoteCompras.Destino(2, 41), new LoteCompras.Destino(3, null)), null);
         ctl.guardarLoteCompras(peticion, super7, CLAVE);
         verify(servicio).guardarCompras(anyList(), eq(List.of()), eq(List.of()),
-                eq(Map.of(2, new DestinoPedido(41), 3, new DestinoPedido(null))));
+                eq(Map.of(2, new DestinoPedido(41), 3, new DestinoPedido(null))), eq(List.of()));
     }
 
     @Test void cadaBloqueNuevoSeRegistraConSuProveedor() {
-        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap())).thenReturn(new CompraLoteService.ResultadoLote(
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList())).thenReturn(new CompraLoteService.ResultadoLote(
                 new LoteCompras.Respuesta(List.of(41)), List.of(new CompraLoteService.BloqueCreado(90, 2))));
         when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
         ctl.guardarLoteCompras(lote(linea(1, 2, 1, 0.0)), super7, CLAVE);
@@ -284,11 +285,12 @@ class CompraLoteControllerTest {
         verify(logDao, times(1)).insertar(eq(7), eq("CREAR_PEDIDO_OTRO"), anyString());
     }
 
-    @Test void otrosRegistraUnLogPorLinea() {
-        when(servicio.guardarOtros(anyList())).thenReturn(new LoteCompras.Respuesta(List.of(51, 52)));
+    @Test void otrosRegistraUnLogPorLineaConSuBloque() {
+        when(servicio.guardarOtros(anyList())).thenReturn(new CompraLoteService.ResultadoLote(
+                new LoteCompras.Respuesta(List.of(51, 52)), List.of(), Map.of(2, 90, 3, 91)));
         ctl.guardarLoteOtros(loteOtros(otro(2, CINTA, 3, 0.0), otro(3, "Bolsas", 1, 10.0)), super7, CLAVE);
-        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3");
-        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Bolsas, PROVEEDOR: Proveedor B, CANT: 1");
+        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 3, BLOQUE: 90");
+        verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Bolsas, PROVEEDOR: Proveedor B, CANT: 1, BLOQUE: 91");
         verifyNoMoreInteractions(logDao);
     }
 
@@ -306,5 +308,94 @@ class CompraLoteControllerTest {
                 () -> ctl.guardarLoteOtros(loteOtros(otro(3, CINTA, 1, 10.0)), super7, CLAVE));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatusCode());
         verifyNoInteractions(servicio, logDao);
+    }
+
+    @Test void otrosCadaBloqueNuevoSeRegistraAntesQueSuOtro() {
+        when(servicio.guardarOtros(anyList())).thenReturn(new CompraLoteService.ResultadoLote(
+                new LoteCompras.Respuesta(List.of(51)), List.of(new CompraLoteService.BloqueCreado(90, 2)), Map.of(2, 90)));
+        when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
+        ctl.guardarLoteOtros(loteOtros(otro(2, CINTA, 1, 0.0)), super7, CLAVE);
+        InOrder orden = inOrder(logDao);
+        orden.verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 90, PROVEEDOR: Proveedor A");
+        orden.verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 1, BLOQUE: 90");
+    }
+
+    @Test void otrosConUnConceptoDeMasDe255Es422YElConceptoSeGuardaRecortado() {
+        assertEquals("Línea 1: el concepto no puede pasar de 255 caracteres.",
+                falla422Otros(loteOtros(otro(2, "x".repeat(256), 1, 0.0))));
+        verifyNoInteractions(servicio, logDao);
+        ctl.guardarLoteOtros(loteOtros(otro(2, "  " + CINTA + "  ", 1, 0.0)), super7, CLAVE);
+        verify(servicio).guardarOtros(eq(List.of(new CompraLoteService.LineaOtro(2, CINTA, 1, false, 0.0, "EUR", 0.0))));
+    }
+
+    // ── 0.9.15: «Nuevo pedido» con otros ──
+    private static LoteCompras.Peticion conOtros(List<LoteCompras.Linea> lineas, LoteComprasOtros.Linea... otros) {
+        return new LoteCompras.Peticion(lineas, null, null, Arrays.asList(otros));
+    }
+
+    @Test void piezasYOtrosLleganAlServicioConLaDivisaYElEurResueltos() {
+        ctl.guardarLoteCompras(conOtros(List.of(linea(1, 2, 1, 0.0)), otro(3, "  " + CINTA + "  ", 2, 10.0)), super7, CLAVE);
+        verify(servicio).guardarCompras(eq(List.of(new CompraLoteService.LineaCompra(1, 2, 1, false, 0.0, "EUR", 0.0))),
+                eq(List.of()), eq(List.of()), eq(Map.of()),
+                eq(List.of(new CompraLoteService.LineaOtro(3, CINTA, 2, false, 10.0, "USD", 8.8))));
+    }
+
+    @Test void laRespuestaTraeLasPiezasYLosOtrosYCadaOtroSeRegistraConSuBloque() {
+        when(servicio.guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList())).thenReturn(new CompraLoteService.ResultadoLote(
+                new LoteCompras.Respuesta(List.of(41), List.of(88)), List.of(new CompraLoteService.BloqueCreado(90, 2)), Map.of(2, 90)));
+        when(proveedorDao.getNombreById(2)).thenReturn("Proveedor A");
+
+        LoteCompras.Respuesta r = ctl.guardarLoteCompras(conOtros(List.of(linea(1, 2, 1, 0.0)), otro(2, CINTA, 2, 1.5)), super7, CLAVE);
+
+        assertEquals(List.of(41), r.idsCreados());
+        assertEquals(List.of(88), r.idsOtrosCreados());
+        InOrder orden = inOrder(logDao);
+        orden.verify(logDao).insertar(7, "CREAR_BLOQUE", "BLOQUE: 90, PROVEEDOR: Proveedor A");
+        orden.verify(logDao).insertar(7, "CREAR_PEDIDO", "COMPONENTE: lcd-x-negro, PROVEEDOR: Proveedor A, CANT: 1");
+        orden.verify(logDao).insertar(7, "CREAR_PEDIDO_OTRO", "CONCEPTO: Cinta de embalar, PROVEEDOR: Proveedor A, CANT: 2, BLOQUE: 90");
+        verifyNoMoreInteractions(logDao);
+    }
+
+    @Test void unLoteSoloConOtrosEsValido() {
+        ctl.guardarLoteCompras(conOtros(List.of(), otro(2, CINTA, 1, 0.0)), super7, CLAVE);
+        verify(servicio).guardarCompras(eq(List.of()), eq(List.of()), eq(List.of()), eq(Map.of()),
+                eq(List.of(new CompraLoteService.LineaOtro(2, CINTA, 1, false, 0.0, "EUR", 0.0))));
+    }
+
+    @Test void sinPiezasNiOtrosEs422() {
+        assertEquals("Añade al menos una línea.", falla422(conOtros(List.of())));
+        assertEquals("Añade al menos una línea.", falla422(new LoteCompras.Peticion(List.of(), null, null, null)));
+        nadaGuardadoNiRegistrado();
+    }
+
+    /** Primero todas las piezas («Línea n») y después los otros («Otro n»), cada uno numerado en su lista. */
+    @Test void unOtroMalEs422ConSuNumeroDespuesDeLasPiezas() {
+        assertEquals("Línea 1: selecciona un componente.", falla422(conOtros(List.of(linea(null, 2, 1, 0.0)), otro(2, "", 1, 0.0))));
+        assertEquals("Otro 2: el concepto no puede estar vacío.",
+                falla422(conOtros(List.of(linea(1, 2, 1, 0.0)), otro(2, CINTA, 1, 0.0), otro(2, "  ", 1, 0.0))));
+        assertEquals("Otro 1: el concepto no puede pasar de 255 caracteres.", falla422(conOtros(List.of(), otro(2, "x".repeat(256), 1, 0.0))));
+        assertEquals("Otro 1: selecciona un proveedor.", falla422(conOtros(List.of(), otro(null, CINTA, 1, 0.0))));
+        assertEquals("Otro 1: selecciona un proveedor.", falla422(conOtros(List.of(), otro(99, CINTA, 1, 0.0))));
+        assertEquals("Otro 1: el proveedor está desactivado.", falla422(conOtros(List.of(), otro(6, CINTA, 1, 0.0))));
+        assertEquals("Otro 1: la cantidad debe ser mayor que 0.", falla422(conOtros(List.of(), otro(2, CINTA, 0, 0.0))));
+        assertEquals("Otro 1: el precio no puede ser negativo.", falla422(conOtros(List.of(), otro(2, CINTA, 1, -1.0))));
+        nadaGuardadoNiRegistrado();
+    }
+
+    @Test void unConceptoDe255TrasRecortarloCabe() {
+        String justo = "x".repeat(255);
+        ctl.guardarLoteCompras(conOtros(List.of(), otro(2, " " + justo + " ", 1, 0.0)), super7, CLAVE);
+        verify(servicio).guardarCompras(anyList(), anyList(), anyList(), anyMap(),
+                eq(List.of(new CompraLoteService.LineaOtro(2, justo, 1, false, 0.0, "EUR", 0.0))));
+    }
+
+    @Test void conOtrosLaMismaClaveYLaMismaPeticionDevuelvenLaRespuestaGuardada() {
+        LoteCompras.Respuesta primera = ctl.guardarLoteCompras(
+                conOtros(List.of(linea(1, 2, 1, 0.0)), otro(2, CINTA, 1, 0.0)), super7, CLAVE);
+        LoteCompras.Respuesta segunda = ctl.guardarLoteCompras(
+                conOtros(List.of(linea(1, 2, 1, 0.0)), otro(2, CINTA, 1, 0.0)), super7, CLAVE);
+        assertSame(primera, segunda);
+        verify(servicio, times(1)).guardarCompras(anyList(), anyList(), anyList(), anyMap(), anyList());
+        verify(logDao, times(1)).insertar(eq(7), eq("CREAR_PEDIDO_OTRO"), anyString());
     }
 }

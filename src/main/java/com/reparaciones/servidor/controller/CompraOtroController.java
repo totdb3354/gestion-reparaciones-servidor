@@ -4,8 +4,11 @@ import com.reparaciones.servidor.dao.CompraOtroDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ProveedorDAO;
 import com.reparaciones.servidor.model.CompraOtro;
+import com.reparaciones.servidor.model.DestinoPedido;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.service.BloqueCompraService;
 import com.reparaciones.servidor.service.ConversionEur;
+import com.reparaciones.servidor.service.DestinoBloque;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,22 +17,28 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/compras-otros")
 public class CompraOtroController {
 
-    private final CompraOtroDAO dao;
-    private final LogDAO        logDao;
-    private final ProveedorDAO  proveedorDao;
-    private final ConversionEur conversion;
+    private final CompraOtroDAO       dao;
+    private final LogDAO              logDao;
+    private final ProveedorDAO        proveedorDao;
+    private final ConversionEur       conversion;
+    private final BloqueCompraService bloques;
+    private final RegistroBloques     registroBloques;
 
     public CompraOtroController(CompraOtroDAO dao, LogDAO logDao, ProveedorDAO proveedorDao,
-                                ConversionEur conversion) {
-        this.dao          = dao;
-        this.logDao       = logDao;
-        this.proveedorDao = proveedorDao;
-        this.conversion   = conversion;
+                                ConversionEur conversion, BloqueCompraService bloques,
+                                RegistroBloques registroBloques) {
+        this.dao             = dao;
+        this.logDao          = logDao;
+        this.proveedorDao    = proveedorDao;
+        this.conversion      = conversion;
+        this.bloques         = bloques;
+        this.registroBloques = registroBloques;
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN', 'TECNICO')")
@@ -45,16 +54,18 @@ public class CompraOtroController {
                          @AuthenticationPrincipal UsuarioPrincipal principal) {
         ValidacionPedidos.cantidadPositiva(req.cantidad());
         ValidacionPedidos.precioNoNegativo(req.precioUnidad());
-        ValidacionPedidos.conceptoInformado(req.concepto());
+        String concepto = ValidacionPedidos.conceptoValido(req.concepto());
         String divisa = ValidacionPedidos.divisaValida(req.divisa());
         ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
         // P3: el importe en euros lo calcula el servidor; req.precioEur() se ignora
         double precioEur = conversion.aEuros(req.precioUnidad(), divisa);
-        dao.insertar(req.idProv(), req.concepto(), req.cantidad(), req.esUrgente(),
+        // 0.9.15: el otro cae en el bloque abierto del proveedor o en uno nuevo (regla por defecto), como una pieza.
+        DestinoBloque.Destino destino = bloques.altaOtroSuelta(req.idProv(), concepto, req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), divisa, precioEur);
         String proveedor = proveedorDao.getNombreById(req.idProv());
-        logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO_OTRO",
-                "CONCEPTO: " + req.concepto() + ", PROVEEDOR: " + proveedor + ", CANT: " + req.cantidad());
+        if (destino.nuevo()) registroBloques.creado(principal.getIdUsu(), destino.idBloque(), req.idProv());
+        logDao.insertar(principal.getIdUsu(), "CREAR_PEDIDO_OTRO", "CONCEPTO: " + concepto + ", PROVEEDOR: " + proveedor
+                + ", CANT: " + req.cantidad() + ", BLOQUE: " + destino.idBloque());
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -63,13 +74,21 @@ public class CompraOtroController {
                        @AuthenticationPrincipal UsuarioPrincipal principal) {
         ValidacionPedidos.cantidadPositiva(req.cantidad());
         ValidacionPedidos.precioNoNegativo(req.precioUnidad());
-        ValidacionPedidos.conceptoInformado(req.concepto());
+        String concepto = ValidacionPedidos.conceptoValido(req.concepto());
         String divisa = ValidacionPedidos.divisaValida(req.divisa());
         ValidacionPedidos.proveedorActivo(proveedorDao, req.idProv());
-        dao.getById(id).ifPresent(c ->
-                ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
+        Optional<CompraOtro> actual = dao.getById(id);
+        actual.ifPresent(c -> ValidacionPedidos.cantidadEditable(c.getEstado(), c.getCantidad(), req.cantidad()));
         double precioEur = conversion.aEuros(req.precioUnidad(), divisa);
-        dao.editar(id, req.idProv(), req.concepto(), req.cantidad(), req.esUrgente(),
+        // 0.9.15: otro proveedor saca el otro de su bloque (un proveedor por bloque), en la misma transacción.
+        if (actual.isPresent() && actual.get().getIdProv() != req.idProv()) {
+            BloqueCompraService.Movimiento m = bloques.editarOtroCambiandoProveedor(id, req.idProv(), concepto,
+                    req.cantidad(), req.esUrgente(), req.precioUnidad(), divisa, precioEur, req.updatedAt(), req.destino());
+            logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: " + id);
+            registroBloques.movimiento(principal.getIdUsu(), m);
+            return;
+        }
+        dao.editar(id, req.idProv(), concepto, req.cantidad(), req.esUrgente(),
                 req.precioUnidad(), divisa, precioEur, req.updatedAt());
         logDao.insertar(principal.getIdUsu(), "EDITAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: " + id);
     }
@@ -141,8 +160,10 @@ public class CompraOtroController {
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @DeleteMapping("/{id}")
     public void borrar(@PathVariable int id, @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.borrarPendiente(id);
+        // 0.9.15: si era la última línea de su bloque, el bloque se borra en la misma transacción.
+        Optional<Integer> vaciado = bloques.borrarOtroPendiente(id);
         logDao.insertar(principal.getIdUsu(), "BORRAR_PEDIDO_OTRO", "ID_COMPRA_OTRO: " + id);
+        vaciado.ifPresent(idBloque -> registroBloques.vaciado(principal.getIdUsu(), idBloque));
     }
 
     record InsertarRequest(int idProv, String concepto, int cantidad, boolean esUrgente,
@@ -153,7 +174,9 @@ public class CompraOtroController {
                          double precioUnidad, String divisa,
                          @Schema(nullable = true, description = "Ignorado: el servidor calcula el importe en euros")
                          Double precioEur,
-                         LocalDateTime updatedAt) {}
+                         LocalDateTime updatedAt,
+                         @Schema(nullable = true, description = "0.9.15: bloque destino si cambia el proveedor; nulo = regla por defecto")
+                         DestinoPedido destino) {}
     record UpdatedAtRequest(LocalDateTime updatedAt) {}
     record ConfirmarParcialRequest(int cantidadRecibida, LocalDateTime updatedAt) {}
     record RecibirRestoRequest(int cantidadExtra, LocalDateTime updatedAt) {}
