@@ -10,6 +10,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.DateTimeException;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -31,6 +33,8 @@ public class ImportadorNsys {
 
     public static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
     public static final double MINIMO_FILAS = 0.9;
+    /** Drive puede listar un fichero que el PC de producción aún está escribiendo: no se toca hasta que lleva esto quieto. */
+    static final Duration ESPERA_DRIVE = Duration.ofMinutes(2);
     public static final String ACTUAL = "ACTUAL";
     public static final String HISTORICO = "HISTORICO";
     public static final String MAESTRO = "MAESTRO";
@@ -40,7 +44,7 @@ public class ImportadorNsys {
     private static final Pattern NOMBRE = Pattern.compile("Items_(\\d{4})\\.(\\d{2})\\.(\\d{2})_(\\d{2})\\.(\\d{2})\\.xlsx");
 
     /** Un fichero Items de Drive con la fecha que lleva en el nombre (hora de Madrid). */
-    public record FicheroItems(String id, String nombre, LocalDateTime fecha) {}
+    public record FicheroItems(String id, String nombre, LocalDateTime fecha, Instant modificado) {}
 
     private final ClienteDrive drive;
     private final NsysDAO dao;
@@ -77,7 +81,7 @@ public class ImportadorNsys {
     public static List<FicheroItems> items(ClienteDrive drive, String carpeta) throws IOException, InterruptedException {
         List<FicheroItems> ficheros = new ArrayList<>();
         for (ClienteDrive.FicheroDrive f : drive.listarItems(carpeta))
-            fechaDelNombre(f.nombre()).ifPresent(fecha -> ficheros.add(new FicheroItems(f.id(), f.nombre(), fecha)));
+            fechaDelNombre(f.nombre()).ifPresent(fecha -> ficheros.add(new FicheroItems(f.id(), f.nombre(), fecha, f.modificado())));
         ficheros.sort(Comparator.comparing(FicheroItems::fecha));
         return ficheros;
     }
@@ -95,7 +99,7 @@ public class ImportadorNsys {
             Thread.currentThread().interrupt();
             return;
         } catch (Exception e) {
-            log.warn("NSYS: no se pudo listar la carpeta de Items en Drive: {}", e.toString());
+            log.warn("NSYS: no se pudieron buscar los Items pendientes: {}", e.toString());
             return;
         }
         if (pendientes.isEmpty()) {
@@ -107,6 +111,10 @@ public class ImportadorNsys {
 
     private List<FicheroItems> pendientes() throws IOException, InterruptedException {
         List<FicheroItems> todos = items(drive, carpeta);
+        // Un fichero recién modificado puede estar a medio escribir: se corta ahí para no romper el orden del rastro.
+        Instant limite = clock.instant().minus(ESPERA_DRIVE);
+        for (int i = 0; i < todos.size(); i++)
+            if (todos.get(i).modificado().isAfter(limite)) { todos = todos.subList(0, i); break; }
         if (todos.isEmpty()) return List.of();
         Optional<Importacion> ultima = dao.ultimaImportacion(ACTUAL, Set.of(OK, RECHAZADO));
         if (ultima.isEmpty()) return List.of(todos.get(todos.size() - 1));
@@ -120,7 +128,11 @@ public class ImportadorNsys {
         int id = dao.empezarImportacion(f.nombre(), f.fecha(), ACTUAL, ahora());
         try {
             List<FilaItems> filas = LectorItems.leer(new ByteArrayInputStream(drive.descargar(f.id())));
-            Optional<Importacion> previa = dao.ultimaImportacion(ACTUAL, Set.of(OK));
+            // Se compara con el fichero anterior, aceptado o frenado, para que el freno se recupere solo tras una bajada
+            // real. Con 0 filas (rechazo de formato) no hay referencia: es seguro, porque un fichero incompleto nunca
+            // borra móviles, solo deja sin tocar los que faltan.
+            Optional<Importacion> previa = dao.ultimaImportacion(ACTUAL, Set.of(OK, RECHAZADO))
+                    .filter(i -> i.filas() > 0);
             if (previa.isPresent() && filas.size() < previa.get().filas() * MINIMO_FILAS) {
                 dao.terminarImportacion(id, RECHAZADO, filas.size(), 0, String.format(
                         "Trae %d filas frente a las %d de la última importación: se trata como incompleto",

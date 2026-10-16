@@ -178,6 +178,92 @@ class ImportadorNsysTest {
     @Test void sinCarpetaNoHaceNada() {
         new ImportadorNsys(drive, dao, "", "", Clock.systemUTC()).pasada();
         verifyNoInteractions(drive);
+        verifyNoInteractions(dao);
+    }
+
+    private static ClienteDrive.FicheroDrive subidoA(String nombre, String instante) {
+        return new ClienteDrive.FicheroDrive("id-" + nombre, nombre, Instant.parse(instante));
+    }
+
+    @Test void unFicheroRecienSubidoEsperaALaSiguientePasada() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        // AHORA = 07:05Z; modificado a las 07:04Z: hace 1 minuto.
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(subidoA("Items_2026.10.16_09.01.xlsx", "2026-10-16T07:04:00Z")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+        verify(drive, never()).descargar(anyString());
+        verify(dao, never()).empezarImportacion(anyString(), any(), anyString(), any());
+
+        ImportadorNsys tresMinutosDespues = new ImportadorNsys(drive, dao, "carpeta-1", "maestro-1",
+                Clock.fixed(AHORA.plusMinutes(3).atZone(MADRID).toInstant(), MADRID));
+        tresMinutosDespues.pasada();
+        verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
+    }
+
+    @Test void laPrimeraVezTampocoTocaUnFicheroRecienSubido() throws Exception {
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(subidoA("Items_2026.10.16_09.01.xlsx", "2026-10-16T07:04:30Z")));
+        importador.pasada();
+        verify(drive, never()).descargar(anyString());
+    }
+
+    @Test void conDosPendientesSoloSeProcesaElAnteriorAlRecienSubido() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(
+                subidoA("Items_2026.10.16_09.31.xlsx", "2026-10-16T07:04:00Z"),
+                subidoA("Items_2026.10.16_09.01.xlsx", "2026-10-16T07:00:00Z")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
+        verify(drive, never()).descargar("id-Items_2026.10.16_09.31.xlsx");
+        verify(dao, times(1)).aplicar(any(), anyInt());
+    }
+
+    @Test void trasUnFicheroFrenadoUnoSimilarSeAcepta() throws Exception {
+        // Escala 1:1000 de 70.000 -> 60.000 -> 60.500.
+        when(dao.ultimaImportacion("ACTUAL", Set.of("OK", "RECHAZADO"))).thenReturn(Optional.of(
+                new Importacion(5, "previo", LocalDateTime.of(2026, 10, 16, 8, 31), "RECHAZADO", 60, "frenado")));
+        when(dao.ultimaImportacion("ACTUAL", Set.of("OK"))).thenReturn(Optional.of(
+                new Importacion(4, "previo", LocalDateTime.of(2026, 10, 16, 8, 1), "OK", 70, null)));
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(61));
+
+        importador.pasada();
+
+        verify(dao).aplicar(any(), eq(1));
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(61), anyInt(), any(), eq(AHORA));
+    }
+
+    @Test void unaBajadaGrandeTrasUnOkSigueRechazada() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 70);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(30));
+
+        importador.pasada();
+
+        verify(dao).terminarImportacion(eq(1), eq("RECHAZADO"), eq(30), eq(0), anyString(), eq(AHORA));
+        verify(dao, never()).aplicar(any(), any());
+    }
+
+    @Test void conMaestroNuevoEItemsPendientesNoSeRetraduce() throws Exception {
+        when(drive.metadatos("maestro-1")).thenReturn(new ClienteDrive.FicheroDrive("maestro-1", "Maestro.xlsx",
+                Instant.parse("2026-10-16T07:00:00Z")));
+        List<List<Object>> hoja = new ArrayList<>();
+        hoja.add(new ArrayList<Object>(LectorMaestro.COLUMNAS));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        when(drive.descargar("maestro-1")).thenReturn(XlsxDePrueba.libro(hojas));
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar("id-Items_2026.10.16_09.01.xlsx")).thenReturn(items(2));
+
+        importador.pasada();
+
+        verify(dao).reemplazarProductos(any());
+        verify(dao).aplicar(any(), anyInt());
+        verify(dao, never()).aplicar(any(), isNull());
     }
 
     @Test void laFechaSaleDelNombre() {
