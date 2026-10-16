@@ -23,6 +23,11 @@ DELETE FROM Reparacion_borrador;
 UPDATE Reparacion SET ID_REP_ANTERIOR = NULL;
 DELETE FROM Reparacion;
 
+-- 5b. Espejo de NSYS (0.9.17): eventos antes que importaciones (clave ajena). Se conservan el maestro y las cajas.
+DELETE FROM Nsys_evento;
+DELETE FROM Nsys_movil;
+DELETE FROM Nsys_importacion;
+
 -- 6. Teléfonos (IMEIs)
 DELETE FROM Telefono;
 

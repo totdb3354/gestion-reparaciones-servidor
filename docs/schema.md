@@ -29,3 +29,8 @@ Tablas (generado con grep el 2026-09-14):
 - `Movimiento_telefono`
 - `Modelo_equivalencia`
 - `Color_equivalencia`
+- `Nsys_importacion` (0.9.17: un registro por fichero de NSYS procesado —Items, histórico o maestro—; alimenta el aviso de datos antiguos)
+- `Nsys_movil` (0.9.17: la foto actual de NSYS, una fila por IMEI/SN y lote; sin costes ni precios)
+- `Nsys_evento` (0.9.17: historial de cambios de NSYS para el rastro del teléfono; solo se añade)
+- `Nsys_producto` (0.9.17: el maestro de productos, «Goods + Grade» → modelo, color y SKU)
+- `Nsys_ubicacion` (0.9.17: traducción de cajas de NSYS a ubicaciones del ERP; datos, no código)
