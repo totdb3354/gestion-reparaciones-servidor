@@ -27,7 +27,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * Hace de red de seguridad del arranque (el proyecto no tenía test de contexto) y del contrato
  * que consume la app web: levanta el contexto completo de Spring sin tocar la BD —nada consulta
- * al arrancar y el único @Scheduled corre a medianoche— y comprueba que /v3/api-docs exige sesión
+ * al arrancar: el único @Scheduled siempre activo corre a medianoche y las tareas de NSYS (0.9.17) solo
+ * existen con nsys.importacion.activa o nsys.historico.activo— y comprueba que /v3/api-docs exige sesión
  * y publica las rutas y esquemas de la Task 4. Deja el documento en target/openapi.json para que
  * la web genere de ahí sus tipos TypeScript.
  */

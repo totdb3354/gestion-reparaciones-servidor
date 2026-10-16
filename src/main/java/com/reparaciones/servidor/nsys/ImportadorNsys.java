@@ -1,0 +1,214 @@
+package com.reparaciones.servidor.nsys;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.time.Clock;
+import java.time.DateTimeException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/** Una pasada de importación del espejo de NSYS (spec pieza 1 §5): el maestro si ha cambiado y, después, los ficheros
+ *  Items pendientes, en orden. La primera vez solo importa el más reciente (esqueleto). */
+@Service
+public class ImportadorNsys {
+
+    private static final Logger log = LoggerFactory.getLogger(ImportadorNsys.class);
+
+    public static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
+    public static final double MINIMO_FILAS = 0.9;
+    public static final String ACTUAL = "ACTUAL";
+    public static final String HISTORICO = "HISTORICO";
+    public static final String MAESTRO = "MAESTRO";
+    public static final String OK = "OK";
+    public static final String RECHAZADO = "RECHAZADO";
+    public static final String ERROR = "ERROR";
+    private static final Pattern NOMBRE = Pattern.compile("Items_(\\d{4})\\.(\\d{2})\\.(\\d{2})_(\\d{2})\\.(\\d{2})\\.xlsx");
+
+    /** Un fichero Items de Drive con la fecha que lleva en el nombre (hora de Madrid). */
+    public record FicheroItems(String id, String nombre, LocalDateTime fecha) {}
+
+    private final ClienteDrive drive;
+    private final NsysDAO dao;
+    private final String carpeta;
+    private final String maestro;
+    private final Clock clock;
+
+    @Autowired
+    public ImportadorNsys(ClienteDrive drive, NsysDAO dao, @Value("${nsys.drive.carpeta-items:}") String carpeta,
+                          @Value("${nsys.drive.maestro:}") String maestro) {
+        this(drive, dao, carpeta, maestro, Clock.system(MADRID));
+    }
+
+    ImportadorNsys(ClienteDrive drive, NsysDAO dao, String carpeta, String maestro, Clock clock) {
+        this.drive = drive;
+        this.dao = dao;
+        this.carpeta = carpeta == null ? "" : carpeta;
+        this.maestro = maestro == null ? "" : maestro;
+        this.clock = clock;
+    }
+
+    public static Optional<LocalDateTime> fechaDelNombre(String nombre) {
+        Matcher m = NOMBRE.matcher(nombre == null ? "" : nombre);
+        if (!m.matches()) return Optional.empty();
+        try {
+            return Optional.of(LocalDateTime.of(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)),
+                    Integer.parseInt(m.group(3)), Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5))));
+        } catch (DateTimeException fechaImposible) {
+            return Optional.empty();
+        }
+    }
+
+    /** Los Items de la carpeta con una fecha válida en el nombre, del más antiguo al más reciente. */
+    public static List<FicheroItems> items(ClienteDrive drive, String carpeta) throws IOException, InterruptedException {
+        List<FicheroItems> ficheros = new ArrayList<>();
+        for (ClienteDrive.FicheroDrive f : drive.listarItems(carpeta))
+            fechaDelNombre(f.nombre()).ifPresent(fecha -> ficheros.add(new FicheroItems(f.id(), f.nombre(), fecha)));
+        ficheros.sort(Comparator.comparing(FicheroItems::fecha));
+        return ficheros;
+    }
+
+    public void pasada() {
+        if (carpeta.isBlank()) {
+            log.warn("NSYS: falta el ajuste nsys.drive.carpeta-items; no se importa nada");
+            return;
+        }
+        boolean maestroNuevo = actualizarMaestro();
+        List<FicheroItems> pendientes;
+        try {
+            pendientes = pendientes();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        } catch (Exception e) {
+            log.warn("NSYS: no se pudo listar la carpeta de Items en Drive: {}", e.toString());
+            return;
+        }
+        if (pendientes.isEmpty()) {
+            if (maestroNuevo) retraducir();
+            return;
+        }
+        for (FicheroItems f : pendientes) if (!procesar(f)) return;
+    }
+
+    private List<FicheroItems> pendientes() throws IOException, InterruptedException {
+        List<FicheroItems> todos = items(drive, carpeta);
+        if (todos.isEmpty()) return List.of();
+        Optional<Importacion> ultima = dao.ultimaImportacion(ACTUAL, Set.of(OK, RECHAZADO));
+        if (ultima.isEmpty()) return List.of(todos.get(todos.size() - 1));
+        LocalDateTime desde = ultima.get().fechaExportacion();
+        return todos.stream().filter(f -> f.fecha().isAfter(desde)).toList();
+    }
+
+    /** Procesa un fichero. Devuelve false si hay que parar la pasada (error de Drive o de la base de datos): el mismo
+     *  fichero se reintenta en la siguiente. */
+    private boolean procesar(FicheroItems f) {
+        int id = dao.empezarImportacion(f.nombre(), f.fecha(), ACTUAL, ahora());
+        try {
+            List<FilaItems> filas = LectorItems.leer(new ByteArrayInputStream(drive.descargar(f.id())));
+            Optional<Importacion> previa = dao.ultimaImportacion(ACTUAL, Set.of(OK));
+            if (previa.isPresent() && filas.size() < previa.get().filas() * MINIMO_FILAS) {
+                dao.terminarImportacion(id, RECHAZADO, filas.size(), 0, String.format(
+                        "Trae %d filas frente a las %d de la última importación: se trata como incompleto",
+                        filas.size(), previa.get().filas()), ahora());
+                return true;
+            }
+            Map<ClaveMovil, MovilNsys> anteriores = dao.cargarMoviles();
+            Comparador.Modo modo = anteriores.isEmpty() ? Comparador.Modo.PRIMERA_CARGA : Comparador.Modo.NORMAL;
+            ResultadoComparacion r = Comparador.comparar(anteriores, filas, f.fecha(), modo, traductor());
+            dao.aplicar(r, id);
+            int modelos = dao.rellenarModelosTelefono();
+            dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, modelos), ahora());
+            return true;
+        } catch (FormatoItemsException e) {
+            dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            dao.terminarImportacion(id, ERROR, 0, 0, "Interrumpida", ahora());
+            return false;
+        } catch (Exception e) {
+            log.warn("NSYS: error al importar {}", f.nombre(), e);
+            dao.terminarImportacion(id, ERROR, 0, 0, e.toString(), ahora());
+            return false;
+        }
+    }
+
+    /** Recarga el maestro si en Drive hay uno más nuevo que el último cargado o rechazado. true si lo ha recargado. */
+    private boolean actualizarMaestro() {
+        if (maestro.isBlank()) return false;
+        Integer id = null;
+        try {
+            ClienteDrive.FicheroDrive meta = drive.metadatos(maestro);
+            LocalDateTime modificado = LocalDateTime.ofInstant(meta.modificado(), MADRID).truncatedTo(ChronoUnit.SECONDS);
+            Optional<Importacion> ultimo = dao.ultimaImportacion(MAESTRO, Set.of(OK, RECHAZADO));
+            if (ultimo.isPresent() && !modificado.isAfter(ultimo.get().fechaExportacion())) return false;
+            id = dao.empezarImportacion(meta.nombre(), modificado, MAESTRO, ahora());
+            ResultadoMaestro m = LectorMaestro.leer(new ByteArrayInputStream(drive.descargar(maestro)));
+            dao.reemplazarProductos(m.productos());
+            dao.terminarImportacion(id, OK, m.productos().size(), 0, resumen(m), ahora());
+            return true;
+        } catch (FormatoItemsException e) {
+            if (id != null) dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (id != null) dao.terminarImportacion(id, ERROR, 0, 0, "Interrumpida", ahora());
+            return false;
+        } catch (Exception e) {
+            log.warn("NSYS: no se pudo actualizar el maestro: {}", e.toString());
+            if (id != null) dao.terminarImportacion(id, ERROR, 0, 0, e.toString(), ahora());
+            return false;
+        }
+    }
+
+    /** Con un maestro nuevo y ningún Items pendiente, vuelve a traducir la foto guardada (SKU, modelo…) sin eventos. */
+    private void retraducir() {
+        Map<ClaveMovil, MovilNsys> anteriores = dao.cargarMoviles();
+        if (anteriores.isEmpty()) return;
+        List<FilaItems> filas = anteriores.values().stream().map(MovilNsys::comoFila).toList();
+        dao.aplicar(Comparador.comparar(anteriores, filas, ahora(), Comparador.Modo.NORMAL, traductor()), null);
+        dao.rellenarModelosTelefono();
+    }
+
+    private Traductor traductor() {
+        return new Traductor(dao.cargarProductos(), dao.cargarUbicaciones());
+    }
+
+    private LocalDateTime ahora() {
+        return LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    static String resumen(ResultadoComparacion r, int modelos) {
+        List<String> partes = new ArrayList<>();
+        if (!r.cajasDesconocidas().isEmpty())
+            partes.add("Cajas sin traducir: " + String.join(", ",
+                    r.cajasDesconocidas().stream().map(c -> c.isEmpty() ? "(sin caja)" : c).toList()));
+        if (r.desaparecidos() > 0) partes.add(r.desaparecidos() + " móviles anteriores no venían en el fichero");
+        if (modelos > 0) partes.add("Modelo rellenado en " + modelos + " teléfonos del taller");
+        return partes.isEmpty() ? null : String.join(". ", partes);
+    }
+
+    static String resumen(ResultadoMaestro m) {
+        List<String> partes = new ArrayList<>();
+        if (!m.conflictos().isEmpty())
+            partes.add("Sin SKU por nombre repetido con SKU distintos: " + String.join(", ", m.conflictos()));
+        if (!m.modelosFueraDeCatalogo().isEmpty())
+            partes.add("Modelos fuera del catálogo del ERP: " + String.join(", ", m.modelosFueraDeCatalogo()));
+        return partes.isEmpty() ? null : String.join(". ", partes);
+    }
+}
