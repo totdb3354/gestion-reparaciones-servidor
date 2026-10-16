@@ -62,6 +62,13 @@ class LectorItemsTest {
                 assertThrows(FormatoItemsException.class, () -> leer(XlsxDePrueba.libro(vacio))).getMessage());
     }
 
+    @Test void unXlsxTruncadoSeRechazaComoFormato() throws Exception {
+        byte[] completo = XlsxDePrueba.items(List.of(
+                XlsxDePrueba.fila("350000000000001", "Apple iPhone 13 128GB Blue", "A", "Available", "BT-9001", "CAJA LISTOS", "9/2/2026", null)));
+        byte[] cortado = java.util.Arrays.copyOf(completo, completo.length / 2);
+        assertThrows(FormatoItemsException.class, () -> leer(cortado));
+    }
+
     @Test void lasFilasSinImeiSeIgnoranYUnaFechaRaraQuedaVacia() throws Exception {
         byte[] xlsx = XlsxDePrueba.items(List.of(
                 XlsxDePrueba.fila(null, "Apple iPhone 13 128GB Blue", "A", "Available", "BT-9001", "", "9/2/2026", null),

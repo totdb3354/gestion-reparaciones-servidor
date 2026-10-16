@@ -1,8 +1,10 @@
 package com.reparaciones.servidor.nsys;
 
-import org.apache.poi.UnsupportedFileFormatException;
+import org.apache.poi.ooxml.POIXMLException;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
+import org.apache.poi.openxml4j.exceptions.OpenXML4JRuntimeException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.util.XMLHelper;
@@ -18,6 +20,9 @@ import org.xml.sax.XMLReader;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,9 +39,22 @@ final class HojaXlsx {
 
     private HojaXlsx() {}
 
-    /** Recorre la hoja {@code nombreHoja}, o la primera si es null. */
+    /** Recorre la hoja {@code nombreHoja}, o la primera si es null. El flujo se pasa antes a un fichero temporal: abrir el
+     *  paquete desde un InputStream descomprime todas las partes en memoria (decenas de MB de XML con 70.000 filas),
+     *  mientras que desde un fichero cada parte se lee del zip solo cuando se recorre. Un fichero roto es contenido
+     *  (FormatoItemsException); un fallo al escribir el temporal es de infraestructura (IOException). */
     static void leer(InputStream xlsx, String nombreHoja, Filas destino) throws IOException {
-        try (OPCPackage paquete = OPCPackage.open(xlsx)) {
+        Path temporal = Files.createTempFile("nsys-", ".xlsx");
+        try {
+            Files.copy(xlsx, temporal, StandardCopyOption.REPLACE_EXISTING);
+            recorrer(temporal, nombreHoja, destino);
+        } finally {
+            Files.deleteIfExists(temporal);
+        }
+    }
+
+    private static void recorrer(Path fichero, String nombreHoja, Filas destino) throws IOException {
+        try (OPCPackage paquete = OPCPackage.open(fichero.toFile(), PackageAccess.READ)) {
             XSSFReader lector = new XSSFReader(paquete);
             ReadOnlySharedStringsTable textos = new ReadOnlySharedStringsTable(paquete);
             StylesTable estilos = lector.getStylesTable();
@@ -52,8 +70,10 @@ final class HojaXlsx {
                 }
             }
             throw new FormatoItemsException(nombreHoja == null ? "El fichero no tiene hojas" : "Falta la hoja «" + nombreHoja + "»");
-        } catch (OpenXML4JException | SAXException | ParserConfigurationException | UnsupportedFileFormatException e) {
-            throw new FormatoItemsException("No es un .xlsx válido: " + e.getMessage());
+        } catch (IOException | OpenXML4JException | SAXException | ParserConfigurationException | POIXMLException | OpenXML4JRuntimeException
+                 | IllegalArgumentException e) {
+            // zip truncado o corrupto, XML roto, referencia de celda inválida, no es OOXML...: el contenido no vale
+            throw new FormatoItemsException("El fichero no es un .xlsx válido: " + e.getMessage());
         }
     }
 
