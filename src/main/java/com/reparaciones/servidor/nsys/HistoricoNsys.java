@@ -62,15 +62,17 @@ public class HistoricoNsys {
     /** Procesa como mucho un fichero antiguo. */
     public synchronized void paso() {
         if (terminado || carpeta.isBlank() || !deNoche(LocalTime.now(clock))) return;
-        Optional<Importacion> primera = dao.primeraImportacion(ACTUAL, Set.of(OK));
-        if (primera.isEmpty()) return;                       // hasta que exista la foto actual
         try {
+            Optional<Importacion> primera = dao.primeraImportacion(ACTUAL, Set.of(OK));
+            if (primera.isEmpty()) return;                   // hasta que exista la foto actual
             LocalDateTime limite = primera.get().fechaExportacion();
             List<FicheroItems> candidatos = items(drive, carpeta).stream().filter(f -> !f.fecha().isAfter(limite)).toList();
             Set<String> hechos = dao.ficherosProcesados(HISTORICO);
             Optional<FicheroItems> siguiente = candidatos.stream().filter(f -> !hechos.contains(f.nombre())).findFirst();
             if (siguiente.isEmpty()) {
                 terminado = true;
+                fotoPrevia = null;                           // ya no hace falta: se libera la foto de memoria
+                ficheroPrevio = null;
                 log.info("NSYS: histórico cargado");
                 return;
             }
@@ -79,7 +81,7 @@ public class HistoricoNsys {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            log.warn("NSYS: histórico: {}", e.toString());
+            log.warn("NSYS: histórico: {}", e.toString(), e);
         }
     }
 
@@ -97,7 +99,12 @@ public class HistoricoNsys {
             fotoPrevia = null;                               // ya no está en Drive: este fichero hace de punto de partida
             return;
         }
-        guardarFoto(f, LectorItems.leer(new ByteArrayInputStream(drive.descargar(f.id()))), traductor());
+        List<FilaItems> filas = LectorItems.leer(new ByteArrayInputStream(drive.descargar(f.id())));
+        guardarFoto(f, filas, traductor());
+        filasPrevias = filas.size();
+        // el freno compara con el fichero anterior, sea OK o RECHAZADO (si no trae filas, sin freno)
+        filasPrevias = dao.ultimaImportacion(HISTORICO, Set.of(OK, RECHAZADO)).map(Importacion::filas)
+                .filter(n -> n > 0).orElse(filasPrevias);
     }
 
     private void procesar(FicheroItems f) {
@@ -106,20 +113,22 @@ public class HistoricoNsys {
             List<FilaItems> filas = LectorItems.leer(new ByteArrayInputStream(drive.descargar(f.id())));
             Traductor t = traductor();
             if (fotoPrevia == null) {
-                guardarFoto(f, filas, t);
                 dao.terminarImportacion(id, OK, filas.size(), 0, "Punto de partida del histórico", ahora());
+                guardarFoto(f, filas, t);
+                filasPrevias = filas.size();
                 return;
             }
-            if (filas.size() < filasPrevias * MINIMO_FILAS) {
+            if (filasPrevias > 0 && filas.size() < filasPrevias * MINIMO_FILAS) {
                 dao.terminarImportacion(id, RECHAZADO, filas.size(), 0, String.format(
                         "Trae %d filas frente a las %d de la anterior: se trata como incompleto", filas.size(), filasPrevias),
                         ahora());
+                if (!filas.isEmpty()) filasPrevias = filas.size();   // la foto no cambia, pero la referencia del freno sí
                 return;
             }
             ResultadoComparacion r = Comparador.comparar(fotoPrevia, filas, f.fecha(), Comparador.Modo.HISTORICO, t);
-            dao.insertarEventos(r.eventos(), id);
+            dao.cerrarHistorico(r.eventos(), id, filas.size(), ahora());   // eventos y OK en una transacción
             guardarFoto(f, filas, t);
-            dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), null, ahora());
+            filasPrevias = filas.size();
         } catch (FormatoItemsException e) {
             dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
         } catch (InterruptedException e) {
@@ -134,7 +143,6 @@ public class HistoricoNsys {
     private void guardarFoto(FicheroItems f, List<FilaItems> filas, Traductor t) {
         fotoPrevia = Comparador.foto(filas, t, f.fecha());
         ficheroPrevio = f.nombre();
-        filasPrevias = filas.size();
     }
 
     private Traductor traductor() {

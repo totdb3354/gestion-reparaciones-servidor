@@ -74,6 +74,14 @@ class NsysDAOTest {
         assertEquals(42, dao.empezarImportacion("Items_2026.10.16_09.01.xlsx", HOY, "ACTUAL", HOY.plusMinutes(3)));
     }
 
+    @Test void cerrarHistoricoInsertaLosEventosYMarcaOkEnLaMismaLlamada() {
+        EventoNsys e = new EventoNsys("350000000000001", "BT-9001", HOY, false, TipoEvento.UBICACION, "Taller · Glass",
+                "Listos", "CAJA LISTOS");
+        dao.cerrarHistorico(List.of(e), 42, 70, HOY);
+        verify(jdbc).batchUpdate(eq(NsysDAO.SQL_EVENTO), anyList());
+        verify(jdbc).update(NsysDAO.SQL_TERMINAR, "OK", 70, 1, null, Timestamp.valueOf(HOY), 42);
+    }
+
     @Test void terminarImportacionRecortaElMensaje() {
         dao.terminarImportacion(42, "ERROR", 0, 0, "x".repeat(600), HOY);
         verify(jdbc).update(NsysDAO.SQL_TERMINAR, "ERROR", 0, 0, "x".repeat(500), Timestamp.valueOf(HOY), 42);

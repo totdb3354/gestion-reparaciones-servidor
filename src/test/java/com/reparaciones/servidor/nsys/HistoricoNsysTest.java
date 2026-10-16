@@ -82,11 +82,11 @@ class HistoricoNsysTest {
 
         historico.paso();
         verify(dao).terminarImportacion(eq(11), eq("OK"), eq(1), eq(0), eq("Punto de partida del histórico"), any());
-        verify(dao, never()).insertarEventos(any(), any());
+        verify(dao, never()).cerrarHistorico(any(), anyInt(), anyInt(), any());
 
         historico.paso();
         ArgumentCaptor<List<EventoNsys>> eventos = ArgumentCaptor.forClass(List.class);
-        verify(dao).insertarEventos(eventos.capture(), eq(12));
+        verify(dao).cerrarHistorico(eventos.capture(), eq(12), eq(1), any());
         assertEquals(List.of(new EventoNsys("350000000000001", "BT-9001", LocalDateTime.of(2026, 10, 1, 9, 31), false,
                 TipoEvento.UBICACION, "Taller · Glass", "Listos", "CAJA LISTOS")), eventos.getValue());
         verify(drive, times(1)).descargar("id-" + PRIMERO);
@@ -103,7 +103,7 @@ class HistoricoNsysTest {
         InOrder orden = inOrder(drive);
         orden.verify(drive).descargar("id-" + PRIMERO);
         orden.verify(drive).descargar("id-" + SEGUNDO);
-        verify(dao).insertarEventos(argThat(l -> l.size() == 1), eq(11));
+        verify(dao).cerrarHistorico(argThat(l -> l.size() == 1), eq(11), eq(1), any());
     }
 
     @Test void alAcabarNoVuelveAMirarDrive() throws Exception {
@@ -113,5 +113,61 @@ class HistoricoNsysTest {
         historico.paso();
         verify(drive, times(1)).listarItems("carpeta-1");
         verify(drive, never()).descargar(anyString());
+    }
+
+    private static byte[] conFilas(int n, String caja) throws IOException {
+        List<List<Object>> filas = new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++)
+            filas.add(XlsxDePrueba.fila(String.format("35000000001%04d", i), "Apple iPhone 13 128GB Blue", "C100",
+                    "InProcess", "BT-9001", caja, "9/2/2026", null));
+        return XlsxDePrueba.items(filas);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void elFrenoCompruebaContraElFicheroAnteriorYNoSoloContraElUltimoOk() throws Exception {
+        String tercero = "Items_2026.10.01_10.01.xlsx";
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive(PRIMERO), enDrive(SEGUNDO), enDrive(tercero),
+                enDrive(ACTUAL)));
+        when(drive.descargar("id-" + PRIMERO)).thenReturn(conFilas(70, "CAJA GLASS"));
+        when(drive.descargar("id-" + SEGUNDO)).thenReturn(conFilas(60, "CAJA LISTOS"));
+        when(drive.descargar("id-" + tercero)).thenReturn(conFilas(61, "CAJA LISTOS"));
+        when(dao.ficherosProcesados("HISTORICO")).thenReturn(Set.of(), Set.of(PRIMERO), Set.of(PRIMERO, SEGUNDO));
+        Importacion primero = new Importacion(11, PRIMERO, LocalDateTime.of(2026, 10, 1, 9, 1), "OK", 70, null);
+        when(dao.ultimaImportacion("HISTORICO", Set.of("OK"))).thenReturn(Optional.empty(), Optional.of(primero),
+                Optional.of(primero));
+        HistoricoNsys historico = a(23, 30);
+
+        historico.paso();
+        historico.paso();
+        verify(dao).terminarImportacion(eq(12), eq("RECHAZADO"), eq(60), eq(0), anyString(), any());
+        historico.paso();
+
+        ArgumentCaptor<List<EventoNsys>> eventos = ArgumentCaptor.forClass(List.class);
+        verify(dao).cerrarHistorico(eventos.capture(), eq(13), eq(61), any());
+        assertTrue(eventos.getValue().stream().anyMatch(e -> "Taller · Glass".equals(e.de())));
+    }
+
+    @Test void siElCierreFallaNoAvanzaLaFotoYElSiguientePasoRecalculaElMismoFichero() throws Exception {
+        when(dao.ficherosProcesados("HISTORICO")).thenReturn(Set.of(), Set.of(PRIMERO));
+        when(dao.ultimaImportacion("HISTORICO", Set.of("OK"))).thenReturn(Optional.empty(),
+                Optional.of(new Importacion(11, PRIMERO, LocalDateTime.of(2026, 10, 1, 9, 1), "OK", 1, null)));
+        doThrow(new IllegalStateException("BD caida")).doNothing().when(dao)
+                .cerrarHistorico(any(), anyInt(), anyInt(), any());
+        HistoricoNsys historico = a(23, 30);
+
+        historico.paso();
+        historico.paso();
+        historico.paso();
+
+        @SuppressWarnings("unchecked") ArgumentCaptor<List<EventoNsys>> eventos = ArgumentCaptor.forClass(List.class);
+        verify(dao, times(2)).cerrarHistorico(eventos.capture(), anyInt(), eq(1), any());
+        assertEquals(1, eventos.getAllValues().get(0).size());
+        assertEquals(eventos.getAllValues().get(0), eventos.getAllValues().get(1));
+        verify(drive, times(1)).descargar("id-" + PRIMERO);
+    }
+
+    @Test void unaCaidaDeLaBdAlPrincipioNoSale() {
+        when(dao.primeraImportacion("ACTUAL", Set.of("OK"))).thenThrow(new IllegalStateException("BD caida"));
+        assertDoesNotThrow(() -> a(23, 30).paso());
     }
 }

@@ -111,6 +111,14 @@ public class NsysDAO {
                     idImportacion}).toList());
     }
 
+    /** Cierra un fichero del histórico: inserta sus eventos y lo marca OK en una sola transacción, para que un fallo
+     *  a medias no deje eventos que se repitan al reintentar. */
+    @Transactional
+    public void cerrarHistorico(List<EventoNsys> eventos, int idImportacion, int filas, LocalDateTime ahora) {
+        insertarEventos(eventos, idImportacion);
+        terminarImportacion(idImportacion, ImportadorNsys.OK, filas, eventos.size(), null, ahora);
+    }
+
     static Object[] argumentos(MovilNsys m) {
         return new Object[]{corta(m.imeiSn(), 40), corta(m.batch(), 40), corta(m.goods(), 150), corta(m.grade(), 20),
                 corta(m.status(), 30), corta(m.location(), 80), corta(m.supplier(), 80), fecha(m.receivingDate()),
