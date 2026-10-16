@@ -52,10 +52,10 @@ public class NsysDAO {
             + " VALUES (?, ?, ?, ?)";
     static final String SQL_TERMINAR = "UPDATE Nsys_importacion SET RESULTADO = ?, FILAS = ?, CAMBIOS = ?, MENSAJE = ?,"
             + " TERMINADA = ? WHERE ID_IMPORTACION = ?";
-    /** Rellena el modelo de los teléfonos del taller que no lo tienen, sin pisar nunca uno puesto (spec §7). */
+    /** Rellena el modelo de los teléfonos del taller que no lo tienen, sin pisar nunca uno puesto, solo para IMEI de 15 cifras que ya existen en Telefono (spec §7). */
     static final String SQL_RELLENAR_MODELOS = "UPDATE Telefono t JOIN (SELECT IMEI_SN, MAX(MODELO) AS MODELO"
             + " FROM Nsys_movil WHERE MODELO IS NOT NULL GROUP BY IMEI_SN) n ON n.IMEI_SN = t.IMEI"
-            + " SET t.MODELO = n.MODELO WHERE t.MODELO IS NULL OR t.MODELO = ''";
+            + " SET t.MODELO = n.MODELO WHERE (t.MODELO IS NULL OR t.MODELO = '') AND t.IMEI REGEXP '^[0-9]{15}$'";
     private static final String COLUMNAS_IMPORTACION = "ID_IMPORTACION, FICHERO, FECHA_EXPORTACION, RESULTADO, FILAS, MENSAJE";
 
     private final JdbcTemplate jdbc;

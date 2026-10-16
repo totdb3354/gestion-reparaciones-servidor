@@ -93,6 +93,13 @@ class NsysDAOTest {
         assertEquals(4, dao.rellenarModelosTelefono());
     }
 
+    @Test void rellenarModelosSoloVaciosDe15DigitosQueYaExisten() {
+        String sql = NsysDAO.SQL_RELLENAR_MODELOS;
+        assertTrue(sql.startsWith("UPDATE Telefono t JOIN ("), sql);
+        assertTrue(sql.contains("WHERE (t.MODELO IS NULL OR t.MODELO = '')"), sql);
+        assertTrue(sql.contains("AND t.IMEI REGEXP '^[0-9]{15}$'"), sql);
+    }
+
     @SuppressWarnings("unchecked")
     @Test void modeloDeUnImeiQueNoEstaEsNull() {
         when(jdbc.query(contains("FROM Nsys_movil WHERE IMEI_SN = ? AND MODELO IS NOT NULL"), any(RowMapper.class), eq("350000000000001")))
