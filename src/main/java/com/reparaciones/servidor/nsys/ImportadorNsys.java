@@ -111,15 +111,26 @@ public class ImportadorNsys {
 
     private List<FicheroItems> pendientes() throws IOException, InterruptedException {
         List<FicheroItems> todos = items(drive, carpeta);
-        // Un fichero recién modificado puede estar a medio escribir: se corta ahí para no romper el orden del rastro.
-        Instant limite = clock.instant().minus(ESPERA_DRIVE);
-        for (int i = 0; i < todos.size(); i++)
-            if (todos.get(i).modificado().isAfter(limite)) { todos = todos.subList(0, i); break; }
         if (todos.isEmpty()) return List.of();
         Optional<Importacion> ultima = dao.ultimaImportacion(ACTUAL, Set.of(OK, RECHAZADO));
-        if (ultima.isEmpty()) return List.of(todos.get(todos.size() - 1));
-        LocalDateTime desde = ultima.get().fechaExportacion();
-        return todos.stream().filter(f -> f.fecha().isAfter(desde)).toList();
+        // Candidatos: la primera vez, todos (y se toma el más reciente que ya esté asentado); después, los posteriores
+        // al último procesado. La espera solo mira a los candidatos: un ya importado con hora reciente no bloquea nada.
+        List<FicheroItems> candidatos = ultima.isEmpty() ? todos
+                : todos.stream().filter(f -> f.fecha().isAfter(ultima.get().fechaExportacion())).toList();
+        // Un fichero recién modificado puede estar a medio escribir: se corta ahí para no romper el orden del rastro.
+        Instant ahora = clock.instant();
+        Instant limite = ahora.minus(ESPERA_DRIVE);
+        for (int i = 0; i < candidatos.size(); i++) {
+            FicheroItems f = candidatos.get(i);
+            if (f.modificado().isAfter(limite)) {
+                if (f.modificado().isAfter(ahora))
+                    log.warn("NSYS: {} se retiene porque su hora en Drive ({}) está en el futuro", f.nombre(), f.modificado());
+                candidatos = candidatos.subList(0, i);
+                break;
+            }
+        }
+        if (candidatos.isEmpty()) return List.of();
+        return ultima.isEmpty() ? List.of(candidatos.get(candidatos.size() - 1)) : candidatos;
     }
 
     /** Procesa un fichero. Devuelve false si hay que parar la pasada (error de Drive o de la base de datos): el mismo
@@ -171,6 +182,10 @@ public class ImportadorNsys {
             if (ultimo.isPresent() && !modificado.isAfter(ultimo.get().fechaExportacion())) return false;
             id = dao.empezarImportacion(meta.nombre(), modificado, MAESTRO, ahora());
             ResultadoMaestro m = LectorMaestro.leer(new ByteArrayInputStream(drive.descargar(maestro)));
+            if (m.productos().isEmpty()) { // vaciar Nsys_producto dejaría todos los móviles sin SKU ni modelo
+                dao.terminarImportacion(id, RECHAZADO, 0, 0, "El maestro no trae productos", ahora());
+                return false;
+            }
             dao.reemplazarProductos(m.productos());
             dao.terminarImportacion(id, OK, m.productos().size(), 0, resumen(m), ahora());
             return true;

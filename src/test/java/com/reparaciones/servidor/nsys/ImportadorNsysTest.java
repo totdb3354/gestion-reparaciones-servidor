@@ -252,6 +252,8 @@ class ImportadorNsysTest {
                 Instant.parse("2026-10-16T07:00:00Z")));
         List<List<Object>> hoja = new ArrayList<>();
         hoja.add(new ArrayList<Object>(LectorMaestro.COLUMNAS));
+        hoja.add(List.of("Apple iPhone 13 128GB Blue A", "iPhone", "13", "128GB", "Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128Azul"));
         Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
         hojas.put(LectorMaestro.HOJA, hoja);
         when(drive.descargar("maestro-1")).thenReturn(XlsxDePrueba.libro(hojas));
@@ -264,6 +266,53 @@ class ImportadorNsysTest {
         verify(dao).reemplazarProductos(any());
         verify(dao).aplicar(any(), anyInt());
         verify(dao, never()).aplicar(any(), isNull());
+    }
+
+    @Test void unRecienSubidoRetieneTambienALosPosterioresAunqueEstenAsentados() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(
+                subidoA("Items_2026.10.16_09.31.xlsx", "2026-10-16T07:00:00Z"),
+                subidoA("Items_2026.10.16_09.01.xlsx", "2026-10-16T07:04:00Z")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+        verify(drive, never()).descargar(anyString());
+        verify(dao, never()).empezarImportacion(anyString(), any(), anyString(), any());
+
+        new ImportadorNsys(drive, dao, "carpeta-1", "maestro-1",
+                Clock.fixed(AHORA.plusMinutes(3).atZone(MADRID).toInstant(), MADRID)).pasada();
+        InOrder orden = inOrder(drive);
+        orden.verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
+        orden.verify(drive).descargar("id-Items_2026.10.16_09.31.xlsx");
+    }
+
+    @Test void unYaImportadoConHoraRecienteNoBloqueaALosPendientes() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(
+                subidoA("Items_2026.10.16_08.31.xlsx", "2026-10-16T07:04:30Z"),
+                subidoA("Items_2026.10.16_09.01.xlsx", "2026-10-16T07:00:00Z")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
+        verify(drive, never()).descargar("id-Items_2026.10.16_08.31.xlsx");
+    }
+
+    @Test void unMaestroSinProductosSeRechazaYNoVaciaElCatalogo() throws Exception {
+        when(drive.metadatos("maestro-1")).thenReturn(new ClienteDrive.FicheroDrive("maestro-1", "Maestro.xlsx",
+                Instant.parse("2026-10-16T07:00:00Z")));
+        List<List<Object>> hoja = new ArrayList<>();
+        hoja.add(new ArrayList<Object>(LectorMaestro.COLUMNAS));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        when(drive.descargar("maestro-1")).thenReturn(XlsxDePrueba.libro(hojas));
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of());
+
+        importador.pasada();
+
+        verify(dao).terminarImportacion(1, "RECHAZADO", 0, 0, "El maestro no trae productos", AHORA);
+        verify(dao, never()).reemplazarProductos(any());
     }
 
     @Test void laFechaSaleDelNombre() {
