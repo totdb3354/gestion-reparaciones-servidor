@@ -21,6 +21,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /** Lee de Drive, en solo lectura, con la cuenta de servicio propia del ERP (spec pieza 1 §2 y §5.1): listar la carpeta de
  *  los Items, leer los metadatos de un fichero y descargarlo. Mismo patrón que el bot de WhatsApp de las automatizaciones. */
@@ -29,7 +33,11 @@ public class ClienteDrive {
 
     static final String API = "https://www.googleapis.com/drive/v3/files";
     static final String ALCANCE = "https://www.googleapis.com/auth/drive.readonly";
-    private static final Duration ESPERA = Duration.ofSeconds(60);
+    /** Hasta las cabeceras de la respuesta (HttpRequest.timeout). */
+    private static final Duration ESPERA_CABECERAS = Duration.ofSeconds(60);
+    /** Plazo de toda la petición, cuerpo incluido: descargar un fichero, y listar la carpeta o leer metadatos. */
+    static final Duration ESPERA_DESCARGA = Duration.ofMinutes(2);
+    static final Duration ESPERA_CONSULTA = Duration.ofMinutes(1);
 
     public record FicheroDrive(String id, String nombre, Instant modificado) {}
 
@@ -40,6 +48,8 @@ public class ClienteDrive {
 
     private final HttpClient http;
     private final ProveedorToken tokens;
+    private final Duration esperaDescarga;
+    private final Duration esperaConsulta;
     private final ObjectMapper json = new ObjectMapper();
 
     @Autowired
@@ -50,8 +60,15 @@ public class ClienteDrive {
 
     /** Paquete: para que los tests sustituyan la red y el token. */
     ClienteDrive(HttpClient http, ProveedorToken tokens) {
+        this(http, tokens, ESPERA_DESCARGA, ESPERA_CONSULTA);
+    }
+
+    /** Paquete: los tests acortan los plazos. */
+    ClienteDrive(HttpClient http, ProveedorToken tokens, Duration esperaDescarga, Duration esperaConsulta) {
         this.http = http;
         this.tokens = tokens;
+        this.esperaDescarga = esperaDescarga;
+        this.esperaConsulta = esperaConsulta;
     }
 
     /** Credenciales perezosas: se leen la primera vez que hacen falta, así el contexto arranca sin el fichero (tests y
@@ -82,7 +99,7 @@ public class ClienteDrive {
             String url = API + "?q=" + codificar(consulta) + "&fields=" + codificar("nextPageToken,files(id,name,modifiedTime)")
                     + "&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives"
                     + (pagina == null ? "" : "&pageToken=" + codificar(pagina));
-            JsonNode cuerpo = json.readTree(pedir(url, HttpResponse.BodyHandlers.ofString()));
+            JsonNode cuerpo = json.readTree(pedir(url, HttpResponse.BodyHandlers.ofString(), esperaConsulta));
             for (JsonNode f : cuerpo.path("files")) ficheros.add(fichero(f));
             pagina = cuerpo.path("nextPageToken").asText(null);
         } while (pagina != null);
@@ -91,19 +108,41 @@ public class ClienteDrive {
 
     public FicheroDrive metadatos(String id) throws IOException, InterruptedException {
         String url = API + "/" + codificar(id) + "?fields=" + codificar("id,name,modifiedTime") + "&supportsAllDrives=true";
-        return fichero(json.readTree(pedir(url, HttpResponse.BodyHandlers.ofString())));
+        return fichero(json.readTree(pedir(url, HttpResponse.BodyHandlers.ofString(), esperaConsulta)));
     }
 
     public byte[] descargar(String id) throws IOException, InterruptedException {
-        return pedir(API + "/" + codificar(id) + "?alt=media&supportsAllDrives=true", HttpResponse.BodyHandlers.ofByteArray());
+        return pedir(API + "/" + codificar(id) + "?alt=media&supportsAllDrives=true", HttpResponse.BodyHandlers.ofByteArray(),
+                esperaDescarga);
     }
 
-    private <T> T pedir(String url, HttpResponse.BodyHandler<T> cuerpo) throws IOException, InterruptedException {
-        HttpRequest peticion = HttpRequest.newBuilder(URI.create(url)).timeout(ESPERA)
+    /** Una petición con plazo para todo, cuerpo incluido. HttpRequest.timeout solo cubre la espera de las cabeceras, y la
+     *  importación, el histórico y la tarea de medianoche comparten el único hilo del planificador de Spring: un cuerpo
+     *  que no acaba los congelaría a todos. */
+    private <T> T pedir(String url, HttpResponse.BodyHandler<T> cuerpo, Duration espera) throws IOException, InterruptedException {
+        String sinConsulta = url.substring(0, url.indexOf('?'));
+        Duration cabeceras = espera.compareTo(ESPERA_CABECERAS) < 0 ? espera : ESPERA_CABECERAS;
+        HttpRequest peticion = HttpRequest.newBuilder(URI.create(url)).timeout(cabeceras)
                 .header("Authorization", "Bearer " + tokens.token()).GET().build();
-        HttpResponse<T> respuesta = http.send(peticion, cuerpo);
+        CompletableFuture<HttpResponse<T>> futura = http.sendAsync(peticion, cuerpo);
+        HttpResponse<T> respuesta;
+        try {
+            respuesta = futura.get(espera.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            futura.cancel(true);
+            throw new IOException("Drive no respondió a tiempo a " + sinConsulta);
+        } catch (InterruptedException e) {
+            futura.cancel(true);
+            throw e;
+        } catch (ExecutionException e) {
+            Throwable causa = e.getCause();
+            if (causa instanceof IOException io) throw io;
+            if (causa instanceof RuntimeException r) throw r;
+            if (causa instanceof Error er) throw er;
+            throw new IOException("Fallo al pedir a Drive " + sinConsulta, causa);
+        }
         if (respuesta.statusCode() != 200)
-            throw new IOException("Drive respondió " + respuesta.statusCode() + " a " + url.substring(0, url.indexOf('?')));
+            throw new IOException("Drive respondió " + respuesta.statusCode() + " a " + sinConsulta);
         return respuesta.body();
     }
 
