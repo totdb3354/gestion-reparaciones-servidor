@@ -62,6 +62,22 @@ class LectorMaestroTest {
         assertEquals(List.of("Apple iPhone 13 128GB  Blue A"), r.conflictos());
     }
 
+    @Test void unColorLargoSeCortaAlAnchoDeSuColumna() throws Exception {
+        String color = "Azul Sierra con reflejos de medianoche y mar";      // 44 caracteres; COLOR es VARCHAR(40)
+        ProductoMaestro p = leer(maestro(List.of(fila("Apple iPhone 13 128GB Blue A", "iPhone", "13", color, "A",
+                "i13128AzulA", "i13128AzulA")))).productos().get(0);
+        assertEquals(color.substring(0, 40), p.color());
+    }
+
+    @Test void cadaCampoSeCortaAlAnchoDeSuColumna() throws Exception {
+        List<Object> larga = Arrays.asList("Apple iPhone 13 " + "x".repeat(200), "x", "iPhone", "M".repeat(45),
+                "C".repeat(25), "K".repeat(45), "D".repeat(25), "W".repeat(65), "Z".repeat(65), "S".repeat(65));
+        ProductoMaestro p = leer(maestro(List.of(larga))).productos().get(0);
+        assertEquals(List.of(160, 40, 20, 40, 20, 60, 60, 60), java.util.stream.Stream.of(p.clave(), p.modeloMaestro(),
+                p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado())
+                .map(String::length).toList());
+    }
+
     @Test void sinSuHojaOSinUnaColumnaSeRechaza() throws Exception {
         Map<String, List<List<Object>>> otra = new LinkedHashMap<>();
         otra.put("Check SKUs", List.of(CABECERA));

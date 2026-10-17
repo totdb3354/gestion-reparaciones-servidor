@@ -103,12 +103,12 @@ public class NsysDAO {
         insertarEventos(r.eventos(), idImportacion);
     }
 
+    /** Los textos de los eventos son campos de Nsys_movil o ubicaciones, ya cortados al leer (AnchosNsys): caben. */
     @Transactional
     public void insertarEventos(List<EventoNsys> eventos, Integer idImportacion) {
         for (List<EventoNsys> lote : trozos(eventos))
             jdbc.batchUpdate(SQL_EVENTO, lote.stream().map(e -> new Object[]{e.imeiSn(), e.batch(), Timestamp.valueOf(e.fecha()),
-                    e.soloDia(), e.tipo().name(), corta(e.de(), 150), corta(e.a(), 150), corta(e.aNsys(), 80),
-                    idImportacion}).toList());
+                    e.soloDia(), e.tipo().name(), e.de(), e.a(), e.aNsys(), idImportacion}).toList());
     }
 
     /** Cierra un fichero del histórico: inserta sus eventos y lo marca OK en una sola transacción, para que un fallo
@@ -119,12 +119,13 @@ public class NsysDAO {
         terminarImportacion(idImportacion, ImportadorNsys.OK, filas, eventos.size(), null, ahora);
     }
 
+    /** Sin cortar: LectorItems y LectorMaestro ya cortan cada campo al ancho de su columna (AnchosNsys), así la foto
+     *  guardada y la que se compara son la misma. */
     static Object[] argumentos(MovilNsys m) {
-        return new Object[]{corta(m.imeiSn(), 40), corta(m.batch(), 40), corta(m.goods(), 150), corta(m.grade(), 20),
-                corta(m.status(), 30), corta(m.location(), 80), corta(m.supplier(), 80), fecha(m.receivingDate()),
-                fecha(m.soldDate()), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(), m.gradoDetalle(),
-                m.esEsim(), m.ubicacion(), m.ubicacionUltima(), m.estado().name(), Timestamp.valueOf(m.vistoPrimero()),
-                Timestamp.valueOf(m.cambiado())};
+        return new Object[]{m.imeiSn(), m.batch(), m.goods(), m.grade(), m.status(), m.location(), m.supplier(),
+                fecha(m.receivingDate()), fecha(m.soldDate()), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(),
+                m.color(), m.gradoDetalle(), m.esEsim(), m.ubicacion(), m.ubicacionUltima(), m.estado().name(),
+                Timestamp.valueOf(m.vistoPrimero()), Timestamp.valueOf(m.cambiado())};
     }
 
     // ---------------------------------------------------------------- registro de importaciones
@@ -133,7 +134,7 @@ public class NsysDAO {
         KeyHolder claves = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(SQL_EMPEZAR, Statement.RETURN_GENERATED_KEYS);
-            ps.setString(1, corta(fichero, 120));
+            ps.setString(1, AnchosNsys.corta(fichero, AnchosNsys.FICHERO));
             ps.setTimestamp(2, Timestamp.valueOf(fechaExportacion));
             ps.setString(3, origen);
             ps.setTimestamp(4, Timestamp.valueOf(ahora));
@@ -143,7 +144,8 @@ public class NsysDAO {
     }
 
     public void terminarImportacion(int id, String resultado, int filas, int cambios, String mensaje, LocalDateTime ahora) {
-        jdbc.update(SQL_TERMINAR, resultado, filas, cambios, corta(mensaje, 500), Timestamp.valueOf(ahora), id);
+        jdbc.update(SQL_TERMINAR, resultado, filas, cambios, AnchosNsys.corta(mensaje, AnchosNsys.MENSAJE),
+                Timestamp.valueOf(ahora), id);
     }
 
     public Optional<Importacion> ultimaImportacion(String origen, Set<String> resultados) {
@@ -243,10 +245,6 @@ public class NsysDAO {
         List<List<T>> trozos = new ArrayList<>();
         for (int i = 0; i < lista.size(); i += LOTE) trozos.add(lista.subList(i, Math.min(lista.size(), i + LOTE)));
         return trozos;
-    }
-
-    static String corta(String texto, int maximo) {
-        return texto == null || texto.length() <= maximo ? texto : texto.substring(0, maximo);
     }
 
     private static Date fecha(LocalDate dia) {

@@ -11,10 +11,14 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -124,6 +128,45 @@ class LectorItemsTest {
         assertEquals("100000000000000000000", HojaXlsx.numeroLlano(1e20));
         assertEquals("-7", HojaXlsx.numeroLlano(-7d));
         assertEquals("0", HojaXlsx.numeroLlano(0d));
+    }
+
+    @Test void cadaCampoSeCortaAlAnchoDeSuColumna() throws Exception {
+        Object[] v = new Object[LectorItems.CABECERAS.size()];
+        v[0] = "3".repeat(45);
+        v[1] = "G".repeat(160);
+        v[3] = "R".repeat(25);
+        v[4] = "S".repeat(35);
+        v[6] = "P".repeat(90);
+        v[7] = "B".repeat(45);
+        v[18] = "L".repeat(90);
+        FilaItems f = leer(XlsxDePrueba.items(List.of(Arrays.asList(v)))).get(0);
+        assertEquals(List.of(40, 40, 150, 20, 30, 80, 80), Stream.of(f.imeiSn(), f.batch(), f.goods(), f.grade(),
+                f.status(), f.location(), f.supplier()).map(String::length).toList());
+    }
+
+    @Test void unGradoDeMasDe20NoDaEventosAlVolverAImportarElMismoFichero() throws Exception {
+        String largo = "A-100 revisado y pulido";                    // 23 caracteres; GRADE es VARCHAR(20)
+        byte[] xlsx = XlsxDePrueba.items(List.of(XlsxDePrueba.fila("350000000000001", "Apple iPhone 13 128GB Blue", largo,
+                "Available", "BT-9001", "CAJA LISTOS", "9/2/2026", null)));
+        Traductor t = new Traductor(List.of(), List.of(new UbicacionNsys("CAJA LISTOS", "Listos", true, false)));
+        LocalDateTime primera = LocalDateTime.of(2026, 10, 16, 9, 1);
+        Map<ClaveMovil, MovilNsys> enLaBase = new HashMap<>();
+        for (MovilNsys m : Comparador.comparar(Map.of(), leer(xlsx), primera, Comparador.Modo.PRIMERA_CARGA, t).aGuardar())
+            enLaBase.put(m.clave(), comoEnLaBase(m));
+
+        ResultadoComparacion segunda = Comparador.comparar(enLaBase, leer(xlsx), primera.plusMinutes(30),
+                Comparador.Modo.NORMAL, t);
+
+        assertEquals(List.of(), segunda.eventos(), "sin un GRADO fantasma en cada importación");
+        assertEquals(List.of(), segunda.aGuardar());
+    }
+
+    /** Lo que devuelve Nsys_movil al leerlo: GRADE es VARCHAR(20). */
+    private static MovilNsys comoEnLaBase(MovilNsys m) {
+        String grado = m.grade() != null && m.grade().length() > 20 ? m.grade().substring(0, 20) : m.grade();
+        return new MovilNsys(m.imeiSn(), m.batch(), m.goods(), grado, m.status(), m.location(), m.supplier(),
+                m.receivingDate(), m.soldDate(), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
+                m.gradoDetalle(), m.esEsim(), m.ubicacion(), m.ubicacionUltima(), m.estado(), m.vistoPrimero(), m.cambiado());
     }
 
     @Test void formatosDeFecha() {

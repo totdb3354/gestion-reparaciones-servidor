@@ -12,6 +12,12 @@ class NormalizacionTest {
         assertEquals("", Normalizacion.clave(null, null));
     }
 
+    @Test void laClaveSeCortaAlAnchoDeNsysProducto() {
+        // Goods (150) + Grade (20) sin espacios pueden pasar de los 160 de Nsys_producto.CLAVE.
+        assertEquals(160, Normalizacion.clave("G".repeat(150), "R".repeat(20)).length());
+        assertEquals(160, Normalizacion.clave("Apple iPhone 13 " + "x".repeat(200)).length());
+    }
+
     @Test void laCajaVaSinEspaciosALosLadosYSinCajaEsVacia() {
         assertEquals("CAJA LISTOS", Normalizacion.caja(" CAJA LISTOS "));
         assertEquals("", Normalizacion.caja(null));

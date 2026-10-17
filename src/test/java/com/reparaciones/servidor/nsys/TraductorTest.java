@@ -19,6 +19,15 @@ class TraductorTest {
         assertNull(t.producto("Apple iPhone 13 128GB Blue", "B"));
     }
 
+    @Test void unProductoDeNombreMuyLargoSeEncuentraConLaClaveQueGuardaLaBaseDeDatos() {
+        String goods = "Apple" + "x".repeat(145);                    // 150, el ancho de GOODS
+        String grade = "A-100-revisado-bat";
+        String clave = Normalizacion.clave(goods + " " + grade);
+        String enLaBase = clave.length() > 160 ? clave.substring(0, 160) : clave;   // Nsys_producto.CLAVE es VARCHAR(160)
+        ProductoMaestro largo = new ProductoMaestro(enLaBase, "13", "13", "128GB", "Azul", "A", "w", "a", "s", false);
+        assertSame(largo, new Traductor(List.of(largo), List.of()).producto(goods, grade));
+    }
+
     @Test void encuentraLaCajaSinEspaciosYSinCaja() {
         assertEquals("Listos", t.caja(" CAJA LISTOS").ubicacion());
         assertEquals("En revisión", t.caja(null).ubicacion());

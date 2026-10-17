@@ -40,13 +40,15 @@ public final class LectorMaestro {
             }
             String nombre = valor(celdas, "Product Name Calidad");
             if (nombre == null) return;
-            String modeloMaestro = valor(celdas, "Modelo");
+            String modeloMaestro = valor(celdas, "Modelo", AnchosNsys.MODELO_MAESTRO);
             String modelo = "iPhone".equals(valor(celdas, "Familia")) ? Normalizacion.modeloErp(modeloMaestro) : null;
             if (modelo == null && modeloMaestro != null && "iPhone".equals(valor(celdas, "Familia"))) fuera.add(modeloMaestro);
+            // La clave ya sale cortada al ancho de CLAVE (Normalizacion.clave), igual que al buscar un «Goods + Grade».
             ProductoMaestro p = new ProductoMaestro(Normalizacion.clave(nombre), modelo, modeloMaestro,
-                    valor(celdas, "Capacidad"), valor(celdas, "Color"), valor(celdas, "Calidad Detalle"),
-                    valor(celdas, "SKU (stock web)"), valor(celdas, "SKU (Amazon)"), valor(celdas, "SKU sin grado"),
-                    Normalizacion.esEsim(nombre));
+                    valor(celdas, "Capacidad", AnchosNsys.CAPACIDAD), valor(celdas, "Color", AnchosNsys.COLOR),
+                    valor(celdas, "Calidad Detalle", AnchosNsys.CALIDAD_DETALLE),
+                    valor(celdas, "SKU (stock web)", AnchosNsys.SKU), valor(celdas, "SKU (Amazon)", AnchosNsys.SKU),
+                    valor(celdas, "SKU sin grado", AnchosNsys.SKU), Normalizacion.esEsim(nombre));
             ProductoMaestro previo = productos.get(p.clave());
             if (previo == null) {
                 productos.put(p.clave(), p);
@@ -59,6 +61,11 @@ public final class LectorMaestro {
 
         private String valor(List<String> celdas, String columna) {
             return HojaXlsx.valor(celdas, columnas.get(columna));
+        }
+
+        /** Cortado al ancho de su columna en Nsys_producto. */
+        private String valor(List<String> celdas, String columna, int ancho) {
+            return AnchosNsys.corta(valor(celdas, columna), ancho);
         }
     }
 }

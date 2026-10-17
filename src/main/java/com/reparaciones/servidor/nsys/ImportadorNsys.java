@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -202,6 +203,12 @@ public class ImportadorNsys {
         } catch (FormatoItemsException e) {
             if (id != null) dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
             return false;
+        } catch (DataIntegrityViolationException e) {
+            // La base de datos no admite este maestro (un dato que no cabe…): reintentarlo daría lo mismo cada pasada.
+            log.warn("NSYS: la base de datos no admite el maestro: {}", motivo(e));
+            if (id != null)
+                dao.terminarImportacion(id, RECHAZADO, 0, 0, "La base de datos no admite el maestro: " + motivo(e), ahora());
+            return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             if (id != null) dao.terminarImportacion(id, ERROR, 0, 0, "Interrumpida", ahora());
@@ -228,6 +235,15 @@ public class ImportadorNsys {
 
     private LocalDateTime ahora() {
         return LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    /** El motivo de un fallo en pocas palabras: el mensaje de la causa más concreta (sin la consulta SQL que Spring
+     *  pone delante) o, si no lo tiene, su clase. */
+    static String motivo(Throwable e) {
+        Throwable raiz = e;
+        while (raiz.getCause() != null && raiz.getCause() != raiz) raiz = raiz.getCause();
+        String texto = raiz.getMessage();
+        return AnchosNsys.corta(texto == null || texto.isBlank() ? raiz.getClass().getSimpleName() : texto.strip(), 200);
     }
 
     static String resumen(ResultadoComparacion r, int repetidas, int modelos) {

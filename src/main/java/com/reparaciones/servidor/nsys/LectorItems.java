@@ -56,16 +56,22 @@ public final class LectorItems {
                 columnas = HojaXlsx.columnas(celdas, CABECERAS, "el fichero de NSYS");
                 return;
             }
-            String imei = valor(celdas, "IMEI/SN");
+            String imei = valor(celdas, "IMEI/SN", AnchosNsys.IMEI_SN);
             if (imei == null) return;                       // filas vacías o de pie
-            String lote = valor(celdas, "Batch");
-            filas.add(new FilaItems(imei, lote == null ? "" : lote, valor(celdas, "Goods"), valor(celdas, "Grade"),
-                    valor(celdas, "Status"), valor(celdas, "Location"), valor(celdas, "Supplier"),
+            String lote = valor(celdas, "Batch", AnchosNsys.BATCH);
+            filas.add(new FilaItems(imei, lote == null ? "" : lote, valor(celdas, "Goods", AnchosNsys.GOODS),
+                    valor(celdas, "Grade", AnchosNsys.GRADE), valor(celdas, "Status", AnchosNsys.STATUS),
+                    valor(celdas, "Location", AnchosNsys.LOCATION), valor(celdas, "Supplier", AnchosNsys.SUPPLIER),
                     fecha(valor(celdas, "Receiving date")), fecha(valor(celdas, "Sold date"))));
         }
 
         private String valor(List<String> celdas, String columna) {
             return HojaXlsx.valor(celdas, columnas.get(columna));
+        }
+
+        /** Cortado al ancho de su columna en Nsys_movil: la clave y las comparaciones van con lo que guarda la base. */
+        private String valor(List<String> celdas, String columna, int ancho) {
+            return AnchosNsys.corta(valor(celdas, columna), ancho);
         }
     }
 }

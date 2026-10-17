@@ -10,10 +10,11 @@ public final class Normalizacion {
     private Normalizacion() {}
 
     /** Clave del maestro: «Goods» + «Grade» sin espacios y en minúsculas, igual que el verificador de SKU de las
-     *  automatizaciones. */
+     *  automatizaciones. Cortada al ancho de Nsys_producto.CLAVE aquí, en un solo sitio: el maestro al leerse y el
+     *  importador al buscar cortan igual, y la clave que vuelve de la base de datos sigue encontrándose. */
     public static String clave(String goods, String grade) {
         String texto = (goods == null ? "" : goods) + (grade == null ? "" : grade);
-        return texto.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+        return AnchosNsys.corta(texto.replaceAll("\\s+", "").toLowerCase(Locale.ROOT), AnchosNsys.CLAVE);
     }
 
     /** Clave de una fila del maestro a partir de su «Product Name Calidad». */

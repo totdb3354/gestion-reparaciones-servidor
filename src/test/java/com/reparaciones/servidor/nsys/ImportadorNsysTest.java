@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -348,6 +349,28 @@ class ImportadorNsysTest {
                 "2 de las 100 filas repiten IMEI/SN y lote: se trata como un fichero mal leído", AHORA);
         verify(dao, never()).aplicar(any(), any());
         verify(dao, never()).rellenarModelosTelefono();
+    }
+
+    @Test void unMaestroQueLaBaseDeDatosNoAdmiteSeRechazaYNoSeReintenta() throws Exception {
+        when(drive.metadatos("maestro-1")).thenReturn(new ClienteDrive.FicheroDrive("maestro-1", "Maestro.xlsx",
+                Instant.parse("2026-10-16T07:00:00Z")));
+        List<List<Object>> hoja = new ArrayList<>();
+        hoja.add(new ArrayList<Object>(LectorMaestro.COLUMNAS));
+        hoja.add(List.of("Apple iPhone 13 128GB Blue A", "iPhone", "13", "128GB", "Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128Azul"));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        when(drive.descargar("maestro-1")).thenReturn(XlsxDePrueba.libro(hojas));
+        doThrow(new DataIntegrityViolationException("PreparedStatementCallback; SQL [INSERT INTO Nsys_producto ...]",
+                new java.sql.SQLDataException("Data too long for column 'COLOR' at row 1")))
+                .when(dao).reemplazarProductos(any());
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of());
+
+        importador.pasada();
+
+        // RECHAZADO cuenta como resuelto: el mismo maestro no se vuelve a descargar en cada pasada.
+        verify(dao).terminarImportacion(1, "RECHAZADO", 0, 0,
+                "La base de datos no admite el maestro: Data too long for column 'COLOR' at row 1", AHORA);
     }
 
     @Test void laFechaSaleDelNombre() {
