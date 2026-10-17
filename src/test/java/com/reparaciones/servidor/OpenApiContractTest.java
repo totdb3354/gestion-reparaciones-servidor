@@ -27,7 +27,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * Hace de red de seguridad del arranque (el proyecto no tenía test de contexto) y del contrato
  * que consume la app web: levanta el contexto completo de Spring sin tocar la BD —nada consulta
- * al arrancar y el único @Scheduled corre a medianoche— y comprueba que /v3/api-docs exige sesión
+ * al arrancar: el único @Scheduled siempre activo corre a medianoche y las tareas de NSYS (0.9.17) solo
+ * existen con nsys.importacion.activa o nsys.historico.activo— y comprueba que /v3/api-docs exige sesión
  * y publica las rutas y esquemas de la Task 4. Deja el documento en target/openapi.json para que
  * la web genere de ahí sus tipos TypeScript.
  */
@@ -455,6 +456,37 @@ class OpenApiContractTest {
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/activar", "patch", "204", "404");
         assertCodigos(paths, "/api/usuarios/tecnicos/{idTec}/desactivar", "patch", "204", "404");
         assertCodigos(paths, "/api/auth/cambiar-password", "patch", "204", "422", "429");
+    }
+
+    /** 0.9.17, pieza 1 del módulo de teléfonos: el stock de teléfonos y el rastro (spec 2026-10-16 §8). */
+    @Test void elContratoPublicaElStockDeTelefonos() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        for (String ruta : List.of("/api/stock-telefonos", "/api/stock-telefonos/estado", "/api/stock-telefonos/buscar",
+                "/api/stock-telefonos/{imeiSn}", "/api/stock-telefonos/{imeiSn}/rastro")) {
+            assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        }
+        assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/estado", "get", "200").endsWith("/StockTelefonosEstadoImportacion"));
+        assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/{imeiSn}", "get", "200").endsWith("/StockTelefonosFichaMovil"));
+        JsonNode imei = parametro(paths, "/api/stock-telefonos/buscar", "get", "imei");
+        assertEquals("query", imei.path("in").asText());
+
+        assertNullable(esquemas, "StockTelefonosMovilStock", "modelo", "modeloMaestro", "capacidad", "color", "sku", "ubicacion", "dias");
+        assertNoNullable(esquemas, "StockTelefonosMovilStock", "imeiSn", "lote", "grado", "bateriaNueva", "esEsim", "estado");
+        assertNullable(esquemas, "StockTelefonosEstadoImportacion", "ultimaExportacion", "ultimoFallo", "motivoFallo");
+        assertNoNullable(esquemas, "StockTelefonosEstadoImportacion", "nivel");
+        assertNullable(esquemas, "StockTelefonosMovilBuscado", "modelo", "modeloMaestro", "capacidad", "color", "ubicacion", "fechaVenta");
+        assertNoNullable(esquemas, "StockTelefonosMovilBuscado", "imeiSn", "estado");
+        assertNullable(esquemas, "StockTelefonosFichaMovil", "modelo", "modeloMaestro", "capacidad", "color", "gradoAnterior",
+                "sku", "ubicacion", "dias", "fechaVenta");
+        assertNoNullable(esquemas, "StockTelefonosFichaMovil", "imeiSn", "lote", "grado", "bateriaNueva", "estado", "entradas");
+        assertNullable(esquemas, "EventoRastro", "lote", "de", "a", "aNsys", "idRep", "tecnico", "categoria");
+        assertNoNullable(esquemas, "EventoRastro", "fecha", "soloDia", "fuente", "tipo");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

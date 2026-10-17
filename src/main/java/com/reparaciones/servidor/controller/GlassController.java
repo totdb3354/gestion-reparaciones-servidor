@@ -10,7 +10,7 @@ import com.reparaciones.servidor.model.Tecnico;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
-import com.reparaciones.servidor.service.ImeiLookupService;
+import com.reparaciones.servidor.nsys.ModeloNsys;
 import com.reparaciones.servidor.service.PrediccionGlass;
 import com.reparaciones.servidor.service.TipoTrabajo;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -35,16 +35,16 @@ public class GlassController {
     private final ReparacionDAO dao;
     private final LogDAO logDao;
     private final TelefonoDAO telefonoDAO;
-    private final ImeiLookupService imeiLookupService;
+    private final ModeloNsys modeloNsys;
     private final TecnicoDAO tecnicoDao;
     private final CargaAsignacionesService cargaAsignaciones;
 
-    public GlassController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ImeiLookupService imeiLookupService,
+    public GlassController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ModeloNsys modeloNsys,
                            TecnicoDAO tecnicoDao, CargaAsignacionesService cargaAsignaciones) {
         this.dao = dao;
         this.logDao = logDao;
         this.telefonoDAO = telefonoDAO;
-        this.imeiLookupService = imeiLookupService;
+        this.modeloNsys = modeloNsys;
         this.tecnicoDao = tecnicoDao;
         this.cargaAsignaciones = cargaAsignaciones;
     }
@@ -68,7 +68,7 @@ public class GlassController {
                                                   @AuthenticationPrincipal UsuarioPrincipal principal) {
         String modeloExistente = telefonoDAO.getModelo(req.imei());
         if (modeloExistente == null || modeloExistente.isBlank()) {
-            String modelo = imeiLookupService.lookupModeloInterno(req.imei());
+            String modelo = modeloNsys.lookupModeloInterno(req.imei());
             if (modelo != null) telefonoDAO.insertar(req.imei(), modelo);
         }
         String idRep = dao.insertarAsignacionGlass(req.imei(), req.idTec(), req.comentario(), req.urgente(), principal.getIdTec(), principal.getIdUsu());

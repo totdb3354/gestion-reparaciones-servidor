@@ -6,7 +6,7 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.ReparacionResumen;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
-import com.reparaciones.servidor.service.ImeiLookupService;
+import com.reparaciones.servidor.nsys.ModeloNsys;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,13 +24,13 @@ public class PulidoController {
     private final ReparacionDAO dao;
     private final LogDAO        logDao;
     private final TelefonoDAO   telefonoDAO;
-    private final ImeiLookupService imeiLookupService;
+    private final ModeloNsys modeloNsys;
 
-    public PulidoController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ImeiLookupService imeiLookupService) {
+    public PulidoController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ModeloNsys modeloNsys) {
         this.dao    = dao;
         this.logDao = logDao;
         this.telefonoDAO = telefonoDAO;
-        this.imeiLookupService = imeiLookupService;
+        this.modeloNsys = modeloNsys;
     }
 
     @GetMapping("/asignaciones")
@@ -54,7 +54,7 @@ public class PulidoController {
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
         String modeloExistente = telefonoDAO.getModelo(req.imei());
         if (modeloExistente == null || modeloExistente.isBlank()) {
-            String modelo = imeiLookupService.lookupModeloInterno(req.imei());
+            String modelo = modeloNsys.lookupModeloInterno(req.imei());
             if (modelo != null) {
                 telefonoDAO.insertar(req.imei(), modelo);
             }

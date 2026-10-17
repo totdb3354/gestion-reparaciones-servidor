@@ -9,7 +9,7 @@ import com.reparaciones.servidor.model.LoteAsignaciones.*;
 import com.reparaciones.servidor.model.Tecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.AsignacionLoteService;
-import com.reparaciones.servidor.service.ImeiLookupService;
+import com.reparaciones.servidor.nsys.ModeloNsys;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -31,18 +31,18 @@ public class AsignacionController {
     private final ReparacionDAO dao;
     private final TelefonoDAO telefonoDao;
     private final TecnicoDAO tecnicoDao;
-    private final ImeiLookupService imeiLookupService;
+    private final ModeloNsys modeloNsys;
     private final LogDAO logDao;
     private final RegistroIdempotencia idempotencia;
 
     public AsignacionController(AsignacionLoteService servicio, ReparacionDAO dao, TelefonoDAO telefonoDao,
-                                TecnicoDAO tecnicoDao, ImeiLookupService imeiLookupService, LogDAO logDao,
+                                TecnicoDAO tecnicoDao, ModeloNsys modeloNsys, LogDAO logDao,
                                 RegistroIdempotencia idempotencia) {
         this.servicio = servicio;
         this.dao = dao;
         this.telefonoDao = telefonoDao;
         this.tecnicoDao = tecnicoDao;
-        this.imeiLookupService = imeiLookupService;
+        this.modeloNsys = modeloNsys;
         this.logDao = logDao;
         this.idempotencia = idempotencia;
     }
@@ -56,7 +56,7 @@ public class AsignacionController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_SIN_CLAVE);
         validar(req);
         return idempotencia.ejecutar(principal.getIdUsu(), "lote", claveIdempotencia, req,
-                // El lookup externo va aquí, ANTES de entrar en la transacción del servicio.
+                // El modelo de NSYS se busca aquí, antes de entrar en la transacción del servicio.
                 () -> servicio.guardar(conModeloDePulido(req), principal.getIdTec(), principal.getIdUsu()),
                 resultado -> registrarLogs(req, resultado, principal.getIdUsu()));
     }
@@ -88,8 +88,7 @@ public class AsignacionController {
         return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, msg);
     }
 
-    /** Como hoy POST /pulidos/asignaciones: un IMEI que solo va a pulido y no tiene modelo ni en el lote ni en BD
-     *  lo busca en el servicio de IMEI. Lento y externo: fuera de la transacción. */
+    /** Como hoy POST /pulidos/asignaciones: un IMEI que solo va a pulido y no tiene modelo ni en el lote ni en BD lo toma del espejo de NSYS (0.9.17; antes, de IMEIcheck). Fuera de la transacción. */
     private Peticion conModeloDePulido(Peticion req) {
         Set<String> conRepOGlass = req.asignaciones().stream().filter(a -> !"P".equals(a.categoria()))
                 .map(AsignacionDelLote::imei).collect(Collectors.toSet());
@@ -99,7 +98,7 @@ public class AsignacionController {
             if (sinModelo && !conRepOGlass.contains(t.imei())) {
                 String enBd = telefonoDao.getModelo(t.imei());
                 if (enBd == null || enBd.isBlank()) {
-                    String encontrado = imeiLookupService.lookupModeloInterno(t.imei());
+                    String encontrado = modeloNsys.lookupModeloInterno(t.imei());
                     if (encontrado != null) t = new TelefonoDelLote(t.imei(), encontrado, t.idCli(), t.clienteExplicito());
                 }
             }
