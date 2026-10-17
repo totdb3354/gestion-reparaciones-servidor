@@ -165,7 +165,7 @@ public class ImportadorNsys {
             Comparador.Modo modo = anteriores.isEmpty() ? Comparador.Modo.PRIMERA_CARGA : Comparador.Modo.NORMAL;
             ResultadoComparacion r = Comparador.comparar(anteriores, filas, f.fecha(), modo, traductor());
             dao.aplicar(r, id);
-            int modelos = dao.rellenarModelosTelefono();
+            String modelos = rellenarModelos();
             dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
             return true;
         } catch (FormatoItemsException e) {
@@ -226,7 +226,20 @@ public class ImportadorNsys {
         if (anteriores.isEmpty()) return;
         List<FilaItems> filas = anteriores.values().stream().map(MovilNsys::comoFila).toList();
         dao.aplicar(Comparador.comparar(anteriores, filas, ahora(), Comparador.Modo.NORMAL, traductor()), null);
-        dao.rellenarModelosTelefono();
+        rellenarModelos();
+    }
+
+    /** Rellena el modelo de los teléfonos del taller que no lo tienen. La foto ya está guardada: si esto falla (por
+     *  ejemplo, intercalaciones distintas entre Nsys_movil y Telefono), la importación sigue OK y se avisa en el
+     *  registro del servidor y en el mensaje. Devuelve la nota para el mensaje, o null si no hay nada que contar. */
+    private String rellenarModelos() {
+        try {
+            int n = dao.rellenarModelosTelefono();
+            return n > 0 ? "Modelo rellenado en " + n + " teléfonos del taller" : null;
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudo rellenar el modelo de los teléfonos del taller", e);
+            return "Modelos del taller no rellenados: " + motivo(e);
+        }
     }
 
     private Traductor traductor() {
@@ -246,14 +259,14 @@ public class ImportadorNsys {
         return AnchosNsys.corta(texto == null || texto.isBlank() ? raiz.getClass().getSimpleName() : texto.strip(), 200);
     }
 
-    static String resumen(ResultadoComparacion r, int repetidas, int modelos) {
+    static String resumen(ResultadoComparacion r, int repetidas, String modelos) {
         List<String> partes = new ArrayList<>();
         if (repetidas > 0) partes.add(repetidas + " filas repetidas descartadas");
         if (!r.cajasDesconocidas().isEmpty())
             partes.add("Cajas sin traducir: " + String.join(", ",
                     r.cajasDesconocidas().stream().map(c -> c.isEmpty() ? "(sin caja)" : c).toList()));
         if (r.desaparecidos() > 0) partes.add(r.desaparecidos() + " móviles anteriores no venían en el fichero");
-        if (modelos > 0) partes.add("Modelo rellenado en " + modelos + " teléfonos del taller");
+        if (modelos != null) partes.add(modelos);
         return partes.isEmpty() ? null : String.join(". ", partes);
     }
 

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -371,6 +372,51 @@ class ImportadorNsysTest {
         // RECHAZADO cuenta como resuelto: el mismo maestro no se vuelve a descargar en cada pasada.
         verify(dao).terminarImportacion(1, "RECHAZADO", 0, 0,
                 "La base de datos no admite el maestro: Data too long for column 'COLOR' at row 1", AHORA);
+    }
+
+    private static UncategorizedSQLException colacionesMezcladas() {
+        return new UncategorizedSQLException("rellenar modelos", NsysDAO.SQL_RELLENAR_MODELOS, new java.sql.SQLException(
+                "Illegal mix of collations (utf8mb4_general_ci,IMPLICIT) and (utf8mb4_unicode_ci,IMPLICIT) for operation '='"));
+    }
+
+    @Test void siFallaElRellenoDeModelosDelTallerLaImportacionSigueOk() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx"),
+                enDrive("Items_2026.10.16_09.31.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        when(dao.rellenarModelosTelefono()).thenThrow(colacionesMezcladas());
+
+        importador.pasada();
+
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), eq("Modelos del taller no rellenados: Illegal mix"
+                + " of collations (utf8mb4_general_ci,IMPLICIT) and (utf8mb4_unicode_ci,IMPLICIT) for operation '='"), eq(AHORA));
+        verify(dao).aplicar(any(), eq(2));
+        verify(dao).terminarImportacion(eq(2), eq("OK"), eq(2), anyInt(), startsWith("Modelos del taller no rellenados"), eq(AHORA));
+        verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
+    }
+
+    @Test void siFallaElRellenoDeModelosAlRetraducirLaPasadaNoRevienta() throws Exception {
+        when(drive.metadatos("maestro-1")).thenReturn(new ClienteDrive.FicheroDrive("maestro-1", "Maestro.xlsx",
+                Instant.parse("2026-10-16T07:00:00Z")));
+        List<List<Object>> hoja = new ArrayList<>();
+        hoja.add(new ArrayList<Object>(LectorMaestro.COLUMNAS));
+        hoja.add(List.of("Apple iPhone 13 128GB Blue A", "iPhone", "13", "128GB", "Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128Azul"));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        when(drive.descargar("maestro-1")).thenReturn(XlsxDePrueba.libro(hojas));
+        MovilNsys guardado = new MovilNsys("350000000000001", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Available",
+                "CAJA LISTOS", "Proveedor A", LocalDate.of(2026, 9, 2), null, null, null, null, null, null, null, false,
+                "Listos", "Listos", EstadoMovil.STOCK, AHORA.minusDays(10), AHORA.minusDays(10));
+        when(dao.cargarMoviles()).thenReturn(Map.of(guardado.clave(), guardado));
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 9, 1), 1);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(dao.rellenarModelosTelefono()).thenThrow(colacionesMezcladas());
+
+        assertDoesNotThrow(importador::pasada);
+
+        verify(dao).aplicar(any(), isNull());
+        verify(dao).rellenarModelosTelefono();
     }
 
     @Test void laFechaSaleDelNombre() {
