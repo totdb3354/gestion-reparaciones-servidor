@@ -6,6 +6,7 @@ import org.apache.poi.openxml4j.exceptions.OpenXML4JRuntimeException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.DateUtil;
 import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.util.XMLHelper;
 import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
@@ -20,6 +21,7 @@ import org.xml.sax.XMLReader;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -32,7 +34,8 @@ import java.util.Map;
 /** Recorre una hoja de un .xlsx fila a fila (SAX), sin cargar el libro entero en memoria. */
 final class HojaXlsx {
 
-    /** Recibe cada fila como lista de textos: null en las celdas vacías; los números y fechas, tal como se ven. */
+    /** Recibe cada fila como lista de textos: null en las celdas vacías; las fechas, tal como se ven; los demás números,
+     *  en texto llano (ver {@link #numeroLlano}). */
     interface Filas {
         void fila(List<String> celdas);
     }
@@ -64,7 +67,7 @@ final class HojaXlsx {
                     if (nombreHoja != null && !nombreHoja.equals(hojas.getSheetName())) continue;
                     XMLReader xml = XMLHelper.newXMLReader();
                     xml.setContentHandler(new XSSFSheetXMLHandler(estilos, textos, new Recolector(destino),
-                            new DataFormatter(Locale.ROOT), false));
+                            new Formato(), false));
                     xml.parse(new InputSource(hoja));
                     return;
                 }
@@ -89,8 +92,28 @@ final class HojaXlsx {
         return indices;
     }
 
+    /** Un número en texto llano: sin notación científica, sin redondear y sin el «.0» de los enteros
+     *  (350000000000123 → "350000000000123", 123.45 → "123.45"). */
+    static String numeroLlano(double valor) {
+        if (!Double.isFinite(valor)) return Double.toString(valor);
+        return BigDecimal.valueOf(valor).stripTrailingZeros().toPlainString();
+    }
+
     static String valor(List<String> celdas, Integer indice) {
         return indice == null || indice >= celdas.size() ? null : celdas.get(indice);
+    }
+
+    /** Las fechas, como se ven; el resto de números, en texto llano. Con el formato «General», POI pasa a notación
+     *  científica los números largos (un IMEI numérico salía «3.5E+14» y juntaba muchos móviles en una clave). */
+    private static final class Formato extends DataFormatter {
+        Formato() {
+            super(Locale.ROOT);
+        }
+
+        @Override public String formatRawCellContents(double valor, int indice, String formato, boolean use1904Windowing) {
+            if (DateUtil.isADateFormat(indice, formato)) return super.formatRawCellContents(valor, indice, formato, use1904Windowing);
+            return numeroLlano(valor);
+        }
     }
 
     private static final class Recolector implements XSSFSheetXMLHandler.SheetContentsHandler {

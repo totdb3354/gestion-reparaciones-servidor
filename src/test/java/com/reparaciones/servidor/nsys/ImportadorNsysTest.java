@@ -315,6 +315,41 @@ class ImportadorNsysTest {
         verify(dao, never()).reemplazarProductos(any());
     }
 
+    /** {@code filas} filas, de las que las {@code repetidas} últimas repiten IMEI/SN y lote de la primera. */
+    private static byte[] itemsConRepetidas(int filas, int repetidas) throws IOException {
+        List<List<Object>> lista = new ArrayList<>();
+        for (int i = 0; i < filas; i++)
+            lista.add(XlsxDePrueba.fila(String.format("3500000000%05d", i < filas - repetidas ? i : 0),
+                    "Apple iPhone 13 128GB Blue", "A", "Available", "BT-9001", "CAJA LISTOS", "9/2/2026", null));
+        return XlsxDePrueba.items(lista);
+    }
+
+    @Test void unasPocasFilasRepetidasSeDescartanYSeApuntan() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 300);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(itemsConRepetidas(300, 2));
+
+        importador.pasada();
+
+        ArgumentCaptor<ResultadoComparacion> r = ArgumentCaptor.forClass(ResultadoComparacion.class);
+        verify(dao).aplicar(r.capture(), eq(1));
+        assertEquals(298, r.getValue().aGuardar().size());
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(300), anyInt(), eq("2 filas repetidas descartadas"), eq(AHORA));
+    }
+
+    @Test void conMasDelUnoPorCientoDeFilasRepetidasSeRechazaSinAplicarNada() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 100);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(itemsConRepetidas(100, 2));
+
+        importador.pasada();
+
+        verify(dao).terminarImportacion(1, "RECHAZADO", 100, 0,
+                "2 de las 100 filas repiten IMEI/SN y lote: se trata como un fichero mal leído", AHORA);
+        verify(dao, never()).aplicar(any(), any());
+        verify(dao, never()).rellenarModelosTelefono();
+    }
+
     @Test void laFechaSaleDelNombre() {
         assertEquals(Optional.of(LocalDateTime.of(2026, 10, 16, 9, 1)), ImportadorNsys.fechaDelNombre("Items_2026.10.16_09.01.xlsx"));
         assertEquals(Optional.empty(), ImportadorNsys.fechaDelNombre("Items_2026.13.40_25.99.xlsx"));

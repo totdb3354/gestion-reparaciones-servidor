@@ -33,6 +33,8 @@ public class ImportadorNsys {
 
     public static final ZoneId MADRID = ZoneId.of("Europe/Madrid");
     public static final double MINIMO_FILAS = 0.9;
+    /** Más filas repetidas (mismo IMEI/SN y lote) que esta parte del fichero: se ha leído mal y no se aplica. */
+    public static final double MAXIMO_REPETIDAS = 0.01;
     /** Drive puede listar un fichero que el PC de producción aún está escribiendo: no se toca hasta que lleva esto quieto. */
     static final Duration ESPERA_DRIVE = Duration.ofMinutes(2);
     public static final String ACTUAL = "ACTUAL";
@@ -150,12 +152,20 @@ public class ImportadorNsys {
                         filas.size(), previa.get().filas()), ahora());
                 return true;
             }
+            // Una exportación sana no repite claves: muchas repetidas es un fichero mal leído, que juntaría móviles.
+            int repetidas = Comparador.repetidas(filas);
+            if (repetidas > filas.size() * MAXIMO_REPETIDAS) {
+                dao.terminarImportacion(id, RECHAZADO, filas.size(), 0, String.format(
+                        "%d de las %d filas repiten IMEI/SN y lote: se trata como un fichero mal leído",
+                        repetidas, filas.size()), ahora());
+                return true;
+            }
             Map<ClaveMovil, MovilNsys> anteriores = dao.cargarMoviles();
             Comparador.Modo modo = anteriores.isEmpty() ? Comparador.Modo.PRIMERA_CARGA : Comparador.Modo.NORMAL;
             ResultadoComparacion r = Comparador.comparar(anteriores, filas, f.fecha(), modo, traductor());
             dao.aplicar(r, id);
             int modelos = dao.rellenarModelosTelefono();
-            dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, modelos), ahora());
+            dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
             return true;
         } catch (FormatoItemsException e) {
             dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
@@ -220,8 +230,9 @@ public class ImportadorNsys {
         return LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
     }
 
-    static String resumen(ResultadoComparacion r, int modelos) {
+    static String resumen(ResultadoComparacion r, int repetidas, int modelos) {
         List<String> partes = new ArrayList<>();
+        if (repetidas > 0) partes.add(repetidas + " filas repetidas descartadas");
         if (!r.cajasDesconocidas().isEmpty())
             partes.add("Cajas sin traducir: " + String.join(", ",
                     r.cajasDesconocidas().stream().map(c -> c.isEmpty() ? "(sin caja)" : c).toList()));

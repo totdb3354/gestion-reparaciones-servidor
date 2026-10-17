@@ -65,6 +65,15 @@ public final class Comparador {
         return new ResultadoComparacion(aGuardar, eventos, desaparecidos, desconocidas);
     }
 
+    /** Cuántas filas repiten IMEI/SN y lote de otra anterior del mismo fichero. {@link #comparar} se queda con la
+     *  primera y descarta estas. Una exportación sana no trae ninguna. */
+    public static int repetidas(List<FilaItems> filas) {
+        Set<ClaveMovil> vistas = new HashSet<>();
+        int repetidas = 0;
+        for (FilaItems f : filas) if (!vistas.add(f.clave())) repetidas++;
+        return repetidas;
+    }
+
     /** La foto de una exportación sin nada previo. La usan el histórico (exportación contra exportación) y los tests. */
     public static Map<ClaveMovil, MovilNsys> foto(List<FilaItems> filas, Traductor t, LocalDateTime fecha) {
         Map<ClaveMovil, MovilNsys> foto = new HashMap<>();

@@ -41,6 +41,14 @@ class ComparadorTest {
         return Comparador.comparar(antes, List.of(ahora), HOY, Comparador.Modo.NORMAL, T);
     }
 
+    @Test void cuentaLasFilasQueRepitenImeiYLote() {
+        assertEquals(0, Comparador.repetidas(List.of(fila("350000000000001", "BT-9001", "A", "Available", "CAJA LISTOS"),
+                fila("350000000000001", "BT-9002", "A", "Available", "CAJA LISTOS"))), "otro lote no es repetida");
+        assertEquals(2, Comparador.repetidas(List.of(fila("350000000000001", "BT-9001", "A", "Available", "CAJA LISTOS"),
+                fila("350000000000001", "BT-9001", "B", "Available", "CAJA GLASS"),
+                fila("350000000000001", "BT-9001", "C", "Available", "CAJA GLASS"))));
+    }
+
     @Test void primeraCargaGuardaTodoYApuntaEntradaYVentaSoloConElDia() {
         FilaItems vendido = new FilaItems("350000000000001", "BT-9001", AZUL, "A", "Released", "Pedidos realizados",
                 "Proveedor A", LocalDate.of(2026, 9, 2), LocalDate.of(2026, 9, 12));
