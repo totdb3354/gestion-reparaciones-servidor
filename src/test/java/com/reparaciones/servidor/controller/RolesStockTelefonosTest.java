@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.UsuariosOperativosTestConfig;
+import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
@@ -44,6 +45,7 @@ class RolesStockTelefonosTest {
     @Autowired MockMvc mvc;
     @Autowired JwtUtil jwtUtil;
     @MockBean NsysDAO dao;
+    @MockBean TelefonoDAO telefonoDao;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico2", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }
@@ -80,6 +82,15 @@ class RolesStockTelefonosTest {
             mvc.perform(get(ruta).header("Authorization", "Bearer no-es-un-jwt")).andExpect(status().isUnauthorized());
         }
         verifyNoInteractions(dao);
+    }
+
+    @Test void elTecnicoSigueLeyendoElModeloDeUnImeiQueAhoraSaleDeNsys() throws Exception {
+        // GET /api/telefonos/{imei}/modelo: misma ruta, respuesta y permisos que con IMEIcheck (constraints, reglas de rol).
+        when(telefonoDao.getModelo("350000000000001")).thenReturn(null);
+        when(dao.modeloDe("350000000000001")).thenReturn("13pro");
+        mvc.perform(get("/api/telefonos/350000000000001/modelo").header("Authorization", tecnico()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.value").value("13pro"));
     }
 
     private static MovilNsys movil(EstadoMovil estado, LocalDate venta) {

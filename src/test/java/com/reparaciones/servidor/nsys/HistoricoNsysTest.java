@@ -139,7 +139,8 @@ class HistoricoNsysTest {
 
         historico.paso();
         historico.paso();
-        verify(dao).terminarImportacion(eq(12), eq("RECHAZADO"), eq(60), eq(0), anyString(), any());
+        verify(dao).terminarImportacion(eq(12), eq("RECHAZADO"), eq(60), eq(0),
+                eq("Trae 60 filas frente a las 70 del fichero anterior: se trata como incompleto"), any());
         historico.paso();
 
         ArgumentCaptor<List<EventoNsys>> eventos = ArgumentCaptor.forClass(List.class);

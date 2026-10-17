@@ -120,8 +120,8 @@ public class HistoricoNsys {
             }
             if (filasPrevias > 0 && filas.size() < filasPrevias * MINIMO_FILAS) {
                 dao.terminarImportacion(id, RECHAZADO, filas.size(), 0, String.format(
-                        "Trae %d filas frente a las %d de la anterior: se trata como incompleto", filas.size(), filasPrevias),
-                        ahora());
+                        "Trae %d filas frente a las %d del fichero anterior: se trata como incompleto",
+                        filas.size(), filasPrevias), ahora());
                 if (!filas.isEmpty()) filasPrevias = filas.size();   // la foto no cambia, pero la referencia del freno sí
                 return;
             }

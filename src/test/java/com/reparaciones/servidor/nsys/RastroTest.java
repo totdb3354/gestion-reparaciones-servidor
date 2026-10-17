@@ -39,6 +39,17 @@ class RastroTest {
         assertEquals(List.of(true, false), rastro.stream().map(EventoRastro::soloDia).toList());
     }
 
+    @Test void aLaMismaHoraVaPrimeroLoUltimoApuntadoYElTrabajoDelTaller() {
+        // Esqueleto con entrada y venta el mismo día; un cambio de NSYS a la misma hora que un trabajo terminado.
+        List<EventoRastro> rastro = Rastro.unir(List.of(
+                        new EventoNsys("350000000000001", "BT-9001", t(2, 0), true, TipoEvento.ENTRADA, null, null, null),
+                        new EventoNsys("350000000000001", "BT-9001", t(2, 0), true, TipoEvento.VENTA, null, null, null),
+                        new EventoNsys("350000000000001", "BT-9001", t(8, 13), false, TipoEvento.UBICACION, "Taller · Glass", "Listos", "CAJA LISTOS")),
+                List.of(new TrabajoTaller("G20260905_1", t(5, 9), t(8, 13), "Técnico 3")));
+        assertEquals(List.of("TRABAJO_TERMINADO", "UBICACION", "VENTA", "ENTRADA"),
+                rastro.stream().map(EventoRastro::tipo).toList());
+    }
+
     @Test void categoriaPorElIdDelTrabajo() {
         assertEquals("GLASS", Rastro.categoria("AG1"));
         assertEquals("GLASS", Rastro.categoria("G1"));

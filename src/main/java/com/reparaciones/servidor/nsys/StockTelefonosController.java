@@ -29,6 +29,8 @@ import static com.reparaciones.servidor.nsys.ImportadorNsys.*;
 @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
 public class StockTelefonosController {
 
+    static final String MOTIVO_ERROR = "Error al leer de Drive o al guardar; ver el registro del servidor";
+
     private final NsysDAO dao;
     private final Clock clock;
 
@@ -58,7 +60,13 @@ public class StockTelefonosController {
         LocalDateTime ultima = ok.map(Importacion::fechaExportacion).orElse(null);
         boolean falloReciente = fallo.isPresent() && (ultima == null || fallo.get().fechaExportacion().isAfter(ultima));
         return new EstadoImportacion(ultima, AvisoNsys.nivel(ultima, LocalDateTime.now(clock)),
-                falloReciente ? fallo.get().fechaExportacion() : null, falloReciente ? fallo.get().mensaje() : null);
+                falloReciente ? fallo.get().fechaExportacion() : null, falloReciente ? motivo(fallo.get()) : null);
+    }
+
+    /** Los rechazos los explica un texto nuestro; un ERROR guarda e.toString(), que puede llevar ids de ficheros de
+     *  Drive o el correo de la cuenta de servicio, y no sale de la API. */
+    private static String motivo(Importacion fallo) {
+        return ERROR.equals(fallo.resultado()) ? MOTIVO_ERROR : fallo.mensaje();
     }
 
     /** Hasta 10 móviles de cualquier estado cuyo IMEI/SN contiene el texto (mínimo 4 caracteres). */

@@ -65,6 +65,18 @@ class StockTelefonosControllerTest {
         assertEquals("Trae 10 filas…", estado.get("motivoFallo").asText());
     }
 
+    @Test void unErrorSeEnsenaConUnTextoGenericoSinElDetalleTecnico() {
+        // El texto de un ERROR es e.toString(): puede llevar ids de ficheros de Drive o el correo de la cuenta de servicio.
+        when(dao.ultimaImportacion("ACTUAL", Set.of("OK"))).thenReturn(Optional.of(
+                new Importacion(5, "a", LocalDateTime.of(2026, 10, 16, 13, 1), "OK", 70000, null)));
+        when(dao.ultimaImportacion("ACTUAL", Set.of("RECHAZADO", "ERROR"))).thenReturn(Optional.of(
+                new Importacion(6, "b", LocalDateTime.of(2026, 10, 16, 13, 31), "ERROR", 0,
+                        "java.io.IOException: Drive respondió 403 a https://www.googleapis.com/drive/v3/files/id-secreto")));
+        JsonNode estado = json(api.estado());
+        assertEquals("Error al leer de Drive o al guardar; ver el registro del servidor", estado.get("motivoFallo").asText());
+        assertTrue(estado.get("ultimoFallo").asText().startsWith("2026-10-16T13:31"));
+    }
+
     @Test void unFalloAnteriorAlUltimoOkNoSeEnsena() {
         when(dao.ultimaImportacion("ACTUAL", Set.of("OK"))).thenReturn(Optional.of(
                 new Importacion(5, "a", LocalDateTime.of(2026, 10, 16, 8, 31), "OK", 70000, null)));

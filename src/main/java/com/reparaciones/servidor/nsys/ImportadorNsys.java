@@ -38,6 +38,8 @@ public class ImportadorNsys {
     public static final double MAXIMO_REPETIDAS = 0.01;
     /** Drive puede listar un fichero que el PC de producción aún está escribiendo: no se toca hasta que lleva esto quieto. */
     static final Duration ESPERA_DRIVE = Duration.ofMinutes(2);
+    /** Un Items cuyo nombre lleva una fecha más allá de esto sobre la hora de Madrid se salta (reloj adelantado). */
+    static final Duration MARGEN_FUTURO = Duration.ofDays(1);
     public static final String ACTUAL = "ACTUAL";
     public static final String HISTORICO = "HISTORICO";
     public static final String MAESTRO = "MAESTRO";
@@ -113,7 +115,14 @@ public class ImportadorNsys {
     }
 
     private List<FicheroItems> pendientes() throws IOException, InterruptedException {
-        List<FicheroItems> todos = items(drive, carpeta);
+        // Un nombre con fecha de más de un día en el futuro es de un PC con el reloj adelantado: importarlo dejaría el
+        // «último procesado» en el futuro, sin entrar ningún fichero más, mientras el aviso dice que todo va bien.
+        LocalDateTime futuro = LocalDateTime.now(clock).plus(MARGEN_FUTURO);
+        List<FicheroItems> todos = new ArrayList<>();
+        for (FicheroItems f : items(drive, carpeta)) {
+            if (f.fecha().isAfter(futuro)) log.warn("NSYS: {} se salta porque su fecha está en el futuro", f.nombre());
+            else todos.add(f);
+        }
         if (todos.isEmpty()) return List.of();
         Optional<Importacion> ultima = dao.ultimaImportacion(ACTUAL, Set.of(OK, RECHAZADO));
         // Candidatos: la primera vez, todos (y se toma el más reciente que ya esté asentado); después, los posteriores
@@ -149,7 +158,7 @@ public class ImportadorNsys {
                     .filter(i -> i.filas() > 0);
             if (previa.isPresent() && filas.size() < previa.get().filas() * MINIMO_FILAS) {
                 dao.terminarImportacion(id, RECHAZADO, filas.size(), 0, String.format(
-                        "Trae %d filas frente a las %d de la última importación: se trata como incompleto",
+                        "Trae %d filas frente a las %d del fichero anterior: se trata como incompleto",
                         filas.size(), previa.get().filas()), ahora());
                 return true;
             }

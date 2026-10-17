@@ -29,8 +29,13 @@ public final class Rastro {
             todos.add(new EventoRastro(fecha, false, "ERP", asignacion ? "TRABAJO_ASIGNADO" : "TRABAJO_TERMINADO",
                     null, null, null, null, t.idRep(), t.tecnico(), categoria(t.idRep())));
         }
-        todos.sort(Comparator.comparing(EventoRastro::fecha).reversed());
-        return todos;
+        // Del más reciente al más antiguo. A la misma hora, primero lo último apuntado: los eventos de NSYS llegan por
+        // orden de alta (ID_EVENTO) y los del taller van detrás, así que un trabajo terminado sale antes que el cambio de
+        // NSYS de esa misma exportación, y la venta del esqueleto antes que su entrada.
+        List<Integer> orden = new ArrayList<>();
+        for (int i = 0; i < todos.size(); i++) orden.add(i);
+        orden.sort(Comparator.comparing((Integer i) -> todos.get(i).fecha()).thenComparing(i -> i).reversed());
+        return orden.stream().map(todos::get).toList();
     }
 
     /** Asignaciones A/AG/AP y trabajos hechos R/G/P. */

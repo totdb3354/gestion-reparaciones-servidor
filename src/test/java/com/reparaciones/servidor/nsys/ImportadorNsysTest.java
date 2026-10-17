@@ -106,7 +106,7 @@ class ImportadorNsysTest {
         importador.pasada();
 
         verify(dao).terminarImportacion(1, "RECHAZADO", 50, 0,
-                "Trae 50 filas frente a las 100 de la última importación: se trata como incompleto", AHORA);
+                "Trae 50 filas frente a las 100 del fichero anterior: se trata como incompleto", AHORA);
         verify(dao, never()).aplicar(any(), eq(1));
         verify(dao).aplicar(any(), eq(2));
         verify(dao).terminarImportacion(eq(2), eq("OK"), eq(95), anyInt(), any(), eq(AHORA));
@@ -417,6 +417,32 @@ class ImportadorNsysTest {
 
         verify(dao).aplicar(any(), isNull());
         verify(dao).rellenarModelosTelefono();
+    }
+
+    @Test void unFicheroConFechaDeMasDeUnDiaEnElFuturoSeSalta() throws Exception {
+        // Un PC con el reloj adelantado: si se importara, el puntero «último procesado» se quedaría en el futuro y
+        // ningún fichero real volvería a entrar, mientras el aviso dice que todo va bien.
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx"),
+                enDrive("Items_2026.10.17_09.06.xlsx")));                  // AHORA + 1 día y 1 minuto
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
+        verify(drive, never()).descargar("id-Items_2026.10.17_09.06.xlsx");
+        verify(dao, never()).empezarImportacion(eq("Items_2026.10.17_09.06.xlsx"), any(), anyString(), any());
+    }
+
+    @Test void laPrimeraVezTampocoTomaUnFicheroDelFuturo() throws Exception {
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx"),
+                enDrive("Items_2026.10.20_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
+        verify(drive, times(1)).descargar(anyString());
     }
 
     @Test void laFechaSaleDelNombre() {
