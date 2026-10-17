@@ -4,17 +4,35 @@
 -- La aplica el usuario a mano en la VM, con vista previa, ANTES de desplegar el
 -- servidor 0.9.17. Aditiva: el servidor y la web anteriores no usan estas tablas.
 -- NO idempotente (relanzar = error de tabla existente).
--- 1) Vista previa: el SELECT debe devolver 0 (ninguna existe).
+-- 1) Vista previa: el primer SELECT debe devolver 0 (ninguna existe) y, en el segundo,
+--    BD_COLLATION debe ser igual a IMEI_COLLATION.
 -- 2) Ejecutar los CREATE TABLE y el INSERT de Nsys_ubicacion.
+-- 3) Comprobación final: ubicaciones_utf8_ok debe dar 6.
 -- Horas de Madrid en todas las columnas DATETIME.
 -- ══════════════════════════════════════════════════════════════════════════════
 USE gestion_reparaciones;
+SET NAMES utf8mb4;
 
 -- Vista previa (no modifica nada): debe dar 0
 SELECT COUNT(*) AS YA_EXISTEN
   FROM information_schema.TABLES
  WHERE TABLE_SCHEMA = 'gestion_reparaciones'
    AND TABLE_NAME IN ('Nsys_importacion', 'Nsys_movil', 'Nsys_evento', 'Nsys_producto', 'Nsys_ubicacion');
+
+-- Vista previa (no modifica nada): las tablas nuevas toman el juego de caracteres y la intercalación por defecto de
+-- la base de datos. Si BD_COLLATION no es igual a IMEI_COLLATION, el relleno de modelos del taller (JOIN de
+-- Nsys_movil.IMEI_SN con Telefono.IMEI) falla con el error 1267 (Illegal mix of collations). Si no coinciden, NO
+-- seguir: hay que crear las tablas con la intercalación de Telefono.IMEI.
+SELECT s.DEFAULT_CHARACTER_SET_NAME AS BD_CHARSET,
+       s.DEFAULT_COLLATION_NAME     AS BD_COLLATION,
+       t.TABLE_COLLATION            AS TELEFONO_COLLATION,
+       c.COLLATION_NAME             AS IMEI_COLLATION
+  FROM information_schema.SCHEMATA s
+  LEFT JOIN information_schema.TABLES t
+         ON t.TABLE_SCHEMA = s.SCHEMA_NAME AND t.TABLE_NAME = 'Telefono'
+  LEFT JOIN information_schema.COLUMNS c
+         ON c.TABLE_SCHEMA = s.SCHEMA_NAME AND c.TABLE_NAME = 'Telefono' AND c.COLUMN_NAME = 'IMEI'
+ WHERE s.SCHEMA_NAME = 'gestion_reparaciones';
 
 -- Un registro por fichero procesado. FICHERO no es único: un fichero que da ERROR se reintenta.
 CREATE TABLE Nsys_importacion (
@@ -124,3 +142,16 @@ INSERT INTO Nsys_ubicacion (LOCATION, UBICACION, CUENTA_STOCK, ES_PEDIDO, ORDEN)
     ('MV Desguace',                                      NULL,                     FALSE, FALSE, 270),
     ('MV Pedidos Realizados',                            NULL,                     FALSE, FALSE, 280),
     ('MV Pendiente revisar si hay error de inventario',  NULL,                     FALSE, FALSE, 290);
+
+-- Comprobación (no modifica nada): debe dar 6. Compara los bytes UTF-8 de los seis nombres con tilde o «·», así no
+-- la engaña un cliente que enseñe mal los acentos. Si da menos, se guardaron mal (cliente sin utf8mb4) y la web,
+-- que busca esos nombres exactos, no los reconocerá.
+SELECT COUNT(*) AS ubicaciones_utf8_ok
+  FROM Nsys_ubicacion
+ WHERE HEX(UBICACION) IN (
+       '456E20726576697369C3B36E',                          -- En revisión
+       '4465766F6C756369C3B36E',                            -- Devolución
+       '54616C6C657220C2B72050756C6972',                    -- Taller · Pulir
+       '54616C6C657220C2B720476C617373',                    -- Taller · Glass
+       '54616C6C657220C2B7205265706172616369C3B36E',        -- Taller · Reparación
+       '54616C6C657220C2B72050616E74616C6C6120726F7461');   -- Taller · Pantalla rota

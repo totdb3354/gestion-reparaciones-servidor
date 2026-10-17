@@ -8,9 +8,15 @@ CREATE DATABASE IF NOT EXISTS gestion_reparaciones
     COLLATE utf8mb4_unicode_ci;
 
 USE gestion_reparaciones;
+SET NAMES utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Nsys_evento;
+DROP TABLE IF EXISTS Nsys_importacion;
+DROP TABLE IF EXISTS Nsys_movil;
+DROP TABLE IF EXISTS Nsys_producto;
+DROP TABLE IF EXISTS Nsys_ubicacion;
 DROP TABLE IF EXISTS Envio_Telefono;
 DROP TABLE IF EXISTS Envio;
 DROP TABLE IF EXISTS Movimiento_telefono;
