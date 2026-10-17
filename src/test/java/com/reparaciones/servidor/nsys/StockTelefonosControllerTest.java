@@ -108,6 +108,25 @@ class StockTelefonosControllerTest {
         assertEquals("ID", ficha.get("grado").asText());
     }
 
+    @Test void elGradoAnteriorSaltaLosCambiosQueSoloSonDeBateria() {
+        // C → A y después cambio de batería A → A100: el grado anterior de verdad es C, no A (que la web escondería
+        // por ser igual al actual).
+        when(dao.porImei("350000000000001")).thenReturn(List.of(
+                movil("350000000000001", "BT-9001", "A100", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(dao.eventos("350000000000001")).thenReturn(List.of(
+                new EventoNsys("350000000000001", "BT-9001", AHORA.minusDays(9), false, TipoEvento.GRADO, "C100", "A", null),
+                new EventoNsys("350000000000001", "BT-9001", AHORA.minusDays(3), false, TipoEvento.GRADO, "A", "A100", null)));
+        assertEquals("C", json(api.ficha("350000000000001")).get("gradoAnterior").asText());
+    }
+
+    @Test void unSoloCambioDeBateriaNoDaGradoAnterior() {
+        when(dao.porImei("350000000000001")).thenReturn(List.of(
+                movil("350000000000001", "BT-9001", "A100", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(dao.eventos("350000000000001")).thenReturn(List.of(
+                new EventoNsys("350000000000001", "BT-9001", AHORA.minusDays(3), false, TipoEvento.GRADO, "A", "A100", null)));
+        assertTrue(json(api.ficha("350000000000001")).get("gradoAnterior").isNull());
+    }
+
     @Test void fichaDeUnImeiQueNsysNoConoceEs404() {
         when(dao.porImei("x")).thenReturn(List.of());
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.ficha("x"));

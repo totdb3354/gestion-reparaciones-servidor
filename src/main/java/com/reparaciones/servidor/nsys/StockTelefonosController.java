@@ -83,8 +83,11 @@ public class StockTelefonosController {
         List<MovilNsys> lotes = dao.porImei(imeiSn);
         if (lotes.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NSYS no conoce el IMEI " + imeiSn);
         MovilNsys m = lotes.get(0);
+        // El último cambio de grado de verdad del lote: un cambio de batería (A → A100) no cuenta, o taparía el grado
+        // anterior real (C → A → A100 da C).
         String gradoAnterior = dao.eventos(imeiSn).stream()
                 .filter(e -> e.tipo() == TipoEvento.GRADO && Objects.equals(e.batch(), m.batch()))
+                .filter(e -> !Normalizacion.gradoSinBateria(e.de()).equals(Normalizacion.gradoSinBateria(e.a())))
                 .reduce((a, b) -> b).map(e -> e.de() == null ? null : Normalizacion.gradoSinBateria(e.de())).orElse(null);
         boolean enEmpresa = m.estado() == EstadoMovil.STOCK || m.estado() == EstadoMovil.DE_PEDIDO
                 || m.estado() == EstadoMovil.NO_CUENTA;
