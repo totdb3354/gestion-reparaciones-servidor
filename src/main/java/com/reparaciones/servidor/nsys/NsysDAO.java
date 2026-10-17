@@ -56,7 +56,10 @@ public class NsysDAO {
     static final String SQL_RELLENAR_MODELOS = "UPDATE Telefono t JOIN (SELECT IMEI_SN, MAX(MODELO) AS MODELO"
             + " FROM Nsys_movil WHERE MODELO IS NOT NULL GROUP BY IMEI_SN) n ON n.IMEI_SN = t.IMEI"
             + " SET t.MODELO = n.MODELO WHERE (t.MODELO IS NULL OR t.MODELO = '') AND t.IMEI REGEXP '^[0-9]{15}$'";
-    private static final String COLUMNAS_IMPORTACION = "ID_IMPORTACION, FICHERO, FECHA_EXPORTACION, RESULTADO, FILAS, MENSAJE";
+    /** Los lotes de un IMEI, del más reciente al más antiguo. En la primera carga todos tienen el mismo VISTO_PRIMERO y
+     *  el texto del lote no va en orden de fechas: desempata la fecha de recepción (sin fecha, al final) y luego el lote. */
+    static final String LOTE_MAS_RECIENTE_PRIMERO = " ORDER BY VISTO_PRIMERO DESC, RECEIVING_DATE DESC, BATCH DESC";
+    private static final String COLUMNAS_IMPORTACION ="ID_IMPORTACION, FICHERO, FECHA_EXPORTACION, RESULTADO, FILAS, MENSAJE";
 
     private final JdbcTemplate jdbc;
 
@@ -185,7 +188,7 @@ public class NsysDAO {
     /** Código de modelo del ERP según NSYS (el lote más reciente que lo tenga), o null. */
     public String modeloDe(String imei) {
         List<String> modelos = jdbc.query("SELECT MODELO FROM Nsys_movil WHERE IMEI_SN = ? AND MODELO IS NOT NULL"
-                + " ORDER BY VISTO_PRIMERO DESC LIMIT 1", (rs, n) -> rs.getString("MODELO"), imei);
+                + LOTE_MAS_RECIENTE_PRIMERO + " LIMIT 1", (rs, n) -> rs.getString("MODELO"), imei);
         return modelos.isEmpty() ? null : modelos.get(0);
     }
 
@@ -207,7 +210,7 @@ public class NsysDAO {
 
     /** Todos los lotes de un IMEI/SN, el más reciente primero. */
     public List<MovilNsys> porImei(String imeiSn) {
-        return jdbc.query("SELECT " + COLUMNAS_MOVIL + " FROM Nsys_movil WHERE IMEI_SN = ? ORDER BY VISTO_PRIMERO DESC, BATCH DESC",
+        return jdbc.query("SELECT " + COLUMNAS_MOVIL + " FROM Nsys_movil WHERE IMEI_SN = ?" + LOTE_MAS_RECIENTE_PRIMERO,
                 NsysDAO::movil, imeiSn);
     }
 

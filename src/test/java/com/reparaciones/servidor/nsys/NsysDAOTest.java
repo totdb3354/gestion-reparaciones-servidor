@@ -115,6 +115,22 @@ class NsysDAOTest {
         assertNull(dao.modeloDe("350000000000001"));
     }
 
+    // En la primera carga todos los lotes tienen el mismo VISTO_PRIMERO, y el texto del lote no va en orden de fechas:
+    // desempata la fecha de recepción y, al final, el lote.
+    private static final String MAS_RECIENTE_PRIMERO = " ORDER BY VISTO_PRIMERO DESC, RECEIVING_DATE DESC, BATCH DESC";
+
+    @SuppressWarnings("unchecked")
+    @Test void elModeloSaleDelLoteMasReciente() {
+        dao.modeloDe("350000000000001");
+        verify(jdbc).query(endsWith(MAS_RECIENTE_PRIMERO + " LIMIT 1"), any(RowMapper.class), eq("350000000000001"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void losLotesDeUnImeiVanDelMasRecienteAlMasAntiguo() {
+        dao.porImei("350000000000001");
+        verify(jdbc).query(endsWith(MAS_RECIENTE_PRIMERO), any(RowMapper.class), eq("350000000000001"));
+    }
+
     @SuppressWarnings("unchecked")
     @Test void buscarLimpiaElTextoYSinTextoNoConsulta() {
         dao.buscar(" 35%_00 ", 10);
