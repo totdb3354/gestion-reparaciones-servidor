@@ -92,7 +92,7 @@ class StockTelefonosControllerTest {
         JsonNode ficha = json(api.ficha("350000000000001"));
         assertEquals("BT-9002", ficha.get("lote").asText());
         assertEquals(2, ficha.get("entradas").asInt());
-        assertEquals("A100", ficha.get("gradoAnterior").asText());
+        assertEquals("A", ficha.get("gradoAnterior").asText(), "normalizado como grado: sin el 100 de la batería");
         assertEquals("ID", ficha.get("grado").asText());
     }
 

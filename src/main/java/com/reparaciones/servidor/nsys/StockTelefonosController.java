@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -75,8 +76,8 @@ public class StockTelefonosController {
         if (lotes.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NSYS no conoce el IMEI " + imeiSn);
         MovilNsys m = lotes.get(0);
         String gradoAnterior = dao.eventos(imeiSn).stream()
-                .filter(e -> e.tipo() == TipoEvento.GRADO && e.batch().equals(m.batch()))
-                .reduce((a, b) -> b).map(EventoNsys::de).orElse(null);
+                .filter(e -> e.tipo() == TipoEvento.GRADO && Objects.equals(e.batch(), m.batch()))
+                .reduce((a, b) -> b).map(e -> e.de() == null ? null : Normalizacion.gradoSinBateria(e.de())).orElse(null);
         boolean enEmpresa = m.estado() == EstadoMovil.STOCK || m.estado() == EstadoMovil.DE_PEDIDO
                 || m.estado() == EstadoMovil.NO_CUENTA;
         return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
