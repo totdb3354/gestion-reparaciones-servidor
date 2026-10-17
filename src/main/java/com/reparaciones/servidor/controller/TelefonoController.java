@@ -8,9 +8,8 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.model.ValorTexto;
-import com.reparaciones.servidor.security.FrenoLookup;
+import com.reparaciones.servidor.nsys.ModeloNsys;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
-import com.reparaciones.servidor.service.ImeiLookupService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,22 +25,20 @@ import java.util.Map;
 public class TelefonoController {
 
     private final TelefonoDAO dao;
-    private final ImeiLookupService imeiLookupService;
+    private final ModeloNsys modeloNsys;
     private final LogDAO logDao;
     private final RevisionDAO revisionDao;
     private final EnvioDAO envioDao;
     private final MovimientoDAO movimientoDao;
-    private final FrenoLookup frenoLookup;
 
-    public TelefonoController(TelefonoDAO dao, ImeiLookupService imeiLookupService, LogDAO logDao, RevisionDAO revisionDao,
-                             EnvioDAO envioDao, MovimientoDAO movimientoDao, FrenoLookup frenoLookup) {
+    public TelefonoController(TelefonoDAO dao, ModeloNsys modeloNsys, LogDAO logDao, RevisionDAO revisionDao,
+                             EnvioDAO envioDao, MovimientoDAO movimientoDao) {
         this.dao = dao;
-        this.imeiLookupService = imeiLookupService;
+        this.modeloNsys = modeloNsys;
         this.logDao = logDao;
         this.revisionDao = revisionDao;
         this.envioDao = envioDao;
         this.movimientoDao = movimientoDao;
-        this.frenoLookup = frenoLookup;
     }
 
     @GetMapping
@@ -67,14 +64,12 @@ public class TelefonoController {
         return Map.of("value", id == null ? "" : id.toString());
     }
 
+    /** El modelo del taller y, si no lo tiene, el del espejo de NSYS (0.9.17: sustituye a IMEIcheck, sin llamar fuera
+     *  ni freno). Vacío si nadie lo sabe: se escribe a mano. */
     @GetMapping("/{imei}/modelo")
-    public ValorTexto getModelo(@PathVariable String imei,
-                                @AuthenticationPrincipal UsuarioPrincipal principal) {
+    public ValorTexto getModelo(@PathVariable String imei) {
         String modelo = dao.getModelo(imei);
-        if (modelo == null || modelo.isBlank()) {
-            frenoLookup.comprobar(principal.getIdUsu());
-            modelo = imeiLookupService.lookupModeloInterno(imei);
-        }
+        if (modelo == null || modelo.isBlank()) modelo = modeloNsys.lookupModeloInterno(imei);
         return new ValorTexto(modelo != null ? modelo : "");
     }
 

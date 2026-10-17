@@ -6,7 +6,7 @@ import com.reparaciones.servidor.model.LoteAsignaciones.*;
 import com.reparaciones.servidor.model.Tecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.AsignacionLoteService;
-import com.reparaciones.servidor.service.ImeiLookupService;
+import com.reparaciones.servidor.nsys.ModeloNsys;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
@@ -25,7 +25,7 @@ class AsignacionControllerTest {
     private final ReparacionDAO dao = mock(ReparacionDAO.class);
     private final TelefonoDAO telefonoDao = mock(TelefonoDAO.class);
     private final TecnicoDAO tecnicoDao = mock(TecnicoDAO.class);
-    private final ImeiLookupService lookup = mock(ImeiLookupService.class);
+    private final ModeloNsys lookup = mock(ModeloNsys.class);
     private final LogDAO logDao = mock(LogDAO.class);
     private final AsignacionController controller = new AsignacionController(
             servicio, dao, telefonoDao, tecnicoDao, lookup, logDao, new RegistroIdempotencia());

@@ -5,7 +5,7 @@ import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.EntregaGlassService;
-import com.reparaciones.servidor.service.ImeiLookupService;
+import com.reparaciones.servidor.nsys.ModeloNsys;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -21,8 +21,8 @@ class FiltroTecnicoControllersTest {
             mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
             mock(CargaAsignacionesService.class), mock(EntregaGlassService.class));
     private final GlassController glass = new GlassController(dao, mock(LogDAO.class), mock(TelefonoDAO.class),
-            mock(ImeiLookupService.class), mock(TecnicoDAO.class), mock(CargaAsignacionesService.class));
-    private final PulidoController pulido = new PulidoController(dao, mock(LogDAO.class), mock(TelefonoDAO.class), mock(ImeiLookupService.class));
+            mock(ModeloNsys.class), mock(TecnicoDAO.class), mock(CargaAsignacionesService.class));
+    private final PulidoController pulido = new PulidoController(dao, mock(LogDAO.class), mock(TelefonoDAO.class), mock(ModeloNsys.class));
 
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(8, "tecnico_n", "x", "TECNICO", 4);
     private final UsuarioPrincipal supertecnico = new UsuarioPrincipal(7, "tecnico_f", "x", "SUPERTECNICO", 3);
