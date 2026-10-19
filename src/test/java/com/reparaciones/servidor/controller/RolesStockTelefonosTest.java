@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
+import com.reparaciones.servidor.nsys.ResumenHistorico;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -13,17 +14,22 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -53,7 +59,7 @@ class RolesStockTelefonosTest {
 
     private static final List<String> RUTAS = List.of("/api/stock-telefonos", "/api/stock-telefonos/estado",
             "/api/stock-telefonos/buscar?imei=3500", "/api/stock-telefonos/350000000000001",
-            "/api/stock-telefonos/350000000000001/rastro");
+            "/api/stock-telefonos/350000000000001/rastro", "/api/stock-telefonos/importaciones");
 
     @Test void elTecnicoRecibe403SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) mvc.perform(get(ruta).header("Authorization", tecnico())).andExpect(status().isForbidden());
@@ -61,6 +67,7 @@ class RolesStockTelefonosTest {
     }
 
     @Test void supertecnicoYAdminLasLeen() throws Exception {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
         LocalDateTime t = LocalDateTime.of(2026, 10, 1, 10, 0);
         when(dao.porImei("350000000000001")).thenReturn(List.of(new MovilNsys("350000000000001", "BT-9001",
                 "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS", "Proveedor A", null, null, null, null, null,
@@ -115,5 +122,35 @@ class RolesStockTelefonosTest {
                 .andExpect(jsonPath("$.estado").value("BAJA"))
                 .andExpect(jsonPath("$.dias").value(nullValue()))
                 .andExpect(jsonPath("$.fechaVenta").value(nullValue()));
+    }
+
+    /** 0.9.18 (spec §6.2): «Pegar varios IMEIs» con la misma guarda que el resto del stock de teléfonos. */
+    @Test void comprobarUnaListaSoloParaSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"imeis\":[\"350000000000001\"]}";
+        mvc.perform(post("/api/stock-telefonos/comprobar").header("Authorization", tecnico())
+                        .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(dao);
+        for (String token : List.of(supertecnico(), admin())) {
+            mvc.perform(post("/api/stock-telefonos/comprobar").header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].imei").value("350000000000001"))
+                    .andExpect(jsonPath("$[0].encontrado").value(false));
+        }
+    }
+
+    @Test void comprobarMasDeQuinientosEs400() throws Exception {
+        String imeis = IntStream.range(0, 501).mapToObj(n -> "\"" + String.format("3500000000%05d", n) + "\"")
+                .collect(Collectors.joining(","));
+        mvc.perform(post("/api/stock-telefonos/comprobar").header("Authorization", admin())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"imeis\":[" + imeis + "]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test void laListaDeImportacionesPideVeintePorDefecto() throws Exception {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
+        mvc.perform(get("/api/stock-telefonos/importaciones").header("Authorization", admin())).andExpect(status().isOk());
+        verify(dao).importaciones("ACTUAL", 20);
     }
 }
