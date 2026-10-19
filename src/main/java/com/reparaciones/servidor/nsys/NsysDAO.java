@@ -176,6 +176,28 @@ public class NsysDAO {
                 (rs, n) -> rs.getString("FICHERO"), origen));
     }
 
+    /** Las últimas importaciones de un origen, de la más reciente a la más antigua (spec 0.9.18 §6.5). */
+    public List<RegistroImportacion> importaciones(String origen, int limite) {
+        return jdbc.query("SELECT ID_IMPORTACION, FICHERO, FECHA_EXPORTACION, RESULTADO, FILAS, CAMBIOS, EMPEZADA, TERMINADA,"
+                        + " MENSAJE FROM Nsys_importacion WHERE ORIGEN = ? ORDER BY FECHA_EXPORTACION DESC, ID_IMPORTACION DESC"
+                        + " LIMIT ?", NsysDAO::registroImportacion, origen, limite);
+    }
+
+    static RegistroImportacion registroImportacion(ResultSet rs, int n) throws SQLException {
+        return new RegistroImportacion(rs.getInt("ID_IMPORTACION"), rs.getString("FICHERO"),
+                rs.getTimestamp("FECHA_EXPORTACION").toLocalDateTime(), rs.getString("RESULTADO"), rs.getInt("FILAS"),
+                rs.getInt("CAMBIOS"), fechaHora(rs.getTimestamp("EMPEZADA")), fechaHora(rs.getTimestamp("TERMINADA")),
+                rs.getString("MENSAJE"));
+    }
+
+    /** El histórico de un vistazo: todas sus importaciones, las hechas (OK o RECHAZADO) y la fecha de la última hecha. */
+    public ResumenHistorico resumenHistorico() {
+        return jdbc.queryForObject("SELECT COUNT(*) AS TOTAL, COALESCE(SUM(RESULTADO IN ('OK', 'RECHAZADO')), 0) AS HECHOS,"
+                        + " MAX(CASE WHEN RESULTADO IN ('OK', 'RECHAZADO') THEN FECHA_EXPORTACION END) AS ULTIMO"
+                        + " FROM Nsys_importacion WHERE ORIGEN = 'HISTORICO'",
+                (rs, n) -> new ResumenHistorico(rs.getInt("TOTAL"), rs.getInt("HECHOS"), fechaHora(rs.getTimestamp("ULTIMO"))));
+    }
+
     private Optional<Importacion> unaImportacion(String origen, Set<String> resultados, String orden) {
         List<String> estados = new ArrayList<>(new TreeSet<>(resultados));
         List<Object> argumentos = new ArrayList<>();

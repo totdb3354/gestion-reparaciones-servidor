@@ -225,4 +225,61 @@ class StockTelefonosControllerTest {
         assertTrue(api.comprobar(new StockTelefonosController.PeticionComprobar(null)).isEmpty());
         verifyNoInteractions(dao);
     }
+
+    // ---------------------------------------------------------------- 0.9.18: lista de importaciones (spec §6.5)
+
+    private static RegistroImportacion registro(int id, LocalDateTime fecha, String resultado, String mensaje, Integer segundos) {
+        LocalDateTime empezada = fecha.plusMinutes(3);
+        return new RegistroImportacion(id, "Items_" + id + ".xlsx", fecha, resultado, 70000, 12, empezada,
+                segundos == null ? null : empezada.plusSeconds(segundos), mensaje);
+    }
+
+    @Test void importacionesDelActualDeLaMasRecienteALaMasAntiguaConSusSegundosYSuMotivo() {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
+        when(dao.importaciones("ACTUAL", 20)).thenReturn(List.of(
+                registro(8, AHORA.minusMinutes(12), "EN_CURSO", null, null),
+                registro(7, AHORA.minusMinutes(42), "OK", "Cajas sin traducir: CAJA NUEVA", 17),
+                registro(6, AHORA.minusMinutes(72), "RECHAZADO", "Trae 10 filas…", 2)));
+        JsonNode r = json(api.importaciones(20));
+        JsonNode filas = r.get("importaciones");
+        assertEquals(3, filas.size());
+        assertEquals("EN_CURSO", filas.get(0).get("resultado").asText());
+        assertTrue(filas.get(0).get("segundos").isNull(), "en curso: sin segundos");
+        assertTrue(filas.get(0).get("motivo").isNull());
+        assertEquals("Items_7.xlsx", filas.get(1).get("fichero").asText());
+        assertEquals(12, filas.get(1).get("cambios").asInt());
+        assertEquals(17, filas.get(1).get("segundos").asInt());
+        assertEquals("Cajas sin traducir: CAJA NUEVA", filas.get(1).get("motivo").asText());
+        assertEquals("Trae 10 filas…", filas.get(2).get("motivo").asText());
+        assertEquals(0, r.get("historico").get("total").asInt(), "sin filas HISTORICO la web no pinta la línea");
+    }
+
+    @Test void unErrorDeLaListaSaleConElMotivoGenericoYNuncaConSuMensaje() {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
+        when(dao.importaciones("ACTUAL", 20)).thenReturn(List.of(registro(5, AHORA.minusMinutes(30), "ERROR",
+                "java.io.IOException: Drive respondió 403 a https://www.googleapis.com/drive/v3/files/id-secreto", 4)));
+        JsonNode fila = json(api.importaciones(20)).get("importaciones").get(0);
+        assertEquals("Error al leer de Drive o al guardar; ver el registro del servidor", fila.get("motivo").asText());
+        assertFalse(fila.toString().contains("id-secreto"));
+    }
+
+    @Test void elLimiteSeQuedaEntreUnoYCincuenta() {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
+        api.importaciones(200);
+        api.importaciones(0);
+        api.importaciones(-3);
+        verify(dao).importaciones("ACTUAL", 50);
+        verify(dao, times(2)).importaciones("ACTUAL", 1);
+    }
+
+    @Test void elProgresoDelHistoricoConHechosUltimoYHasta() {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(140, 138, LocalDateTime.of(2025, 5, 3, 22, 31)));
+        when(dao.primeraImportacion("ACTUAL", Set.of("OK"))).thenReturn(Optional.of(
+                new Importacion(1, "Items_2026.10.16_14.31.xlsx", LocalDateTime.of(2026, 10, 16, 14, 31), "OK", 70000, null)));
+        JsonNode h = json(api.importaciones(20)).get("historico");
+        assertEquals(140, h.get("total").asInt());
+        assertEquals(138, h.get("hechos").asInt());
+        assertTrue(h.get("ultimo").asText().startsWith("2025-05-03T22:31"));
+        assertTrue(h.get("hasta").asText().startsWith("2026-10-16T14:31"));
+    }
 }

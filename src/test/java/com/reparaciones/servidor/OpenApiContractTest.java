@@ -468,7 +468,7 @@ class OpenApiContractTest {
         JsonNode esquemas = doc.path("components").path("schemas");
 
         for (String ruta : List.of("/api/stock-telefonos", "/api/stock-telefonos/estado", "/api/stock-telefonos/buscar",
-                "/api/stock-telefonos/{imeiSn}", "/api/stock-telefonos/{imeiSn}/rastro")) {
+                "/api/stock-telefonos/{imeiSn}", "/api/stock-telefonos/{imeiSn}/rastro", "/api/stock-telefonos/importaciones")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         }
         assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/estado", "get", "200").endsWith("/StockTelefonosEstadoImportacion"));
@@ -499,6 +499,17 @@ class OpenApiContractTest {
         assertNullable(esquemas, "StockTelefonosMovilComprobado", "modelo", "modeloMaestro", "capacidad", "color", "grado",
                 "ubicacion", "estado", "fechaVenta");
         assertNoNullable(esquemas, "StockTelefonosMovilComprobado", "imei", "encontrado", "bateriaNueva", "trabajos");
+
+        // 0.9.18: lista de importaciones de la píldora (spec 2026-10-19 §6.5). `historico` siempre viene (con total = 0
+        // si no hay ninguna importación HISTORICO), para no depender de un objeto nullable junto a un $ref.
+        assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/importaciones", "get", "200")
+                .endsWith("/StockTelefonosListaImportaciones"));
+        assertEquals("query", parametro(paths, "/api/stock-telefonos/importaciones", "get", "limite").path("in").asText());
+        assertNoNullable(esquemas, "StockTelefonosListaImportaciones", "importaciones", "historico");
+        assertNullable(esquemas, "StockTelefonosFilaImportacion", "segundos", "motivo");
+        assertNoNullable(esquemas, "StockTelefonosFilaImportacion", "fichero", "fechaExportacion", "resultado", "filas", "cambios");
+        assertNullable(esquemas, "StockTelefonosProgresoHistorico", "ultimo", "hasta");
+        assertNoNullable(esquemas, "StockTelefonosProgresoHistorico", "total", "hechos");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

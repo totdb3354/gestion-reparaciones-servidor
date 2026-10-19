@@ -5,6 +5,7 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
+import com.reparaciones.servidor.nsys.ResumenHistorico;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -57,7 +59,7 @@ class RolesStockTelefonosTest {
 
     private static final List<String> RUTAS = List.of("/api/stock-telefonos", "/api/stock-telefonos/estado",
             "/api/stock-telefonos/buscar?imei=3500", "/api/stock-telefonos/350000000000001",
-            "/api/stock-telefonos/350000000000001/rastro");
+            "/api/stock-telefonos/350000000000001/rastro", "/api/stock-telefonos/importaciones");
 
     @Test void elTecnicoRecibe403SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) mvc.perform(get(ruta).header("Authorization", tecnico())).andExpect(status().isForbidden());
@@ -65,6 +67,7 @@ class RolesStockTelefonosTest {
     }
 
     @Test void supertecnicoYAdminLasLeen() throws Exception {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
         LocalDateTime t = LocalDateTime.of(2026, 10, 1, 10, 0);
         when(dao.porImei("350000000000001")).thenReturn(List.of(new MovilNsys("350000000000001", "BT-9001",
                 "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS", "Proveedor A", null, null, null, null, null,
@@ -143,5 +146,11 @@ class RolesStockTelefonosTest {
         mvc.perform(post("/api/stock-telefonos/comprobar").header("Authorization", admin())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"imeis\":[" + imeis + "]}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test void laListaDeImportacionesPideVeintePorDefecto() throws Exception {
+        when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
+        mvc.perform(get("/api/stock-telefonos/importaciones").header("Authorization", admin())).andExpect(status().isOk());
+        verify(dao).importaciones("ACTUAL", 20);
     }
 }

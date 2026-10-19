@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -231,5 +232,41 @@ class NsysDAOTest {
         clearInvocations(jdbc);
         assertTrue(dao.porImeis(List.of()).isEmpty());
         verifyNoInteractions(jdbc);
+    }
+
+    // ---------------------------------------------------------------- 0.9.18: lista de importaciones (spec §6.5)
+
+    @SuppressWarnings("unchecked")
+    @Test void lasImportacionesSonDeUnOrigenDeLaMasRecienteALaMasAntigua() {
+        dao.importaciones("ACTUAL", 20);
+        verify(jdbc).query(and(contains("FROM Nsys_importacion WHERE ORIGEN = ?"),
+                        contains("ORDER BY FECHA_EXPORTACION DESC, ID_IMPORTACION DESC LIMIT ?")),
+                any(RowMapper.class), eq("ACTUAL"), eq(20));
+    }
+
+    @Test void unaImportacionEnCursoNoTieneHoraDeFin() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getInt("ID_IMPORTACION")).thenReturn(9);
+        when(rs.getString("FICHERO")).thenReturn("Items_2026.10.16_13.31.xlsx");
+        when(rs.getTimestamp("FECHA_EXPORTACION")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2026, 10, 16, 13, 31)));
+        when(rs.getString("RESULTADO")).thenReturn("EN_CURSO");
+        when(rs.getTimestamp("EMPEZADA")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2026, 10, 16, 13, 36)));
+        assertEquals(new RegistroImportacion(9, "Items_2026.10.16_13.31.xlsx", LocalDateTime.of(2026, 10, 16, 13, 31),
+                "EN_CURSO", 0, 0, LocalDateTime.of(2026, 10, 16, 13, 36), null, null), NsysDAO.registroImportacion(rs, 0));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void elResumenDelHistoricoCuentaTodasLasHechasYLaFechaDeLaUltimaHecha() throws SQLException {
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<RowMapper<ResumenHistorico>> mapper = ArgumentCaptor.forClass(RowMapper.class);
+        dao.resumenHistorico();
+        verify(jdbc).queryForObject(sql.capture(), mapper.capture());
+        assertTrue(sql.getValue().contains("FROM Nsys_importacion WHERE ORIGEN = 'HISTORICO'"), sql.getValue());
+        assertTrue(sql.getValue().contains("RESULTADO IN ('OK', 'RECHAZADO')"), sql.getValue());
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getInt("TOTAL")).thenReturn(3);
+        when(rs.getInt("HECHOS")).thenReturn(2);
+        when(rs.getTimestamp("ULTIMO")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2025, 5, 3, 22, 31)));
+        assertEquals(new ResumenHistorico(3, 2, LocalDateTime.of(2025, 5, 3, 22, 31)), mapper.getValue().mapRow(rs, 0));
     }
 }

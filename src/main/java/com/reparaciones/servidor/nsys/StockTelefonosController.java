@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -37,6 +38,10 @@ public class StockTelefonosController {
 
     /** Como mucho los IMEIs de una vez en «Pegar varios IMEIs» (spec 0.9.18 §4.9). */
     static final int MAX_COMPROBAR = 500;
+
+    /** Tope de filas de la lista de importaciones (spec 0.9.18 §6.5); por defecto, 20. */
+    static final int LIMITE_IMPORTACIONES = 50;
+    private static final String EN_CURSO = "EN_CURSO";
 
     private final NsysDAO dao;
     private final Clock clock;
@@ -139,6 +144,27 @@ public class StockTelefonosController {
         }).toList();
     }
 
+    /** Las últimas importaciones del Items actual, de la más reciente a la más antigua, y el progreso del histórico (spec
+     *  0.9.18 §4.11 y §6.5): para ver desde la web que llega un Items cada media hora. Los huecos los calcula la web. */
+    @GetMapping("/importaciones")
+    public ListaImportaciones importaciones(@RequestParam(defaultValue = "20") int limite) {
+        int n = Math.max(1, Math.min(LIMITE_IMPORTACIONES, limite));
+        List<FilaImportacion> filas = dao.importaciones(ACTUAL, n).stream().map(StockTelefonosController::fila).toList();
+        ResumenHistorico h = dao.resumenHistorico();
+        LocalDateTime hasta = dao.primeraImportacion(ACTUAL, Set.of(OK)).map(Importacion::fechaExportacion).orElse(null);
+        return new ListaImportaciones(filas, new ProgresoHistorico(h.total(), h.hechos(), h.ultimo(), hasta));
+    }
+
+    /** El motivo: el texto nuestro de OK y RECHAZADO; el genérico de un ERROR, cuyo MENSAJE es e.toString() y puede llevar
+     *  ids de Drive o el correo de la cuenta de servicio (como en /estado); nada mientras está en curso. */
+    private static FilaImportacion fila(RegistroImportacion r) {
+        boolean enCurso = EN_CURSO.equals(r.resultado());
+        Long segundos = enCurso || r.empezada() == null || r.terminada() == null ? null
+                : Duration.between(r.empezada(), r.terminada()).toSeconds();
+        String motivo = enCurso ? null : ERROR.equals(r.resultado()) ? MOTIVO_ERROR : r.mensaje();
+        return new FilaImportacion(r.fichero(), r.fechaExportacion(), r.resultado(), r.filas(), r.cambios(), segundos, motivo);
+    }
+
     /** Un móvil de pedido sigue «en su caja»: la última ubicación conocida antes de «Pedidos realizados». */
     private static String ubicacionVisible(MovilNsys m) {
         return m.estado() == EstadoMovil.DE_PEDIDO ? m.ubicacionUltima() : m.ubicacion();
@@ -177,6 +203,16 @@ public class StockTelefonosController {
 
     /** Del paquete (no privado) para que los tests lo construyan; el esquema se llama StockTelefonosPeticionComprobar. */
     record PeticionComprobar(List<String> imeis) {}
+
+    private record ListaImportaciones(List<FilaImportacion> importaciones, ProgresoHistorico historico) {}
+
+    private record FilaImportacion(String fichero, LocalDateTime fechaExportacion, String resultado, int filas, int cambios,
+                                   @Schema(nullable = true) Long segundos, @Schema(nullable = true) String motivo) {}
+
+    /** {@code total} = 0: no hay ninguna importación HISTORICO y la web no pinta la línea. {@code hasta}: el Items de la
+     *  primera importación ACTUAL OK, donde termina el histórico. */
+    private record ProgresoHistorico(int total, int hechos, @Schema(nullable = true) LocalDateTime ultimo,
+                                     @Schema(nullable = true) LocalDateTime hasta) {}
 
     private record MovilComprobado(String imei, boolean encontrado, @Schema(nullable = true) String modelo,
                                    @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
