@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -52,6 +53,25 @@ class StockTelefonosControllerTest {
         assertEquals(15, stock.get(0).get("dias").asInt(), "del 1/10 al 16/10");
         assertEquals("Taller · Glass", stock.get(1).get("ubicacion").asText(), "un móvil de pedido sigue en su caja");
         assertEquals("DE_PEDIDO", stock.get(1).get("estado").asText());
+    }
+
+    @Test void stockConLosTrabajosAbiertosDeCadaMovil() {
+        when(dao.enEmpresa()).thenReturn(List.of(
+                movil("350000000000001", "BT-9001", "A", "Taller · Reparación", "Taller · Reparación", EstadoMovil.STOCK),
+                movil("350000000000002", "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        LocalDateTime asignada = LocalDateTime.of(2026, 10, 16, 9, 30);
+        when(dao.trabajosAbiertos()).thenReturn(Map.of("350000000000001", List.of(
+                new TrabajoAbierto("REPARACION", "Técnico 1", asignada, null),
+                new TrabajoAbierto("GLASS", "Técnico 3", asignada.plusHours(1), asignada.plusHours(2)))));
+        JsonNode stock = json(api.stock());
+        JsonNode trabajos = stock.get(0).get("trabajos");
+        assertEquals(2, trabajos.size(), "reparación y glass: dos trabajos");
+        assertEquals("REPARACION", trabajos.get(0).get("categoria").asText());
+        assertTrue(trabajos.get(0).get("entregado").isNull());
+        assertEquals("Técnico 3", trabajos.get(1).get("tecnico").asText());
+        assertTrue(trabajos.get(1).get("desde").asText().startsWith("2026-10-16T10:30"));
+        assertTrue(trabajos.get(1).get("entregado").asText().startsWith("2026-10-16T11:30"));
+        assertEquals(0, stock.get(1).get("trabajos").size(), "sin trabajos abiertos, lista vacía");
     }
 
     @Test void estadoConElUltimoOkYUnFalloPosterior() {

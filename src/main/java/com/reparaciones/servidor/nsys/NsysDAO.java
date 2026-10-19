@@ -17,10 +17,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -60,6 +62,15 @@ public class NsysDAO {
      *  el texto del lote no va en orden de fechas: desempata la fecha de recepción (sin fecha, al final) y luego el lote. */
     static final String LOTE_MAS_RECIENTE_PRIMERO = " ORDER BY VISTO_PRIMERO DESC, RECEIVING_DATE DESC, BATCH DESC";
     private static final String COLUMNAS_IMPORTACION ="ID_IMPORTACION, FICHERO, FECHA_EXPORTACION, RESULTADO, FILAS, MENSAJE";
+
+    /** Las asignaciones abiertas del taller (A… reparación, AG… glass, AP… pulido; sin FECHA_FIN) con el técnico. Se
+     *  cruzan con el espejo en Java por IMEI, para no depender de las intercalaciones de Nsys_movil y Reparacion
+     *  (spec 0.9.18 §6.1). */
+    static final String SQL_TRABAJOS_ABIERTOS = "SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG, r.ENTREGADO_AT, t.NOMBRE"
+            + " FROM Reparacion r JOIN Tecnico t ON t.ID_TEC = r.ID_TEC WHERE r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL";
+    static final String ORDEN_TRABAJOS = " ORDER BY r.FECHA_ASIG, r.ID_REP";
+    /** Tamaño de las tandas de los IN por IMEI (spec 0.9.18 §6.2). */
+    static final int TANDA_IN = 500;
 
     private final JdbcTemplate jdbc;
 
@@ -232,6 +243,43 @@ public class NsysDAO {
                         utcAMadrid(rs.getTimestamp("FECHA_FIN")), rs.getString("NOMBRE")), imei);
     }
 
+    /** Las asignaciones abiertas de todo el taller, por IMEI ({@link #claveCruce}). Son unos cientos como mucho. */
+    public Map<String, List<TrabajoAbierto>> trabajosAbiertos() {
+        return porImeiDelTaller(jdbc.query(SQL_TRABAJOS_ABIERTOS + ORDEN_TRABAJOS, NsysDAO::filaTrabajoAbierto));
+    }
+
+    /** Las asignaciones abiertas de estos IMEI, por IMEI, en tandas de {@value #TANDA_IN}. */
+    public Map<String, List<TrabajoAbierto>> trabajosAbiertos(Collection<String> imeis) {
+        List<FilaTrabajoAbierto> filas = new ArrayList<>();
+        for (List<String> tanda : trozos(List.copyOf(imeis), TANDA_IN))
+            filas.addAll(jdbc.query(SQL_TRABAJOS_ABIERTOS + " AND r.IMEI IN (" + marcas(tanda.size()) + ")" + ORDEN_TRABAJOS,
+                    NsysDAO::filaTrabajoAbierto, tanda.toArray()));
+        return porImeiDelTaller(filas);
+    }
+
+    /** Una fila de las asignaciones abiertas: el IMEI del taller y su trabajo. */
+    record FilaTrabajoAbierto(String imei, TrabajoAbierto trabajo) {}
+
+    static FilaTrabajoAbierto filaTrabajoAbierto(ResultSet rs, int n) throws SQLException {
+        String categoria = Rastro.categoria(rs.getString("ID_REP"));
+        LocalDateTime entregado = "GLASS".equals(categoria) ? utcAMadrid(rs.getTimestamp("ENTREGADO_AT")) : null;
+        return new FilaTrabajoAbierto(rs.getString("IMEI"), new TrabajoAbierto(categoria, rs.getString("NOMBRE"),
+                utcAMadrid(rs.getTimestamp("FECHA_ASIG")), entregado));
+    }
+
+    /** Los trabajos por IMEI, en el orden en que llegan (por fecha de asignación). */
+    static Map<String, List<TrabajoAbierto>> porImeiDelTaller(List<FilaTrabajoAbierto> filas) {
+        Map<String, List<TrabajoAbierto>> mapa = new HashMap<>();
+        for (FilaTrabajoAbierto f : filas) mapa.computeIfAbsent(claveCruce(f.imei()), k -> new ArrayList<>()).add(f.trabajo());
+        return mapa;
+    }
+
+    /** Clave para cruzar un IMEI/SN del espejo con el del taller: sin espacios a los lados y en mayúsculas (un número de
+     *  serie puede venir en minúsculas de un lado y en mayúsculas del otro). */
+    public static String claveCruce(String imeiSn) {
+        return imeiSn == null ? "" : imeiSn.strip().toUpperCase(Locale.ROOT);
+    }
+
     // ---------------------------------------------------------------- utilidades
 
     static MovilNsys movil(ResultSet rs, int n) throws SQLException {
@@ -245,9 +293,18 @@ public class NsysDAO {
     }
 
     static <T> List<List<T>> trozos(List<T> lista) {
+        return trozos(lista, LOTE);
+    }
+
+    static <T> List<List<T>> trozos(List<T> lista, int tamano) {
         List<List<T>> trozos = new ArrayList<>();
-        for (int i = 0; i < lista.size(); i += LOTE) trozos.add(lista.subList(i, Math.min(lista.size(), i + LOTE)));
+        for (int i = 0; i < lista.size(); i += tamano) trozos.add(lista.subList(i, Math.min(lista.size(), i + tamano)));
         return trozos;
+    }
+
+    /** «?, ?, ?» para un IN de {@code n} valores. */
+    static String marcas(int n) {
+        return String.join(", ", Collections.nCopies(n, "?"));
     }
 
     private static Date fecha(LocalDate dia) {

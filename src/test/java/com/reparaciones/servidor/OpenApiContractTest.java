@@ -477,7 +477,11 @@ class OpenApiContractTest {
         assertEquals("query", imei.path("in").asText());
 
         assertNullable(esquemas, "StockTelefonosMovilStock", "modelo", "modeloMaestro", "capacidad", "color", "sku", "ubicacion", "dias");
-        assertNoNullable(esquemas, "StockTelefonosMovilStock", "imeiSn", "lote", "grado", "bateriaNueva", "esEsim", "estado");
+        assertNoNullable(esquemas, "StockTelefonosMovilStock", "imeiSn", "lote", "grado", "bateriaNueva", "esEsim", "estado",
+                "trabajos");
+        // 0.9.18: los trabajos abiertos de cada móvil (spec 2026-10-19 §6.1).
+        assertNullable(esquemas, "TrabajoAbierto", "entregado");
+        assertNoNullable(esquemas, "TrabajoAbierto", "categoria", "tecnico", "desde");
         assertNullable(esquemas, "StockTelefonosEstadoImportacion", "ultimaExportacion", "ultimoFallo", "motivoFallo");
         assertNoNullable(esquemas, "StockTelefonosEstadoImportacion", "nivel");
         assertNullable(esquemas, "StockTelefonosMovilBuscado", "modelo", "modeloMaestro", "capacidad", "color", "ubicacion", "fechaVenta");

@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -44,13 +45,16 @@ public class StockTelefonosController {
         this.clock = clock;
     }
 
-    /** Los móviles que están en la empresa (en stock, de pedido o que no cuentan). La web filtra en local. */
+    /** Los móviles que están en la empresa (en stock, de pedido o que no cuentan), cada uno con sus trabajos abiertos del
+     *  taller (0.9.18). La web filtra en local y calcula «Quién lo tiene». */
     @GetMapping
     public List<MovilStock> stock() {
         LocalDate hoy = LocalDate.now(clock);
+        Map<String, List<TrabajoAbierto>> abiertos = dao.trabajosAbiertos();
         return dao.enEmpresa().stream().map(m -> new MovilStock(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(),
                 m.capacidad(), m.color(), Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()),
-                m.esEsim(), m.sku(), ubicacionVisible(m), m.estado().name(), dias(m, hoy))).toList();
+                m.esEsim(), m.sku(), ubicacionVisible(m), m.estado().name(), dias(m, hoy),
+                abiertos.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()))).toList();
     }
 
     @GetMapping("/estado")
@@ -117,7 +121,7 @@ public class StockTelefonosController {
                               @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                               @Schema(nullable = true) String color, String grado, boolean bateriaNueva, boolean esEsim,
                               @Schema(nullable = true) String sku, @Schema(nullable = true) String ubicacion, String estado,
-                              @Schema(nullable = true) Integer dias) {}
+                              @Schema(nullable = true) Integer dias, List<TrabajoAbierto> trabajos) {}
 
     private record EstadoImportacion(@Schema(nullable = true) LocalDateTime ultimaExportacion, String nivel,
                                      @Schema(nullable = true) LocalDateTime ultimoFallo,

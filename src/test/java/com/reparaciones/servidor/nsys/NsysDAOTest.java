@@ -7,6 +7,8 @@ import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.KeyHolder;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -145,5 +147,72 @@ class NsysDAOTest {
         assertEquals(LocalDateTime.of(2026, 9, 12, 13, 1), NsysDAO.utcAMadrid(Timestamp.valueOf(LocalDateTime.of(2026, 9, 12, 11, 1))));
         assertEquals(LocalDateTime.of(2026, 1, 12, 12, 1), NsysDAO.utcAMadrid(Timestamp.valueOf(LocalDateTime.of(2026, 1, 12, 11, 1))));
         assertNull(NsysDAO.utcAMadrid(null));
+    }
+
+    // ---------------------------------------------------------------- 0.9.18: trabajos abiertos (spec §6.1)
+
+    @Test void lasAsignacionesAbiertasSonLasAConFechaFinNulaYConElTecnico() {
+        assertTrue(NsysDAO.SQL_TRABAJOS_ABIERTOS.contains("r.ID_REP LIKE 'A%'"), "A, AG y AP");
+        assertTrue(NsysDAO.SQL_TRABAJOS_ABIERTOS.contains("r.FECHA_FIN IS NULL"));
+        assertTrue(NsysDAO.SQL_TRABAJOS_ABIERTOS.contains("JOIN Tecnico t ON t.ID_TEC = r.ID_TEC"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void lasAsignacionesAbiertasDeTodoElTallerVanEnUnaConsulta() {
+        assertTrue(dao.trabajosAbiertos().isEmpty());
+        verify(jdbc).query(eq(NsysDAO.SQL_TRABAJOS_ABIERTOS + NsysDAO.ORDEN_TRABAJOS), any(RowMapper.class));
+    }
+
+    private static ResultSet filaDeReparacion(String imei, String idRep, LocalDateTime asignada, LocalDateTime entregada)
+            throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("IMEI")).thenReturn(imei);
+        when(rs.getString("ID_REP")).thenReturn(idRep);
+        when(rs.getString("NOMBRE")).thenReturn("Técnico 3");
+        when(rs.getTimestamp("FECHA_ASIG")).thenReturn(Timestamp.valueOf(asignada));
+        when(rs.getTimestamp("ENTREGADO_AT")).thenReturn(entregada == null ? null : Timestamp.valueOf(entregada));
+        return rs;
+    }
+
+    @Test void unaAsignacionAbiertaLlevaSuCategoriaYSusHorasEnMadrid() throws SQLException {
+        LocalDateTime utc = LocalDateTime.of(2026, 10, 16, 8, 30);
+        NsysDAO.FilaTrabajoAbierto glass = NsysDAO.filaTrabajoAbierto(
+                filaDeReparacion("350000000000001", "AG20261016_1", utc, utc.plusHours(1)), 0);
+        assertEquals("350000000000001", glass.imei());
+        assertEquals(new TrabajoAbierto("GLASS", "Técnico 3", LocalDateTime.of(2026, 10, 16, 10, 30),
+                LocalDateTime.of(2026, 10, 16, 11, 30)), glass.trabajo(), "UTC → Madrid (verano, +2)");
+        assertEquals("PULIDO", NsysDAO.filaTrabajoAbierto(
+                filaDeReparacion("350000000000001", "AP20261016_1", utc, null), 0).trabajo().categoria());
+        TrabajoAbierto reparacion = NsysDAO.filaTrabajoAbierto(
+                filaDeReparacion("350000000000001", "A20261016_1", utc, utc), 0).trabajo();
+        assertEquals("REPARACION", reparacion.categoria());
+        assertNull(reparacion.entregado(), "la entrega solo cuenta en la glass");
+    }
+
+    @Test void losTrabajosSeAgrupanPorImeiYUnNumeroDeSerieEnMinusculasCruza() {
+        TrabajoAbierto r = new TrabajoAbierto("REPARACION", "Técnico 1", HOY, null);
+        TrabajoAbierto g = new TrabajoAbierto("GLASS", "Técnico 3", HOY, null);
+        Map<String, List<TrabajoAbierto>> mapa = NsysDAO.porImeiDelTaller(List.of(
+                new NsysDAO.FilaTrabajoAbierto("350000000000001", r), new NsysDAO.FilaTrabajoAbierto("350000000000001", g),
+                new NsysDAO.FilaTrabajoAbierto(" f2lxabc123 ", r)));
+        assertEquals(List.of(r, g), mapa.get("350000000000001"), "reparación y glass: dos trabajos, en su orden");
+        assertEquals(List.of(r), mapa.get(NsysDAO.claveCruce("F2LXABC123")));
+        assertEquals("F2LXABC123", NsysDAO.claveCruce(" f2lxabc123 "));
+        assertEquals("", NsysDAO.claveCruce(null));
+    }
+
+    @Test void losTrabajosDeUnosImeisVanEnTandasDeQuinientos() {
+        List<String> imeis = new ArrayList<>();
+        for (int n = 0; n < 501; n++) imeis.add(String.format("3500000000%05d", n));
+        assertTrue(dao.trabajosAbiertos(imeis).isEmpty());
+        List<String> sql = mockingDetails(jdbc).getInvocations().stream()
+                .filter(inv -> inv.getMethod().getName().equals("query"))
+                .map(inv -> inv.getArgument(0).toString()).toList();
+        assertEquals(2, sql.size(), "500 + 1");
+        assertTrue(sql.get(0).startsWith(NsysDAO.SQL_TRABAJOS_ABIERTOS + " AND r.IMEI IN (?, ?"), sql.get(0));
+        assertTrue(sql.get(1).contains(" AND r.IMEI IN (?)" + NsysDAO.ORDEN_TRABAJOS), sql.get(1));
+        clearInvocations(jdbc);
+        assertTrue(dao.trabajosAbiertos(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
     }
 }
