@@ -87,18 +87,23 @@ public class StockTelefonosController {
         List<MovilNsys> lotes = dao.porImei(imeiSn);
         if (lotes.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NSYS no conoce el IMEI " + imeiSn);
         MovilNsys m = lotes.get(0);
+        List<EventoNsys> eventos = dao.eventos(imeiSn);
         // El último cambio de grado de verdad del lote: un cambio de batería (A → A100) no cuenta, o taparía el grado
         // anterior real (C → A → A100 da C).
-        String gradoAnterior = dao.eventos(imeiSn).stream()
+        String gradoAnterior = eventos.stream()
                 .filter(e -> e.tipo() == TipoEvento.GRADO && Objects.equals(e.batch(), m.batch()))
                 .filter(e -> !Normalizacion.gradoSinBateria(e.de()).equals(Normalizacion.gradoSinBateria(e.a())))
                 .reduce((a, b) -> b).map(e -> e.de() == null ? null : Normalizacion.gradoSinBateria(e.de())).orElse(null);
         boolean enEmpresa = m.estado() == EstadoMovil.STOCK || m.estado() == EstadoMovil.DE_PEDIDO
                 || m.estado() == EstadoMovil.NO_CUENTA;
+        // 0.9.18 (spec §5.2): la última revisión del lote y, si está en «En revisión», desde cuándo.
+        Revision.Ultima revisado = Revision.ultima(eventos, m.batch());
         return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
                 Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), gradoAnterior, m.sku(),
                 ubicacionVisible(m), m.estado().name(), enEmpresa ? dias(m, LocalDate.now(clock)) : null, lotes.size(),
-                m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null);
+                m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
+                revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
+                Revision.pendienteDesde(m, eventos));
     }
 
     @GetMapping("/{imeiSn}/rastro")
@@ -138,5 +143,7 @@ public class StockTelefonosController {
                               @Schema(nullable = true) String gradoAnterior, @Schema(nullable = true) String sku,
                               @Schema(nullable = true) String ubicacion, String estado,
                               @Schema(nullable = true) Integer dias, int entradas,
-                              @Schema(nullable = true) LocalDate fechaVenta) {}
+                              @Schema(nullable = true) LocalDate fechaVenta,
+                              @Schema(nullable = true) LocalDateTime revisadoEl, boolean revisadoDevolucion,
+                              @Schema(nullable = true) LocalDate pendienteRevisionDesde) {}
 }

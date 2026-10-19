@@ -3,6 +3,7 @@ package com.reparaciones.servidor.nsys;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,11 +23,11 @@ class RastroTest {
                         new TrabajoTaller("R20260930_2", t(30, 10), null, "Técnico 5")));
 
         assertEquals(List.of(
-                new EventoRastro(t(30, 10), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "R20260930_2", "Técnico 5", "REPARACION"),
-                new EventoRastro(t(8, 13), false, "NSYS", "UBICACION", "BT-9001", "Taller · Glass", "Listos", "CAJA LISTOS", null, null, null),
-                new EventoRastro(t(8, 12), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "G20260905_1", "Técnico 3", "GLASS"),
-                new EventoRastro(t(5, 9), false, "ERP", "TRABAJO_ASIGNADO", null, null, null, null, "AG20260905_1", "Técnico 3", "GLASS"),
-                new EventoRastro(t(2, 0), true, "NSYS", "ENTRADA", "BT-9001", null, null, null, null, null, null)),
+                new EventoRastro(t(30, 10), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "R20260930_2", "Técnico 5", "REPARACION", null),
+                new EventoRastro(t(8, 13), false, "NSYS", "UBICACION", "BT-9001", "Taller · Glass", "Listos", "CAJA LISTOS", null, null, null, null),
+                new EventoRastro(t(8, 12), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "G20260905_1", "Técnico 3", "GLASS", null),
+                new EventoRastro(t(5, 9), false, "ERP", "TRABAJO_ASIGNADO", null, null, null, null, "AG20260905_1", "Técnico 3", "GLASS", null),
+                new EventoRastro(t(2, 0), true, "NSYS", "ENTRADA", "BT-9001", null, null, null, null, null, null, null)),
                 rastro);
     }
 
@@ -57,5 +58,23 @@ class RastroTest {
         assertEquals("PULIDO", Rastro.categoria("P1"));
         assertEquals("REPARACION", Rastro.categoria("A1"));
         assertEquals("REPARACION", Rastro.categoria("R1"));
+    }
+
+    @Test void elCambioDeCajaQueEsLaRevisionLlevaSuTipo() {
+        // 0.9.18 (spec §5.3): de «En revisión» a una caja es ENTRADA; salir de «Devolución», DEVOLUCION.
+        List<EventoRastro> rastro = Rastro.unir(List.of(
+                new EventoNsys("350000000000001", "BT-9001", t(2, 9), false, TipoEvento.UBICACION, "En revisión", "Taller · Pulir", "CAJA PULIR"),
+                new EventoNsys("350000000000001", "BT-9001", t(4, 9), false, TipoEvento.UBICACION, "Taller · Pulir", "Devolución", "Funcionalidad pendiente"),
+                new EventoNsys("350000000000001", "BT-9001", t(6, 9), false, TipoEvento.UBICACION, "Devolución", "Listos", "CAJA LISTOS")), List.of());
+        assertEquals(Arrays.asList("DEVOLUCION", null, "ENTRADA"), rastro.stream().map(EventoRastro::revision).toList());
+    }
+
+    @Test void laRevisionNoSeDescuadraAlQuitarLaVentaDelEsqueleto() {
+        List<EventoRastro> rastro = Rastro.unir(List.of(
+                new EventoNsys("350000000000001", "BT-9001", t(1, 0), true, TipoEvento.VENTA, null, null, null),
+                new EventoNsys("350000000000001", "BT-9001", t(2, 9), false, TipoEvento.UBICACION, "En revisión", "Listos", "CAJA LISTOS"),
+                new EventoNsys("350000000000001", "BT-9001", t(3, 9), false, TipoEvento.VENTA, "Available", "Released", null)), List.of());
+        assertEquals(List.of("VENTA", "UBICACION"), rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(Arrays.asList(null, "ENTRADA"), rastro.stream().map(EventoRastro::revision).toList());
     }
 }

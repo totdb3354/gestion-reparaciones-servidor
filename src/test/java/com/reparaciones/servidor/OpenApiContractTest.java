@@ -487,9 +487,10 @@ class OpenApiContractTest {
         assertNullable(esquemas, "StockTelefonosMovilBuscado", "modelo", "modeloMaestro", "capacidad", "color", "ubicacion", "fechaVenta");
         assertNoNullable(esquemas, "StockTelefonosMovilBuscado", "imeiSn", "estado");
         assertNullable(esquemas, "StockTelefonosFichaMovil", "modelo", "modeloMaestro", "capacidad", "color", "gradoAnterior",
-                "sku", "ubicacion", "dias", "fechaVenta");
-        assertNoNullable(esquemas, "StockTelefonosFichaMovil", "imeiSn", "lote", "grado", "bateriaNueva", "estado", "entradas");
-        assertNullable(esquemas, "EventoRastro", "lote", "de", "a", "aNsys", "idRep", "tecnico", "categoria");
+                "sku", "ubicacion", "dias", "fechaVenta", "revisadoEl", "pendienteRevisionDesde");
+        assertNoNullable(esquemas, "StockTelefonosFichaMovil", "imeiSn", "lote", "grado", "bateriaNueva", "estado", "entradas",
+                "revisadoDevolucion");
+        assertNullable(esquemas, "EventoRastro", "lote", "de", "a", "aNsys", "idRep", "tecnico", "categoria", "revision");
         assertNoNullable(esquemas, "EventoRastro", "fecha", "soloDia", "fuente", "tipo");
     }
 

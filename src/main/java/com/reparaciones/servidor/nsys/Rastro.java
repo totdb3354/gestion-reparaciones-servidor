@@ -16,18 +16,21 @@ public final class Rastro {
     public static List<EventoRastro> unir(List<EventoNsys> nsys, List<TrabajoTaller> trabajos) {
         Set<String> lotesConVentaConHora = nsys.stream().filter(e -> e.tipo() == TipoEvento.VENTA && !e.soloDia())
                 .map(EventoNsys::batch).collect(Collectors.toSet());
+        // Sobre la lista entera, antes de quitar la venta del esqueleto: así cada tipo sigue con su evento.
+        List<String> revisiones = Revision.tipos(nsys);
         List<EventoRastro> todos = new ArrayList<>();
-        for (EventoNsys e : nsys) {
+        for (int i = 0; i < nsys.size(); i++) {
+            EventoNsys e = nsys.get(i);
             if (e.tipo() == TipoEvento.VENTA && e.soloDia() && lotesConVentaConHora.contains(e.batch())) continue;
             todos.add(new EventoRastro(e.fecha(), e.soloDia(), "NSYS", e.tipo().name(), e.batch(), e.de(), e.a(), e.aNsys(),
-                    null, null, null));
+                    null, null, null, revisiones.get(i)));
         }
         for (TrabajoTaller t : trabajos) {
             boolean asignacion = t.idRep().startsWith("A");
             LocalDateTime fecha = asignacion || t.terminado() == null ? t.asignado() : t.terminado();
             if (fecha == null) continue;
             todos.add(new EventoRastro(fecha, false, "ERP", asignacion ? "TRABAJO_ASIGNADO" : "TRABAJO_TERMINADO",
-                    null, null, null, null, t.idRep(), t.tecnico(), categoria(t.idRep())));
+                    null, null, null, null, t.idRep(), t.tecnico(), categoria(t.idRep()), null));
         }
         // Del más reciente al más antiguo. A la misma hora, primero lo último apuntado: los eventos de NSYS llegan por
         // orden de alta (ID_EVENTO) y los del taller van detrás, así que un trabajo terminado sale antes que el cambio de

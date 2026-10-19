@@ -147,6 +147,25 @@ class StockTelefonosControllerTest {
         assertTrue(json(api.ficha("350000000000001")).get("gradoAnterior").isNull());
     }
 
+    @Test void fichaConLaUltimaRevisionDelLote() {
+        when(dao.porImei("350000000000001")).thenReturn(List.of(
+                movil("350000000000001", "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(dao.eventos("350000000000001")).thenReturn(List.of(new EventoNsys("350000000000001", "BT-9001",
+                AHORA.minusDays(3), false, TipoEvento.UBICACION, "En revisión", "Taller · Pulir", "CAJA PULIR")));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertTrue(ficha.get("revisadoEl").asText().startsWith("2026-10-13T13:43"));
+        assertFalse(ficha.get("revisadoDevolucion").asBoolean());
+        assertTrue(ficha.get("pendienteRevisionDesde").isNull());
+    }
+
+    @Test void fichaDeUnMovilEnRevisionSinEventosPendienteDesdeLaRecepcion() {
+        when(dao.porImei("350000000000001")).thenReturn(List.of(
+                movil("350000000000001", "BT-9001", "n/a", "En revisión", "En revisión", EstadoMovil.STOCK)));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertEquals("2026-10-01", ficha.get("pendienteRevisionDesde").asText());
+        assertTrue(ficha.get("revisadoEl").isNull());
+    }
+
     @Test void fichaDeUnImeiQueNsysNoConoceEs404() {
         when(dao.porImei("x")).thenReturn(List.of());
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.ficha("x"));
