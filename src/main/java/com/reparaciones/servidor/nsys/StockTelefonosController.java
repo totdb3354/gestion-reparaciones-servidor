@@ -124,12 +124,14 @@ public class StockTelefonosController {
 
     /** «Pegar varios IMEIs» (spec 0.9.18 §4.9 y §6.2): una entrada por IMEI pedido, en el mismo orden. Busca en todo el
      *  espejo, también los vendidos; de cada IMEI, el lote más reciente, con sus trabajos abiertos. La web manda los IMEIs
-     *  limpios y sin repetir; más de {@value #MAX_COMPROBAR} es un 400. */
+     *  limpios y sin repetir; más de {@value #MAX_COMPROBAR}, o alguno nulo o en blanco, es un 400. */
     @PostMapping("/comprobar")
     public List<MovilComprobado> comprobar(@RequestBody PeticionComprobar peticion) {
         List<String> imeis = peticion == null || peticion.imeis() == null ? List.of() : peticion.imeis();
         if (imeis.size() > MAX_COMPROBAR)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Como mucho " + MAX_COMPROBAR + " IMEIs por vez");
+        if (imeis.stream().anyMatch(i -> i == null || i.isBlank()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La lista lleva IMEIs vacíos");
         if (imeis.isEmpty()) return List.of();
         Map<String, MovilNsys> masReciente = new HashMap<>();
         for (MovilNsys m : dao.porImeis(imeis)) masReciente.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);

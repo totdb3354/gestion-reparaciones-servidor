@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -159,6 +160,20 @@ class StockTelefonosControllerTest {
         assertTrue(ficha.get("pendienteRevisionDesde").isNull());
     }
 
+    @Test void fichaConUnaRevisionDeDevolucion() {
+        when(dao.porImei("350000000000001")).thenReturn(List.of(
+                movil("350000000000001", "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(dao.eventos("350000000000001")).thenReturn(List.of(
+                new EventoNsys("350000000000001", "BT-9001", AHORA.minusDays(5), false, TipoEvento.UBICACION, "Listos",
+                        "Devolución", "Funcionalidad pendiente"),
+                new EventoNsys("350000000000001", "BT-9001", AHORA.minusDays(3), false, TipoEvento.UBICACION, "Devolución",
+                        "Listos", "CAJA LISTOS")));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertTrue(ficha.get("revisadoEl").asText().startsWith("2026-10-13T13:43"));
+        assertTrue(ficha.get("revisadoDevolucion").asBoolean());
+        assertTrue(ficha.get("pendienteRevisionDesde").isNull());
+    }
+
     @Test void fichaDeUnMovilEnRevisionSinEventosPendienteDesdeLaRecepcion() {
         when(dao.porImei("350000000000001")).thenReturn(List.of(
                 movil("350000000000001", "BT-9001", "n/a", "En revisión", "En revisión", EstadoMovil.STOCK)));
@@ -217,6 +232,16 @@ class StockTelefonosControllerTest {
         ResponseStatusException e = assertThrows(ResponseStatusException.class,
                 () -> api.comprobar(new StockTelefonosController.PeticionComprobar(imeis)));
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        verifyNoInteractions(dao);
+    }
+
+    @Test void comprobarConUnImeiNuloOVacioEs400SinConsultar() {
+        for (List<String> imeis : List.of(Arrays.asList("350000000000001", null), List.of("350000000000001", "  "),
+                List.of(""))) {
+            ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                    () -> api.comprobar(new StockTelefonosController.PeticionComprobar(imeis)), String.valueOf(imeis));
+            assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        }
         verifyNoInteractions(dao);
     }
 

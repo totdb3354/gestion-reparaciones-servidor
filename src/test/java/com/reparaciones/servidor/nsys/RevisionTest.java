@@ -10,7 +10,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** «Revisado» (spec 0.9.18 §5.1): de «sin caja» (En revisión) a una caja que no sea «Pedidos realizados». */
+/** «Revisado» (spec 0.9.18 §5.1): de «sin caja» (En revisión) o de «Devolución» a una caja que no sea «Pedidos
+ *  realizados». */
 class RevisionTest {
 
     private static LocalDateTime t(int dia, int hora) {
@@ -55,6 +56,56 @@ class RevisionTest {
                 ubicacion("BT-9001", t(14, 10), "Devolución", null, "Pedidos realizados"));
         assertEquals(Arrays.asList("ENTRADA", null, "DEVOLUCION", null), Revision.tipos(e));
         assertEquals(new Revision.Ultima(t(13, 10), true), Revision.ultima(e, "BT-9001"));
+    }
+
+    // 0.9.18, decisión del 19/10: «Devolución» (Funcionalidad pendiente) está por revisar, como «En revisión» (sin caja);
+    // la revisión es el paso a una caja de verdad.
+
+    @Test void deDevolucionAEnRevisionNoEsRevision() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(12, 10), "Devolución", "En revisión", ""));
+        assertEquals(Collections.singletonList(null), Revision.tipos(e));
+        assertNull(Revision.ultima(e, "BT-9001"));
+    }
+
+    @Test void deDevolucionPasandoPorEnRevisionHastaUnaCajaLaRevisionEsDeDevolucion() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(12, 10), "Listos", "Devolución", "Funcionalidad pendiente"),
+                ubicacion("BT-9001", t(13, 10), "Devolución", "En revisión", ""),
+                ubicacion("BT-9001", t(14, 10), "En revisión", "Listos", "CAJA LISTOS"));
+        assertEquals(Arrays.asList(null, null, "DEVOLUCION"), Revision.tipos(e));
+        assertEquals(new Revision.Ultima(t(14, 10), true), Revision.ultima(e, "BT-9001"));
+    }
+
+    @Test void deEnRevisionADevolucionNoEsRevision() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(12, 10), "En revisión", "Devolución", "Funcionalidad pendiente"));
+        assertEquals(Collections.singletonList(null), Revision.tipos(e));
+        assertNull(Revision.ultima(e, "BT-9001"));
+    }
+
+    @Test void unLoteNuevoQueEntraEnDevolucionSeRevisaComoDevolucion() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(5, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                new EventoNsys("350000000000001", "BT-9002", t(12, 9), false, TipoEvento.ENTRADA, null, "Devolución",
+                        "Funcionalidad pendiente"),
+                ubicacion("BT-9002", t(13, 10), "Devolución", "Listos", "CAJA LISTOS"));
+        assertEquals(Arrays.asList("ENTRADA", null, "DEVOLUCION"), Revision.tipos(e));
+        assertEquals(new Revision.Ultima(t(13, 10), true), Revision.ultima(e, "BT-9002"));
+    }
+
+    @Test void pendienteEnDevolucionDesdeElPasoADevolucion() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                ubicacion("BT-9001", t(12, 10), "Listos", "Devolución", "Funcionalidad pendiente"));
+        assertEquals(LocalDate.of(2026, 10, 12), Revision.pendienteDesde(movil("Devolución", LocalDate.of(2026, 10, 1)), e));
+    }
+
+    @Test void deDevolucionAEnRevisionSigueElMismoPendiente() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(12, 10), "Listos", "Devolución", "Funcionalidad pendiente"),
+                ubicacion("BT-9001", t(14, 10), "Devolución", "En revisión", ""));
+        assertEquals(LocalDate.of(2026, 10, 12), Revision.pendienteDesde(movil("En revisión", LocalDate.of(2026, 10, 1)), e));
+    }
+
+    @Test void deVueltaAEnRevisionPendienteDesdeElUltimoPaso() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                ubicacion("BT-9001", t(12, 10), "Listos", "En revisión", ""));
+        assertEquals(LocalDate.of(2026, 10, 12), Revision.pendienteDesde(movil("En revisión", LocalDate.of(2026, 10, 1)), e));
     }
 
     @Test void laUltimaRevisionEsDelLoteQueSePide() {

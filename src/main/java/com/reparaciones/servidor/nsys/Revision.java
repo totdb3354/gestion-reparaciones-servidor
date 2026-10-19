@@ -8,9 +8,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** «Revisado» (spec 0.9.18 §5.1). Un lote se revisa al pasar de «sin caja» (la ubicación «En revisión») a una caja que no
- *  sea «Pedidos realizados», que es una venta sin revisar; salir de «Devolución» hacia una caja es la revisión de una
- *  devolución. La hora es la de la exportación en que se vio el cambio, y solo hay pasos intermedios desde dic. 2023. */
+/** «Revisado» (spec 0.9.18 §5.1, con la decisión del usuario del 19/10). Están pendientes de revisar los móviles en
+ *  «sin caja» (la ubicación «En revisión») y en «Funcionalidad pendiente» (la ubicación «Devolución»): un lote se revisa al
+ *  pasar de una de las dos a una caja de verdad, que es cualquiera menos esas dos y «Pedidos realizados» (una venta sin
+ *  revisar). Si el lote llegó a «Devolución» (o sale de ella), esa revisión es la de una devolución; si no, la primera es la
+ *  de entrada. Los pasos entre las dos pendientes no son revisión. La hora es la de la exportación en que se vio el
+ *  cambio, y solo hay pasos intermedios desde dic. 2023. */
 public final class Revision {
 
     public static final String ENTRADA = "ENTRADA";
@@ -24,19 +27,23 @@ public final class Revision {
 
     private Revision() {}
 
-    /** Qué revisión es cada evento, en el orden de la lista (FECHA, ID_EVENTO): ENTRADA, DEVOLUCION o null. ENTRADA solo es
-     *  el primer cambio de «En revisión» a una caja de cada lote; una devolución puede revisarse varias veces. */
+    /** Qué revisión es cada evento, en el orden de la lista (FECHA, ID_EVENTO): ENTRADA, DEVOLUCION o null. Por lote: un
+     *  evento hacia «Devolución» deja una devolución por revisar; el paso siguiente de una ubicación pendiente a una caja de
+     *  verdad es DEVOLUCION (también si sale de «Devolución»). Si no hay devolución por medio, ENTRADA solo es el primero de
+     *  esos pasos del lote; los demás, null. */
     public static List<String> tipos(List<EventoNsys> eventos) {
-        Set<String> lotesRevisados = new HashSet<>();
+        Set<String> conEntrada = new HashSet<>();
+        Set<String> conDevolucionPendiente = new HashSet<>();
         List<String> tipos = new ArrayList<>(eventos.size());
         for (EventoNsys e : eventos) {
             String tipo = null;
-            if (e.tipo() == TipoEvento.UBICACION && !CAJA_PEDIDOS.equals(e.aNsys())) {
-                if (EN_REVISION.equals(e.de())) {
-                    if (lotesRevisados.add(e.batch())) tipo = ENTRADA;
-                } else if (SALIDA_DEVOLUCION.equals(e.de())) {
-                    tipo = DEVOLUCION;
-                }
+            if (llevaUbicacion(e) && SALIDA_DEVOLUCION.equals(e.a())) {
+                conDevolucionPendiente.add(e.batch());
+            } else if (e.tipo() == TipoEvento.UBICACION && pendiente(e.de()) && esCaja(e)) {
+                // remove primero: la devolución pendiente se gasta aunque el paso salga de «Devolución».
+                boolean devolucion = conDevolucionPendiente.remove(e.batch()) || SALIDA_DEVOLUCION.equals(e.de());
+                if (devolucion) tipo = DEVOLUCION;
+                else if (conEntrada.add(e.batch())) tipo = ENTRADA;
             }
             tipos.add(tipo);
         }
@@ -54,15 +61,34 @@ public final class Revision {
         return ultima;
     }
 
-    /** Si el móvil está ahora en «En revisión», desde cuándo: el último evento del lote que lo dejó allí (su entrada o un
-     *  cambio de caja) o, si no lo hay, la recepción del lote. null si no está pendiente o no hay fecha. */
+    /** Si el móvil está ahora pendiente de revisar («En revisión» o «Devolución»), desde cuándo: el principio del periodo
+     *  pendiente actual del lote, el último evento que lo llevó a una ubicación pendiente desde una que no lo es (o su
+     *  entrada); un paso entre las dos pendientes no lo cambia. Si no lo hay, la recepción del lote. null si no está
+     *  pendiente o no hay fecha. */
     public static LocalDate pendienteDesde(MovilNsys m, List<EventoNsys> eventos) {
-        if (!EN_REVISION.equals(m.ubicacion())) return null;
+        if (!pendiente(m.ubicacion())) return null;
         LocalDate desde = null;
         for (EventoNsys e : eventos) {
-            boolean loDejaAlli = (e.tipo() == TipoEvento.UBICACION || e.tipo() == TipoEvento.ENTRADA) && EN_REVISION.equals(e.a());
-            if (loDejaAlli && Objects.equals(e.batch(), m.batch())) desde = e.fecha().toLocalDate();
+            if (!llevaUbicacion(e) || !Objects.equals(e.batch(), m.batch())) continue;
+            if (!pendiente(e.a())) desde = null;
+            else if (e.tipo() == TipoEvento.ENTRADA || !pendiente(e.de())) desde = e.fecha().toLocalDate();
         }
         return desde != null ? desde : m.receivingDate();
+    }
+
+    /** Las ubicaciones pendientes de revisar: «En revisión» (sin caja) y «Devolución» (Funcionalidad pendiente). */
+    private static boolean pendiente(String ubicacion) {
+        return EN_REVISION.equals(ubicacion) || SALIDA_DEVOLUCION.equals(ubicacion);
+    }
+
+    /** Un evento que deja el móvil en una ubicación: un cambio de caja o la entrada del lote. */
+    private static boolean llevaUbicacion(EventoNsys e) {
+        return e.tipo() == TipoEvento.UBICACION || e.tipo() == TipoEvento.ENTRADA;
+    }
+
+    /** Una caja de verdad, destino de una revisión: ni pendiente ni «Pedidos realizados». Un destino que no se trae
+     *  ({@code a} null, p. ej. «Desguace») cuenta como caja. */
+    private static boolean esCaja(EventoNsys e) {
+        return !pendiente(e.a()) && !CAJA_PEDIDOS.equals(e.aNsys());
     }
 }
