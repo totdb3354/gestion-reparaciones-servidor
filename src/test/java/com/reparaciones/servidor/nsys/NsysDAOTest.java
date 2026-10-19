@@ -215,4 +215,21 @@ class NsysDAOTest {
         assertTrue(dao.trabajosAbiertos(List.of()).isEmpty());
         verifyNoInteractions(jdbc);
     }
+
+    // ---------------------------------------------------------------- 0.9.18: comprobar una lista (spec §6.2)
+
+    @Test void losLotesDeUnosImeisVanEnTandasYDelMasRecienteAlMasAntiguo() {
+        List<String> imeis = new ArrayList<>();
+        for (int n = 0; n < 501; n++) imeis.add(String.format("3500000000%05d", n));
+        assertTrue(dao.porImeis(imeis).isEmpty());
+        List<String> sql = mockingDetails(jdbc).getInvocations().stream()
+                .filter(inv -> inv.getMethod().getName().equals("query"))
+                .map(inv -> inv.getArgument(0).toString()).toList();
+        assertEquals(2, sql.size());
+        assertTrue(sql.get(0).contains("FROM Nsys_movil WHERE IMEI_SN IN (?, ?"), sql.get(0));
+        assertTrue(sql.get(1).endsWith("IMEI_SN IN (?)" + MAS_RECIENTE_PRIMERO), sql.get(1));
+        clearInvocations(jdbc);
+        assertTrue(dao.porImeis(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
 }

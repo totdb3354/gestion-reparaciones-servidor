@@ -492,6 +492,13 @@ class OpenApiContractTest {
                 "revisadoDevolucion");
         assertNullable(esquemas, "EventoRastro", "lote", "de", "a", "aNsys", "idRep", "tecnico", "categoria", "revision");
         assertNoNullable(esquemas, "EventoRastro", "fecha", "soloDia", "fuente", "tipo");
+
+        // 0.9.18: comprobar una lista de IMEIs (spec 2026-10-19 §6.2).
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/comprobar", "post").endsWith("/StockTelefonosPeticionComprobar"));
+        assertNoNullable(esquemas, "StockTelefonosPeticionComprobar", "imeis");
+        assertNullable(esquemas, "StockTelefonosMovilComprobado", "modelo", "modeloMaestro", "capacidad", "color", "grado",
+                "ubicacion", "estado", "fechaVenta");
+        assertNoNullable(esquemas, "StockTelefonosMovilComprobado", "imei", "encontrado", "bateriaNueva", "trabajos");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

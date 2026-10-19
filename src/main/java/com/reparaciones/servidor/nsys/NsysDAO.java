@@ -225,6 +225,15 @@ public class NsysDAO {
                 NsysDAO::movil, imeiSn);
     }
 
+    /** Los lotes de estos IMEI/SN, en tandas de {@value #TANDA_IN}: de cada IMEI, el más reciente primero (spec 0.9.18 §6.2). */
+    public List<MovilNsys> porImeis(Collection<String> imeis) {
+        List<MovilNsys> moviles = new ArrayList<>();
+        for (List<String> tanda : trozos(List.copyOf(imeis), TANDA_IN))
+            moviles.addAll(jdbc.query("SELECT " + COLUMNAS_MOVIL + " FROM Nsys_movil WHERE IMEI_SN IN (" + marcas(tanda.size())
+                    + ")" + LOTE_MAS_RECIENTE_PRIMERO, NsysDAO::movil, tanda.toArray()));
+        return moviles;
+    }
+
     public List<EventoNsys> eventos(String imeiSn) {
         return jdbc.query("SELECT IMEI_SN, BATCH, FECHA, SOLO_DIA, TIPO, DE, A, A_NSYS FROM Nsys_evento WHERE IMEI_SN = ?"
                         + " ORDER BY FECHA, ID_EVENTO",

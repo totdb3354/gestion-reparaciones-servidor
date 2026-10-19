@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -176,5 +177,52 @@ class StockTelefonosControllerTest {
         when(dao.eventos("350000000000001")).thenReturn(List.of());
         when(dao.trabajos("350000000000001")).thenReturn(List.of(new TrabajoTaller("G1", AHORA.minusDays(3), AHORA.minusDays(2), "Técnico 3")));
         assertEquals("TRABAJO_TERMINADO", api.rastro("350000000000001").get(0).tipo());
+    }
+
+    // ---------------------------------------------------------------- 0.9.18: comprobar una lista (spec §6.2)
+
+    private static StockTelefonosController.PeticionComprobar pedir(String... imeis) {
+        return new StockTelefonosController.PeticionComprobar(List.of(imeis));
+    }
+
+    @Test void comprobarDaUnaEntradaPorImeiConElLoteMasRecienteSusTrabajosYLaFechaDeVenta() {
+        MovilNsys vendido = new MovilNsys("350000000000003", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Released", "x",
+                "Proveedor A", LocalDate.of(2023, 4, 1), LocalDate.of(2023, 5, 2), null, "13", "13", "128GB", "Azul", "A",
+                false, null, null, EstadoMovil.VENDIDO, AHORA.minusDays(900), AHORA.minusDays(800));
+        List<String> imeis = List.of("350000000000001", "350000000000002", "350000000000003");
+        when(dao.porImeis(imeis)).thenReturn(List.of(
+                movil("350000000000001", "BT-9002", "B", "Listos", "Listos", EstadoMovil.STOCK),
+                movil("350000000000001", "BT-9001", "A", null, "Listos", EstadoMovil.BAJA), vendido));
+        when(dao.trabajosAbiertos(imeis)).thenReturn(Map.of("350000000000001",
+                List.of(new TrabajoAbierto("REPARACION", "Técnico 1", AHORA.minusHours(3), null))));
+        JsonNode r = json(api.comprobar(pedir("350000000000001", "350000000000002", "350000000000003")));
+        assertEquals(3, r.size(), "una entrada por IMEI pedido, en su orden");
+        assertEquals("350000000000001", r.get(0).get("imei").asText());
+        assertTrue(r.get(0).get("encontrado").asBoolean());
+        assertEquals("STOCK", r.get(0).get("estado").asText(), "del IMEI, el lote más reciente");
+        assertEquals("B", r.get(0).get("grado").asText());
+        assertEquals("Listos", r.get(0).get("ubicacion").asText());
+        assertEquals("Técnico 1", r.get(0).get("trabajos").get(0).get("tecnico").asText());
+        assertEquals("350000000000002", r.get(1).get("imei").asText());
+        assertFalse(r.get(1).get("encontrado").asBoolean());
+        assertTrue(r.get(1).get("estado").isNull());
+        assertEquals(0, r.get(1).get("trabajos").size());
+        assertEquals("VENDIDO", r.get(2).get("estado").asText(), "también los vendidos");
+        assertEquals("2023-05-02", r.get(2).get("fechaVenta").asText());
+    }
+
+    @Test void comprobarMasDeQuinientosEs400SinConsultar() {
+        List<String> imeis = new ArrayList<>();
+        for (int n = 0; n < 501; n++) imeis.add(String.format("3500000000%05d", n));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> api.comprobar(new StockTelefonosController.PeticionComprobar(imeis)));
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        verifyNoInteractions(dao);
+    }
+
+    @Test void comprobarUnaListaVaciaNoConsulta() {
+        assertTrue(api.comprobar(pedir()).isEmpty());
+        assertTrue(api.comprobar(new StockTelefonosController.PeticionComprobar(null)).isEmpty());
+        verifyNoInteractions(dao);
     }
 }

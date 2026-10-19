@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,6 +17,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -31,6 +34,9 @@ import static com.reparaciones.servidor.nsys.ImportadorNsys.*;
 public class StockTelefonosController {
 
     static final String MOTIVO_ERROR = "Error al leer de Drive o al guardar; ver el registro del servidor";
+
+    /** Como mucho los IMEIs de una vez en «Pegar varios IMEIs» (spec 0.9.18 §4.9). */
+    static final int MAX_COMPROBAR = 500;
 
     private final NsysDAO dao;
     private final Clock clock;
@@ -111,6 +117,28 @@ public class StockTelefonosController {
         return Rastro.unir(dao.eventos(imeiSn), dao.trabajos(imeiSn));
     }
 
+    /** «Pegar varios IMEIs» (spec 0.9.18 §4.9 y §6.2): una entrada por IMEI pedido, en el mismo orden. Busca en todo el
+     *  espejo, también los vendidos; de cada IMEI, el lote más reciente, con sus trabajos abiertos. La web manda los IMEIs
+     *  limpios y sin repetir; más de {@value #MAX_COMPROBAR} es un 400. */
+    @PostMapping("/comprobar")
+    public List<MovilComprobado> comprobar(@RequestBody PeticionComprobar peticion) {
+        List<String> imeis = peticion == null || peticion.imeis() == null ? List.of() : peticion.imeis();
+        if (imeis.size() > MAX_COMPROBAR)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Como mucho " + MAX_COMPROBAR + " IMEIs por vez");
+        if (imeis.isEmpty()) return List.of();
+        Map<String, MovilNsys> masReciente = new HashMap<>();
+        for (MovilNsys m : dao.porImeis(imeis)) masReciente.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
+        Map<String, List<TrabajoAbierto>> abiertos = dao.trabajosAbiertos(imeis);
+        return imeis.stream().map(imei -> {
+            MovilNsys m = masReciente.get(NsysDAO.claveCruce(imei));
+            if (m == null) return new MovilComprobado(imei, false, null, null, null, null, null, false, null, null, null, List.of());
+            return new MovilComprobado(imei, true, m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
+                    Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), ubicacionVisible(m),
+                    m.estado().name(), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
+                    abiertos.getOrDefault(NsysDAO.claveCruce(imei), List.of()));
+        }).toList();
+    }
+
     /** Un móvil de pedido sigue «en su caja»: la última ubicación conocida antes de «Pedidos realizados». */
     private static String ubicacionVisible(MovilNsys m) {
         return m.estado() == EstadoMovil.DE_PEDIDO ? m.ubicacionUltima() : m.ubicacion();
@@ -146,4 +174,14 @@ public class StockTelefonosController {
                               @Schema(nullable = true) LocalDate fechaVenta,
                               @Schema(nullable = true) LocalDateTime revisadoEl, boolean revisadoDevolucion,
                               @Schema(nullable = true) LocalDate pendienteRevisionDesde) {}
+
+    /** Del paquete (no privado) para que los tests lo construyan; el esquema se llama StockTelefonosPeticionComprobar. */
+    record PeticionComprobar(List<String> imeis) {}
+
+    private record MovilComprobado(String imei, boolean encontrado, @Schema(nullable = true) String modelo,
+                                   @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
+                                   @Schema(nullable = true) String color, @Schema(nullable = true) String grado,
+                                   boolean bateriaNueva, @Schema(nullable = true) String ubicacion,
+                                   @Schema(nullable = true) String estado, @Schema(nullable = true) LocalDate fechaVenta,
+                                   List<TrabajoAbierto> trabajos) {}
 }
