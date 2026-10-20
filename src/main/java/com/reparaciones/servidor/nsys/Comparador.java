@@ -83,7 +83,9 @@ public final class Comparador {
 
     static MovilNsys construir(FilaItems f, Traductor t, UbicacionNsys caja, MovilNsys anterior, LocalDateTime fecha) {
         ProductoMaestro p = t.producto(f.goods(), f.grade());
-        String ubicacion = caja == null ? null : caja.ubicacion();
+        // NSYS vacía la caja al cerrar el móvil (Released, Removed…): sin caja, un vendido o una baja no está «En
+        // revisión»; se queda sin ubicación y con la última (spec 0.9.18.2 §2).
+        String ubicacion = caja == null || cerradoSinCaja(f.status(), f.location()) ? null : caja.ubicacion();
         String ultima = ubicacion != null ? ubicacion
                 : anterior == null ? null
                 : anterior.ubicacion() != null ? anterior.ubicacion() : anterior.ubicacionUltima();
@@ -98,9 +100,9 @@ public final class Comparador {
 
     private static void cambios(MovilNsys antes, MovilNsys ahora, LocalDateTime fecha, List<EventoNsys> eventos) {
         FilaItems f = ahora.comoFila();
-        if (!Objects.equals(antes.location(), ahora.location()))
-            eventos.add(evento(f, fecha, false, TipoEvento.UBICACION,
-                    antes.ubicacion() != null ? antes.ubicacion() : antes.location(), ahora.ubicacion(), ahora.location()));
+        // Al cerrar el móvil NSYS vacía la caja: no es un movimiento (spec 0.9.18.2 §2).
+        if (!Objects.equals(antes.location(), ahora.location()) && !cerradoSinCaja(ahora.status(), ahora.location()))
+            eventos.add(evento(f, fecha, false, TipoEvento.UBICACION, desde(antes), ahora.ubicacion(), ahora.location()));
         if (!Objects.equals(antes.grade(), ahora.grade()))
             eventos.add(evento(f, fecha, false, TipoEvento.GRADO, antes.grade(), ahora.grade(), null));
         if (!Objects.equals(antes.goods(), ahora.goods()))
@@ -111,6 +113,19 @@ public final class Comparador {
                     : TipoEvento.ESTADO;
             eventos.add(evento(f, fecha, false, tipo, antes.status(), ahora.status(), null));
         }
+    }
+
+    /** Un móvil cerrado (Status que no es vivo) con la caja vacía: NSYS se la vacía al venderlo o darlo de baja (spec
+     *  0.9.18.2 §2). Un móvil vivo sin caja, en cambio, está «En revisión». */
+    static boolean cerradoSinCaja(String status, String location) {
+        return !EstadoMovil.vivo(status) && Normalizacion.caja(location).isEmpty();
+    }
+
+    /** De dónde sale el móvil en un cambio de caja: su ubicación del ERP o, si no tiene, la caja de NSYS. Un móvil
+     *  cerrado sin caja no sale de ninguna: sin «Desde», así su vuelta no cuenta como revisión (spec 0.9.18.2 §2). */
+    private static String desde(MovilNsys antes) {
+        if (antes.ubicacion() != null) return antes.ubicacion();
+        return cerradoSinCaja(antes.status(), antes.location()) ? null : antes.location();
     }
 
     /** Primera carga: la entrada (o reentrada, si el IMEI tiene un lote anterior) y la venta, con las fechas de NSYS. */
