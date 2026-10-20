@@ -172,12 +172,16 @@ class ComparadorTest {
         assertEquals("Taller · Glass", guardado.ubicacionUltima());
     }
 
+    /** La misma fila guardada, con otra ubicación y otra última (como la dejan la 0.9.18 o la limpieza). */
+    private static MovilNsys conUbicaciones(MovilNsys m, String ubicacion, String ultima) {
+        return new MovilNsys(m.imeiSn(), m.batch(), m.goods(), m.grade(), m.status(), m.location(), m.supplier(),
+                m.receivingDate(), m.soldDate(), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
+                m.gradoDetalle(), m.esEsim(), ubicacion, ultima, m.estado(), m.vistoPrimero(), m.cambiado());
+    }
+
     @Test void unVendidoSinCajaComoLoDejaLaLimpiezaNoSeVuelveAGuardar() {
         FilaItems vendido = fila("350000000000019", "BT-9001", "A", "Released", "");
-        MovilNsys m = previo(vendido).get(vendido.clave());
-        MovilNsys limpio = new MovilNsys(m.imeiSn(), m.batch(), m.goods(), m.grade(), m.status(), m.location(),
-                m.supplier(), m.receivingDate(), m.soldDate(), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(),
-                m.color(), m.gradoDetalle(), m.esEsim(), null, "Listos", m.estado(), m.vistoPrimero(), m.cambiado());
+        MovilNsys limpio = conUbicaciones(previo(vendido).get(vendido.clave()), null, "Listos");
         ResultadoComparacion r = normal(new HashMap<>(Map.of(limpio.clave(), limpio)), vendido);
 
         assertTrue(r.aGuardar().isEmpty(), "sin ubicación y con su última caja: el mismo contenido");
@@ -253,6 +257,40 @@ class ComparadorTest {
         ResultadoComparacion r = Comparador.comparar(previo(antes), List.of(vendido), HOY, Comparador.Modo.HISTORICO, T);
 
         assertEquals(List.of(TipoEvento.VENTA), r.eventos().stream().map(EventoNsys::tipo).toList());
+    }
+
+    @Test void unVendidoQueConservabaLaCajaYLaVaciaDespuesNoApuntaNada() {
+        FilaItems conCaja = fila("350000000000028", "BT-9001", "A", "Released", "CAJA LISTOS");
+        FilaItems vaciado = fila("350000000000028", "BT-9001", "A", "Released", "");
+        ResultadoComparacion r = normal(previo(conCaja), vaciado);
+
+        assertTrue(r.eventos().isEmpty());
+        MovilNsys guardado = r.aGuardar().get(0);
+        assertNull(guardado.ubicacion());
+        assertEquals("Listos", guardado.ubicacionUltima());
+    }
+
+    @Test void sinStatusYSinCajaNoEstaEnRevisionYDeVendidoASinStatusNoRompe() {
+        FilaItems vendido = fila("350000000000029", "BT-9001", "A", "Released", "");
+        FilaItems sinStatus = fila("350000000000029", "BT-9001", "A", null, "");
+        ResultadoComparacion r = normal(previo(vendido), sinStatus);
+
+        assertEquals(List.of(new EventoNsys("350000000000029", "BT-9001", HOY, false, TipoEvento.ESTADO, "Released",
+                null, null)), r.eventos());
+        assertEquals(EstadoMovil.BAJA, r.aGuardar().get(0).estado());
+        assertNull(r.aGuardar().get(0).ubicacion());
+    }
+
+    @Test void unaFilaGuardadaConElFalloNoDaDesdeEnRevision() {
+        // Así quedaron los vendidos y las bajas sin caja con la 0.9.17 y la 0.9.18, hasta la limpieza: la primera
+        // importación con el código nuevo los lee así.
+        FilaItems quitado = fila("350000000000030", "BT-9001", "A", "Removed", "");
+        MovilNsys contaminado = conUbicaciones(previo(quitado).get(quitado.clave()), "En revisión", "En revisión");
+        FilaItems desguace = fila("350000000000030", "BT-9001", "A", "Removed", "Desguace");
+        ResultadoComparacion r = normal(new HashMap<>(Map.of(contaminado.clave(), contaminado)), desguace);
+
+        assertEquals(TipoEvento.UBICACION, r.eventos().get(0).tipo());
+        assertNull(r.eventos().get(0).de());
     }
 
     @Test void filaNuevaDeUnImeiConocidoApuntaEntradaYReentrada() {

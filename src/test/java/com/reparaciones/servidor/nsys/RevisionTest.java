@@ -160,6 +160,16 @@ class RevisionTest {
         assertEquals(LocalDate.of(2026, 10, 14), Revision.pendienteDesde(movil("Devolución", LocalDate.of(2026, 10, 1)), e));
     }
 
+    @Test void vueltaDirectaADevolucionConLosEventosLimpiosEsperaDesdeLaVueltaYNoEsRevision() {
+        // Como quedan tras la limpieza: sin el «→ En revisión» de la venta y la vuelta sin «Desde».
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                estado(t(10, 10), TipoEvento.VENTA, "Available", "Released"),
+                ubicacion("BT-9001", t(14, 10), null, "Devolución", "Funcionalidad pendiente"),
+                estado(t(14, 10), TipoEvento.VENTA_DESHECHA, "Released", "InProcess"));
+        assertEquals(LocalDate.of(2026, 10, 14), Revision.pendienteDesde(movil("Devolución", LocalDate.of(2026, 10, 1)), e));
+        assertEquals(Arrays.asList("ENTRADA", null, null, null), Revision.tipos(e));
+    }
+
     @Test void bajaDeshechaSinCajaEsperaDesdeLaVuelta() {
         List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
                 estado(t(10, 10), TipoEvento.ESTADO, "InProcess", "Removed"),

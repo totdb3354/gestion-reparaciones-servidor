@@ -109,7 +109,7 @@ public final class Comparador {
             eventos.add(evento(f, fecha, false, TipoEvento.PRODUCTO, antes.goods(), ahora.goods(), null));
         if (!Objects.equals(antes.status(), ahora.status())) {
             TipoEvento tipo = RELEASED.equals(ahora.status()) ? TipoEvento.VENTA
-                    : RELEASED.equals(antes.status()) && EstadoMovil.VIVOS.contains(ahora.status()) ? TipoEvento.VENTA_DESHECHA
+                    : RELEASED.equals(antes.status()) && EstadoMovil.vivo(ahora.status()) ? TipoEvento.VENTA_DESHECHA
                     : TipoEvento.ESTADO;
             eventos.add(evento(f, fecha, false, tipo, antes.status(), ahora.status(), null));
         }
@@ -122,10 +122,11 @@ public final class Comparador {
     }
 
     /** De dónde sale el móvil en un cambio de caja: su ubicación del ERP o, si no tiene, la caja de NSYS. Un móvil
-     *  cerrado sin caja no sale de ninguna: sin «Desde», así su vuelta no cuenta como revisión (spec 0.9.18.2 §2). */
+     *  cerrado sin caja no sale de ninguna: sin «Desde», así su vuelta no cuenta como revisión (spec 0.9.18.2 §2). Se
+     *  mira antes que la ubicación porque una fila guardada antes de la 0.9.18.2 lleva «En revisión». */
     private static String desde(MovilNsys antes) {
-        if (antes.ubicacion() != null) return antes.ubicacion();
-        return cerradoSinCaja(antes.status(), antes.location()) ? null : antes.location();
+        if (cerradoSinCaja(antes.status(), antes.location())) return null;
+        return antes.ubicacion() != null ? antes.ubicacion() : antes.location();
     }
 
     /** Primera carga: la entrada (o reentrada, si el IMEI tiene un lote anterior) y la venta, con las fechas de NSYS. */
