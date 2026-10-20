@@ -24,14 +24,14 @@ import static com.reparaciones.servidor.nsys.ImportadorNsys.*;
  * - recorre en orden las exportaciones antiguas de Drive, hasta la primera importación normal incluida, y compara cada
  *   una con la anterior;
  * - solo añade eventos: nunca toca la foto ni repite la entrada y la venta del esqueleto;
- * - de noche y un fichero por paso;
+ * - fuera del horario del taller (de 19:00 a 7:00) y un fichero por paso;
  * - se reanuda donde lo dejó y, al terminar, no vuelve a mirar Drive hasta el siguiente arranque.
  */
 @Service
 public class HistoricoNsys {
 
     private static final Logger log = LoggerFactory.getLogger(HistoricoNsys.class);
-    static final LocalTime EMPIEZA = LocalTime.of(23, 0);
+    static final LocalTime EMPIEZA = LocalTime.of(19, 0);
     static final LocalTime ACABA = LocalTime.of(7, 0);
 
     private final ClienteDrive drive;
