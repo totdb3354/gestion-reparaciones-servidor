@@ -107,14 +107,15 @@ public class StockTelefonosController {
                 .reduce((a, b) -> b).map(e -> e.de() == null ? null : Normalizacion.gradoSinBateria(e.de())).orElse(null);
         boolean enEmpresa = m.estado() == EstadoMovil.STOCK || m.estado() == EstadoMovil.DE_PEDIDO
                 || m.estado() == EstadoMovil.NO_CUENTA;
-        // 0.9.18 (spec §5.2): la última revisión del lote y, si está en «En revisión», desde cuándo.
+        // 0.9.18 (spec §5.2): la última revisión del lote y, si está en «En revisión», desde cuándo. Un vendido o una baja
+        // no espera revisión (0.9.18.2).
         Revision.Ultima revisado = Revision.ultima(eventos, m.batch());
         return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
                 Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), gradoAnterior, m.sku(),
                 ubicacionVisible(m), m.estado().name(), enEmpresa ? dias(m, LocalDate.now(clock)) : null, lotes.size(),
                 m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
                 revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
-                Revision.pendienteDesde(m, eventos));
+                enEmpresa ? Revision.pendienteDesde(m, eventos) : null);
     }
 
     @GetMapping("/{imeiSn}/rastro")
