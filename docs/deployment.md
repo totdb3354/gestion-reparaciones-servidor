@@ -26,7 +26,7 @@ La configuración se inyecta por variables de entorno, sin valores por defecto e
 - `NSYS_IMPORTACION_ACTIVA` (0.9.17; por defecto `false`): enciende la importación del espejo de NSYS cada 5 minutos.
 - `NSYS_DRIVE_CARPETA_ITEMS` y `NSYS_DRIVE_MAESTRO`: identificadores en Drive de la carpeta de los ficheros Items y del maestro de productos.
 - `NSYS_DRIVE_CREDENCIALES`: ruta, dentro del contenedor, del JSON de la cuenta de servicio de Google. Es un fichero montado en solo lectura; nunca va al repo.
-- `NSYS_HISTORICO_ACTIVO` (por defecto `false`): carga de noche el histórico de exportaciones; cuando termina, no hace nada.
+- `NSYS_HISTORICO_ACTIVO` (por defecto `false`): carga el histórico de exportaciones de 19:00 a 7:00, un fichero cada 5 s; cuando termina, no hace nada.
 
 ## Paso a paso operativo
 

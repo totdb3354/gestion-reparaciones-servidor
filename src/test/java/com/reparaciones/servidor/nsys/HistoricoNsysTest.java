@@ -55,11 +55,13 @@ class HistoricoNsysTest {
         when(drive.descargar("id-" + SEGUNDO)).thenReturn(unMovilEn("CAJA LISTOS"));
     }
 
-    @Test void soloDeNoche() {
+    /** De 19:00 a 7:00, fuera del horario del taller (decisión del usuario, 20/10/2026; antes, de 23:00 a 7:00). */
+    @Test void soloFueraDelHorarioDelTaller() {
+        assertTrue(HistoricoNsys.deNoche(LocalTime.of(19, 0)));
         assertTrue(HistoricoNsys.deNoche(LocalTime.of(23, 0)));
         assertTrue(HistoricoNsys.deNoche(LocalTime.of(6, 59)));
         assertFalse(HistoricoNsys.deNoche(LocalTime.of(7, 0)));
-        assertFalse(HistoricoNsys.deNoche(LocalTime.of(22, 59)));
+        assertFalse(HistoricoNsys.deNoche(LocalTime.of(18, 59)));
     }
 
     @Test void deDiaNoHaceNada() {
