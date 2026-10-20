@@ -63,17 +63,28 @@ public final class Revision {
 
     /** Si el móvil está ahora pendiente de revisar («En revisión» o «Devolución»), desde cuándo: el principio del periodo
      *  pendiente actual del lote, el último evento que lo llevó a una ubicación pendiente desde una que no lo es (o su
-     *  entrada); un paso entre las dos pendientes no lo cambia. Si no lo hay, la recepción del lote. null si no está
-     *  pendiente o no hay fecha. */
+     *  entrada); un paso entre las dos pendientes no lo cambia. La vuelta del lote desde vendido o de baja también empieza
+     *  un periodo: si vuelve sin caja, la caja de NSYS no cambia y no hay evento de ubicación (0.9.18.2). Si no lo hay, la
+     *  recepción del lote. null si no está pendiente o no hay fecha. */
     public static LocalDate pendienteDesde(MovilNsys m, List<EventoNsys> eventos) {
         if (!pendiente(m.ubicacion())) return null;
         LocalDate desde = null;
         for (EventoNsys e : eventos) {
-            if (!llevaUbicacion(e) || !Objects.equals(e.batch(), m.batch())) continue;
-            if (!pendiente(e.a())) desde = null;
-            else if (e.tipo() == TipoEvento.ENTRADA || !pendiente(e.de())) desde = e.fecha().toLocalDate();
+            if (!Objects.equals(e.batch(), m.batch())) continue;
+            if (esVuelta(e)) desde = e.fecha().toLocalDate();
+            else if (llevaUbicacion(e)) {
+                if (!pendiente(e.a())) desde = null;
+                else if (e.tipo() == TipoEvento.ENTRADA || !pendiente(e.de())) desde = e.fecha().toLocalDate();
+            }
         }
         return desde != null ? desde : m.receivingDate();
+    }
+
+    /** La vuelta de un lote a la empresa: una venta deshecha, o un cambio de un Status que no es vivo a uno vivo (una
+     *  baja deshecha). */
+    private static boolean esVuelta(EventoNsys e) {
+        return e.tipo() == TipoEvento.VENTA_DESHECHA
+                || e.tipo() == TipoEvento.ESTADO && !EstadoMovil.vivo(e.de()) && EstadoMovil.vivo(e.a());
     }
 
     /** Las ubicaciones pendientes de revisar: «En revisión» (sin caja) y «Devolución» (Funcionalidad pendiente). */

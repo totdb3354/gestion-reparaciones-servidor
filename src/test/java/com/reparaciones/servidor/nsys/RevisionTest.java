@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -130,5 +131,53 @@ class RevisionTest {
         assertNull(Revision.pendienteDesde(movil("Listos", LocalDate.of(2026, 10, 1)), List.of()));
         assertEquals(List.of(), Revision.tipos(List.of()));
         assertNull(Revision.ultima(List.of(), "BT-9001"));
+    }
+
+    // 0.9.18.2: la vuelta de un vendido o de una baja (venta deshecha, o de un Status que no es vivo a uno vivo) empieza
+    // otra espera. Si vuelve sin caja, la caja de NSYS no cambia y no hay evento de ubicación.
+
+    private static EventoNsys estado(LocalDateTime fecha, TipoEvento tipo, String de, String a) {
+        return new EventoNsys("350000000000001", "BT-9001", fecha, false, tipo, de, a, null);
+    }
+
+    @Test void devolucionQueVuelveSinCajaYPasaAFuncionalidadPendienteEsperaDesdeLaVuelta() {
+        List<EventoNsys> e = new ArrayList<>(List.of(
+                ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                estado(t(10, 10), TipoEvento.VENTA, "Available", "Released"),
+                estado(t(14, 10), TipoEvento.VENTA_DESHECHA, "Released", "InProcess"),
+                ubicacion("BT-9001", t(15, 10), "En revisión", "Devolución", "Funcionalidad pendiente")));
+        assertEquals(LocalDate.of(2026, 10, 14), Revision.pendienteDesde(movil("Devolución", LocalDate.of(2026, 10, 1)), e));
+
+        e.add(ubicacion("BT-9001", t(16, 10), "Devolución", "Listos", "CAJA LISTOS"));
+        assertEquals(new Revision.Ultima(t(16, 10), true), Revision.ultima(e, "BT-9001"));
+    }
+
+    @Test void vueltaDirectaADevolucionConElDesdeFalsoDeLosEventosAntiguosEsperaDesdeLaVuelta() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                estado(t(10, 10), TipoEvento.VENTA, "Available", "Released"),
+                ubicacion("BT-9001", t(14, 10), "En revisión", "Devolución", "Funcionalidad pendiente"),
+                estado(t(14, 10), TipoEvento.VENTA_DESHECHA, "Released", "InProcess"));
+        assertEquals(LocalDate.of(2026, 10, 14), Revision.pendienteDesde(movil("Devolución", LocalDate.of(2026, 10, 1)), e));
+    }
+
+    @Test void bajaDeshechaSinCajaEsperaDesdeLaVuelta() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "En revisión", "Listos", "CAJA LISTOS"),
+                estado(t(10, 10), TipoEvento.ESTADO, "InProcess", "Removed"),
+                estado(t(13, 10), TipoEvento.ESTADO, "Removed", "InProcess"));
+        assertEquals(LocalDate.of(2026, 10, 13), Revision.pendienteDesde(movil("En revisión", LocalDate.of(2026, 10, 1)), e));
+    }
+
+    @Test void trasLaVueltaUnaCajaYOtraVezSinCajaEsperaDesdeLaSegundaVez() {
+        List<EventoNsys> e = List.of(estado(t(10, 10), TipoEvento.VENTA, "Available", "Released"),
+                ubicacion("BT-9001", t(12, 10), null, "Listos", "CAJA LISTOS"),
+                estado(t(12, 10), TipoEvento.VENTA_DESHECHA, "Released", "Available"),
+                ubicacion("BT-9001", t(15, 10), "Listos", "En revisión", ""));
+        assertEquals(LocalDate.of(2026, 10, 15), Revision.pendienteDesde(movil("En revisión", LocalDate.of(2026, 10, 1)), e));
+    }
+
+    @Test void unCambioEntreStatusVivosNoEsUnaVuelta() {
+        List<EventoNsys> e = List.of(ubicacion("BT-9001", t(8, 10), "Listos", "En revisión", ""),
+                estado(t(12, 10), TipoEvento.ESTADO, "InProcess", "Available"));
+        assertEquals(LocalDate.of(2026, 10, 8), Revision.pendienteDesde(movil("En revisión", LocalDate.of(2026, 10, 1)), e));
     }
 }
