@@ -182,6 +182,31 @@ class StockTelefonosControllerTest {
         assertTrue(ficha.get("revisadoEl").isNull());
     }
 
+    @Test void laFichaDeUnVendidoNoEstaPendienteDeRevisarAunqueConserveUnaCajaPendiente() {
+        // Una venta antigua, de cuando NSYS aún no vaciaba la caja (0.9.18.2).
+        MovilNsys vendido = new MovilNsys("350000000000001", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Released",
+                "Funcionalidad pendiente", "Proveedor A", LocalDate.of(2024, 3, 1), LocalDate.of(2024, 5, 2),
+                "i13128AzulA", "13", "13", "128GB", "Azul", "A", false, "Devolución", "Devolución", EstadoMovil.VENDIDO,
+                AHORA.minusDays(15), AHORA.minusDays(1));
+        when(dao.porImei("350000000000001")).thenReturn(List.of(vendido));
+        when(dao.eventos("350000000000001")).thenReturn(List.of(new EventoNsys("350000000000001", "BT-9001",
+                AHORA.minusDays(5), false, TipoEvento.UBICACION, "Listos", "Devolución", "Funcionalidad pendiente")));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertTrue(ficha.get("pendienteRevisionDesde").isNull());
+        assertEquals("2024-05-02", ficha.get("fechaVenta").asText());
+    }
+
+    @Test void laFichaDeUnaBajaGuardadaConElFalloNoEstaPendienteDeRevisar() {
+        // Una baja sin caja como la dejó la 0.9.18, antes de la limpieza (0.9.18.2).
+        MovilNsys baja = new MovilNsys("350000000000001", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Removed", "",
+                "Proveedor A", LocalDate.of(2026, 10, 1), null, "i13128AzulA", "13", "13", "128GB", "Azul", "A", false,
+                "En revisión", "En revisión", EstadoMovil.BAJA, AHORA.minusDays(15), AHORA.minusDays(1));
+        when(dao.porImei("350000000000001")).thenReturn(List.of(baja));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertTrue(ficha.get("pendienteRevisionDesde").isNull());
+        assertTrue(ficha.get("dias").isNull());
+    }
+
     @Test void fichaDeUnImeiQueNsysNoConoceEs404() {
         when(dao.porImei("x")).thenReturn(List.of());
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.ficha("x"));
