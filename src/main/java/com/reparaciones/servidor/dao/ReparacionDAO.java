@@ -565,17 +565,18 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
-                                  String idRepAnterior, String idAsignacion) {
-        insertarCompleta(filas, imei, idTec, idRepAnterior, idAsignacion, null);
+    public List<String> insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
+                                         String idRepAnterior, String idAsignacion) {
+        return insertarCompleta(filas, imei, idTec, idRepAnterior, idAsignacion, null);
     }
 
     /**
      * Variante con categoría explícita ("G"/"R"). Con asignación manda su prefijo (AG→G);
      * sin asignación (p.ej. altas desde la edición de un glass) decide {@code categoria}.
+     * Devuelve las reparaciones creadas (R… o G…), una por fila con uso real y en el orden de las filas: el SKU del taller las aplica (0.9.21).
      */
     @Transactional
-    public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
+    public List<String> insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion, String categoria) {
         if (idAsignacion != null) {
             // Bloquear la fila para que un DELETE concurrente (eliminarAsignacion) espere
@@ -596,6 +597,7 @@ public class ReparacionDAO {
         boolean creoReparacion = false;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
         Object[] entrega = entregaHeredable(idAsignacion);
+        List<String> creadas = new ArrayList<>();
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId(idAsignacion == null && "G".equals(categoria)
@@ -619,6 +621,7 @@ public class ReparacionDAO {
                                 "Stock insuficiente para el componente ID " + fila.idCom);
                 }
                 creoReparacion = true;
+                creadas.add(idRep);
                 idComsUsados.add(fila.idCom);
                 marcarChasisSiProcede(idAsignacion, fila.idCom);
             } else if (idAsignacion != null) {
@@ -666,6 +669,7 @@ public class ReparacionDAO {
                 }
             }
         }
+        return creadas;
     }
 
     @Transactional

@@ -15,6 +15,7 @@ import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.CargaTecnicos;
 import com.reparaciones.servidor.service.EntregaGlassService;
+import com.reparaciones.servidor.service.GuardadoReparacion;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -45,11 +46,12 @@ public class ReparacionController {
     private final RegistroIdempotencia  idempotencia;
     private final CargaAsignacionesService cargaAsignaciones;
     private final EntregaGlassService entregaGlass;
+    private final GuardadoReparacion guardado;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
                                 DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia,
-                                CargaAsignacionesService cargaAsignaciones, EntregaGlassService entregaGlass) {
+                                CargaAsignacionesService cargaAsignaciones, EntregaGlassService entregaGlass, GuardadoReparacion guardado) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
@@ -60,6 +62,7 @@ public class ReparacionController {
         this.idempotencia = idempotencia;
         this.cargaAsignaciones = cargaAsignaciones;
         this.entregaGlass = entregaGlass;
+        this.guardado = guardado;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -353,8 +356,9 @@ public class ReparacionController {
                 req.idRepAnterior(), req.idAsignacion(), req.categoria());
         idempotencia.ejecutar(principal.getIdUsu(), "completa", claveIdempotencia, peticion,
                 () -> {
-                    dao.insertarCompleta(req.filas(), req.imei(), idTec,
-                            req.idRepAnterior(), req.idAsignacion(), req.categoria());
+                    // 0.9.21: con el SKU del taller, en la misma transacción.
+                    guardado.insertarCompleta(req.filas(), req.imei(), idTec,
+                            req.idRepAnterior(), req.idAsignacion(), req.categoria(), principal.getIdUsu());
                     return null;
                 },
                 ignorado -> {
@@ -600,8 +604,8 @@ public class ReparacionController {
         idempotencia.ejecutar(principal.getIdUsu(), "editar", claveIdempotencia, peticion,
                 () -> {
                     ReparacionResumen ant = dao.getResumenById(idRep).orElse(null);
-                    dao.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
-                            req.observacionNueva(), req.nNuevas(), req.updatedAt());
+                    guardado.editarReparacion(idRep, req.idComNuevo(), req.esReutilizadoNuevo(),
+                            req.observacionNueva(), req.nNuevas(), req.updatedAt(), principal.getIdUsu());
                     return ant;
                 },
                 ant -> {
@@ -694,8 +698,8 @@ public class ReparacionController {
         int idTec = PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idAsignacion));
         var peticion = new PeticionFilas(idAsignacion, req.filas(), req.imei(), idTec, req.idRepAnterior());
         return idempotencia.ejecutar(principal.getIdUsu(), "filas", claveIdempotencia, peticion,
-                () -> new ValorTexto(dao.guardarFilaIndividual(req.filas(), req.imei(), idTec,
-                        req.idRepAnterior(), idAsignacion)),
+                () -> new ValorTexto(guardado.guardarFilaIndividual(req.filas(), req.imei(), idTec,
+                        req.idRepAnterior(), idAsignacion, principal.getIdUsu())),
                 resultado -> {
                     String tecnico = dao.getNombreTecnicoById(idTec);
                     logDao.insertar(principal.getIdUsu(),
@@ -736,7 +740,7 @@ public class ReparacionController {
         // en Reparacion. Solo sirve para enriquecer el log (con fallback si no aparece); la existencia
         // real la decide el DAO transaccional contra la tabla.
         ReparacionResumen rep = dao.getResumenById(idRep).orElse(null);
-        dao.eliminar(idRep);
+        guardado.eliminar(idRep, principal.getIdUsu());
         String detalle = rep != null
                 ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
                   ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
