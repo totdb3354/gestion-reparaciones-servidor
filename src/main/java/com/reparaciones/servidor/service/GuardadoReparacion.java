@@ -5,26 +5,35 @@ import com.reparaciones.servidor.model.FilaReparacion;
 import com.reparaciones.servidor.nsys.AvisoTaller;
 import com.reparaciones.servidor.nsys.TallerDAO;
 import com.reparaciones.servidor.nsys.TallerReparaciones;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /** Las escrituras del formulario de reparación con el SKU del taller (spec 0.9.21, pieza 2, §2.1 y §2.3): la reparación y lo
  *  que cambia en el móvil, en la misma transacción (las de ReparacionDAO son @Transactional REQUIRED y se unen a esta): si
  *  algo falla, no queda nada. Las usa ReparacionController en «Terminar asignación», «✓ Guardar fila», «Guardar cambios» y
  *  el borrado de una reparación. El «Abrir» automático de glass (EntregaGlassService) sigue yendo al DAO: es una acción
  *  «otro», que no cambia el móvil.
- *  <p>El candado del móvil (TallerDAO.bloquear, un FOR UPDATE sobre Nsys_movil) es lo primero de cada transacción, antes de
+ *  <p>El candado del móvil (TallerDAO.bloquear, un FOR UPDATE sobre Nsys_movil) es el primero de cada transacción, antes de
  *  cualquier lectura normal. La base va en REPEATABLE READ y en InnoDB la primera lectura no bloqueante fija la foto de la
  *  transacción, que un FOR UPDATE posterior no renueva: si otra del mismo móvil (otra reparación, una corrección a mano o el
  *  importador) tenía el candado, esta espera a su commit, pero con la foto ya fijada no vería lo que dejó (por ejemplo, su
- *  VIGENTE nuevo) y quedarían dos VIGENTE del mismo dato. Al editar o borrar, el IMEI sale antes de la propia R… con una
- *  lectura bloqueante, que no fija la foto. TallerReparaciones vuelve a pedir el candado: en la misma transacción no cuesta
- *  nada. Un IMEI que NSYS no conoce no tiene candado y se guarda igual. */
+ *  VIGENTE nuevo) y quedarían dos VIGENTE del mismo dato. TallerReparaciones vuelve a pedir el candado: en la misma
+ *  transacción no cuesta nada. Un IMEI que NSYS no conoce no tiene candado y se guarda igual.
+ *  <p>Las cuatro escrituras cogen los candados en el mismo orden: primero el móvil y después Reparacion (las altas, el rango
+ *  del día de nextId o la clave ajena ID_REP_ANTERIOR; editar y borrar, la fila de la R…). Con dos órdenes, una edición y un
+ *  alta del mismo móvil podían esperarse la una a la otra (InnoDB aborta una con un deadlock: un 500), y una edición que
+ *  esperaba al móvil con su R… ya cogida hacía esperar detrás a todas las altas del día. Por eso, al editar o borrar, el IMEI
+ *  se lee antes, fuera de la transacción (ReparacionDAO.imeiDe, por otra conexión: sin candados ni foto); después se coge el
+ *  móvil, luego la fila de la R… (bloquearReparacion) y se comprueba que sigue siendo de ese móvil. */
 @Service
 public class GuardadoReparacion {
 
@@ -64,8 +73,9 @@ public class GuardadoReparacion {
     @Transactional
     public void editarReparacion(String idRep, int idComNuevo, boolean esReutilizadoNuevo, String observacionNueva,
                                  int nNuevas, LocalDateTime updatedAt, int idUsu) {
-        bloquearMovilDe(idRep);
-        Optional<TallerDAO.PiezaDeReparacion> antes = taller.pieza(idRep);
+        // El error que da dao.editarReparacion con una R… que no existe: el EmptyResultDataAccessException de su queryForObject
+        boolean existe = bloquear(idRep, () -> new EmptyResultDataAccessException("Reparación no encontrada: " + idRep, 1));
+        Optional<TallerDAO.PiezaDeReparacion> antes = existe ? taller.pieza(idRep) : Optional.empty();
         dao.editarReparacion(idRep, idComNuevo, esReutilizadoNuevo, observacionNueva, nNuevas, updatedAt);
         antes.ifPresent(a -> taller.editar(a, new TallerReparaciones.PiezaGuardada(idRep, idComNuevo, esReutilizadoNuevo), idUsu));
     }
@@ -73,15 +83,25 @@ public class GuardadoReparacion {
     /** Borrar una reparación: primero se deshace lo suyo en el móvil. */
     @Transactional
     public void eliminar(String idRep, int idUsu) {
-        bloquearMovilDe(idRep);
-        taller.deshacer(idRep, AvisoTaller.Causa.BORRADA, idUsu);
+        if (bloquear(idRep, () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep)))
+            taller.deshacer(idRep, AvisoTaller.Causa.BORRADA, idUsu);
         dao.eliminar(idRep);
     }
 
-    /** El candado del móvil de una R… que ya existe: su IMEI con la fila bloqueada y después el móvil. Si no existe, nada:
-     *  el DAO da después el error de siempre. */
-    private void bloquearMovilDe(String idRep) {
-        dao.bloquearReparacion(idRep).ifPresent(taller::bloquear);
+    /** Los candados de una R… al editarla o borrarla, en el orden de las altas: su IMEI leído antes, fuera de la transacción;
+     *  el móvil; y la fila de la R…, que tiene que seguir siendo de ese móvil.
+     *  @return true si la R… existe y es del móvil bloqueado; false si no existe (con su hueco ya bloqueado, nadie la crea
+     *          hasta el commit): sin taller, y el DAO da después el error de siempre
+     *  @throws RuntimeException {@code comoSiNoExistiera} si la R… ya no es la que se leyó (se borró y su ID lo cogió otra de
+     *          otro móvil, o apareció, entre la lectura y el candado): no se toca nada, porque coger ahora el candado de ese
+     *          móvil sería al revés que las altas */
+    private boolean bloquear(String idRep, Supplier<RuntimeException> comoSiNoExistiera) {
+        Optional<String> imei = dao.imeiDe(idRep);
+        imei.ifPresent(taller::bloquear);
+        Optional<String> conLaFila = dao.bloquearReparacion(idRep);
+        if (conLaFila.isEmpty()) return false;
+        if (!conLaFila.equals(imei)) throw comoSiNoExistiera.get();
+        return true;
     }
 
     /** Cada reparación creada con su fila: el DAO crea una por fila con uso real, en su orden. Si no hay tantas como filas

@@ -100,6 +100,12 @@ class RolesReparacionFormularioTest {
     /** ADMIN cuyo token SÍ trae técnico — para probar que el rol se corta antes de llegar a la propiedad de la asignación. */
     private String adminConIdTec(int idTec) { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", idTec)); }
 
+    /** Una R… que existe, del móvil IMEI (GuardadoReparacion lo lee antes y lo comprueba con la fila bloqueada). */
+    private void existe(String idRep) {
+        when(dao.imeiDe(idRep)).thenReturn(Optional.of(IMEI));
+        when(dao.bloquearReparacion(idRep)).thenReturn(Optional.of(IMEI));
+    }
+
     private int editarComo(String autorizacion) throws Exception {
         return mvc.perform(put("/api/reparaciones/R20260916_5")
                         .header("Authorization", autorizacion)
@@ -226,6 +232,7 @@ class RolesReparacionFormularioTest {
     /** 0.9.21: «Guardar cambios» de una R… le pasa al taller la pieza de antes y la nueva, con el usuario del token. */
     @Test void editarSiendoSupertecnicoAvisaAlTaller() throws Exception {
         TallerDAO.PiezaDeReparacion antes = new TallerDAO.PiezaDeReparacion("R20260916_5", IMEI, 131, false);
+        existe("R20260916_5");
         when(taller.pieza("R20260916_5")).thenReturn(Optional.of(antes));
         assertEquals(200, editarComo(supertecnico()));
         verify(taller).editar(antes, new TallerReparaciones.PiezaGuardada("R20260916_5", 101, false), 7);
@@ -233,6 +240,7 @@ class RolesReparacionFormularioTest {
 
     /** 0.9.21: borrar una R… deshace lo suyo en el móvil, con el usuario del token. */
     @Test void borrarSiendoSupertecnicoDeshaceElTaller() throws Exception {
+        existe("R20260916_5");
         int status = mvc.perform(delete("/api/reparaciones/R20260916_5")
                         .header("Authorization", supertecnico()))
                 .andReturn().getResponse().getStatus();

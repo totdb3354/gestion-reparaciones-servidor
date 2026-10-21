@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -347,9 +348,19 @@ public class ReparacionDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    /** IMEI de una reparación, o vacío si no existe, leído FUERA de la transacción del que llama (la suspende y va por otra
+     *  conexión, en autocommit): sin candados y sin fijar su foto de REPEATABLE READ. GuardadoReparacion lo usa al editar o
+     *  borrar para coger el candado del móvil antes que el de la fila de la R… (bloquearReparacion), en el mismo orden que
+     *  las altas (0.9.21, SKU del taller). Hay que llamarlo por el proxy de Spring (desde otro bean), nunca con this. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED, readOnly = true)
+    public Optional<String> imeiDe(String idRep) {
+        return jdbc.query("SELECT IMEI FROM Reparacion WHERE ID_REP = ?", (rs, row) -> rs.getString(1), idRep)
+                .stream().findFirst();
+    }
+
     /** Bloquea la fila de una reparación (FOR UPDATE, hasta el final de la transacción del que llama) y devuelve su IMEI, o
-     *  vacío si no existe. GuardadoReparacion la usa para saber el móvil antes de coger su candado: una lectura bloqueante
-     *  no fija la foto de REPEATABLE READ (0.9.21, SKU del taller). */
+     *  vacío si no existe. GuardadoReparacion la pide después del candado del móvil (con el IMEI de imeiDe) y comprueba que
+     *  sigue siendo el mismo; una lectura bloqueante no fija la foto de REPEATABLE READ (0.9.21, SKU del taller). */
     public Optional<String> bloquearReparacion(String idRep) {
         return jdbc.query("SELECT IMEI FROM Reparacion WHERE ID_REP = ? FOR UPDATE", (rs, row) -> rs.getString(1), idRep)
                 .stream().findFirst();

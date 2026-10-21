@@ -8,6 +8,7 @@ import com.reparaciones.servidor.nsys.TallerReparaciones;
 import com.reparaciones.servidor.nsys.TallerReparaciones.PiezaGuardada;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -86,26 +87,37 @@ class GuardadoReparacionTest {
         verifyNoMoreInteractions(taller, dao);
     }
 
-    @Test void editarBloqueaLaReparacionYDespuesElMovilAntesQueNada() {
+    /** Una R… que existe, del móvil IMEI: su IMEI leído fuera de la transacción y, con la fila bloqueada, el mismo. */
+    private void existe(String idRep) {
+        when(dao.imeiDe(idRep)).thenReturn(Optional.of(IMEI));
+        when(dao.bloquearReparacion(idRep)).thenReturn(Optional.of(IMEI));
+    }
+
+    // Editar y borrar cogen los candados en el orden de las altas (primero el móvil, después Reparacion): el IMEI sale antes,
+    // fuera de la transacción, y con la fila ya bloqueada se comprueba que sigue siendo el mismo.
+
+    @Test void editarCogeElMovilYDespuesLaReparacionAntesQueNada() {
         TallerDAO.PiezaDeReparacion antes = new TallerDAO.PiezaDeReparacion("R20260916_5", IMEI, 131, false);
-        when(dao.bloquearReparacion("R20260916_5")).thenReturn(Optional.of(IMEI));
+        existe("R20260916_5");
         when(taller.pieza("R20260916_5")).thenReturn(Optional.of(antes));
         guardado.editarReparacion("R20260916_5", 133, true, "obs", 0, UPDATED, 7);
         InOrder orden = inOrder(taller, dao);
-        orden.verify(dao).bloquearReparacion("R20260916_5");
+        orden.verify(dao).imeiDe("R20260916_5");
         orden.verify(taller).bloquear(IMEI);
+        orden.verify(dao).bloquearReparacion("R20260916_5");
         orden.verify(taller).pieza("R20260916_5");
         orden.verify(dao).editarReparacion("R20260916_5", 133, true, "obs", 0, UPDATED);
         orden.verify(taller).editar(antes, new PiezaGuardada("R20260916_5", 133, true), 7);
         verifyNoMoreInteractions(taller, dao);
     }
 
-    @Test void borrarBloqueaLaReparacionYDespuesElMovilAntesQueNada() {
-        when(dao.bloquearReparacion("R20260916_5")).thenReturn(Optional.of(IMEI));
+    @Test void borrarCogeElMovilYDespuesLaReparacionAntesQueNada() {
+        existe("R20260916_5");
         guardado.eliminar("R20260916_5", 7);
         InOrder orden = inOrder(taller, dao);
-        orden.verify(dao).bloquearReparacion("R20260916_5");
+        orden.verify(dao).imeiDe("R20260916_5");
         orden.verify(taller).bloquear(IMEI);
+        orden.verify(dao).bloquearReparacion("R20260916_5");
         orden.verify(taller).deshacer("R20260916_5", AvisoTaller.Causa.BORRADA, 7);
         orden.verify(dao).eliminar("R20260916_5");
         verifyNoMoreInteractions(taller, dao);
@@ -116,6 +128,7 @@ class GuardadoReparacionTest {
         List<FilaReparacion> filas = List.of(fila(131, false, false));
         when(dao.insertarCompleta(filas, IMEI, 4, null, ASIG, null)).thenReturn(List.of("R20260916_5"));
         when(dao.guardarFilaIndividual(filas, IMEI, 4, null, ASIG)).thenReturn("R20260916_6");
+        when(dao.imeiDe(any())).thenReturn(Optional.of(IMEI));
         when(dao.bloquearReparacion(any())).thenReturn(Optional.of(IMEI));
         TallerDAO.PiezaDeReparacion antes = new TallerDAO.PiezaDeReparacion("R20260916_5", IMEI, 131, false);
         when(taller.pieza("R20260916_5")).thenReturn(Optional.of(antes));
@@ -133,14 +146,57 @@ class GuardadoReparacionTest {
         verify(dao).eliminar("R20260916_6");
     }
 
+    /** Una R… que no existe: sin candado del móvil ni taller; el DAO da el error de siempre (borrar: 404; editar: el
+     *  EmptyResultDataAccessException de su queryForObject). La fila se pide igual con FOR UPDATE: su hueco queda bloqueado. */
     @Test void unaReparacionQueNoExisteDaElErrorDeSiempre() {
-        when(dao.bloquearReparacion("R20260916_9")).thenReturn(Optional.empty());
         doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: R20260916_9"))
                 .when(dao).eliminar("R20260916_9");
+        doThrow(new EmptyResultDataAccessException(1))
+                .when(dao).editarReparacion("R20260916_9", 133, true, "obs", 0, UPDATED);
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> guardado.eliminar("R20260916_9", 7));
         assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
-        verify(taller, never()).bloquear(any());
+        assertThrows(EmptyResultDataAccessException.class,
+                () -> guardado.editarReparacion("R20260916_9", 133, true, "obs", 0, UPDATED, 7));
+        verifyNoInteractions(taller);
+        verify(dao, times(2)).imeiDe("R20260916_9");
+        verify(dao, times(2)).bloquearReparacion("R20260916_9");
         verify(dao).eliminar("R20260916_9");
+        verify(dao).editarReparacion("R20260916_9", 133, true, "obs", 0, UPDATED);
+    }
+
+    /** Borrada entre la lectura del IMEI y el candado de su fila: como si no existiera (el móvil ya estaba bloqueado). */
+    @Test void unaReparacionBorradaEntreMedias() {
+        when(dao.imeiDe("R20260916_9")).thenReturn(Optional.of(IMEI));
+        doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: R20260916_9"))
+                .when(dao).eliminar("R20260916_9");
+        assertThrows(ResponseStatusException.class, () -> guardado.eliminar("R20260916_9", 7));
+        verify(taller).bloquear(IMEI);
+        verifyNoMoreInteractions(taller);
+        verify(dao).eliminar("R20260916_9");
+    }
+
+    /** Con la fila ya bloqueada, la R… es de otro móvil (se borró y su ID lo cogió otra; o apareció entre medias): no se
+     *  toca nada y sale el error de una R… que no existe, sin coger el candado de ese otro móvil (sería al revés de las
+     *  altas). */
+    @Test void unaReparacionDeOtroImeiNoSeToca() {
+        when(dao.imeiDe("R20260916_9")).thenReturn(Optional.of(IMEI));
+        when(dao.bloquearReparacion("R20260916_9")).thenReturn(Optional.of("355400000000222"));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> guardado.eliminar("R20260916_9", 7));
+        assertEquals(HttpStatus.NOT_FOUND, e.getStatusCode());
+        assertEquals("Recurso no encontrado: R20260916_9", e.getReason());
+        assertThrows(EmptyResultDataAccessException.class,
+                () -> guardado.editarReparacion("R20260916_9", 133, true, "obs", 0, UPDATED, 7));
+
+        when(dao.imeiDe("R20260916_8")).thenReturn(Optional.empty());
+        when(dao.bloquearReparacion("R20260916_8")).thenReturn(Optional.of("355400000000222"));
+        assertThrows(ResponseStatusException.class, () -> guardado.eliminar("R20260916_8", 7));
+        assertThrows(EmptyResultDataAccessException.class,
+                () -> guardado.editarReparacion("R20260916_8", 133, true, "obs", 0, UPDATED, 7));
+
+        verify(taller, times(2)).bloquear(IMEI);
+        verifyNoMoreInteractions(taller);
+        verify(dao, never()).eliminar(any());
+        verify(dao, never()).editarReparacion(any(), anyInt(), anyBoolean(), any(), anyInt(), any());
     }
 
     // ---------------------------------------------------------------- emparejar filas y reparaciones
@@ -156,6 +212,7 @@ class GuardadoReparacionTest {
 
     @Test void editarLeeLaPiezaDeAntesEditaYDespuesAjustaElTaller() {
         TallerDAO.PiezaDeReparacion antes = new TallerDAO.PiezaDeReparacion("R20260916_5", IMEI, 131, false);
+        existe("R20260916_5");
         when(taller.pieza("R20260916_5")).thenReturn(Optional.of(antes));
         guardado.editarReparacion("R20260916_5", 133, true, "obs", 0, UPDATED, 7);
         InOrder orden = inOrder(taller, dao);
@@ -165,6 +222,7 @@ class GuardadoReparacionTest {
     }
 
     @Test void editarUnaReparacionSinPiezaQueContarSoloEdita() {
+        existe("G20260916_5");
         when(taller.pieza("G20260916_5")).thenReturn(Optional.empty());
         guardado.editarReparacion("G20260916_5", 141, false, null, 1, UPDATED, 7);
         verify(dao).editarReparacion("G20260916_5", 141, false, null, 1, UPDATED);
@@ -172,6 +230,7 @@ class GuardadoReparacionTest {
     }
 
     @Test void borrarDeshaceAntesDeBorrar() {
+        existe("R20260916_5");
         guardado.eliminar("R20260916_5", 7);
         InOrder orden = inOrder(taller, dao);
         orden.verify(taller).deshacer("R20260916_5", AvisoTaller.Causa.BORRADA, 7);

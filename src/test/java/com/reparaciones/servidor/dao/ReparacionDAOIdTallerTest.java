@@ -4,6 +4,8 @@ import com.reparaciones.servidor.model.FilaReparacion;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -15,6 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.AdditionalMatchers.and;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
@@ -22,8 +26,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /** Lo que el DAO de reparaciones hace por el SKU del taller (0.9.21, pieza 2): un ID de R… que ya tiene historia en el taller
- *  (Taller_cambio, Taller_aviso) no se repite aunque su reparación se haya borrado, y el IMEI de una R… se lee con su fila
- *  bloqueada, para coger el candado del móvil antes de fijar la foto de REPEATABLE READ. */
+ *  (Taller_cambio, Taller_aviso) no se repite aunque su reparación se haya borrado, y el IMEI de una R… se lee antes, fuera de
+ *  la transacción, para coger el candado del móvil antes que el de su fila (que después lo confirma con FOR UPDATE). */
 class ReparacionDAOIdTallerTest {
 
     private static final String IMEI = "355400000000111";
@@ -115,5 +119,23 @@ class ReparacionDAOIdTallerTest {
                 .thenReturn(List.of(IMEI));
         assertEquals(Optional.of(IMEI), dao(jdbc).bloquearReparacion("R20260916_5"));
         assertEquals(Optional.empty(), dao(jdbc).bloquearReparacion("R20260916_9"));
+    }
+
+    // ---------------------------------------------------------------- el IMEI de una R…, antes y fuera de la transacción
+
+    @Test void elImeiDeUnaReparacionSeLeeAntesSinBloquear() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(eq("SELECT IMEI FROM Reparacion WHERE ID_REP = ?"), any(RowMapper.class), eq("R20260916_5")))
+                .thenReturn(List.of(IMEI));
+        assertEquals(Optional.of(IMEI), dao(jdbc).imeiDe("R20260916_5"));
+        assertEquals(Optional.empty(), dao(jdbc).imeiDe("R20260916_9"));
+    }
+
+    /** Sin transacción (la del que llama queda suspendida): va por otra conexión, sin candados ni foto de REPEATABLE READ. */
+    @Test void elImeiDeUnaReparacionSeLeeFueraDeLaTransaccion() throws NoSuchMethodException {
+        Transactional tx = ReparacionDAO.class.getMethod("imeiDe", String.class).getAnnotation(Transactional.class);
+        assertNotNull(tx);
+        assertEquals(Propagation.NOT_SUPPORTED, tx.propagation());
+        assertTrue(tx.readOnly());
     }
 }

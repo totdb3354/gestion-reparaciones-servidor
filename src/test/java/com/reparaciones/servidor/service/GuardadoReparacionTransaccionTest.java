@@ -21,6 +21,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
@@ -95,6 +96,8 @@ class GuardadoReparacionTransaccionTest {
     }
 
     @Test void siBorrarFallaTrasDeshacerNoQuedaDeshecho() throws SQLException {
+        when(dao.imeiDe("R1")).thenReturn(Optional.of(IMEI));
+        when(dao.bloquearReparacion("R1")).thenReturn(Optional.of(IMEI));
         doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado")).when(dao).eliminar("R1");
         assertThrows(ResponseStatusException.class, () -> guardado.eliminar("R1", 7));
         verify(taller).deshacer("R1", AvisoTaller.Causa.BORRADA, 7);
