@@ -120,7 +120,7 @@ public class StockTelefonosController {
 
     @GetMapping("/{imeiSn}/rastro")
     public List<EventoRastro> rastro(@PathVariable String imeiSn) {
-        return Rastro.unir(dao.eventos(imeiSn), dao.trabajos(imeiSn));
+        return Rastro.unir(dao.porImei(imeiSn), dao.eventos(imeiSn), dao.trabajos(imeiSn));
     }
 
     /** «Pegar varios IMEIs» (spec 0.9.18 §4.9 y §6.2): una entrada por IMEI pedido, en el mismo orden. Busca en todo el
