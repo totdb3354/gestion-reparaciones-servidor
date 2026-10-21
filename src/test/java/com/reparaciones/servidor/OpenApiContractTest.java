@@ -541,6 +541,25 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "SkuMaestro", "color", "grado", "sku");
     }
 
+    /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */
+    @Test void elContratoPublicaLaPreviaDelSkuDelTaller() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+        String ruta = "/api/reparaciones/sku-taller/previsualizar";
+        assertTrue(paths.has(ruta), "falta la ruta de la previsualización del SKU del taller");
+        assertTrue(refDelCuerpo(paths, ruta, "post").endsWith("/PeticionPreviaTaller"));
+        assertTrue(refDeLaRespuesta(paths, ruta, "post", "200").endsWith("/PreviaTaller"));
+        assertNoNullable(esquemas, "PeticionPreviaTaller", "imei", "filas");
+        assertNullable(esquemas, "FilaPreviaTaller", "idRep");
+        assertNoNullable(esquemas, "FilaPreviaTaller", "idCom", "reutilizada");
+        assertNoNullable(esquemas, "PreviaTaller", "enNsys", "antes", "despues", "colorSinDeducir", "gradoSinCalcular");
+        assertNullable(esquemas, "ValoresTaller", "color", "grado");
+    }
+
     /** Un parámetro (query o path) de una operación, por nombre. */
     private static JsonNode parametro(JsonNode paths, String ruta, String metodo, String nombre) {
         for (JsonNode p : paths.path(ruta).path(metodo).path("parameters")) {
