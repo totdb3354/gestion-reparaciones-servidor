@@ -26,6 +26,7 @@ DELETE FROM Reparacion;
 -- 5a. SKU del taller (0.9.21): va por IMEI, así que cae con el espejo. Romper la auto-referencia antes de borrar.
 UPDATE Taller_cambio SET ID_CAMBIO_ANTERIOR = NULL;
 DELETE FROM Taller_cambio;
+DELETE FROM Taller_aviso;
 
 -- 5b. Espejo de NSYS (0.9.17): eventos antes que importaciones (clave ajena). Se conservan el maestro y las cajas.
 DELETE FROM Nsys_evento;

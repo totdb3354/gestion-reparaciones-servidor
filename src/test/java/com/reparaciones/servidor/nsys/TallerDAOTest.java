@@ -12,6 +12,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -103,11 +104,11 @@ class TallerDAOTest {
         InOrder orden = inOrder(jdbc);
         orden.verify(jdbc).queryForList(TallerDAO.SQL_BLOQUEAR, String.class, IMEI);
         orden.verify(jdbc).queryForList(TallerDAO.SQL_VIGENTE, Integer.class, IMEI, "COLOR");
-        orden.verify(jdbc).update(TallerDAO.SQL_INSERTAR, IMEI, "COLOR", "Rojo", "Azul", "MANO", 7, "motivo", t, "VIGENTE",
+        orden.verify(jdbc).update(TallerDAO.SQL_INSERTAR, IMEI, "COLOR", "Rojo", "Azul", "MANO", null, 7, "motivo", t, "VIGENTE",
                 null, null);
         orden.verify(jdbc).queryForList(TallerDAO.SQL_VIGENTE, Integer.class, IMEI, "GRADO");
         orden.verify(jdbc).update(TallerDAO.SQL_SUSTITUIR, t, 4);
-        orden.verify(jdbc).update(TallerDAO.SQL_INSERTAR, IMEI, "GRADO", "B", "B", "MANO", 7, "motivo", t, "QUITADO", t, 4);
+        orden.verify(jdbc).update(TallerDAO.SQL_INSERTAR, IMEI, "GRADO", "B", "B", "MANO", null, 7, "motivo", t, "QUITADO", t, 4);
         verifyNoMoreInteractions(jdbc);
     }
 
@@ -122,5 +123,105 @@ class TallerDAOTest {
         assertTrue(TallerDAO.SQL_CERRAR.endsWith(" WHERE ID_CAMBIO = ? AND ESTADO = 'VIGENTE'"), TallerDAO.SQL_CERRAR);
         assertTrue(TallerDAO.SQL_SUSTITUIR.endsWith(" WHERE ID_CAMBIO = ? AND ESTADO = 'VIGENTE'"), TallerDAO.SQL_SUSTITUIR);
         assertTrue(TallerDAO.SQL_BLOQUEAR.endsWith(" FOR UPDATE"), TallerDAO.SQL_BLOQUEAR);
+    }
+
+    // ---------------------------------------------------------------- 0.9.21, pieza 2: desde las reparaciones
+
+    @Test void unCambioDeUnaReparacionLlevaSuOrigenYSuReparacion() {
+        dao.guardar(IMEI, List.of(new TallerDAO.Nuevo(DatoTaller.COLOR, "Rojo", "Azul", CambioTaller.Estado.VIGENTE)),
+                "R20261021_3", 8, "chasis chai13red nuevo", HOY);
+        verify(jdbc).update(TallerDAO.SQL_INSERTAR, IMEI, "COLOR", "Rojo", "Azul", "REPARACION", "R20261021_3", 8,
+                "chasis chai13red nuevo", Timestamp.valueOf(HOY), "VIGENTE", null, null);
+        assertTrue(TallerDAO.SQL_INSERTAR.contains("ORIGEN, ID_REP, ID_USU"), TallerDAO.SQL_INSERTAR);
+    }
+
+    @Test void guardarDesdeUnaReparacionTambienEsTodoONada() throws NoSuchMethodException {
+        assertNotNull(TallerDAO.class.getMethod("guardar", String.class, List.class, String.class, int.class, String.class,
+                LocalDateTime.class).getAnnotation(Transactional.class));
+    }
+
+    @Test void elCandadoDiceSiNsysConoceElImei() {
+        when(jdbc.queryForList(TallerDAO.SQL_BLOQUEAR, String.class, IMEI)).thenReturn(List.of(IMEI));
+        assertTrue(dao.bloquear(IMEI));
+        assertFalse(dao.bloquear("350000000000099"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void losCambiosDeUnaReparacion() {
+        assertTrue(dao.deReparacion("R20261021_3").isEmpty());
+        verify(jdbc).query(eq("SELECT " + TallerDAO.COLUMNAS + TallerDAO.DESDE + " WHERE c.ID_REP = ?" + TallerDAO.ORDEN),
+                any(RowMapper.class), eq("R20261021_3"));
+    }
+
+    @Test void deshacerSustituyeSoloUnVigenteYReactivarSoloUnSustituido() {
+        when(jdbc.update(TallerDAO.SQL_SUSTITUIR, Timestamp.valueOf(HOY), 5)).thenReturn(1);
+        assertEquals(1, dao.deshacer(5, HOY));
+        dao.reactivar(4);
+        verify(jdbc).update(TallerDAO.SQL_REACTIVAR, 4);
+        assertTrue(TallerDAO.SQL_REACTIVAR.contains("SET ESTADO = 'VIGENTE', CERRADO_EN = NULL"), TallerDAO.SQL_REACTIVAR);
+        assertTrue(TallerDAO.SQL_REACTIVAR.endsWith(" WHERE ID_CAMBIO = ? AND ESTADO = 'SUSTITUIDO'"), TallerDAO.SQL_REACTIVAR);
+    }
+
+    @Test void unAvisoConYSinCausa() {
+        Timestamp t = Timestamp.valueOf(HOY);
+        dao.avisar(new AvisoTaller.Nuevo(IMEI, "R20261021_3", AvisoTaller.Tipo.DESHECHO, AvisoTaller.Causa.BORRADA,
+                DatoTaller.COLOR, "Rojo", "Azul", "chasis chai13red nuevo"), 8, HOY);
+        verify(jdbc).update(TallerDAO.SQL_AVISAR, IMEI, "R20261021_3", "DESHECHO", "BORRADA", "COLOR", "Rojo", "Azul",
+                "chasis chai13red nuevo", 8, t);
+        dao.avisar(new AvisoTaller.Nuevo(IMEI, "R20261021_4", AvisoTaller.Tipo.SIN_COLOR, null, DatoTaller.COLOR, "chai13xxx",
+                null, "chasis chai13xxx nuevo"), 8, HOY);
+        verify(jdbc).update(TallerDAO.SQL_AVISAR, IMEI, "R20261021_4", "SIN_COLOR", null, "COLOR", "chai13xxx", null,
+                "chasis chai13xxx nuevo", 8, t);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void losAvisosDeUnImeiConQuienPorSuNombre() {
+        assertTrue(dao.avisosDeImei(IMEI).isEmpty());
+        verify(jdbc).query(eq(TallerDAO.SQL_AVISOS), any(RowMapper.class), eq(IMEI));
+        assertTrue(TallerDAO.SQL_AVISOS.contains("LEFT JOIN Usuario u ON u.ID_USU = v.ID_USU"), TallerDAO.SQL_AVISOS);
+        assertTrue(TallerDAO.SQL_AVISOS.endsWith(" WHERE v.IMEI_SN = ? ORDER BY v.FECHA, v.ID_AVISO"), TallerDAO.SQL_AVISOS);
+    }
+
+    @Test void unaFilaDeTallerAviso() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getInt("ID_AVISO")).thenReturn(2);
+        when(rs.getString("IMEI_SN")).thenReturn(IMEI);
+        when(rs.getString("ID_REP")).thenReturn("R20261021_3");
+        when(rs.getString("TIPO")).thenReturn("SIN_GRADO");
+        when(rs.getString("DATO")).thenReturn("GRADO");
+        when(rs.getString("DE")).thenReturn("ID");
+        when(rs.getString("MOTIVO")).thenReturn("batería bati13 nueva");
+        when(rs.getInt("ID_USU")).thenReturn(8);
+        when(rs.getString("NOMBRE_USUARIO")).thenReturn("Técnico 2");
+        when(rs.getTimestamp("FECHA")).thenReturn(Timestamp.valueOf(HOY));
+        assertEquals(new AvisoTaller(2, IMEI, "R20261021_3", AvisoTaller.Tipo.SIN_GRADO, null, DatoTaller.GRADO, "ID", null,
+                "batería bati13 nueva", 8, "Técnico 2", HOY), TallerDAO.aviso(rs, 0));
+        when(rs.getString("CAUSA")).thenReturn("EDITADA");
+        assertEquals(AvisoTaller.Causa.EDITADA, TallerDAO.aviso(rs, 0).causa());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void losSkuDeLosComponentesEnUnaConsulta() {
+        assertTrue(dao.tiposDeComponentes(List.of(101, 131, 101)).isEmpty());
+        verify(jdbc).query(eq("SELECT ID_COM, TIPO FROM Componente WHERE ID_COM IN (?, ?)"), any(RowMapper.class), eq(101), eq(131));
+        clearInvocations(jdbc);
+        assertTrue(dao.tiposDeComponentes(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void laPiezaDeUnaReparacionEsSuFilaConUso() {
+        assertTrue(dao.piezaDeReparacion("R20261021_3").isEmpty());
+        verify(jdbc).query(eq(TallerDAO.SQL_PIEZA), any(RowMapper.class), eq("R20261021_3"));
+        assertTrue(TallerDAO.SQL_PIEZA.contains("rc.ES_SOLICITUD = 0"), TallerDAO.SQL_PIEZA);
+    }
+
+    @Test void lasReparacionesQueSiguenExistiendo() {
+        when(jdbc.queryForList("SELECT ID_REP FROM Reparacion WHERE ID_REP IN (?, ?)", String.class, "R1", "R2"))
+                .thenReturn(List.of("R2"));
+        assertEquals(Set.of("R2"), dao.reparacionesQueExisten(List.of("R1", "R2")));
+        clearInvocations(jdbc);
+        assertEquals(Set.of(), dao.reparacionesQueExisten(List.of()));
+        verifyNoInteractions(jdbc);
     }
 }

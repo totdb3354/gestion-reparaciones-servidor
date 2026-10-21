@@ -1,11 +1,11 @@
 -- ══════════════════════════════════════════════════════════════════════════════
--- migracion-sku-taller.sql — 0.9.21, SKU del taller (pieza 1: la base)
+-- migracion-sku-taller.sql — 0.9.21, SKU del taller (piezas 1 y 2)
 -- (spec docs/superpowers/specs/2026-10-21-v0921-sku-del-taller-base-design.md §4, raíz).
 -- La aplica el usuario a mano en la VM, con vista previa, ANTES de desplegar el
 -- servidor 0.9.21. Aditiva: el servidor y la web anteriores no usan esta tabla.
 -- NO idempotente (relanzar = error de tabla existente).
 -- 1) Vista previa: el SELECT debe devolver 0 (no existe).
--- 2) Ejecutar el CREATE TABLE.
+-- 2) Ejecutar los dos CREATE TABLE (Taller_cambio y Taller_aviso).
 -- FECHA y CERRADO_EN van en hora de Madrid, como el espejo de NSYS: las pone el servidor.
 -- ══════════════════════════════════════════════════════════════════════════════
 USE gestion_reparaciones;
@@ -13,7 +13,7 @@ USE gestion_reparaciones;
 -- Vista previa (no modifica nada): debe dar 0
 SELECT COUNT(*) AS YA_EXISTE
   FROM information_schema.TABLES
- WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Taller_cambio';
+ WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME IN ('Taller_cambio', 'Taller_aviso');
 
 -- Lo del taller por encima de NSYS, por IMEI (no por lote): un cambio por fila. Como mucho un VIGENTE por IMEI y dato (lo
 -- garantiza el servidor). QUITADO: un cambio a mano que vuelve a lo de NSYS (nace cerrado). SUSTITUIDO: lo tapó otro cambio
@@ -38,4 +38,24 @@ CREATE TABLE Taller_cambio (
     KEY idx_taller_cambio_estado (ESTADO),
     CONSTRAINT fk_taller_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
     CONSTRAINT fk_taller_cambio_anterior FOREIGN KEY (ID_CAMBIO_ANTERIOR) REFERENCES Taller_cambio (ID_CAMBIO)
+);
+
+-- Pieza 2 (lo automático desde las reparaciones): lo que el taller avisa al guardar, editar o borrar una reparación sin
+-- cambiar el dato (el color de un chasis que no se puede deducir, un grado que no se puede calcular, un cambio que se
+-- deshace y uno que ya no se puede deshacer). Solo se añade; lo lee el rastro del IMEI.
+CREATE TABLE Taller_aviso (
+    ID_AVISO   INT          NOT NULL AUTO_INCREMENT,
+    IMEI_SN    VARCHAR(40)  NOT NULL COMMENT 'Como Nsys_movil.IMEI_SN',
+    ID_REP     VARCHAR(30)  NOT NULL COMMENT 'La reparación R… (puede estar ya borrada)',
+    TIPO       ENUM('SIN_COLOR','SIN_GRADO','DESHECHO','SIN_DESHACER') NOT NULL,
+    CAUSA      ENUM('BORRADA','EDITADA') NULL COMMENT 'DESHECHO y SIN_DESHACER: por qué',
+    DATO       ENUM('COLOR','GRADO') NOT NULL,
+    DE         VARCHAR(100) NULL COMMENT 'SIN_COLOR: el SKU; SIN_GRADO: el grado; DESHECHO y SIN_DESHACER: lo que puso la reparación',
+    A          VARCHAR(40)  NULL COMMENT 'DESHECHO: lo que vuelve a valer',
+    MOTIVO     VARCHAR(500) NULL COMMENT 'La pieza: «chasis chai13red nuevo»',
+    ID_USU     INT          NULL,
+    FECHA      DATETIME     NOT NULL,
+    PRIMARY KEY (ID_AVISO),
+    KEY idx_taller_aviso_imei (IMEI_SN, FECHA),
+    CONSTRAINT fk_taller_aviso_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );

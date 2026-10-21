@@ -17,6 +17,8 @@ public record CambioTaller(int id, String imeiSn, DatoTaller dato, String valor,
      *  PASADO: NSYS lo alcanzó. MANDA_NSYS: NSYS puso después otra cosa en ese dato. */
     public enum Estado { VIGENTE, SUSTITUIDO, QUITADO, PASADO, MANDA_NSYS }
 
-    /** Origen de los cambios de esta pieza («Corregir…» y «Volver a lo de NSYS»); REPARACION es de la pieza 2. */
+    /** Origen de los cambios a mano («Corregir…» y «Volver a lo de NSYS»). */
     public static final String MANO = "MANO";
+    /** Origen de los cambios que hace una reparación al guardarse (pieza 2): llevan su {@code idRep}. */
+    public static final String REPARACION = "REPARACION";
 }

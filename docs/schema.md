@@ -35,3 +35,4 @@ Tablas (generado con grep el 2026-09-14):
 - `Nsys_producto` (0.9.17: el maestro de productos, «Goods + Grade» → modelo, color y SKU)
 - `Nsys_ubicacion` (0.9.17: traducción de cajas de NSYS a ubicaciones del ERP; datos, no código)
 - `Taller_cambio` (0.9.21: lo del taller por encima de NSYS —color y grado— por IMEI, con su historia, quién y por qué, y su cierre automático cuando NSYS lo alcanza o lo cambia; ver `sql/migracion-sku-taller.sql`)
+- `Taller_aviso` (0.9.21, pieza 2: lo que el taller avisa al guardar, editar o borrar una reparación sin cambiar el dato —color que no se deduce, grado que no se calcula, cambio deshecho o que ya no se puede deshacer—; solo se añade y lo lee el rastro; ver `sql/migracion-sku-taller.sql`)
