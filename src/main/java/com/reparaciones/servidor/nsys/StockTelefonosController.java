@@ -1,15 +1,20 @@
 package com.reparaciones.servidor.nsys;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -171,6 +176,34 @@ public class StockTelefonosController {
         return Rastro.unir(dao.porImei(imeiSn), dao.eventos(imeiSn), dao.trabajos(imeiSn), taller.cambios(imeiSn));
     }
 
+    /** «Por pasar a NSYS» (spec 0.9.21 §2.4): lo que hay que cambiar a mano en NSYS, de cualquier modelo. */
+    @GetMapping("/por-pasar")
+    public List<FilaPorPasar> porPasar() {
+        return taller.porPasar();
+    }
+
+    /** Las opciones del diálogo «Corregir color, grado o batería…» (spec 0.9.21 §2.3). */
+    @GetMapping("/{imeiSn}/colores")
+    public OpcionesTaller colores(@PathVariable String imeiSn) {
+        return taller.opciones(imeiSn);
+    }
+
+    /** Corrección a mano (spec 0.9.21 §2.3): {@code color} o {@code grado} null, ese dato no cambia; motivo obligatorio. */
+    @PutMapping("/{imeiSn}/taller")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void corregir(@PathVariable String imeiSn, @RequestBody PeticionTaller peticion,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
+        taller.corregir(imeiSn, peticion.color(), peticion.grado(), peticion.motivo(), principal.getIdUsu());
+    }
+
+    /** «Volver a lo de NSYS» (spec 0.9.21 §2.3): quita lo del taller del móvil, con el motivo si se ha escrito. */
+    @DeleteMapping("/{imeiSn}/taller")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void volver(@PathVariable String imeiSn, @RequestBody(required = false) PeticionVolver peticion,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        taller.volver(imeiSn, peticion == null ? null : peticion.motivo(), principal.getIdUsu());
+    }
+
     /** «Pegar varios IMEIs» (spec 0.9.18 §4.9 y §6.2): una entrada por IMEI pedido, en el mismo orden. Busca en todo el
      *  espejo, también los vendidos; de cada IMEI, el lote más reciente, con sus trabajos abiertos y lo que vale (0.9.21).
      *  La web manda los IMEIs limpios y sin repetir; más de {@value #MAX_COMPROBAR}, o alguno nulo o en blanco, es un 400. */
@@ -274,6 +307,12 @@ public class StockTelefonosController {
 
     /** Del paquete (no privado) para que los tests lo construyan; el esquema se llama StockTelefonosPeticionComprobar. */
     record PeticionComprobar(List<String> imeis) {}
+
+    /** Del paquete para que los tests lo construyan; esquema StockTelefonosPeticionTaller. El grado, como en NSYS. */
+    record PeticionTaller(@Schema(nullable = true) String color, @Schema(nullable = true) String grado, String motivo) {}
+
+    /** Esquema StockTelefonosPeticionVolver. */
+    record PeticionVolver(@Schema(nullable = true) String motivo) {}
 
     private record ListaImportaciones(List<FilaImportacion> importaciones, ProgresoHistorico historico) {}
 

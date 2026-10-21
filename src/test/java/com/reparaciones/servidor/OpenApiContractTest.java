@@ -517,6 +517,28 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "StockTelefonosFilaImportacion", "fichero", "fechaExportacion", "resultado", "filas", "cambios");
         assertNullable(esquemas, "StockTelefonosProgresoHistorico", "ultimo", "hasta");
         assertNoNullable(esquemas, "StockTelefonosProgresoHistorico", "total", "hechos");
+
+        // 0.9.21 (spec «SKU del taller» §4): la corrección a mano, la lista «Por pasar a NSYS» y las opciones del diálogo.
+        for (String ruta : List.of("/api/stock-telefonos/por-pasar", "/api/stock-telefonos/{imeiSn}/colores",
+                "/api/stock-telefonos/{imeiSn}/taller")) {
+            assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        }
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "put").endsWith("/StockTelefonosPeticionTaller"));
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "delete").endsWith("/StockTelefonosPeticionVolver"));
+        assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/{imeiSn}/colores", "get", "200").endsWith("/OpcionesTaller"));
+        assertNullable(esquemas, "StockTelefonosPeticionTaller", "color", "grado");
+        assertNoNullable(esquemas, "StockTelefonosPeticionTaller", "motivo");
+        assertNullable(esquemas, "StockTelefonosPeticionVolver", "motivo");
+        assertNullable(esquemas, "FilaPorPasar", "modelo", "modeloMaestro", "capacidad", "productoNsys", "gradoNsys",
+                "ponerProducto", "ponerGrado", "sku");
+        assertNoNullable(esquemas, "FilaPorPasar", "imeiSn", "porQue", "desde");
+        assertNullable(esquemas, "PorQueTaller", "usuario", "motivo", "idRep");
+        assertNoNullable(esquemas, "PorQueTaller", "dato", "origen");
+        assertNullable(esquemas, "OpcionesTaller", "productoActual");
+        assertNoNullable(esquemas, "OpcionesTaller", "colores", "skus");
+        assertNullable(esquemas, "OpcionColor", "producto");
+        assertNoNullable(esquemas, "OpcionColor", "color");
+        assertNoNullable(esquemas, "SkuMaestro", "color", "grado", "sku");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

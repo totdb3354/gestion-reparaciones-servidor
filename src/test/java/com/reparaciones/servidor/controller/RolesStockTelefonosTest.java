@@ -26,11 +26,16 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -61,11 +66,12 @@ class RolesStockTelefonosTest {
 
     private static final List<String> RUTAS = List.of("/api/stock-telefonos", "/api/stock-telefonos/estado",
             "/api/stock-telefonos/buscar?imei=3500", "/api/stock-telefonos/350000000000001",
-            "/api/stock-telefonos/350000000000001/rastro", "/api/stock-telefonos/importaciones");
+            "/api/stock-telefonos/350000000000001/rastro", "/api/stock-telefonos/importaciones",
+            "/api/stock-telefonos/por-pasar", "/api/stock-telefonos/350000000000001/colores");
 
     @Test void elTecnicoRecibe403SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) mvc.perform(get(ruta).header("Authorization", tecnico())).andExpect(status().isForbidden());
-        verifyNoInteractions(dao);
+        verifyNoInteractions(dao, tallerDao);
     }
 
     @Test void supertecnicoYAdminLasLeen() throws Exception {
@@ -83,14 +89,14 @@ class RolesStockTelefonosTest {
     @Test void sinTokenRecibe403SinLlegarAlDao() throws Exception {
         // Sin cabecera Authorization este servidor responde 403 (ver OpenApiContractTest).
         for (String ruta : RUTAS) mvc.perform(get(ruta)).andExpect(status().isForbidden());
-        verifyNoInteractions(dao);
+        verifyNoInteractions(dao, tallerDao);
     }
 
     @Test void conTokenInvalidoRecibe401SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) {
             mvc.perform(get(ruta).header("Authorization", "Bearer no-es-un-jwt")).andExpect(status().isUnauthorized());
         }
-        verifyNoInteractions(dao);
+        verifyNoInteractions(dao, tallerDao);
     }
 
     @Test void elTecnicoSigueLeyendoElModeloDeUnImeiQueAhoraSaleDeNsys() throws Exception {
@@ -154,5 +160,25 @@ class RolesStockTelefonosTest {
         when(dao.resumenHistorico()).thenReturn(new ResumenHistorico(0, 0, null));
         mvc.perform(get("/api/stock-telefonos/importaciones").header("Authorization", admin())).andExpect(status().isOk());
         verify(dao).importaciones("ACTUAL", 20);
+    }
+
+    /** 0.9.21 (spec «SKU del taller» §2.3): corregir y volver a lo de NSYS, con la misma guarda que el resto. */
+    @Test void corregirYVolverSoloParaSupertecnicoYAdmin() throws Exception {
+        String corregir = "{\"color\":null,\"grado\":\"A100\",\"motivo\":\"batería nueva\"}";
+        String volver = "{\"motivo\":null}";
+        String ruta = "/api/stock-telefonos/350000000000009/taller";
+        mvc.perform(put(ruta).header("Authorization", tecnico()).contentType(MediaType.APPLICATION_JSON).content(corregir))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete(ruta).header("Authorization", tecnico()).contentType(MediaType.APPLICATION_JSON).content(volver))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(dao, tallerDao);
+        // NSYS no conoce el 350000000000009 (el DAO mockeado no tiene lotes): llega al servicio y da 404.
+        for (String token : List.of(supertecnico(), admin())) {
+            mvc.perform(put(ruta).header("Authorization", token).contentType(MediaType.APPLICATION_JSON).content(corregir))
+                    .andExpect(status().isNotFound());
+            mvc.perform(delete(ruta).header("Authorization", token).contentType(MediaType.APPLICATION_JSON).content(volver))
+                    .andExpect(status().isNotFound());
+        }
+        verify(tallerDao, never()).guardar(any(), any(), anyInt(), any(), any());
     }
 }

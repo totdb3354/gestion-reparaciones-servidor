@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -167,6 +168,47 @@ public class TallerNsys {
         }
         if (cerrados > 0) log.info("NSYS: {} cambios del taller cerrados tras la importación", cerrados);
         return cerrados;
+    }
+
+    // ---------------------------------------------------------------- «Por pasar a NSYS» y opciones del diálogo
+
+    /** La lista «Por pasar a NSYS» (spec §2.4): cada móvil con algo del taller vigente, de cualquier modelo, de su cambio más
+     *  antiguo al más reciente. Un móvil que ya no está en el espejo no sale. */
+    public List<FilaPorPasar> porPasar() {
+        List<CambioTaller> vigentes = tallerDao.vigentes();
+        if (vigentes.isEmpty()) return List.of();
+        Map<String, MovilNsys> masReciente = masRecientes(vigentes);
+        Supplier<Maestro> maestro = perezoso(() -> new Maestro(nsysDao.cargarProductos()));
+        Map<List<Object>, Map<String, String>> goods = new HashMap<>();
+        List<FilaPorPasar> filas = new ArrayList<>();
+        porImei(vigentes).forEach((clave, cambios) -> {
+            MovilNsys m = masReciente.get(clave);
+            if (m == null) return;
+            LoQueVale.Valor v = LoQueVale.de(m, cambios, maestro);
+            // Los móviles del mismo modelo, capacidad y eSIM comparten la búsqueda del producto de cada color.
+            String producto = v.colorNsys() == null ? m.goods()
+                    : goods.computeIfAbsent(Arrays.asList(m.modelo(), m.modeloMaestro(), m.capacidad(), m.esEsim()),
+                            k -> nsysDao.goodsMasUsados(m)).get(v.color());
+            filas.add(new FilaPorPasar(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.goods(), m.grade(),
+                    producto, v.grade(), v.sku(), cambios.stream().map(TallerNsys::porQue).toList(), cambios.get(0).fecha()));
+        });
+        return filas;
+    }
+
+    private static PorQueTaller porQue(CambioTaller c) {
+        return new PorQueTaller(c.dato().name(), c.origen(), c.usuario(), c.motivo(), c.idRep());
+    }
+
+    /** Lo que necesita el diálogo «Corregir…» (spec §2.3): los colores del maestro para el modelo, capacidad y eSIM del móvil,
+     *  cada uno con el producto que habría que poner en NSYS (el de ahora para el color de NSYS), y los SKU por color y grado. */
+    public OpcionesTaller opciones(String imeiSn) {
+        MovilNsys m = delEspejo(imeiSn);
+        Maestro maestro = new Maestro(nsysDao.cargarProductos());
+        List<String> colores = maestro.colores(m);
+        Map<String, String> goods = colores.isEmpty() ? Map.of() : nsysDao.goodsMasUsados(m);
+        List<OpcionColor> opciones = colores.stream().map(c -> new OpcionColor(c,
+                Normalizacion.mismoTexto(c, m.color()) ? m.goods() : goods.get(c))).toList();
+        return new OpcionesTaller(m.goods(), opciones, maestro.skus(m));
     }
 
     // ---------------------------------------------------------------- utilidades

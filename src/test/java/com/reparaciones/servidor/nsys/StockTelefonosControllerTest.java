@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -531,5 +532,33 @@ class StockTelefonosControllerTest {
         assertEquals("TALLER_CAMBIO", rastro.get(0).tipo());
         assertEquals("TALLER", rastro.get(0).fuente());
         assertEquals("GRADO", rastro.get(0).dato());
+    }
+
+    // ---------------------------------------------------------------- 0.9.21: corrección, vuelta, lista y opciones
+
+    private static final UsuarioPrincipal SUPER = new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3);
+
+    @Test void corregirGuardaConElUsuarioDeLaSesion() {
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        api.corregir(IMEI, new StockTelefonosController.PeticionTaller(null, "A100", "batería nueva"), SUPER);
+        verify(tallerDao).guardar(eq(IMEI), eq(List.of(new TallerDAO.Nuevo(DatoTaller.GRADO, "A100", "A",
+                CambioTaller.Estado.VIGENTE))), eq(7), eq("batería nueva"), any());
+        verify(logDao).insertar(7, "CORREGIR_MOVIL_TALLER", "IMEI: 350000000000001, GRADO: A → A100", "batería nueva");
+    }
+
+    @Test void volverSinCuerpoVaSinMotivo() {
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.GRADO, "A100", "A")));
+        api.volver(IMEI, null, SUPER);
+        verify(tallerDao).guardar(eq(IMEI), eq(List.of(new TallerDAO.Nuevo(DatoTaller.GRADO, "A", "A",
+                CambioTaller.Estado.QUITADO))), eq(7), isNull(), any());
+    }
+
+    @Test void laListaYLasOpcionesSalenDelServicio() {
+        assertTrue(api.porPasar().isEmpty());
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        OpcionesTaller o = api.colores(IMEI);
+        assertEquals("Apple iPhone 13 128GB Blue", o.productoActual());
+        assertTrue(o.colores().isEmpty(), "el maestro del mock está vacío");
     }
 }
