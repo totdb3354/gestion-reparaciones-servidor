@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,20 +126,27 @@ public class StockTelefonosController {
     public FichaMovil ficha(@PathVariable String imeiSn) {
         List<MovilNsys> lotes = dao.porImei(imeiSn);
         if (lotes.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NSYS no conoce el IMEI " + imeiSn);
-        MovilNsys m = lotes.get(0);
-        // 0.9.21 (SKU del taller): lo que vale por IMEI, sobre la fila más reciente; con algo del taller, lo que hay que poner
-        // en NSYS.
-        LoQueVale.Valor v = taller.valedor(List.of(m.imeiSn())).apply(m);
         List<EventoNsys> eventos = dao.eventos(imeiSn);
         // 0.9.21 (corrección en NSYS): la cadena de correcciones del lote cuenta como un solo móvil: días desde su primer
-        // lote, sus entradas de verdad y la revisión, el grado anterior y la espera con los eventos de toda la cadena.
+        // lote, sus entradas de verdad y la revisión, el grado anterior y la espera con los eventos de toda la cadena. La
+        // ficha enseña el último lote de la cadena (en la primera carga el orden de los lotes puede empatar).
         Correcciones correcciones = Correcciones.de(lotes, eventos);
+        MovilNsys m = Objects.requireNonNullElse(correcciones.lote(correcciones.ultimoLote(lotes.get(0).batch())), lotes.get(0));
+        // 0.9.21 (SKU del taller): lo que vale por IMEI, sobre el último lote de la cadena; con algo del taller, lo que hay
+        // que poner en NSYS.
+        LoQueVale.Valor v = taller.valedor(List.of(m.imeiSn())).apply(m);
         List<EventoNsys> deLaCadena = correcciones.paraRevision(eventos);
         MovilNsys primero = Objects.requireNonNullElse(correcciones.lote(correcciones.primerLote(m.batch())), m);
         // El último cambio de grado de verdad del lote: un cambio de batería (A → A100) no cuenta, o taparía el grado
-        // anterior real (C → A → A100 da C).
-        String gradoAnterior = deLaCadena.stream()
-                .filter(e -> e.tipo() == TipoEvento.GRADO && Objects.equals(e.batch(), m.batch()))
+        // anterior real (C → A → A100 da C). Una corrección que cambia el grado también cuenta.
+        List<EventoNsys> grados = new ArrayList<>(deLaCadena.stream()
+                .filter(e -> e.tipo() == TipoEvento.GRADO && Objects.equals(e.batch(), m.batch())).toList());
+        for (Correcciones.Correccion k : correcciones.todas())
+            if (Objects.equals(correcciones.ultimoLote(k.lote()), m.batch()))
+                grados.add(new EventoNsys(m.imeiSn(), m.batch(), k.fecha(), false, TipoEvento.GRADO,
+                        correcciones.lote(k.loteAnterior()).grade(), correcciones.lote(k.lote()).grade(), null));
+        grados.sort(Comparator.comparing(EventoNsys::fecha));
+        String gradoAnterior = grados.stream()
                 .filter(e -> !Normalizacion.gradoSinBateria(e.de()).equals(Normalizacion.gradoSinBateria(e.a())))
                 .reduce((a, b) -> b).map(e -> e.de() == null ? null : Normalizacion.gradoSinBateria(e.de())).orElse(null);
         boolean enEmpresa = m.estado() == EstadoMovil.STOCK || m.estado() == EstadoMovil.DE_PEDIDO

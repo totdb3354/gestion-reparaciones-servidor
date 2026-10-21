@@ -101,11 +101,30 @@ class CorreccionesTest {
         assertEquals(4, r.size());
         assertTrue(r.stream().allMatch(e -> e.batch().equals("BT-2")));
         assertEquals(TipoEvento.UBICACION, r.get(0).tipo());
-        assertEquals(List.of(TipoEvento.ESTADO, TipoEvento.ESTADO, TipoEvento.ESTADO),
-                r.subList(1, 4).stream().map(EventoNsys::tipo).toList());
-        assertTrue(r.subList(1, 4).stream().allMatch(e -> e.de() == null && e.a() == null));
+        // La entrada del nuevo en una ubicación pendiente es un paso desde la última caja del viejo (revisión final).
+        assertEquals(new EventoNsys(IMEI, "BT-2", t(20, 10), false, TipoEvento.UBICACION, "Listos", "En revisión", ""), r.get(2));
+        assertEquals(List.of(TipoEvento.ESTADO, TipoEvento.ESTADO), List.of(r.get(1).tipo(), r.get(3).tipo()));
+        assertTrue(r.get(1).de() == null && r.get(1).a() == null && r.get(3).de() == null && r.get(3).a() == null);
         assertTrue(c.sustituido(eventos.get(1)) && c.sustituido(eventos.get(2)) && c.sustituido(eventos.get(3)));
         assertFalse(c.sustituido(eventos.get(0)));
+    }
+
+    @Test void laEntradaDelNuevoEnUnaCajaDeVerdadSigueNeutralizada() {
+        List<EventoNsys> eventos = List.of(baja("BT-1", t(20, 10)),
+                new EventoNsys(IMEI, "BT-2", t(20, 10), false, TipoEvento.ENTRADA, null, "Listos", "CAJA LISTOS"));
+        Correcciones c = Correcciones.de(List.of(lote("BT-1", d(23, 9)), lote("BT-2", d(20, 10))), eventos);
+        EventoNsys entrada = c.paraRevision(eventos).get(1);
+        assertEquals(TipoEvento.ESTADO, entrada.tipo());
+        assertNull(entrada.a());
+    }
+
+    @Test void aIgualDistanciaGanaElLoteMayorYDosViejosNoSeRepartenUnNuevo() {
+        Correcciones empate = Correcciones.de(List.of(lote("BT-1", d(1, 9)), lote("BT-2", d(19, 10)), lote("BT-3", d(21, 10))),
+                List.of(baja("BT-1", t(20, 10))));
+        assertEquals("BT-3", empate.todas().get(0).lote());
+        Correcciones dos = Correcciones.de(List.of(lote("BT-1", d(1, 9)), lote("BT-2", d(1, 9)), lote("BT-3", d(20, 10))),
+                List.of(baja("BT-1", t(20, 10)), baja("BT-2", LocalDateTime.of(2026, 10, 20, 15, 1))));
+        assertEquals(List.of(new Correcciones.Correccion("BT-1", "BT-3", t(20, 10))), dos.todas(), "la primera baja se lo queda");
     }
 
     @Test void laUltimaCajaAnteriorYLaDescripcion() {
@@ -119,8 +138,28 @@ class CorreccionesTest {
 
         assertEquals("Listos", c.ultimaCajaAnterior("BT-2"));
         assertNull(c.ultimaCajaAnterior("BT-1"));
-        assertEquals("512GB Amarillo · A", c.descripcion("BT-1"));
-        assertEquals("Apple iPhone 15 Pro eSIM 256GB · n/a", c.descripcion("BT-2"), "sin maestro, el Goods");
+        assertEquals(new Correcciones.Cambio("Apple iPhone 15 eSIM 512GB Yellow · A", "Apple iPhone 15 Pro eSIM 256GB · n/a"),
+                c.cambio(c.todas().get(0)), "si a uno le falta el maestro, el Goods en los dos");
+    }
+
+    private static MovilNsys conMaestro(String batch, String goods, String grade, String modeloMaestro, String color, LocalDate recepcion) {
+        return new MovilNsys(IMEI, batch, goods, grade, "InProcess", "CAJA LISTOS", "Proveedor A", recepcion, null, null, "15",
+                modeloMaestro, "512GB", color, grade, true, "Listos", "Listos", EstadoMovil.STOCK, t(1, 1), t(1, 1));
+    }
+
+    @Test void elCambioUsaElMaestroSoloSiLosDosLoTienenYDiceAlgo() {
+        Correcciones color = Correcciones.de(List.of(
+                        conMaestro("BT-1", "Apple iPhone 15 eSIM 512GB Yellow", "A", "15", "Amarillo", d(23, 9)),
+                        conMaestro("BT-2", "Apple iPhone 15 eSIM 512GB Black", "A100", "15", "Negro", d(20, 10))),
+                List.of(baja("BT-1", t(20, 10))));
+        assertEquals(new Correcciones.Cambio("512GB Amarillo · A", "512GB Negro · A100"), color.cambio(color.todas().get(0)));
+
+        Correcciones modelo = Correcciones.de(List.of(
+                        conMaestro("BT-1", "Apple iPhone 15 eSIM 512GB Black", "A", "15", "Negro", d(23, 9)),
+                        conMaestro("BT-2", "Apple iPhone 15 Pro eSIM 512GB Black", "A", "15 PRO", "Negro", d(20, 10))),
+                List.of(baja("BT-1", t(20, 10))));
+        assertEquals(new Correcciones.Cambio("Apple iPhone 15 eSIM 512GB Black · A", "Apple iPhone 15 Pro eSIM 512GB Black · A"),
+                modelo.cambio(modelo.todas().get(0)), "con el mismo texto del maestro no se vería el cambio");
     }
 
     @Test void sinCorreccionesCadaLoteEsSuPropiaCadena() {
