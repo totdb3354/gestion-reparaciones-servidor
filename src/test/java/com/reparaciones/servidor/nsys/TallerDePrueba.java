@@ -35,6 +35,21 @@ final class TallerDePrueba {
                 fecha, CambioTaller.Estado.VIGENTE, null, null, null);
     }
 
+    /** Un cambio de la reparación {@code idRep} («Técnico 2», ID_USU 8), de ayer, por un chasis rojo nuevo, en el estado dado. */
+    static CambioTaller deReparacion(int id, String imei, DatoTaller dato, String valor, String valorNsys, String idRep,
+                                     CambioTaller.Estado estado, Integer anterior) {
+        return new CambioTaller(id, imei, dato, valor, valorNsys, valorNsys, CambioTaller.REPARACION, idRep, 8, "Técnico 2",
+                "chasis chai13red nuevo", HOY.minusDays(1), estado, estado == CambioTaller.Estado.VIGENTE ? null : HOY, null,
+                anterior);
+    }
+
+    /** Un cambio a mano de «Técnico 1» (ID_USU 7), de anteayer, en el estado dado. */
+    static CambioTaller aMano(int id, String imei, DatoTaller dato, String valor, String valorNsys, CambioTaller.Estado estado,
+                              Integer anterior) {
+        return new CambioTaller(id, imei, dato, valor, valorNsys, valorNsys, CambioTaller.MANO, null, 7, "Técnico 1", "prueba",
+                HOY.minusDays(2), estado, estado == CambioTaller.Estado.VIGENTE ? null : HOY, null, anterior);
+    }
+
     /** Un producto del maestro del iPhone 13 128GB: SKU i13128<color><grado>. */
     static ProductoMaestro producto(String goodsColor, String color, String grado) {
         return new ProductoMaestro(Normalizacion.clave("Apple iPhone 13 128GB " + goodsColor + " " + grado), "13", "13",
