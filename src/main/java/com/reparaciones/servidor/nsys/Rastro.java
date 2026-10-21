@@ -34,9 +34,11 @@ public final class Rastro {
             todos.add(new EventoRastro(e.fecha(), e.soloDia(), "NSYS", e.tipo().name(), e.batch(), e.de(), e.a(), e.aNsys(),
                     null, null, null, revisiones.get(i), null));
         }
-        for (Correcciones.Correccion k : correcciones.todas())
-            todos.add(new EventoRastro(k.fecha(), false, "NSYS", "CORRECCION", k.lote(), correcciones.descripcion(k.loteAnterior()),
-                    correcciones.descripcion(k.lote()), null, null, null, null, null, k.loteAnterior()));
+        for (Correcciones.Correccion k : correcciones.todas()) {
+            Correcciones.Cambio cambio = correcciones.cambio(k);
+            todos.add(new EventoRastro(k.fecha(), false, "NSYS", "CORRECCION", k.lote(), cambio.de(), cambio.a(), null,
+                    null, null, null, null, k.loteAnterior()));
+        }
         for (TrabajoTaller t : trabajos) {
             boolean asignacion = t.idRep().startsWith("A");
             LocalDateTime fecha = asignacion || t.terminado() == null ? t.asignado() : t.terminado();

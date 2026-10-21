@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Correcciones de NSYS (spec 0.9.21 «corrección en NSYS» §2). Para corregir un móvil (color, capacidad, producto o grado;
@@ -29,6 +30,9 @@ public final class Correcciones {
     /** Una corrección: el lote dado de baja, el que lo sigue y la hora de la baja. */
     public record Correccion(String loteAnterior, String lote, LocalDateTime fecha) {}
 
+    /** El móvil antes y después de una corrección, como lo enseña el rastro. */
+    public record Cambio(String de, String a) {}
+
     private final Map<String, MovilNsys> lotes = new HashMap<>();
     private final List<Correccion> todas = new ArrayList<>();
     private final Map<String, Correccion> porLoteNuevo = new HashMap<>();
@@ -44,7 +48,7 @@ public final class Correcciones {
         Map<String, EventoNsys> bajas = new HashMap<>();
         for (EventoNsys e : eventos) if (esBaja(e) && c.lotes.containsKey(e.batch())) bajas.put(e.batch(), e);
         List<EventoNsys> porFecha = new ArrayList<>(bajas.values());
-        porFecha.sort(Comparator.comparing(EventoNsys::fecha));
+        porFecha.sort(Comparator.comparing(EventoNsys::fecha).thenComparing(EventoNsys::batch));
         for (EventoNsys b : porFecha) {
             MovilNsys viejo = c.lotes.get(b.batch());
             LocalDate dia = b.fecha().toLocalDate();
@@ -136,25 +140,51 @@ public final class Correcciones {
     }
 
     /** Los eventos para {@link Revision}, con la misma longitud y orden: los de cada cadena con el nombre de su último
-     *  lote y, en lugar de los que sustituye una corrección, un ESTADO vacío que Revision no mira. */
+     *  lote y, en lugar de los que sustituye una corrección, un ESTADO vacío que Revision no mira. Salvo la entrada del lote
+     *  nuevo en una ubicación pendiente («En revisión», «Devolución»): es un paso desde la última caja del viejo, así la
+     *  espera empieza ahí si venía de una caja y sigue si ya estaba pendiente (sin ser una revisión). */
     public List<EventoNsys> paraRevision(List<EventoNsys> eventos) {
         List<EventoNsys> r = new ArrayList<>(eventos.size());
         for (EventoNsys e : eventos) {
             String lote = ultimoLote(e.batch());
-            r.add(sustituido(e)
-                    ? new EventoNsys(e.imeiSn(), lote, e.fecha(), e.soloDia(), TipoEvento.ESTADO, null, null, null)
-                    : new EventoNsys(e.imeiSn(), lote, e.fecha(), e.soloDia(), e.tipo(), e.de(), e.a(), e.aNsys()));
+            if (!sustituido(e)) r.add(new EventoNsys(e.imeiSn(), lote, e.fecha(), e.soloDia(), e.tipo(), e.de(), e.a(), e.aNsys()));
+            else if (e.tipo() == TipoEvento.ENTRADA && Revision.pendiente(e.a()))
+                r.add(new EventoNsys(e.imeiSn(), lote, e.fecha(), e.soloDia(), TipoEvento.UBICACION,
+                        ultimaCaja(porLoteNuevo.get(e.batch()).loteAnterior()), e.a(), e.aNsys()));
+            else r.add(new EventoNsys(e.imeiSn(), lote, e.fecha(), e.soloDia(), TipoEvento.ESTADO, null, null, null));
         }
         return r;
     }
 
-    /** El móvil de un lote para el rastro: capacidad y color del maestro con el grado de NSYS («512GB Negro · A100») o, si
-     *  no los tiene, el Goods de NSYS y el grado. null si no hay ese lote. */
-    public String descripcion(String batch) {
+    /** La última caja conocida de un lote (su última ubicación o su ubicación), o null. */
+    private String ultimaCaja(String batch) {
         MovilNsys m = lotes.get(batch);
         if (m == null) return null;
-        String grado = m.grade() == null ? "—" : m.grade();
-        if (m.capacidad() != null && m.color() != null) return m.capacidad() + " " + m.color() + " · " + grado;
-        return (m.goods() == null ? "—" : m.goods()) + " · " + grado;
+        return m.ubicacionUltima() != null ? m.ubicacionUltima() : m.ubicacion();
+    }
+
+    /** El móvil antes y después de una corrección: capacidad y color del maestro con el grado de NSYS («512GB Amarillo · A»
+     *  → «512GB Negro · A100») si los dos lotes los tienen, son del mismo modelo y eSIM y el texto cambia; si no, el Goods
+     *  de NSYS y el grado de los dos, que dicen qué cambió. */
+    public Cambio cambio(Correccion k) {
+        MovilNsys viejo = lotes.get(k.loteAnterior());
+        MovilNsys nuevo = lotes.get(k.lote());
+        String de = conMaestro(viejo);
+        String a = conMaestro(nuevo);
+        boolean maestro = de != null && a != null && !de.equals(a)
+                && Objects.equals(viejo.modeloMaestro(), nuevo.modeloMaestro()) && viejo.esEsim() == nuevo.esEsim();
+        return maestro ? new Cambio(de, a) : new Cambio(conGoods(viejo), conGoods(nuevo));
+    }
+
+    private static String conMaestro(MovilNsys m) {
+        return m.capacidad() == null || m.color() == null ? null : m.capacidad() + " " + m.color() + " · " + grado(m);
+    }
+
+    private static String conGoods(MovilNsys m) {
+        return (m.goods() == null ? "—" : m.goods()) + " · " + grado(m);
+    }
+
+    private static String grado(MovilNsys m) {
+        return m.grade() == null ? "—" : m.grade();
     }
 }

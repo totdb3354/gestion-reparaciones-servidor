@@ -253,6 +253,58 @@ class StockTelefonosControllerTest {
         assertEquals("Listos", stock.get(0).get("ubicacion").asText());
     }
 
+    // Revisión final: el lote nuevo entra sin caja (en stock, «En revisión»).
+    private static MovilNsys loteNuevoSinCaja(String grado) {
+        return new MovilNsys("350000000000001", "BT-1345", "Apple iPhone 15 eSIM 512GB Black", grado, "InProcess", "",
+                "Proveedor A", LocalDate.of(2026, 10, 15), null, "i15eSIM512NegroA", "15", "15", "512GB", "Negro", grado, true,
+                "En revisión", "En revisión", EstadoMovil.STOCK, AHORA.minusDays(1), AHORA.minusDays(1));
+    }
+
+    private static List<EventoNsys> correccionSinCaja(EventoNsys... antes) {
+        List<EventoNsys> eventos = new java.util.ArrayList<>(List.of(antes));
+        eventos.add(eventoCorregido("BT-1333", BAJA, TipoEvento.ESTADO, "InProcess", "Removed", null));
+        eventos.add(eventoCorregido("BT-1345", BAJA, TipoEvento.ENTRADA, null, "En revisión", ""));
+        eventos.add(eventoCorregido("BT-1345", BAJA, TipoEvento.REENTRADA, null, "BT-1345", null));
+        return eventos;
+    }
+
+    @Test void siElViejoEstabaEnUnaCajaLaEsperaEmpiezaConLaCorreccion() {
+        when(dao.porImei("350000000000001")).thenReturn(List.of(loteNuevoSinCaja("A"), loteViejoCorregido()));
+        when(dao.eventos("350000000000001")).thenReturn(correccionSinCaja(eventoCorregido("BT-1333",
+                LocalDateTime.of(2026, 10, 13, 8, 46), TipoEvento.UBICACION, "En revisión", "Listos", "CAJA LISTOS")));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertEquals("2026-10-15", ficha.get("pendienteRevisionDesde").asText());
+        assertTrue(ficha.get("revisadoEl").asText().startsWith("2026-10-13T08:46"));
+    }
+
+    @Test void siElViejoYaEstabaPendienteLaEsperaSigue() {
+        MovilNsys viejo = new MovilNsys("350000000000001", "BT-1333", "Apple iPhone 15 eSIM 512GB Yellow", "A", "Removed", "",
+                "Proveedor A", LocalDate.of(2026, 9, 23), null, "i15eSIM512AmarilloA", "15", "15", "512GB", "Amarillo", "A",
+                true, null, "En revisión", EstadoMovil.BAJA, AHORA.minusDays(20), AHORA.minusDays(1));
+        when(dao.porImei("350000000000001")).thenReturn(List.of(loteNuevoSinCaja("A"), viejo));
+        when(dao.eventos("350000000000001")).thenReturn(correccionSinCaja(
+                eventoCorregido("BT-1333", LocalDateTime.of(2026, 10, 13, 8, 46), TipoEvento.UBICACION, "En revisión", "Listos", "CAJA LISTOS"),
+                eventoCorregido("BT-1333", LocalDateTime.of(2026, 10, 14, 9, 1), TipoEvento.UBICACION, "Listos", "En revisión", "")));
+        assertEquals("2026-10-14", json(api.ficha("350000000000001")).get("pendienteRevisionDesde").asText());
+    }
+
+    @Test void elGradoAnteriorCuentaElCambioDeGradoDeLaCorreccion() {
+        MovilNsys viejo = new MovilNsys("350000000000001", "BT-1333", "Apple iPhone 15 eSIM 512GB Yellow", "B", "Removed", "",
+                "Proveedor A", LocalDate.of(2026, 9, 23), null, "i15eSIM512AmarilloB", "15", "15", "512GB", "Amarillo", "B",
+                true, null, "Listos", EstadoMovil.BAJA, AHORA.minusDays(20), AHORA.minusDays(1));
+        when(dao.porImei("350000000000001")).thenReturn(List.of(loteNuevoSinCaja("A"), viejo));
+        when(dao.eventos("350000000000001")).thenReturn(correccionSinCaja(
+                eventoCorregido("BT-1333", LocalDateTime.of(2026, 10, 5, 9, 1), TipoEvento.GRADO, "C", "B", null)));
+        assertEquals("B", json(api.ficha("350000000000001")).get("gradoAnterior").asText());
+    }
+
+    @Test void laFichaEnsenaElUltimoLoteDeLaCadenaAunqueElOrdenEmpate() {
+        // En la primera carga los lotes pueden llegar con el viejo delante.
+        when(dao.porImei("350000000000001")).thenReturn(List.of(loteViejoCorregido(), loteNuevoSinCaja("A")));
+        when(dao.eventos("350000000000001")).thenReturn(correccionSinCaja());
+        assertEquals("BT-1345", json(api.ficha("350000000000001")).get("lote").asText());
+    }
+
     @Test void fichaDeUnImeiQueNsysNoConoceEs404() {
         when(dao.porImei("x")).thenReturn(List.of());
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.ficha("x"));
