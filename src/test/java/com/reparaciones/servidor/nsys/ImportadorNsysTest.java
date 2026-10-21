@@ -32,7 +32,8 @@ class ImportadorNsysTest {
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 10, 16, 9, 5);
     private final ClienteDrive drive = mock(ClienteDrive.class);
     private final NsysDAO dao = mock(NsysDAO.class);
-    private final ImportadorNsys importador = new ImportadorNsys(drive, dao, "carpeta-1", "maestro-1",
+    private final TallerNsys taller = mock(TallerNsys.class);
+    private final ImportadorNsys importador = new ImportadorNsys(drive, dao, taller, "carpeta-1", "maestro-1",
             Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     @BeforeEach void base() throws Exception {
@@ -175,12 +176,14 @@ class ImportadorNsysTest {
         verify(drive, never()).descargar("maestro-1");
         verify(dao, never()).reemplazarProductos(any());
         verify(dao, never()).aplicar(any(), any());
+        verify(taller, never()).cerrar();
     }
 
     @Test void sinCarpetaNoHaceNada() {
-        new ImportadorNsys(drive, dao, "", "", Clock.systemUTC()).pasada();
+        new ImportadorNsys(drive, dao, taller, "", "", Clock.systemUTC()).pasada();
         verifyNoInteractions(drive);
         verifyNoInteractions(dao);
+        verifyNoInteractions(taller);
     }
 
     private static ClienteDrive.FicheroDrive subidoA(String nombre, String instante) {
@@ -197,7 +200,7 @@ class ImportadorNsysTest {
         verify(drive, never()).descargar(anyString());
         verify(dao, never()).empezarImportacion(anyString(), any(), anyString(), any());
 
-        ImportadorNsys tresMinutosDespues = new ImportadorNsys(drive, dao, "carpeta-1", "maestro-1",
+        ImportadorNsys tresMinutosDespues = new ImportadorNsys(drive, dao, taller, "carpeta-1", "maestro-1",
                 Clock.fixed(AHORA.plusMinutes(3).atZone(MADRID).toInstant(), MADRID));
         tresMinutosDespues.pasada();
         verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
@@ -281,7 +284,7 @@ class ImportadorNsysTest {
         verify(drive, never()).descargar(anyString());
         verify(dao, never()).empezarImportacion(anyString(), any(), anyString(), any());
 
-        new ImportadorNsys(drive, dao, "carpeta-1", "maestro-1",
+        new ImportadorNsys(drive, dao, taller, "carpeta-1", "maestro-1",
                 Clock.fixed(AHORA.plusMinutes(3).atZone(MADRID).toInstant(), MADRID)).pasada();
         InOrder orden = inOrder(drive);
         orden.verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
@@ -450,5 +453,45 @@ class ImportadorNsysTest {
         assertEquals(Optional.empty(), ImportadorNsys.fechaDelNombre("Items_2026.13.40_25.99.xlsx"));
         assertEquals(Optional.empty(), ImportadorNsys.fechaDelNombre("Items_2026.10.16_09.01 (1).xlsx"));
         assertEquals(Optional.empty(), ImportadorNsys.fechaDelNombre(null));
+    }
+
+    // ---------------------------------------------------------------- 0.9.21: cierre de lo del taller (spec §2.2)
+
+    @Test void trasCadaItemsOkSeCierraLoDelTaller() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx"),
+                enDrive("Items_2026.10.16_09.31.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        InOrder orden = inOrder(dao, taller);
+        orden.verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
+        orden.verify(taller).cerrar();
+        orden.verify(dao).terminarImportacion(eq(2), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
+        orden.verify(taller).cerrar();
+    }
+
+    @Test void unItemsRechazadoNoCierraNada() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 70);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(30));
+
+        importador.pasada();
+
+        verify(taller, never()).cerrar();
+    }
+
+    @Test void siElCierreFallaLaImportacionSigueOkYSigueConElSiguiente() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx"),
+                enDrive("Items_2026.10.16_09.31.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        when(taller.cerrar()).thenThrow(new RuntimeException("la base de datos no responde"));
+
+        importador.pasada();
+
+        verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
+        verify(dao, times(2)).aplicar(any(), anyInt());
     }
 }
