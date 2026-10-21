@@ -2,6 +2,7 @@ package com.reparaciones.servidor.nsys;
 
 import com.reparaciones.servidor.util.CatalogoPiezas;
 
+import java.text.Normalizer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -91,7 +92,7 @@ public final class ColorChasis {
         return normalizar(resto);
     }
 
-    /** El nombre en inglés de un Goods: lo que va detrás de la capacidad, sin un «eSIM» final («Apple iPhone 13 128GB
+    /** El nombre en inglés de un Goods: lo que va detrás de la capacidad, sin un «eSIM» al principio ni al final («Apple iPhone 13 128GB
      *  (PRODUCT)RED» → productred). null si el Goods no lleva la capacidad o no queda nada. */
     static String nombreDelGoods(String goods, String capacidad) {
         if (goods == null || capacidad == null) return null;
@@ -100,13 +101,15 @@ public final class ColorChasis {
         int i = cap.isEmpty() ? -1 : g.lastIndexOf(cap);
         if (i < 0) return null;
         String nombre = g.substring(i + cap.length());
+        if (nombre.startsWith("esim")) nombre = nombre.substring("esim".length());
         if (nombre.endsWith("esim")) nombre = nombre.substring(0, nombre.length() - "esim".length());
         return nombre.isEmpty() ? null : nombre;
     }
 
-    /** En minúsculas y solo letras y cifras («Sierra Blue» → sierrablue). */
+    /** En minúsculas, sin tildes y solo letras y cifras («Sierra Blue» → sierrablue, «Pacífico» → pacifico). */
     static String normalizar(String texto) {
-        return texto == null ? "" : texto.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        return texto == null ? "" : Normalizer.normalize(texto.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").replaceAll("[^a-z0-9]", "");
     }
 
     private List<String> candidatos(Predicate<String> encaja) {

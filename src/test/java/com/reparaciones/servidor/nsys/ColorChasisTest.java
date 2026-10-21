@@ -83,4 +83,27 @@ class ColorChasisTest {
     @Test void sinModeloEnElMaestroNoHayCandidatos() {
         assertEquals(Optional.empty(), ColorChasis.de(List.of(), Map.of(), "128GB", Map.of()).deducir("chai13red"));
     }
+
+    @Test void unEsimEntreLaCapacidadYElColorSeQuita() {
+        assertEquals("black", ColorChasis.nombreDelGoods("Apple iPhone 15 128GB eSIM Black", "128GB"));
+        ColorChasis quince = ColorChasis.de(List.of("Negro", "Azul"),
+                Map.of("Negro", "Apple iPhone 15 128GB eSIM Black", "Azul", "Apple iPhone 15 128GB eSIM Blue"), "128GB", Map.of());
+        assertEquals(Optional.of("Negro"), quince.deducir("chai15black"));
+    }
+
+    @Test void lasTildesSePliegan() {
+        assertEquals("azulpacifico", ColorChasis.normalizar("Azul Pacífico"));
+        ColorChasis c = ColorChasis.de(List.of("Azul Pacífico"), Map.of("Azul Pacífico", "Apple iPhone 12 128GB Pacific Blue"),
+                "128GB", Map.of("pacífico", "Pacific Blue"));
+        assertEquals(Optional.of("Azul Pacífico"), c.deducir("chai12pacifico"));
+    }
+
+    @Test void modelosDeVariasPalabras() {
+        assertEquals("sierrablue", ColorChasis.token("chai13promaxsierrablue"));
+        assertEquals("sierrablue", ColorChasis.nombreDelGoods("Apple iPhone 13 Pro Max 128GB Sierra Blue", "128GB"));
+        assertEquals("red", ColorChasis.token("chai13miniredesim"));
+        assertEquals("black", ColorChasis.token("chai15plusblack"));
+        assertEquals("blue", ColorChasis.token("chaiairblue"));
+        assertDoesNotThrow(() -> ColorChasis.token("chaixyz99red"));
+    }
 }
