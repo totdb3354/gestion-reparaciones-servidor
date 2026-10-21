@@ -37,6 +37,12 @@ class LoQueValeTest {
         assertEquals("i13128AzulA100", v.sku());
     }
 
+    @Test void siHayDosVigentesDelMismoDatoGanaElDeMayorId() {
+        LoQueVale.Valor v = LoQueVale.de(AZUL_B, List.of(vigente(1, IMEI, COLOR, "Rojo", "Azul"),
+                vigente(3, IMEI, COLOR, "Azul", "Azul"), vigente(2, IMEI, COLOR, "Verde", "Azul")), () -> MAESTRO);
+        assertEquals("Azul", v.color());
+    }
+
     @Test void conLosDos() {
         LoQueVale.Valor v = LoQueVale.de(AZUL_B, List.of(vigente(1, IMEI, COLOR, "Rojo", "Azul"),
                 vigente(2, IMEI, GRADO, "A100", "B")), () -> MAESTRO);

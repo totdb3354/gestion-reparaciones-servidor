@@ -170,10 +170,11 @@ public class StockTelefonosController {
                 v.porPasar() ? v.grade() : null);
     }
 
-    /** NSYS, los trabajos del taller y, desde la 0.9.21, los cambios del taller por encima de NSYS. */
+    /** NSYS, los trabajos del taller y, desde la 0.9.21, los cambios del taller por encima de NSYS y sus avisos. */
     @GetMapping("/{imeiSn}/rastro")
     public List<EventoRastro> rastro(@PathVariable String imeiSn) {
-        return Rastro.unir(dao.porImei(imeiSn), dao.eventos(imeiSn), dao.trabajos(imeiSn), taller.cambios(imeiSn), taller.avisos(imeiSn));
+        return Rastro.unir(dao.porImei(imeiSn), dao.eventos(imeiSn), dao.trabajos(imeiSn), taller.cambios(imeiSn),
+                taller.avisos(imeiSn));
     }
 
     /** «Por pasar a NSYS» (spec 0.9.21 §2.4): lo que hay que cambiar a mano en NSYS, de cualquier modelo. */

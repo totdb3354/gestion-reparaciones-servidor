@@ -218,6 +218,22 @@ class TallerReparacionesTest {
                 servicio.previsualizar(new PeticionPreviaTaller(IMEI, List.of(new FilaPreviaTaller(null, 111, false)))));
     }
 
+    @Test void previsualizarRechazaDemasiadasFilas() {
+        List<FilaPreviaTaller> muchas = java.util.Collections.nCopies(51, new FilaPreviaTaller(null, 131, false));
+        org.springframework.web.server.ResponseStatusException e = assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> servicio.previsualizar(new PeticionPreviaTaller(IMEI, muchas)));
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, e.getStatusCode());
+    }
+
+    @Test void previsualizarIgnoraLasFilasNulas() {
+        List<FilaPreviaTaller> filas = new java.util.ArrayList<>();
+        filas.add(null);
+        filas.add(new FilaPreviaTaller(null, 131, false));
+        assertEquals(new PreviaTaller(true, new ValoresTaller("Azul", "B"), new ValoresTaller("Rojo", "A"), false, false),
+                servicio.previsualizar(new PeticionPreviaTaller(IMEI, filas)));
+    }
+
     @Test void previsualizarUnImeiQueNsysNoConoce() {
         when(nsys.porImei("350000000000099")).thenReturn(List.of());
         assertEquals(PreviaTaller.FUERA_DE_NSYS, servicio.previsualizar(new PeticionPreviaTaller("350000000000099", List.of())));

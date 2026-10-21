@@ -350,7 +350,7 @@ public class NsysDAO {
     /** Las filas llegan por color y, dentro de cada uno, de la más usada a la menos: vale la primera. */
     static Map<String, String> primeroDeCadaColor(List<GoodsDeColor> filas) {
         Map<String, String> mapa = new LinkedHashMap<>();
-        for (GoodsDeColor f : filas) mapa.putIfAbsent(f.color(), f.goods());
+        for (GoodsDeColor f : filas) mapa.putIfAbsent(f.color() == null ? null : f.color().strip(), f.goods());
         return mapa;
     }
 

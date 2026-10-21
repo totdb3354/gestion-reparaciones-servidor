@@ -289,6 +289,12 @@ class NsysDAOTest {
                         new NsysDAO.GoodsDeColor("Rojo", "Apple iPhone 13 128GB (PRODUCT)RED"))));
     }
 
+    @Test void losColoresSeUsanSinEspaciosALosLados() {
+        assertEquals(Map.of("Azul", "Apple iPhone 13 128GB Blue"),
+                NsysDAO.primeroDeCadaColor(List.of(new NsysDAO.GoodsDeColor(" Azul ", "Apple iPhone 13 128GB Blue"),
+                        new NsysDAO.GoodsDeColor("Azul", "Apple iPhone 13 128GB Azul"))));
+    }
+
     @Test void sinModeloEnElMaestroNoSeBuscaProducto() {
         assertTrue(dao.goodsMasUsados(TallerDePrueba.sinMaestro("350000000000001", "B")).isEmpty());
         verifyNoInteractions(jdbc);

@@ -2,7 +2,9 @@ package com.reparaciones.servidor.nsys;
 
 import com.reparaciones.servidor.dao.ColorEquivalenciaDAO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -11,6 +13,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -22,6 +25,9 @@ import java.util.function.Supplier;
  *  cambian nada. Lo llama GuardadoReparacion dentro de la transacción de la reparación. */
 @Service
 public class TallerReparaciones {
+
+    /** Tope de filas de la previsualizacion (la abre cualquier tecnico). */
+    static final int MAX_FILAS_PREVIA = 50;
 
     /** Una fila guardada de una reparación: la R… (null en la previsualización), su componente y si es reutilizada. */
     public record PiezaGuardada(String idRep, int idCom, boolean reutilizada) {}
@@ -130,11 +136,16 @@ public class TallerReparaciones {
      *  suyo y se aplica la nueva, como en «Guardar cambios»; el formulario edita una a la vez) y después las filas nuevas,
      *  juntas, como un guardado. */
     public PreviaTaller previsualizar(PeticionPreviaTaller peticion) {
+        if (peticion != null && peticion.filas() != null && peticion.filas().size() > MAX_FILAS_PREVIA) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Demasiadas filas para previsualizar (maximo " + MAX_FILAS_PREVIA + ")");
+        }
         String imei = peticion == null || peticion.imei() == null ? "" : peticion.imei().strip();
         Optional<MovilNsys> movil = imei.isEmpty() ? Optional.empty() : masReciente(imei);
         if (movil.isEmpty()) return PreviaTaller.FUERA_DE_NSYS;
         MovilNsys m = movil.get();
-        List<FilaPreviaTaller> filas = peticion.filas() == null ? List.of() : peticion.filas();
+        List<FilaPreviaTaller> filas = peticion.filas() == null ? List.of()
+                : peticion.filas().stream().filter(Objects::nonNull).toList();
         List<CambioTaller> todos = tallerDao.deImei(m.imeiSn());
         List<CambioTaller> vigentes = todos.stream().filter(c -> c.estado() == CambioTaller.Estado.VIGENTE).toList();
         ValoresTaller antes = new ValoresTaller(LoQueVale.valor(vigentes, DatoTaller.COLOR, m),

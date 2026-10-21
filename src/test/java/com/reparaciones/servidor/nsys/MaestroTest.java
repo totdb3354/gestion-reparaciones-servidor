@@ -37,6 +37,14 @@ class MaestroTest {
         assertEquals("i13128AzulB", new Maestro(List.of(conflicto, producto("Blue", "Azul", "B"))).sku(AZUL, "Azul", "B"));
     }
 
+    @Test void unSkuEnBlancoNoCuenta() {
+        ProductoMaestro blanco = new ProductoMaestro("blanco", "13", "13", "128GB", "Azul", "B", "  ", null, null, false);
+        assertNull(new Maestro(List.of(blanco)).sku(AZUL, "Azul", "B"));
+        assertEquals("i13128AzulB", new Maestro(List.of(blanco, producto("Blue", "Azul", "B"))).sku(AZUL, "Azul", "B"));
+        assertTrue(new Maestro(List.of(blanco)).skus(AZUL).isEmpty());
+        assertEquals(1, new Maestro(List.of(blanco, producto("Blue", "Azul", "B"))).skus(AZUL).size());
+    }
+
     @Test void sinModeloEnElMaestroNiSkuNiColores() {
         Maestro maestro = new Maestro(List.of(producto("Blue", "Azul", "B")));
         MovilNsys sin = sinMaestro("350000000000001", "B");

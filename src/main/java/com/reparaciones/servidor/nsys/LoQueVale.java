@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.nsys;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -40,9 +41,9 @@ public final class LoQueVale {
                 true);
     }
 
-    /** Lo que vale de un dato: lo del taller vigente o, si no hay, lo de NSYS. */
+    /** Lo que vale de un dato: lo del taller vigente (si hubiera dos, el de mayor id: la última corrección manda) o, si no hay, lo de NSYS. */
     static String valor(List<CambioTaller> vigentes, DatoTaller dato, MovilNsys m) {
-        return vigentes.stream().filter(c -> c.dato() == dato && c.valor() != null).map(CambioTaller::valor).findFirst()
+        return vigentes.stream().filter(c -> c.dato() == dato && c.valor() != null).max(Comparator.comparingInt(CambioTaller::id)).map(CambioTaller::valor)
                 .orElse(dato.deNsys(m));
     }
 

@@ -28,7 +28,7 @@ public final class Maestro {
     public String sku(MovilNsys m, String color, String grado) {
         List<String> skus = delModelo(m)
                 .filter(p -> Normalizacion.mismoTexto(p.color(), color) && Normalizacion.mismoTexto(p.calidadDetalle(), grado))
-                .map(ProductoMaestro::skuWeb).filter(Objects::nonNull).distinct().toList();
+                .map(ProductoMaestro::skuWeb).filter(s -> s != null && !s.isBlank()).distinct().toList();
         return skus.size() == 1 ? skus.get(0) : null;
     }
 
@@ -44,7 +44,7 @@ public final class Maestro {
         delModelo(m).filter(p -> p.color() != null && p.calidadDetalle() != null).forEach(p -> {
             Set<String> skus = porCombinacion.computeIfAbsent(List.of(p.color().strip(), p.calidadDetalle().strip()),
                     k -> new LinkedHashSet<>());
-            if (p.skuWeb() != null) skus.add(p.skuWeb());
+            if (p.skuWeb() != null && !p.skuWeb().isBlank()) skus.add(p.skuWeb());
         });
         return porCombinacion.entrySet().stream().filter(e -> e.getValue().size() == 1)
                 .map(e -> new SkuMaestro(e.getKey().get(0), e.getKey().get(1), e.getValue().iterator().next())).toList();

@@ -2,13 +2,16 @@
 -- migracion-sku-taller.sql — 0.9.21, SKU del taller (piezas 1 y 2)
 -- (spec docs/superpowers/specs/2026-10-21-v0921-sku-del-taller-base-design.md §4, raíz).
 -- La aplica el usuario a mano en la VM, con vista previa, ANTES de desplegar el
--- servidor 0.9.21. Aditiva: el servidor y la web anteriores no usan esta tabla.
+-- servidor 0.9.21. Aditiva: el servidor y la web anteriores no usan estas tablas.
 -- NO idempotente (relanzar = error de tabla existente).
 -- 1) Vista previa: el SELECT debe devolver 0 (no existe).
 -- 2) Ejecutar los dos CREATE TABLE (Taller_cambio y Taller_aviso).
+-- 3) Comprobación final: CREADAS debe dar 2.
+-- Vuelta atrás: primero el servidor anterior; nunca DROP de estas tablas con el servidor 0.9.21 en marcha.
 -- FECHA y CERRADO_EN van en hora de Madrid, como el espejo de NSYS: las pone el servidor.
 -- ══════════════════════════════════════════════════════════════════════════════
 USE gestion_reparaciones;
+SET NAMES utf8mb4;
 
 -- Vista previa (no modifica nada): debe dar 0
 SELECT COUNT(*) AS YA_EXISTE
@@ -61,3 +64,7 @@ CREATE TABLE Taller_aviso (
     KEY idx_taller_aviso_rep (ID_REP),
     CONSTRAINT fk_taller_aviso_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
+
+-- Comprobación final (no modifica nada): debe dar 2; si no, NO desplegar el servidor 0.9.21 (sin estas tablas falla
+-- el guardado de reparaciones entero).
+SELECT COUNT(*) AS CREADAS FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME IN ('Taller_cambio', 'Taller_aviso');
