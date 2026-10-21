@@ -347,6 +347,14 @@ public class ReparacionDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    /** Bloquea la fila de una reparación (FOR UPDATE, hasta el final de la transacción del que llama) y devuelve su IMEI, o
+     *  vacío si no existe. GuardadoReparacion la usa para saber el móvil antes de coger su candado: una lectura bloqueante
+     *  no fija la foto de REPEATABLE READ (0.9.21, SKU del taller). */
+    public Optional<String> bloquearReparacion(String idRep) {
+        return jdbc.query("SELECT IMEI FROM Reparacion WHERE ID_REP = ? FOR UPDATE", (rs, row) -> rs.getString(1), idRep)
+                .stream().findFirst();
+    }
+
     /** ID_TEC de una fila de Reparacion (asignación abierta o cerrada), o {@code null} si no existe.
      *  Lo usa PropiedadAsignacion para saber de quién es la asignación antes de escribir. */
     public Integer getIdTecDeAsignacion(String idAsignacion) {
@@ -1393,7 +1401,18 @@ public class ReparacionDAO {
                 "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ID_REP,'_',-1) AS UNSIGNED)),0)+1" +
                 " FROM Reparacion WHERE ID_REP LIKE ? FOR UPDATE",
                 Integer.class, like);
-        return prefijo + hoy + "_" + (n != null ? n : 1);
+        int siguiente = n != null ? n : 1;
+        if ("R".equals(prefijo)) {
+            // 0.9.21 (SKU del taller): una R… borrada deja su historia en Taller_cambio y Taller_aviso con su ID_REP; si
+            // el ID se repitiera, el taller confundiría la nueva con la borrada. Sin bloquear: esas filas ya están confirmadas.
+            Integer t = jdbc.queryForObject(
+                    "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ID_REP,'_',-1) AS UNSIGNED)),0)+1 FROM (" +
+                    "SELECT ID_REP FROM Taller_cambio WHERE ID_REP LIKE ?" +
+                    " UNION ALL SELECT ID_REP FROM Taller_aviso WHERE ID_REP LIKE ?) t",
+                    Integer.class, like, like);
+            if (t != null) siguiente = Math.max(siguiente, t);
+        }
+        return prefijo + hoy + "_" + siguiente;
     }
 
     private void ensureTelefono(String imei) {

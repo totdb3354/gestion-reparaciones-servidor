@@ -21,13 +21,15 @@ class ReparacionDAOCreadasTest {
     private static final String IMEI = "355400000000111";
     private static final String HOY = LocalDate.now(ZoneId.of("Europe/Madrid")).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
 
-    /** Deja pasar las comprobaciones y numera los ID_REP como la base de datos: 1, 2, 3… */
+    /** Deja pasar las comprobaciones y numera los ID_REP como la base de datos: 1, 2, 3… (el taller, sin historia: da 1). */
     private static ReparacionDAO dao() {
         AtomicInteger siguiente = new AtomicInteger();
         JdbcTemplate jdbc = mock(JdbcTemplate.class, invocacion -> {
             String metodo = invocacion.getMethod().getName();
-            if (metodo.equals("queryForObject"))
-                return String.valueOf((Object) invocacion.getArgument(0)).contains("SUBSTRING_INDEX") ? siguiente.incrementAndGet() : 1;
+            if (metodo.equals("queryForObject")) {
+                String sql = String.valueOf((Object) invocacion.getArgument(0));
+                return sql.contains("SUBSTRING_INDEX") && !sql.contains("Taller_") ? siguiente.incrementAndGet() : 1;
+            }
             if (metodo.equals("update")) return 1;
             if (metodo.equals("queryForMap")) return new HashMap<String, Object>();
             return RETURNS_DEFAULTS.answer(invocacion);

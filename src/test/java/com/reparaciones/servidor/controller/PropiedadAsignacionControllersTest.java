@@ -53,6 +53,7 @@ class PropiedadAsignacionControllersTest {
 
     @Test void completaConAsignacionUsaElTecnicoDelTokenEIgnoraElDelCuerpo() {
         when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.insertarCompleta(filas, IMEI, 4, null, ASIG, null)).thenReturn(List.of("R20260916_5"));   // una R… por fila con uso
         ctl.insertarCompleta(new ReparacionController.InsertarCompletaRequest(filas, IMEI, 9, null, ASIG, null), tecnico, null);
         verify(dao).insertarCompleta(filas, IMEI, 4, null, ASIG, null);
         verify(dao).getNombreTecnicoById(4);          // el log nombra al técnico efectivo
@@ -72,6 +73,7 @@ class PropiedadAsignacionControllersTest {
     }
 
     @Test void completaSinAsignacionExigeSupertecnicoYConservaElIdTecDelCuerpo() {
+        when(dao.insertarCompleta(filas, IMEI, 4, null, null, "R")).thenReturn(List.of("R20260916_5"));   // una R… por fila con uso
         ctl.insertarCompleta(new ReparacionController.InsertarCompletaRequest(filas, IMEI, 4, null, null, "R"), supertecnico, null);
         verify(dao).insertarCompleta(filas, IMEI, 4, null, null, "R");   // técnico original, no el 3 del token
         verify(dao).getNombreTecnicoById(4);

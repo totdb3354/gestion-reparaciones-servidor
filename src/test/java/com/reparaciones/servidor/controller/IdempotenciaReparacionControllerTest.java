@@ -84,6 +84,7 @@ class IdempotenciaReparacionControllerTest {
 
     @Test void completaConLaMismaClaveLlamaAlDaoUnaVezYLogueaUnaVez() {
         when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.insertarCompleta(filas, IMEI, 4, null, ASIG, null)).thenReturn(List.of("R20260916_5"));   // una R… por fila con uso
 
         ctl.insertarCompleta(new ReparacionController.InsertarCompletaRequest(filas, IMEI, 9, null, ASIG, null),
                 tecnico, CLAVE);
@@ -161,6 +162,7 @@ class IdempotenciaReparacionControllerTest {
 
     @Test void siElLogFallaTrasCompletarElReintentoNoVuelveADescontar() {
         when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.insertarCompleta(filas, IMEI, 4, null, ASIG, null)).thenReturn(List.of("R20260916_5"));   // una R… por fila con uso
         RuntimeException falloLog = new RuntimeException("fallo de log");
         doThrow(falloLog).when(logDao).insertar(eq(8), any(), any());
 

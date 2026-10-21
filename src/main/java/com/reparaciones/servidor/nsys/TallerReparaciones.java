@@ -45,6 +45,13 @@ public class TallerReparaciones {
 
     // ---------------------------------------------------------------- al guardar (spec §2.1)
 
+    /** El candado del móvil ({@link TallerDAO#bloquear}). GuardadoReparacion lo pide lo primero de su transacción, antes de
+     *  cualquier lectura normal (por qué, allí); aplicar y deshacer lo vuelven a pedir, y repetirlo no cuesta nada. false si
+     *  NSYS no conoce el IMEI. */
+    public boolean bloquear(String imei) {
+        return tallerDao.bloquear(imei);
+    }
+
     /** Un guardado: las R… de una misma llamada («Terminar asignación», «✓ Guardar fila» o una fila editada), en el orden de
      *  sus filas. Cada R… que cambia algo crea sus propios cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. */
     public void aplicar(String imei, List<PiezaGuardada> guardado, int idUsu) {

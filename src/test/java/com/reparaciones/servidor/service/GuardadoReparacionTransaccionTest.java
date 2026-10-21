@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.service;
 
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.model.FilaReparacion;
 import com.reparaciones.servidor.nsys.AvisoTaller;
 import com.reparaciones.servidor.nsys.TallerReparaciones;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,11 +67,20 @@ class GuardadoReparacionTransaccionTest {
         when(dataSource.getConnection()).thenReturn(connection);
     }
 
+    /** Una fila con uso real: el DAO crea una reparación por cada una. */
+    private static FilaReparacion uso(int idCom) {
+        FilaReparacion f = new FilaReparacion();
+        f.idCom = idCom;
+        f.cantidad = 1;
+        return f;
+    }
+
     @Test void siElTallerFallaLaReparacionTampocoQueda() throws SQLException {
         when(dao.insertarCompleta(any(), any(), anyInt(), any(), any(), any())).thenReturn(List.of("R1"));
         doThrow(new DataAccessResourceFailureException("BD caída")).when(taller).aplicar(any(), any(), anyInt());
         assertThrows(DataAccessResourceFailureException.class,
-                () -> guardado.insertarCompleta(List.of(), IMEI, 4, null, "A1", null, 8));
+                () -> guardado.insertarCompleta(List.of(uso(131)), IMEI, 4, null, "A1", null, 8));
+        verify(taller).aplicar(IMEI, List.of(new TallerReparaciones.PiezaGuardada("R1", 131, false)), 8);
         verify(connection).rollback();
         verify(connection, never()).commit();
     }
@@ -79,7 +89,8 @@ class GuardadoReparacionTransaccionTest {
         when(dao.insertarCompleta(any(), any(), anyInt(), any(), any(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Stock insuficiente"));
         assertThrows(ResponseStatusException.class, () -> guardado.insertarCompleta(List.of(), IMEI, 4, null, "A1", null, 8));
-        verifyNoInteractions(taller);
+        verify(taller).bloquear(IMEI);
+        verifyNoMoreInteractions(taller);
         verify(connection).rollback();
     }
 

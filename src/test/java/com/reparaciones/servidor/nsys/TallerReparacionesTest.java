@@ -101,6 +101,14 @@ class TallerReparacionesTest {
         verify(taller, never()).bloquear(any());
     }
 
+    @Test void elCandadoDelMovilEsElDelTaller() {
+        assertTrue(servicio.bloquear(IMEI));
+        assertFalse(servicio.bloquear("359999999999999"));
+        verify(taller).bloquear(IMEI);
+        verify(taller).bloquear("359999999999999");
+        verifyNoInteractions(nsys, colores);
+    }
+
     // ---------------------------------------------------------------- editar y borrar (spec §2.3)
 
     @Test void deshacerUnVigenteQueSustituyoAOtroDevuelveElAnterior() {
