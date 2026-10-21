@@ -59,4 +59,13 @@ class NormalizacionTest {
         assertFalse(Normalizacion.bateriaNueva("B"));
         assertFalse(Normalizacion.bateriaNueva("100"));
     }
+
+    // ---------------------------------------------------------------- 0.9.21: SKU del taller
+
+    @Test void mismoTextoSinEspaciosALosLadosYNullComoVacio() {
+        assertTrue(Normalizacion.mismoTexto(" A100 ", "A100"));
+        assertTrue(Normalizacion.mismoTexto(null, ""));
+        assertFalse(Normalizacion.mismoTexto("A100", "a100"), "el grado distingue mayúsculas, como en NSYS");
+        assertFalse(Normalizacion.mismoTexto("Azul", null));
+    }
 }
