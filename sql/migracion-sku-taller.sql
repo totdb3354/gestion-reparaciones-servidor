@@ -36,6 +36,7 @@ CREATE TABLE Taller_cambio (
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_taller_cambio_imei (IMEI_SN, DATO, ESTADO),
     KEY idx_taller_cambio_estado (ESTADO),
+    KEY idx_taller_cambio_rep (ID_REP),
     CONSTRAINT fk_taller_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
     CONSTRAINT fk_taller_cambio_anterior FOREIGN KEY (ID_CAMBIO_ANTERIOR) REFERENCES Taller_cambio (ID_CAMBIO)
 );
@@ -57,5 +58,6 @@ CREATE TABLE Taller_aviso (
     FECHA      DATETIME     NOT NULL,
     PRIMARY KEY (ID_AVISO),
     KEY idx_taller_aviso_imei (IMEI_SN, FECHA),
+    KEY idx_taller_aviso_rep (ID_REP),
     CONSTRAINT fk_taller_aviso_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
