@@ -293,4 +293,16 @@ class NsysDAOTest {
         assertTrue(dao.goodsMasUsados(TallerDePrueba.sinMaestro("350000000000001", "B")).isEmpty());
         verifyNoInteractions(jdbc);
     }
+
+    // ---------------------------------------------------------------- 0.9.21: corrección en NSYS
+
+    @SuppressWarnings("unchecked")
+    @Test void losLotesDeLosImeisConVariosYLasBajasConHoraSeLeenDeUnaVez() {
+        dao.lotesDeImeisConVarios();
+        verify(jdbc).query(and(contains("FROM Nsys_movil WHERE IMEI_SN IN"), contains("GROUP BY IMEI_SN HAVING COUNT(*) > 1")),
+                any(RowMapper.class));
+        dao.bajasConHora();
+        verify(jdbc).query(and(contains("FROM Nsys_evento"), contains("TIPO = 'ESTADO' AND A = 'Removed' AND NOT SOLO_DIA")),
+                any(RowMapper.class));
+    }
 }

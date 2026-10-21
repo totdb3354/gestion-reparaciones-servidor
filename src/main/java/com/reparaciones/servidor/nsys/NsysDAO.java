@@ -263,13 +263,30 @@ public class NsysDAO {
         return moviles;
     }
 
+    static final String COLUMNAS_EVENTO = "IMEI_SN, BATCH, FECHA, SOLO_DIA, TIPO, DE, A, A_NSYS";
+
+    /** De los IMEI/SN con más de un lote, todos sus lotes (0.9.21, corrección en NSYS): para las cadenas del stock, de una
+     *  vez y sin leer IMEI a IMEI. */
+    public List<MovilNsys> lotesDeImeisConVarios() {
+        return jdbc.query("SELECT " + COLUMNAS_MOVIL + " FROM Nsys_movil WHERE IMEI_SN IN"
+                + " (SELECT IMEI_SN FROM Nsys_movil GROUP BY IMEI_SN HAVING COUNT(*) > 1)", NsysDAO::movil);
+    }
+
+    /** Las bajas con hora (ESTADO → Removed, no del esqueleto), por orden (0.9.21, corrección en NSYS). */
+    public List<EventoNsys> bajasConHora() {
+        return jdbc.query("SELECT " + COLUMNAS_EVENTO + " FROM Nsys_evento"
+                + " WHERE TIPO = 'ESTADO' AND A = 'Removed' AND NOT SOLO_DIA ORDER BY FECHA, ID_EVENTO", NsysDAO::evento);
+    }
+
     public List<EventoNsys> eventos(String imeiSn) {
-        return jdbc.query("SELECT IMEI_SN, BATCH, FECHA, SOLO_DIA, TIPO, DE, A, A_NSYS FROM Nsys_evento WHERE IMEI_SN = ?"
-                        + " ORDER BY FECHA, ID_EVENTO",
-                (rs, n) -> new EventoNsys(rs.getString("IMEI_SN"), rs.getString("BATCH"),
-                        rs.getTimestamp("FECHA").toLocalDateTime(), rs.getBoolean("SOLO_DIA"),
-                        TipoEvento.valueOf(rs.getString("TIPO")), rs.getString("DE"), rs.getString("A"),
-                        rs.getString("A_NSYS")), imeiSn);
+        return jdbc.query("SELECT " + COLUMNAS_EVENTO + " FROM Nsys_evento WHERE IMEI_SN = ? ORDER BY FECHA, ID_EVENTO",
+                NsysDAO::evento, imeiSn);
+    }
+
+    static EventoNsys evento(ResultSet rs, int n) throws SQLException {
+        return new EventoNsys(rs.getString("IMEI_SN"), rs.getString("BATCH"), rs.getTimestamp("FECHA").toLocalDateTime(),
+                rs.getBoolean("SOLO_DIA"), TipoEvento.valueOf(rs.getString("TIPO")), rs.getString("DE"), rs.getString("A"),
+                rs.getString("A_NSYS"));
     }
 
     /** Los trabajos del taller de un IMEI (asignaciones A… y trabajos hechos R/G/P), con el nombre del técnico. Sus horas

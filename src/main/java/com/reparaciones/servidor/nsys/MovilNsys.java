@@ -25,6 +25,13 @@ public record MovilNsys(String imeiSn, String batch, String goods, String grade,
                 vistoPrimero, cambiado);
     }
 
+    /** El mismo lote con otra fecha de recepción (0.9.21: la del primer lote de su cadena de correcciones). */
+    public MovilNsys conRecepcion(LocalDate recepcion) {
+        return new MovilNsys(imeiSn, batch, goods, grade, status, location, supplier, recepcion, soldDate, sku, modelo,
+                modeloMaestro, capacidad, color, gradoDetalle, esEsim, ubicacion, ubicacionUltima, estado, vistoPrimero,
+                cambiado);
+    }
+
     /** Igual salvo las fechas de seguimiento (VISTO_PRIMERO y CAMBIADO). */
     public boolean mismoContenido(MovilNsys otro) {
         return otro != null && conFechas(null, null).equals(otro.conFechas(null, null));
