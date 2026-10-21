@@ -117,4 +117,27 @@ class EfectoTallerTest {
         assertEquals("B", r.gradoDespues());
         assertTrue(r.pasos().isEmpty());
     }
+
+    @Test void siElChasisNoDeduceLaTapaPoneElColorYSeAvisaDelChasis() {
+        EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B",
+                List.of(pieza("R1", "chai13xxx", CHASIS, true), pieza("R2", "tapai13red", TAPA, true)), COLORES);
+        assertTrue(r.pasos().get(0).colorSinDeducir());
+        assertFalse(r.pasos().get(1).colorSinDeducir());
+        assertEquals("Rojo", r.colorDespues());
+    }
+
+    @Test void siLaTapaNoDeduceYElChasisSiMandaElChasisYLaTapaNoAvisa() {
+        EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B",
+                List.of(pieza("R1", "tapai13xxx", TAPA, true), pieza("R2", "chai13red", CHASIS, true)), COLORES);
+        assertFalse(r.pasos().get(0).colorSinDeducir(), "la tapa no avisa: manda el chasis");
+        assertFalse(r.pasos().get(1).colorSinDeducir());
+        assertEquals("Rojo", r.colorDespues());
+    }
+
+    @Test void laBateriaReutilizadaSobreGradoIdAvisaDelGrado() {
+        MovilNsys id = movil(IMEI, "Azul", "ID");
+        EfectoTaller.Resultado r = EfectoTaller.calcular(id, "Azul", "ID", List.of(pieza("R1", "bati13", BATERIA, false)), COLORES);
+        assertTrue(r.pasos().get(0).nuevos().isEmpty());
+        assertEquals("ID", r.pasos().get(0).gradoSinCalcular());
+    }
 }

@@ -84,4 +84,21 @@ class PlanDeshacerTest {
         CambioTaller deOtra = deReparacion(5, IMEI, COLOR, "Rojo", "Azul", "R20261020_1", VIGENTE, null);
         assertTrue(PlanDeshacer.de(List.of(deOtra), R, TODAS).vacio());
     }
+
+    @Test void elAnteriorDeLaPropiaReparacionNoVuelveAunqueQuienLlamaNoLaExcluya() {
+        CambioTaller mano = aMano(3, IMEI, COLOR, "Verde", "Azul", SUSTITUIDO, null);
+        CambioTaller antiguo = deReparacion(4, IMEI, COLOR, "Rojo", "Azul", R, SUSTITUIDO, 3);
+        CambioTaller c = deReparacion(5, IMEI, COLOR, "Rosa", "Azul", R, VIGENTE, 4);
+        assertEquals(List.of(new PlanDeshacer.Deshecho(c, mano)), PlanDeshacer.de(List.of(mano, antiguo, c), R, TODAS).deshechos());
+    }
+
+    @Test void elAnteriorDeOtraReparacionQueSigueExistiendoVuelveYAlRevesSoloSeAvisa() {
+        CambioTaller g1 = deReparacion(4, IMEI, GRADO, "A", "B", "R20261020_1", SUSTITUIDO, null);
+        CambioTaller g2 = deReparacion(5, IMEI, GRADO, "MsA", "B", R, VIGENTE, 4);
+        PlanDeshacer.Plan deR2 = PlanDeshacer.de(List.of(g1, g2), R, TODAS);
+        assertEquals(List.of(new PlanDeshacer.Deshecho(g2, g1)), deR2.deshechos());
+        PlanDeshacer.Plan deR1 = PlanDeshacer.de(List.of(g1, g2), "R20261020_1", TODAS);
+        assertTrue(deR1.deshechos().isEmpty());
+        assertEquals(List.of(g1), deR1.sinDeshacer());
+    }
 }

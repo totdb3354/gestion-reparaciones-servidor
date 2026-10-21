@@ -124,11 +124,7 @@ public class TallerNsys {
     private static Optional<Paso> paso(DatoTaller dato, String nuevo, MovilNsys m, List<CambioTaller> vigentes) {
         if (nuevo == null) return Optional.empty();
         String antes = LoQueVale.valor(vigentes, dato, m);
-        if (Normalizacion.mismoTexto(nuevo, antes)) return Optional.empty();
-        String nsys = dato.deNsys(m);
-        CambioTaller.Estado estado = Normalizacion.mismoTexto(nuevo, nsys) ? CambioTaller.Estado.QUITADO
-                : CambioTaller.Estado.VIGENTE;
-        return Optional.of(new Paso(new TallerDAO.Nuevo(dato, nuevo.strip(), nsys, estado), antes));
+        return EfectoTaller.cambio(dato, nuevo, antes, m).map(n -> new Paso(n, antes));
     }
 
     private void guardar(MovilNsys m, List<Paso> pasos, String motivo, int idUsu) {

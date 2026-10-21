@@ -38,7 +38,8 @@ public final class PlanDeshacer {
 
     private PlanDeshacer() {}
 
-    /** {@code delImei}: todos los cambios del IMEI (TallerDAO.deImei). {@code reparacionExiste}: si una R… sigue existiendo. */
+    /** {@code delImei}: todos los cambios del IMEI (TallerDAO.deImei). {@code reparacionExiste}: si una R… sigue existiendo
+     *  (no hace falta que excluya a {@code idRep}: sus cambios anteriores se saltan siempre). */
     public static Plan de(List<CambioTaller> delImei, String idRep, Predicate<String> reparacionExiste) {
         Map<Integer, CambioTaller> porId = new HashMap<>();
         Set<Integer> apuntados = new HashSet<>();
@@ -53,15 +54,17 @@ public final class PlanDeshacer {
                     .max(Comparator.comparingInt(CambioTaller::id));
             if (ultimo.isEmpty()) continue;
             CambioTaller c = ultimo.get();
-            if (c.estado() == CambioTaller.Estado.VIGENTE) deshechos.add(new Deshecho(c, vuelve(c, porId, reparacionExiste)));
+            if (c.estado() == CambioTaller.Estado.VIGENTE) deshechos.add(new Deshecho(c, vuelve(c, idRep, porId, reparacionExiste)));
             else if (c.estado() != CambioTaller.Estado.SUSTITUIDO || apuntados.contains(c.id())) sinDeshacer.add(c);
         }
         return new Plan(List.copyOf(deshechos), List.copyOf(sinDeshacer));
     }
 
-    private static CambioTaller vuelve(CambioTaller c, Map<Integer, CambioTaller> porId, Predicate<String> reparacionExiste) {
+    /** Se saltan los anteriores de la propia R… (sus ediciones previas) y los de reparaciones que ya no existen. */
+    private static CambioTaller vuelve(CambioTaller c, String idRep, Map<Integer, CambioTaller> porId,
+                                       Predicate<String> reparacionExiste) {
         CambioTaller a = anterior(c, porId);
-        while (a != null && a.idRep() != null && !reparacionExiste.test(a.idRep())) a = anterior(a, porId);
+        while (a != null && a.idRep() != null && (a.idRep().equals(idRep) || !reparacionExiste.test(a.idRep()))) a = anterior(a, porId);
         return a != null && a.estado() == CambioTaller.Estado.SUSTITUIDO ? a : null;
     }
 
