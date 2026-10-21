@@ -269,4 +269,16 @@ class NsysDAOTest {
         when(rs.getTimestamp("ULTIMO")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2025, 5, 3, 22, 31)));
         assertEquals(new ResumenHistorico(3, 2, LocalDateTime.of(2025, 5, 3, 22, 31)), mapper.getValue().mapRow(rs, 0));
     }
+
+    // ---------------------------------------------------------------- 0.9.21: corrección en NSYS
+
+    @SuppressWarnings("unchecked")
+    @Test void losLotesDeLosImeisConVariosYLasBajasConHoraSeLeenDeUnaVez() {
+        dao.lotesDeImeisConVarios();
+        verify(jdbc).query(and(contains("FROM Nsys_movil WHERE IMEI_SN IN"), contains("GROUP BY IMEI_SN HAVING COUNT(*) > 1")),
+                any(RowMapper.class));
+        dao.bajasConHora();
+        verify(jdbc).query(and(contains("FROM Nsys_evento"), contains("TIPO = 'ESTADO' AND A = 'Removed' AND NOT SOLO_DIA")),
+                any(RowMapper.class));
+    }
 }

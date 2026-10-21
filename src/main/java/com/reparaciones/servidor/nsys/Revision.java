@@ -88,7 +88,7 @@ public final class Revision {
     }
 
     /** Las ubicaciones pendientes de revisar: «En revisión» (sin caja) y «Devolución» (Funcionalidad pendiente). */
-    private static boolean pendiente(String ubicacion) {
+    static boolean pendiente(String ubicacion) {
         return EN_REVISION.equals(ubicacion) || SALIDA_DEVOLUCION.equals(ubicacion);
     }
 
