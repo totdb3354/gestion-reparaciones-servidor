@@ -6,6 +6,7 @@ import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
 import com.reparaciones.servidor.nsys.ResumenHistorico;
+import com.reparaciones.servidor.nsys.TallerDAO;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,7 @@ class RolesStockTelefonosTest {
     @Autowired JwtUtil jwtUtil;
     @MockBean NsysDAO dao;
     @MockBean TelefonoDAO telefonoDao;
+    @MockBean TallerDAO tallerDao;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico2", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }

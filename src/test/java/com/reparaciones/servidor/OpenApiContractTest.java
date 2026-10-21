@@ -492,6 +492,13 @@ class OpenApiContractTest {
                 "revisadoDevolucion");
         assertNullable(esquemas, "EventoRastro", "lote", "de", "a", "aNsys", "idRep", "tecnico", "categoria", "revision");
         assertNoNullable(esquemas, "EventoRastro", "fecha", "soloDia", "fuente", "tipo");
+        // 0.9.21 (spec «SKU del taller» §4): lo que vale, con lo de NSYS al lado cuando el taller lo cambia.
+        assertNullable(esquemas, "StockTelefonosMovilStock", "colorNsys", "gradoNsys", "skuNsys");
+        assertNullable(esquemas, "StockTelefonosFichaMovil", "colorNsys", "gradoNsys", "skuNsys", "ponerProducto", "ponerGrado");
+        assertNoNullable(esquemas, "StockTelefonosFichaMovil", "porPasar");
+        assertNullable(esquemas, "StockTelefonosMovilBuscado", "colorNsys");
+        assertNullable(esquemas, "StockTelefonosMovilComprobado", "colorNsys", "gradoNsys");
+        assertNullable(esquemas, "EventoRastro", "dato", "origen", "motivo");
 
         // 0.9.18: comprobar una lista de IMEIs (spec 2026-10-19 §6.2).
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/comprobar", "post").endsWith("/StockTelefonosPeticionComprobar"));

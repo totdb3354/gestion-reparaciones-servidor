@@ -25,11 +25,11 @@ class RastroTest {
                         new TrabajoTaller("R20260930_2", t(30, 10), null, "Técnico 5")));
 
         assertEquals(List.of(
-                new EventoRastro(t(30, 10), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "R20260930_2", "Técnico 5", "REPARACION", null, null),
-                new EventoRastro(t(8, 13), false, "NSYS", "UBICACION", "BT-9001", "Taller · Glass", "Listos", "CAJA LISTOS", null, null, null, null, null),
-                new EventoRastro(t(8, 12), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "G20260905_1", "Técnico 3", "GLASS", null, null),
-                new EventoRastro(t(5, 9), false, "ERP", "TRABAJO_ASIGNADO", null, null, null, null, "AG20260905_1", "Técnico 3", "GLASS", null, null),
-                new EventoRastro(t(2, 0), true, "NSYS", "ENTRADA", "BT-9001", null, null, null, null, null, null, null, null)),
+                new EventoRastro(t(30, 10), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "R20260930_2", "Técnico 5", "REPARACION", null, null, null, null, null),
+                new EventoRastro(t(8, 13), false, "NSYS", "UBICACION", "BT-9001", "Taller · Glass", "Listos", "CAJA LISTOS", null, null, null, null, null, null, null, null),
+                new EventoRastro(t(8, 12), false, "ERP", "TRABAJO_TERMINADO", null, null, null, null, "G20260905_1", "Técnico 3", "GLASS", null, null, null, null, null),
+                new EventoRastro(t(5, 9), false, "ERP", "TRABAJO_ASIGNADO", null, null, null, null, "AG20260905_1", "Técnico 3", "GLASS", null, null, null, null, null),
+                new EventoRastro(t(2, 0), true, "NSYS", "ENTRADA", "BT-9001", null, null, null, null, null, null, null, null, null, null, null)),
                 rastro);
     }
 
@@ -107,7 +107,7 @@ class RastroTest {
 
         assertEquals(List.of("VENTA", "CORRECCION", "ENTRADA"), rastro.stream().map(EventoRastro::tipo).toList());
         assertEquals(new EventoRastro(baja, false, "NSYS", "CORRECCION", "BT-1345", "512GB Amarillo · A", "512GB Negro · A100",
-                null, null, null, null, null, "BT-1333"), rastro.get(1));
+                null, null, null, null, null, "BT-1333", null, null, null), rastro.get(1));
     }
 
     @Test void sinMaestroLaCorreccionLlevaElGoods() {
@@ -149,5 +149,28 @@ class RastroTest {
                 rastro.stream().map(EventoRastro::tipo).toList());
         assertNull(rastro.get(0).revision(), "ya se revisó en BT-1: no vuelve a ser la revisión de entrada");
         assertEquals("ENTRADA", rastro.get(3).revision());
+    }
+
+    @Test void losCambiosDelTallerYSusCierresSeMezclanPorFecha() {
+        // 0.9.21 (spec «SKU del taller» §2.4): cada cambio a su hora y cada cierre automático a la del cierre. Un SUSTITUIDO no
+        // tiene evento de cierre: lo cuenta el que lo sustituye (aquí, la vuelta a NSYS).
+        String imei = "350000000000001";
+        CambioTaller pasado = new CambioTaller(1, imei, DatoTaller.GRADO, "A100", "B", "B", "MANO", null, 7, "Técnico 1",
+                "batería nueva", t(10, 9), CambioTaller.Estado.PASADO, t(12, 9), "A100", null);
+        CambioTaller sustituido = new CambioTaller(2, imei, DatoTaller.COLOR, "Rojo", "Azul", "Azul", "MANO", null, 7,
+                "Técnico 1", "chasis rojo", t(11, 9), CambioTaller.Estado.SUSTITUIDO, t(13, 9), null, null);
+        CambioTaller vuelta = new CambioTaller(3, imei, DatoTaller.COLOR, "Azul", "Rojo", "Azul", "MANO", null, 8, "Técnico 2",
+                null, t(13, 9), CambioTaller.Estado.QUITADO, t(13, 9), null, 2);
+        CambioTaller manda = new CambioTaller(4, imei, DatoTaller.COLOR, "Verde", "Azul", "Azul", "MANO", null, 7, "Técnico 1",
+                "chasis verde", t(14, 9), CambioTaller.Estado.MANDA_NSYS, t(15, 9), "Rosa", null);
+        List<EventoRastro> rastro = Rastro.unir(List.of(), List.of(), List.of(), List.of(pasado, sustituido, vuelta, manda));
+        assertEquals(List.of("TALLER_MANDA_NSYS", "TALLER_CAMBIO", "TALLER_VUELTA", "TALLER_PASADO", "TALLER_CAMBIO",
+                "TALLER_CAMBIO"), rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(new EventoRastro(t(15, 9), false, "TALLER", "TALLER_MANDA_NSYS", null, "Verde", "Rosa", null, null,
+                "Técnico 1", null, null, null, "COLOR", "MANO", "chasis verde"), rastro.get(0));
+        assertEquals(new EventoRastro(t(13, 9), false, "TALLER", "TALLER_VUELTA", null, "Rojo", "Azul", null, null,
+                "Técnico 2", null, null, null, "COLOR", "MANO", null), rastro.get(2));
+        assertEquals(new EventoRastro(t(12, 9), false, "TALLER", "TALLER_PASADO", null, "A100", "A100", null, null,
+                "Técnico 1", null, null, null, "GRADO", "MANO", "batería nueva"), rastro.get(3));
     }
 }
