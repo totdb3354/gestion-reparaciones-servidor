@@ -78,6 +78,11 @@ public class TallerNsys {
         return v.colorNsys() == null ? m.goods() : nsysDao.goodsMasUsados(m).get(v.color());
     }
 
+    /** Los avisos del taller de un IMEI (pieza 2), para el rastro. */
+    public List<AvisoTaller> avisos(String imeiSn) {
+        return tallerDao.avisosDeImei(imeiSn);
+    }
+
     /** Todos los cambios del taller de un IMEI, para el rastro. */
     public List<CambioTaller> cambios(String imeiSn) {
         return tallerDao.deImei(imeiSn);

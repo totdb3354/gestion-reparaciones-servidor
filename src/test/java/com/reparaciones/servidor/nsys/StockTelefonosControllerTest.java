@@ -561,4 +561,15 @@ class StockTelefonosControllerTest {
         assertEquals("Apple iPhone 13 128GB Blue", o.productoActual());
         assertTrue(o.colores().isEmpty(), "el maestro del mock está vacío");
     }
+
+    @Test void elRastroLlevaLosAvisosDelTaller() {
+        // 0.9.21 (pieza 2 §2.5)
+        when(tallerDao.avisosDeImei(IMEI)).thenReturn(List.of(new AvisoTaller(1, IMEI, "R20261021_3", AvisoTaller.Tipo.SIN_COLOR,
+                null, DatoTaller.COLOR, "chai13xxx", null, "chasis chai13xxx nuevo", 8, "Técnico 2",
+                LocalDateTime.of(2026, 10, 21, 10, 0))));
+        List<EventoRastro> rastro = api.rastro(IMEI);
+        assertEquals("TALLER_SIN_COLOR", rastro.get(0).tipo());
+        assertEquals("chai13xxx", rastro.get(0).de());
+        assertEquals("Técnico 2", rastro.get(0).tecnico());
+    }
 }

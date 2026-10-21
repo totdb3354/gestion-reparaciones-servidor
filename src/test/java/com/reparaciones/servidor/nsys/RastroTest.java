@@ -173,4 +173,31 @@ class RastroTest {
         assertEquals(new EventoRastro(t(12, 9), false, "TALLER", "TALLER_PASADO", null, "A100", "A100", null, null,
                 "Técnico 1", null, null, null, "GRADO", "MANO", "batería nueva"), rastro.get(3));
     }
+
+    @Test void losAvisosDelTallerSalenConSuTipoYDetrasDeLosCambiosALaMismaHora() {
+        // 0.9.21 (pieza 2 §2.5): al editar una reparación, «Se deshace…» y el cambio nuevo llevan la misma hora; el cambio
+        // es lo último y sale primero.
+        String imei = "350000000000001";
+        LocalDateTime hora = LocalDateTime.of(2026, 10, 21, 10, 0);
+        CambioTaller nuevo = new CambioTaller(7, imei, DatoTaller.COLOR, "Verde", "Azul", "Azul", "REPARACION", "R20261021_3", 8,
+                "Técnico 2", "chasis chai13green nuevo", hora, CambioTaller.Estado.VIGENTE, null, null, null);
+        AvisoTaller deshecho = new AvisoTaller(1, imei, "R20261021_3", AvisoTaller.Tipo.DESHECHO, AvisoTaller.Causa.EDITADA,
+                DatoTaller.COLOR, "Rojo", "Azul", "chasis chai13red nuevo", 8, "Técnico 2", hora);
+        AvisoTaller sinGrado = new AvisoTaller(2, imei, "R20261021_4", AvisoTaller.Tipo.SIN_GRADO, null, DatoTaller.GRADO, "ID",
+                null, "batería bati13 nueva", 8, "Técnico 2", hora.minusHours(1));
+        List<EventoRastro> rastro = Rastro.unir(List.of(), List.of(), List.of(), List.of(nuevo), List.of(deshecho, sinGrado));
+        assertEquals(List.of("TALLER_CAMBIO", "TALLER_DESHECHO_EDITADA", "TALLER_SIN_GRADO"),
+                rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(new EventoRastro(hora, false, "TALLER", "TALLER_DESHECHO_EDITADA", null, "Rojo", "Azul", null,
+                "R20261021_3", "Técnico 2", null, null, null, "COLOR", "REPARACION", "chasis chai13red nuevo"), rastro.get(1));
+        assertEquals(new EventoRastro(hora.minusHours(1), false, "TALLER", "TALLER_SIN_GRADO", null, "ID", null, null,
+                "R20261021_4", "Técnico 2", null, null, null, "GRADO", "REPARACION", "batería bati13 nueva"), rastro.get(2));
+        assertEquals("REPARACION", rastro.get(0).origen());
+        assertEquals("R20261021_3", rastro.get(0).idRep());
+    }
+
+    @Test void sinAvisosComoAntes() {
+        assertEquals(Rastro.unir(List.of(), List.of(), List.of(), List.of()),
+                Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of()));
+    }
 }

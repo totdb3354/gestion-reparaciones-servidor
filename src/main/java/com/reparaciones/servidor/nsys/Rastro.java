@@ -25,11 +25,18 @@ public final class Rastro {
         return unir(lotes, nsys, trabajos, List.of());
     }
 
-    /** Cada cambio del taller sale a su hora («Taller: …» o, si vuelve a lo de NSYS, «Vuelve a lo de NSYS: …») y su cierre
-     *  automático a la hora del cierre («Pasado a NSYS», «Manda NSYS»). Un SUSTITUIDO no tiene evento de cierre: lo cuenta el
-     *  cambio que lo sustituye. */
+    /** Sin los avisos del taller. */
     public static List<EventoRastro> unir(List<MovilNsys> lotes, List<EventoNsys> nsys, List<TrabajoTaller> trabajos,
                                           List<CambioTaller> cambios) {
+        return unir(lotes, nsys, trabajos, cambios, List.of());
+    }
+
+    /** Cada cambio del taller sale a su hora («Taller: …» o, si vuelve a lo de NSYS, «Vuelve a lo de NSYS: …») y su cierre
+     *  automático a la hora del cierre («Pasado a NSYS», «Manda NSYS»). Un SUSTITUIDO no tiene evento de cierre: lo cuenta el
+     *  cambio que lo sustituye. Desde la pieza 2, los avisos del taller (TALLER_SIN_COLOR, TALLER_SIN_GRADO, TALLER_DESHECHO_*
+     *  y TALLER_SIN_DESHACER_*), a su hora; a la misma hora que un cambio, detrás de él. */
+    public static List<EventoRastro> unir(List<MovilNsys> lotes, List<EventoNsys> nsys, List<TrabajoTaller> trabajos,
+                                          List<CambioTaller> cambios, List<AvisoTaller> avisos) {
         Correcciones correcciones = Correcciones.de(lotes, nsys);
         Set<String> lotesConVentaConHora = nsys.stream().filter(e -> e.tipo() == TipoEvento.VENTA && !e.soloDia())
                 .map(EventoNsys::batch).collect(Collectors.toSet());
@@ -56,6 +63,9 @@ public final class Rastro {
             todos.add(new EventoRastro(fecha, false, "ERP", asignacion ? "TRABAJO_ASIGNADO" : "TRABAJO_TERMINADO",
                     null, null, null, null, t.idRep(), t.tecnico(), categoria(t.idRep()), null, null, null, null, null));
         }
+        // 0.9.21, pieza 2: los avisos van antes que los cambios en la lista para que, a la misma hora (una edición: se
+        // deshace lo suyo y se aplica la pieza nueva en el mismo segundo), el cambio salga primero.
+        for (AvisoTaller a : avisos) todos.add(deAviso(a));
         for (CambioTaller c : cambios) {
             todos.add(deTaller(c.fecha(), c.estado() == CambioTaller.Estado.QUITADO ? "TALLER_VUELTA" : "TALLER_CAMBIO", c,
                     c.valorAntes(), c.valor()));
@@ -77,6 +87,13 @@ public final class Rastro {
     private static EventoRastro deTaller(LocalDateTime fecha, String tipo, CambioTaller c, String de, String a) {
         return new EventoRastro(fecha, false, "TALLER", tipo, null, de, a, null, c.idRep(), c.usuario(), null, null, null,
                 c.dato().name(), c.origen(), c.motivo());
+    }
+
+    /** «TALLER_» + el tipo del aviso (+ «_BORRADA» o «_EDITADA»). {@code tecnico}: quien guardó; {@code motivo}: la pieza. */
+    private static EventoRastro deAviso(AvisoTaller a) {
+        String tipo = "TALLER_" + a.tipo().name() + (a.causa() == null ? "" : "_" + a.causa().name());
+        return new EventoRastro(a.fecha(), false, "TALLER", tipo, null, a.de(), a.a(), null, a.idRep(), a.usuario(), null, null,
+                null, a.dato().name(), CambioTaller.REPARACION, a.motivo());
     }
 
     /** Asignaciones A/AG/AP y trabajos hechos R/G/P. */
