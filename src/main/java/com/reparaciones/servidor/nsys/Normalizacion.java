@@ -51,4 +51,11 @@ public final class Normalizacion {
     public static boolean bateriaNueva(String grade) {
         return grade != null && grade.length() > 3 && grade.endsWith("100");
     }
+
+
+    /** Dos textos de NSYS o del maestro iguales sin espacios a los lados; null y vacío cuentan igual. Distingue mayúsculas,
+     *  como NSYS (0.9.21, SKU del taller: grados, colores y SKU). */
+    public static boolean mismoTexto(String a, String b) {
+        return (a == null ? "" : a.strip()).equals(b == null ? "" : b.strip());
+    }
 }

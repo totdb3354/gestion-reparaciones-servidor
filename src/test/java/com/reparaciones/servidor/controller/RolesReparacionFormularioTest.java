@@ -6,6 +6,9 @@ import com.reparaciones.servidor.dao.DificultadPuntosDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.ReparacionComponenteDAO;
 import com.reparaciones.servidor.dao.ReparacionDAO;
+import com.reparaciones.servidor.nsys.AvisoTaller;
+import com.reparaciones.servidor.nsys.TallerDAO;
+import com.reparaciones.servidor.nsys.TallerReparaciones;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -18,8 +21,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +36,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -82,12 +89,22 @@ class RolesReparacionFormularioTest {
     @MockBean BorradorDAO borradorDao;
     @MockBean ComponenteDAO componenteDao;
     @MockBean DificultadPuntosDAO dificultadDao;
+    /** 0.9.21: las escrituras del formulario pasan por GuardadoReparacion (@Transactional): sin MariaDB, el gestor de
+     *  transacciones va mockeado, como en RolesParametrosPrevisionTest, y el taller también. */
+    @MockBean TallerReparaciones taller;
+    @MockBean PlatformTransactionManager transactionManager;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico_n", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico_f", "", "SUPERTECNICO", 3)); }
     private String admin()        { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null)); }
     /** ADMIN cuyo token SÍ trae técnico — para probar que el rol se corta antes de llegar a la propiedad de la asignación. */
     private String adminConIdTec(int idTec) { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", idTec)); }
+
+    /** Una R… que existe, del móvil IMEI (GuardadoReparacion lo lee antes y lo comprueba con la fila bloqueada). */
+    private void existe(String idRep) {
+        when(dao.imeiDe(idRep)).thenReturn(Optional.of(IMEI));
+        when(dao.bloquearReparacion(idRep)).thenReturn(Optional.of(IMEI));
+    }
 
     private int editarComo(String autorizacion) throws Exception {
         return mvc.perform(put("/api/reparaciones/R20260916_5")
@@ -186,5 +203,49 @@ class RolesReparacionFormularioTest {
                 .andReturn().getResponse().getStatus();
         assertEquals(201, status);
         verify(dao).guardarFilaIndividual(any(), eq(IMEI), eq(4), isNull(), eq(ASIG));
+    }
+
+    /** 0.9.21 (pieza 2 del SKU del taller): «✓ Guardar fila» avisa al taller con la reparación creada y el usuario del token. */
+    @Test void filasSiendoTecnicoAvisaAlTaller() throws Exception {
+        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.guardarFilaIndividual(any(), eq(IMEI), eq(4), isNull(), eq(ASIG))).thenReturn("R20260916_5");
+        int status = mvc.perform(post("/api/reparaciones/" + ASIG + "/filas")
+                        .header("Authorization", tecnico())
+                        .contentType(MediaType.APPLICATION_JSON).content(CUERPO_FILAS))
+                .andReturn().getResponse().getStatus();
+        assertEquals(201, status);
+        verify(taller).aplicar(IMEI, List.of(new TallerReparaciones.PiezaGuardada("R20260916_5", 101, false)), 8);
+    }
+
+    /** 0.9.21: «Terminar asignación» aplica al taller las reparaciones que crea, con el usuario del token. */
+    @Test void completaSiendoTecnicoAvisaAlTaller() throws Exception {
+        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.insertarCompleta(any(), eq(IMEI), eq(4), isNull(), eq(ASIG), isNull())).thenReturn(List.of("R20260916_5"));
+        int status = mvc.perform(post("/api/reparaciones/completa")
+                        .header("Authorization", tecnico())
+                        .contentType(MediaType.APPLICATION_JSON).content(CUERPO_COMPLETA_CON_ASIG))
+                .andReturn().getResponse().getStatus();
+        assertEquals(201, status);
+        verify(taller).aplicar(IMEI, List.of(new TallerReparaciones.PiezaGuardada("R20260916_5", 101, false)), 8);
+    }
+
+    /** 0.9.21: «Guardar cambios» de una R… le pasa al taller la pieza de antes y la nueva, con el usuario del token. */
+    @Test void editarSiendoSupertecnicoAvisaAlTaller() throws Exception {
+        TallerDAO.PiezaDeReparacion antes = new TallerDAO.PiezaDeReparacion("R20260916_5", IMEI, 131, false);
+        existe("R20260916_5");
+        when(taller.pieza("R20260916_5")).thenReturn(Optional.of(antes));
+        assertEquals(200, editarComo(supertecnico()));
+        verify(taller).editar(antes, new TallerReparaciones.PiezaGuardada("R20260916_5", 101, false), 7);
+    }
+
+    /** 0.9.21: borrar una R… deshace lo suyo en el móvil, con el usuario del token. */
+    @Test void borrarSiendoSupertecnicoDeshaceElTaller() throws Exception {
+        existe("R20260916_5");
+        int status = mvc.perform(delete("/api/reparaciones/R20260916_5")
+                        .header("Authorization", supertecnico()))
+                .andReturn().getResponse().getStatus();
+        assertEquals(204, status);
+        verify(taller).deshacer("R20260916_5", AvisoTaller.Causa.BORRADA, 7);
+        verify(dao).eliminar("R20260916_5");
     }
 }

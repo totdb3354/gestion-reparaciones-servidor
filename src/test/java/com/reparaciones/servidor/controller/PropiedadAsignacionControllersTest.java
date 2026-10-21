@@ -7,6 +7,8 @@ import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.EntregaGlassService;
+import com.reparaciones.servidor.service.GuardadoReparacion;
+import com.reparaciones.servidor.nsys.TallerReparaciones;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -29,7 +31,7 @@ class PropiedadAsignacionControllersTest {
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, borradorDao,
             mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
-            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class));
+            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class), new GuardadoReparacion(dao, mock(TallerReparaciones.class)));
 
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(8, "tecnico_n", "x", "TECNICO", 4);
     private final UsuarioPrincipal supertecnico = new UsuarioPrincipal(7, "tecnico_f", "x", "SUPERTECNICO", 3);
@@ -51,6 +53,7 @@ class PropiedadAsignacionControllersTest {
 
     @Test void completaConAsignacionUsaElTecnicoDelTokenEIgnoraElDelCuerpo() {
         when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
+        when(dao.insertarCompleta(filas, IMEI, 4, null, ASIG, null)).thenReturn(List.of("R20260916_5"));   // una R… por fila con uso
         ctl.insertarCompleta(new ReparacionController.InsertarCompletaRequest(filas, IMEI, 9, null, ASIG, null), tecnico, null);
         verify(dao).insertarCompleta(filas, IMEI, 4, null, ASIG, null);
         verify(dao).getNombreTecnicoById(4);          // el log nombra al técnico efectivo
@@ -70,6 +73,7 @@ class PropiedadAsignacionControllersTest {
     }
 
     @Test void completaSinAsignacionExigeSupertecnicoYConservaElIdTecDelCuerpo() {
+        when(dao.insertarCompleta(filas, IMEI, 4, null, null, "R")).thenReturn(List.of("R20260916_5"));   // una R… por fila con uso
         ctl.insertarCompleta(new ReparacionController.InsertarCompletaRequest(filas, IMEI, 4, null, null, "R"), supertecnico, null);
         verify(dao).insertarCompleta(filas, IMEI, 4, null, null, "R");   // técnico original, no el 3 del token
         verify(dao).getNombreTecnicoById(4);

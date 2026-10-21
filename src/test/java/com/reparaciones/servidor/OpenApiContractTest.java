@@ -492,6 +492,13 @@ class OpenApiContractTest {
                 "revisadoDevolucion");
         assertNullable(esquemas, "EventoRastro", "lote", "de", "a", "aNsys", "idRep", "tecnico", "categoria", "revision");
         assertNoNullable(esquemas, "EventoRastro", "fecha", "soloDia", "fuente", "tipo");
+        // 0.9.21 (spec «SKU del taller» §4): lo que vale, con lo de NSYS al lado cuando el taller lo cambia.
+        assertNullable(esquemas, "StockTelefonosMovilStock", "colorNsys", "gradoNsys", "skuNsys");
+        assertNullable(esquemas, "StockTelefonosFichaMovil", "colorNsys", "gradoNsys", "skuNsys", "ponerProducto", "ponerGrado");
+        assertNoNullable(esquemas, "StockTelefonosFichaMovil", "porPasar");
+        assertNullable(esquemas, "StockTelefonosMovilBuscado", "colorNsys");
+        assertNullable(esquemas, "StockTelefonosMovilComprobado", "colorNsys", "gradoNsys");
+        assertNullable(esquemas, "EventoRastro", "dato", "origen", "motivo");
 
         // 0.9.18: comprobar una lista de IMEIs (spec 2026-10-19 §6.2).
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/comprobar", "post").endsWith("/StockTelefonosPeticionComprobar"));
@@ -510,6 +517,47 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "StockTelefonosFilaImportacion", "fichero", "fechaExportacion", "resultado", "filas", "cambios");
         assertNullable(esquemas, "StockTelefonosProgresoHistorico", "ultimo", "hasta");
         assertNoNullable(esquemas, "StockTelefonosProgresoHistorico", "total", "hechos");
+
+        // 0.9.21 (spec «SKU del taller» §4): la corrección a mano, la lista «Por pasar a NSYS» y las opciones del diálogo.
+        for (String ruta : List.of("/api/stock-telefonos/por-pasar", "/api/stock-telefonos/{imeiSn}/colores",
+                "/api/stock-telefonos/{imeiSn}/taller")) {
+            assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        }
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "put").endsWith("/StockTelefonosPeticionTaller"));
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "delete").endsWith("/StockTelefonosPeticionVolver"));
+        assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/{imeiSn}/colores", "get", "200").endsWith("/OpcionesTaller"));
+        assertNullable(esquemas, "StockTelefonosPeticionTaller", "color", "grado");
+        assertNoNullable(esquemas, "StockTelefonosPeticionTaller", "motivo");
+        assertNullable(esquemas, "StockTelefonosPeticionVolver", "motivo");
+        assertNullable(esquemas, "FilaPorPasar", "modelo", "modeloMaestro", "capacidad", "productoNsys", "gradoNsys",
+                "ponerProducto", "ponerGrado", "sku");
+        assertNoNullable(esquemas, "FilaPorPasar", "imeiSn", "porQue", "desde");
+        assertNullable(esquemas, "PorQueTaller", "usuario", "motivo", "idRep");
+        assertNoNullable(esquemas, "PorQueTaller", "dato", "origen");
+        assertNullable(esquemas, "OpcionesTaller", "productoActual");
+        assertNoNullable(esquemas, "OpcionesTaller", "colores", "skus");
+        assertNullable(esquemas, "OpcionColor", "producto");
+        assertNoNullable(esquemas, "OpcionColor", "color");
+        assertNoNullable(esquemas, "SkuMaestro", "color", "grado", "sku");
+    }
+
+    /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */
+    @Test void elContratoPublicaLaPreviaDelSkuDelTaller() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+        String ruta = "/api/reparaciones/sku-taller/previsualizar";
+        assertTrue(paths.has(ruta), "falta la ruta de la previsualización del SKU del taller");
+        assertTrue(refDelCuerpo(paths, ruta, "post").endsWith("/PeticionPreviaTaller"));
+        assertTrue(refDeLaRespuesta(paths, ruta, "post", "200").endsWith("/PreviaTaller"));
+        assertNoNullable(esquemas, "PeticionPreviaTaller", "imei", "filas");
+        assertNullable(esquemas, "FilaPreviaTaller", "idRep");
+        assertNoNullable(esquemas, "FilaPreviaTaller", "idCom", "reutilizada");
+        assertNoNullable(esquemas, "PreviaTaller", "enNsys", "antes", "despues", "colorSinDeducir", "gradoSinCalcular");
+        assertNullable(esquemas, "ValoresTaller", "color", "grado");
     }
 
     /** Un parámetro (query o path) de una operación, por nombre. */

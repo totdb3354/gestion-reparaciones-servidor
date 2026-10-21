@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -71,6 +72,12 @@ public class NsysDAO {
     static final String ORDEN_TRABAJOS = " ORDER BY r.FECHA_ASIG, r.ID_REP";
     /** Tamaño de las tandas de los IN por IMEI (spec 0.9.18 §6.2). */
     static final int TANDA_IN = 500;
+
+    /** El «Goods» de los móviles del espejo de un modelo, capacidad y eSIM, por color y de más usado a menos (spec 0.9.21
+     *  §2.4): el producto que hay que poner en NSYS al cambiar el color. `<=>`: MODELO y CAPACIDAD pueden ser NULL. */
+    static final String SQL_GOODS_POR_COLOR = "SELECT COLOR, GOODS, COUNT(*) AS N FROM Nsys_movil"
+            + " WHERE MODELO <=> ? AND MODELO_MAESTRO = ? AND CAPACIDAD <=> ? AND ES_ESIM = ? AND COLOR IS NOT NULL"
+            + " AND GOODS IS NOT NULL GROUP BY COLOR, GOODS ORDER BY COLOR, N DESC, GOODS";
 
     private final JdbcTemplate jdbc;
 
@@ -326,6 +333,25 @@ public class NsysDAO {
      *  serie puede venir en minúsculas de un lado y en mayúsculas del otro). */
     public static String claveCruce(String imeiSn) {
         return imeiSn == null ? "" : imeiSn.strip().toUpperCase(Locale.ROOT);
+    }
+
+    /** Una fila de {@link #SQL_GOODS_POR_COLOR}. */
+    record GoodsDeColor(String color, String goods) {}
+
+    /** El «Goods» más usado de cada color (el del maestro) entre los móviles del espejo del mismo modelo, capacidad y eSIM que
+     *  {@code m}; un color sin ningún móvil no sale. Sin modelo en el maestro no se pregunta. A igual número, el primero por
+     *  orden alfabético. */
+    public Map<String, String> goodsMasUsados(MovilNsys m) {
+        if (m.modeloMaestro() == null) return Map.of();
+        return primeroDeCadaColor(jdbc.query(SQL_GOODS_POR_COLOR, (rs, n) -> new GoodsDeColor(rs.getString("COLOR"),
+                rs.getString("GOODS")), m.modelo(), m.modeloMaestro(), m.capacidad(), m.esEsim()));
+    }
+
+    /** Las filas llegan por color y, dentro de cada uno, de la más usada a la menos: vale la primera. */
+    static Map<String, String> primeroDeCadaColor(List<GoodsDeColor> filas) {
+        Map<String, String> mapa = new LinkedHashMap<>();
+        for (GoodsDeColor f : filas) mapa.putIfAbsent(f.color() == null ? null : f.color().strip(), f.goods());
+        return mapa;
     }
 
     // ---------------------------------------------------------------- utilidades

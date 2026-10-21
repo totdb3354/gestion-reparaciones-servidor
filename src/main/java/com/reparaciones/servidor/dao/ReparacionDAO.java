@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -347,6 +348,24 @@ public class ReparacionDAO {
         return result.isEmpty() ? null : result.get(0);
     }
 
+    /** IMEI de una reparación, o vacío si no existe, leído FUERA de la transacción del que llama (la suspende y va por otra
+     *  conexión, en autocommit): sin candados y sin fijar su foto de REPEATABLE READ. GuardadoReparacion lo usa al editar o
+     *  borrar para coger el candado del móvil antes que el de la fila de la R… (bloquearReparacion), en el mismo orden que
+     *  las altas (0.9.21, SKU del taller). Hay que llamarlo por el proxy de Spring (desde otro bean), nunca con this. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED, readOnly = true)
+    public Optional<String> imeiDe(String idRep) {
+        return jdbc.query("SELECT IMEI FROM Reparacion WHERE ID_REP = ?", (rs, row) -> rs.getString(1), idRep)
+                .stream().findFirst();
+    }
+
+    /** Bloquea la fila de una reparación (FOR UPDATE, hasta el final de la transacción del que llama) y devuelve su IMEI, o
+     *  vacío si no existe. GuardadoReparacion la pide después del candado del móvil (con el IMEI de imeiDe) y comprueba que
+     *  sigue siendo el mismo; una lectura bloqueante no fija la foto de REPEATABLE READ (0.9.21, SKU del taller). */
+    public Optional<String> bloquearReparacion(String idRep) {
+        return jdbc.query("SELECT IMEI FROM Reparacion WHERE ID_REP = ? FOR UPDATE", (rs, row) -> rs.getString(1), idRep)
+                .stream().findFirst();
+    }
+
     /** ID_TEC de una fila de Reparacion (asignación abierta o cerrada), o {@code null} si no existe.
      *  Lo usa PropiedadAsignacion para saber de quién es la asignación antes de escribir. */
     public Integer getIdTecDeAsignacion(String idAsignacion) {
@@ -565,17 +584,18 @@ public class ReparacionDAO {
     }
 
     @Transactional
-    public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
-                                  String idRepAnterior, String idAsignacion) {
-        insertarCompleta(filas, imei, idTec, idRepAnterior, idAsignacion, null);
+    public List<String> insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
+                                         String idRepAnterior, String idAsignacion) {
+        return insertarCompleta(filas, imei, idTec, idRepAnterior, idAsignacion, null);
     }
 
     /**
      * Variante con categoría explícita ("G"/"R"). Con asignación manda su prefijo (AG→G);
      * sin asignación (p.ej. altas desde la edición de un glass) decide {@code categoria}.
+     * Devuelve las reparaciones creadas (R… o G…), una por fila con uso real y en el orden de las filas: el SKU del taller las aplica (0.9.21).
      */
     @Transactional
-    public void insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
+    public List<String> insertarCompleta(List<FilaReparacion> filas, String imei, int idTec,
                                   String idRepAnterior, String idAsignacion, String categoria) {
         if (idAsignacion != null) {
             // Bloquear la fila para que un DELETE concurrente (eliminarAsignacion) espere
@@ -596,6 +616,7 @@ public class ReparacionDAO {
         boolean creoReparacion = false;
         Set<Integer> idComsUsados = new java.util.HashSet<>();
         Object[] entrega = entregaHeredable(idAsignacion);
+        List<String> creadas = new ArrayList<>();
         for (FilaReparacion fila : filas) {
             if (!fila.esSolicitud) {
                 String idRep = nextId(idAsignacion == null && "G".equals(categoria)
@@ -619,6 +640,7 @@ public class ReparacionDAO {
                                 "Stock insuficiente para el componente ID " + fila.idCom);
                 }
                 creoReparacion = true;
+                creadas.add(idRep);
                 idComsUsados.add(fila.idCom);
                 marcarChasisSiProcede(idAsignacion, fila.idCom);
             } else if (idAsignacion != null) {
@@ -666,6 +688,7 @@ public class ReparacionDAO {
                 }
             }
         }
+        return creadas;
     }
 
     @Transactional
@@ -1389,7 +1412,18 @@ public class ReparacionDAO {
                 "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ID_REP,'_',-1) AS UNSIGNED)),0)+1" +
                 " FROM Reparacion WHERE ID_REP LIKE ? FOR UPDATE",
                 Integer.class, like);
-        return prefijo + hoy + "_" + (n != null ? n : 1);
+        int siguiente = n != null ? n : 1;
+        if ("R".equals(prefijo)) {
+            // 0.9.21 (SKU del taller): una R… borrada deja su historia en Taller_cambio y Taller_aviso con su ID_REP; si
+            // el ID se repitiera, el taller confundiría la nueva con la borrada. Sin bloquear: esas filas ya están confirmadas.
+            Integer t = jdbc.queryForObject(
+                    "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ID_REP,'_',-1) AS UNSIGNED)),0)+1 FROM (" +
+                    "SELECT ID_REP FROM Taller_cambio WHERE ID_REP LIKE ?" +
+                    " UNION ALL SELECT ID_REP FROM Taller_aviso WHERE ID_REP LIKE ?) t",
+                    Integer.class, like, like);
+            if (t != null) siguiente = Math.max(siguiente, t);
+        }
+        return prefijo + hoy + "_" + siguiente;
     }
 
     private void ensureTelefono(String imei) {

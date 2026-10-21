@@ -53,19 +53,22 @@ public class ImportadorNsys {
 
     private final ClienteDrive drive;
     private final NsysDAO dao;
+    private final TallerNsys taller;
     private final String carpeta;
     private final String maestro;
     private final Clock clock;
 
     @Autowired
-    public ImportadorNsys(ClienteDrive drive, NsysDAO dao, @Value("${nsys.drive.carpeta-items:}") String carpeta,
+    public ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller,
+                          @Value("${nsys.drive.carpeta-items:}") String carpeta,
                           @Value("${nsys.drive.maestro:}") String maestro) {
-        this(drive, dao, carpeta, maestro, Clock.system(MADRID));
+        this(drive, dao, taller, carpeta, maestro, Clock.system(MADRID));
     }
 
-    ImportadorNsys(ClienteDrive drive, NsysDAO dao, String carpeta, String maestro, Clock clock) {
+    ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller, String carpeta, String maestro, Clock clock) {
         this.drive = drive;
         this.dao = dao;
+        this.taller = taller;
         this.carpeta = carpeta == null ? "" : carpeta;
         this.maestro = maestro == null ? "" : maestro;
         this.clock = clock;
@@ -176,6 +179,7 @@ public class ImportadorNsys {
             dao.aplicar(r, id);
             String modelos = rellenarModelos();
             dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
+            cerrarTaller();
             return true;
         } catch (FormatoItemsException e) {
             dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
@@ -248,6 +252,16 @@ public class ImportadorNsys {
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudo rellenar el modelo de los teléfonos del taller", e);
             return "Modelos del taller no rellenados: " + motivo(e);
+        }
+    }
+
+    /** Tras un Items OK, el cierre de lo del taller (spec 0.9.21 §2.2). La foto ya está guardada y la importación es OK: si el
+     *  cierre falla, se avisa en el registro del servidor y se reintenta tras la siguiente. */
+    private void cerrarTaller() {
+        try {
+            taller.cerrar();
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudo cerrar lo del taller tras la importación", e);
         }
     }
 

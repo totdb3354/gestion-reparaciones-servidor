@@ -270,6 +270,36 @@ class NsysDAOTest {
         assertEquals(new ResumenHistorico(3, 2, LocalDateTime.of(2025, 5, 3, 22, 31)), mapper.getValue().mapRow(rs, 0));
     }
 
+    // ---------------------------------------------------------------- 0.9.21: el producto de cada color (spec §2.4)
+
+    @SuppressWarnings("unchecked")
+    @Test void elGoodsMasUsadoDeCadaColorDelModeloEnUnaConsulta() {
+        assertTrue(dao.goodsMasUsados(movil(1)).isEmpty());
+        verify(jdbc).query(eq(NsysDAO.SQL_GOODS_POR_COLOR), any(RowMapper.class), eq("13"), eq("13"), eq("128GB"), eq(false));
+        assertTrue(NsysDAO.SQL_GOODS_POR_COLOR.contains("WHERE MODELO <=> ? AND MODELO_MAESTRO = ? AND CAPACIDAD <=> ? AND ES_ESIM = ?"),
+                NsysDAO.SQL_GOODS_POR_COLOR);
+        assertTrue(NsysDAO.SQL_GOODS_POR_COLOR.endsWith(" GROUP BY COLOR, GOODS ORDER BY COLOR, N DESC, GOODS"),
+                NsysDAO.SQL_GOODS_POR_COLOR);
+    }
+
+    @Test void deCadaColorValeElPrimeroQueLlega() {
+        assertEquals(Map.of("Azul", "Apple iPhone 13 128GB Blue", "Rojo", "Apple iPhone 13 128GB (PRODUCT)RED"),
+                NsysDAO.primeroDeCadaColor(List.of(new NsysDAO.GoodsDeColor("Azul", "Apple iPhone 13 128GB Blue"),
+                        new NsysDAO.GoodsDeColor("Azul", "Apple iPhone 13 128GB Azul"),
+                        new NsysDAO.GoodsDeColor("Rojo", "Apple iPhone 13 128GB (PRODUCT)RED"))));
+    }
+
+    @Test void losColoresSeUsanSinEspaciosALosLados() {
+        assertEquals(Map.of("Azul", "Apple iPhone 13 128GB Blue"),
+                NsysDAO.primeroDeCadaColor(List.of(new NsysDAO.GoodsDeColor(" Azul ", "Apple iPhone 13 128GB Blue"),
+                        new NsysDAO.GoodsDeColor("Azul", "Apple iPhone 13 128GB Azul"))));
+    }
+
+    @Test void sinModeloEnElMaestroNoSeBuscaProducto() {
+        assertTrue(dao.goodsMasUsados(TallerDePrueba.sinMaestro("350000000000001", "B")).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
     // ---------------------------------------------------------------- 0.9.21: corrección en NSYS
 
     @SuppressWarnings("unchecked")

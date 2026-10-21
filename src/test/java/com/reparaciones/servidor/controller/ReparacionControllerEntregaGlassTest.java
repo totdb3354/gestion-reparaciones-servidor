@@ -8,6 +8,8 @@ import com.reparaciones.servidor.model.ResultadoEntregaGlass;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.EntregaGlassService;
+import com.reparaciones.servidor.service.GuardadoReparacion;
+import com.reparaciones.servidor.nsys.TallerReparaciones;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -26,7 +28,7 @@ class ReparacionControllerEntregaGlassTest {
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, mock(BorradorDAO.class), mock(ComponenteDAO.class),
             mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
-            mock(CargaAsignacionesService.class), servicio);
+            mock(CargaAsignacionesService.class), servicio, new GuardadoReparacion(dao, mock(TallerReparaciones.class)));
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(42, "tecnico_j", "x", "TECNICO", 7);
 
     private ReparacionResumen asigDe(int idTec) {

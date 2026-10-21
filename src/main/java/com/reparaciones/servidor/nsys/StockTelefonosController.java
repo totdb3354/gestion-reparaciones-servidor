@@ -1,15 +1,20 @@
 package com.reparaciones.servidor.nsys;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -26,11 +31,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import static com.reparaciones.servidor.nsys.ImportadorNsys.*;
 
-/** Stock de teléfonos y rastro (spec pieza 1 §8): solo lectura, del espejo de NSYS. SUPERTECNICO y ADMIN; no hay
- *  jerarquía de roles, así que van los dos nombrados. */
+/** Stock de teléfonos y rastro (spec pieza 1 §8), del espejo de NSYS y, desde la 0.9.21, con lo del taller por encima (spec
+ *  «SKU del taller»): color, grado y SKU son los que valen, con lo de NSYS al lado cuando el taller los cambia. SUPERTECNICO
+ *  y ADMIN; no hay jerarquía de roles, así que van los dos nombrados. */
 @RestController
 @RequestMapping("/api/stock-telefonos")
 @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
@@ -46,33 +53,37 @@ public class StockTelefonosController {
     private static final String EN_CURSO = "EN_CURSO";
 
     private final NsysDAO dao;
+    private final TallerNsys taller;
     private final Clock clock;
 
     @Autowired
-    public StockTelefonosController(NsysDAO dao) {
-        this(dao, Clock.system(MADRID));
+    public StockTelefonosController(NsysDAO dao, TallerNsys taller) {
+        this(dao, taller, Clock.system(MADRID));
     }
 
-    StockTelefonosController(NsysDAO dao, Clock clock) {
+    StockTelefonosController(NsysDAO dao, TallerNsys taller, Clock clock) {
         this.dao = dao;
+        this.taller = taller;
         this.clock = clock;
     }
 
     /** Los móviles que están en la empresa (en stock, de pedido o que no cuentan), cada uno con sus trabajos abiertos del
-     *  taller (0.9.18). Los días y la caja de un móvil de pedido cuentan con su cadena de correcciones de NSYS (0.9.21). La
-     *  web filtra en local y calcula «Quién lo tiene». */
+     *  taller (0.9.18) y lo que vale (0.9.21, SKU del taller). Los días y la caja de un móvil de pedido cuentan con su cadena
+     *  de correcciones de NSYS (0.9.21). La web filtra en local y calcula «Quién lo tiene». */
     @GetMapping
     public List<MovilStock> stock() {
         LocalDate hoy = LocalDate.now(clock);
         Map<String, List<TrabajoAbierto>> abiertos = dao.trabajosAbiertos();
         Map<String, Correcciones> correcciones = correccionesPorImei();
+        Function<MovilNsys, LoQueVale.Valor> vale = taller.valedorDeTodos();
         return dao.enEmpresa().stream().map(m -> {
             Correcciones c = correcciones.getOrDefault(m.imeiSn(), Correcciones.NINGUNA);
             MovilNsys primero = Objects.requireNonNullElse(c.lote(c.primerLote(m.batch())), m);
-            return new MovilStock(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
-                    Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), m.esEsim(), m.sku(),
-                    ubicacionVisible(m, c), m.estado().name(), dias(primero, hoy),
-                    abiertos.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()));
+            LoQueVale.Valor v = vale.apply(m);
+            return new MovilStock(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
+                    v.bateriaNueva(), m.esEsim(), v.sku(), ubicacionVisible(m, c), m.estado().name(), dias(primero, hoy),
+                    abiertos.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()), v.colorNsys(), v.gradoNsys(),
+                    v.skuNsys());
         }).toList();
     }
 
@@ -103,13 +114,17 @@ public class StockTelefonosController {
         return ERROR.equals(fallo.resultado()) ? MOTIVO_ERROR : fallo.mensaje();
     }
 
-    /** Hasta 10 móviles de cualquier estado cuyo IMEI/SN contiene el texto (mínimo 4 caracteres). */
+    /** Hasta 10 móviles de cualquier estado cuyo IMEI/SN contiene el texto (mínimo 4 caracteres), con el color que vale. */
     @GetMapping("/buscar")
     public List<MovilBuscado> buscar(@RequestParam String imei) {
         if (imei == null || imei.strip().length() < 4) return List.of();
-        return dao.buscar(imei.strip(), 10).stream().map(m -> new MovilBuscado(m.imeiSn(), m.modelo(), m.modeloMaestro(),
-                m.capacidad(), m.color(), m.estado().name(), ubicacionVisible(m),
-                m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null)).toList();
+        List<MovilNsys> encontrados = dao.buscar(imei.strip(), 10);
+        Function<MovilNsys, LoQueVale.Valor> vale = taller.valedor(encontrados.stream().map(MovilNsys::imeiSn).toList());
+        return encontrados.stream().map(m -> {
+            LoQueVale.Valor v = vale.apply(m);
+            return new MovilBuscado(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), m.estado().name(),
+                    ubicacionVisible(m), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null, v.colorNsys());
+        }).toList();
     }
 
     @GetMapping("/{imeiSn}")
@@ -122,6 +137,9 @@ public class StockTelefonosController {
         // ficha enseña el último lote de la cadena (en la primera carga el orden de los lotes puede empatar).
         Correcciones correcciones = Correcciones.de(lotes, eventos);
         MovilNsys m = Objects.requireNonNullElse(correcciones.lote(correcciones.ultimoLote(lotes.get(0).batch())), lotes.get(0));
+        // 0.9.21 (SKU del taller): lo que vale por IMEI, sobre el último lote de la cadena; con algo del taller, lo que hay
+        // que poner en NSYS.
+        LoQueVale.Valor v = taller.valedor(List.of(m.imeiSn())).apply(m);
         List<EventoNsys> deLaCadena = correcciones.paraRevision(eventos);
         MovilNsys primero = Objects.requireNonNullElse(correcciones.lote(correcciones.primerLote(m.batch())), m);
         // El último cambio de grado de verdad del lote: un cambio de batería (A → A100) no cuenta, o taparía el grado
@@ -142,23 +160,54 @@ public class StockTelefonosController {
         // no espera revisión (0.9.18.2).
         Revision.Ultima revisado = Revision.ultima(deLaCadena, m.batch());
         LocalDate recepcion = primero.receivingDate() != null ? primero.receivingDate() : m.receivingDate();
-        return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
-                Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), gradoAnterior, m.sku(),
-                ubicacionVisible(m, correcciones), m.estado().name(), enEmpresa ? dias(primero, LocalDate.now(clock)) : null,
-                lotes.size() - correcciones.todas().size(),
+        return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
+                v.bateriaNueva(), gradoAnterior, v.sku(), ubicacionVisible(m, correcciones), m.estado().name(),
+                enEmpresa ? dias(primero, LocalDate.now(clock)) : null, lotes.size() - correcciones.todas().size(),
                 m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
                 revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
-                enEmpresa ? Revision.pendienteDesde(m.conRecepcion(recepcion), deLaCadena) : null);
+                enEmpresa ? Revision.pendienteDesde(m.conRecepcion(recepcion), deLaCadena) : null,
+                v.colorNsys(), v.gradoNsys(), v.skuNsys(), v.porPasar(), v.porPasar() ? taller.productoAPoner(m, v) : null,
+                v.porPasar() ? v.grade() : null);
     }
 
+    /** NSYS, los trabajos del taller y, desde la 0.9.21, los cambios del taller por encima de NSYS y sus avisos. */
     @GetMapping("/{imeiSn}/rastro")
     public List<EventoRastro> rastro(@PathVariable String imeiSn) {
-        return Rastro.unir(dao.porImei(imeiSn), dao.eventos(imeiSn), dao.trabajos(imeiSn));
+        return Rastro.unir(dao.porImei(imeiSn), dao.eventos(imeiSn), dao.trabajos(imeiSn), taller.cambios(imeiSn),
+                taller.avisos(imeiSn));
+    }
+
+    /** «Por pasar a NSYS» (spec 0.9.21 §2.4): lo que hay que cambiar a mano en NSYS, de cualquier modelo. */
+    @GetMapping("/por-pasar")
+    public List<FilaPorPasar> porPasar() {
+        return taller.porPasar();
+    }
+
+    /** Las opciones del diálogo «Corregir color, grado o batería…» (spec 0.9.21 §2.3). */
+    @GetMapping("/{imeiSn}/colores")
+    public OpcionesTaller colores(@PathVariable String imeiSn) {
+        return taller.opciones(imeiSn);
+    }
+
+    /** Corrección a mano (spec 0.9.21 §2.3): {@code color} o {@code grado} null, ese dato no cambia; motivo obligatorio. */
+    @PutMapping("/{imeiSn}/taller")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void corregir(@PathVariable String imeiSn, @RequestBody PeticionTaller peticion,
+                         @AuthenticationPrincipal UsuarioPrincipal principal) {
+        taller.corregir(imeiSn, peticion.color(), peticion.grado(), peticion.motivo(), principal.getIdUsu());
+    }
+
+    /** «Volver a lo de NSYS» (spec 0.9.21 §2.3): quita lo del taller del móvil, con el motivo si se ha escrito. */
+    @DeleteMapping("/{imeiSn}/taller")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void volver(@PathVariable String imeiSn, @RequestBody(required = false) PeticionVolver peticion,
+                       @AuthenticationPrincipal UsuarioPrincipal principal) {
+        taller.volver(imeiSn, peticion == null ? null : peticion.motivo(), principal.getIdUsu());
     }
 
     /** «Pegar varios IMEIs» (spec 0.9.18 §4.9 y §6.2): una entrada por IMEI pedido, en el mismo orden. Busca en todo el
-     *  espejo, también los vendidos; de cada IMEI, el lote más reciente, con sus trabajos abiertos. La web manda los IMEIs
-     *  limpios y sin repetir; más de {@value #MAX_COMPROBAR}, o alguno nulo o en blanco, es un 400. */
+     *  espejo, también los vendidos; de cada IMEI, el lote más reciente, con sus trabajos abiertos y lo que vale (0.9.21).
+     *  La web manda los IMEIs limpios y sin repetir; más de {@value #MAX_COMPROBAR}, o alguno nulo o en blanco, es un 400. */
     @PostMapping("/comprobar")
     public List<MovilComprobado> comprobar(@RequestBody PeticionComprobar peticion) {
         List<String> imeis = peticion == null || peticion.imeis() == null ? List.of() : peticion.imeis();
@@ -170,13 +219,16 @@ public class StockTelefonosController {
         Map<String, MovilNsys> masReciente = new HashMap<>();
         for (MovilNsys m : dao.porImeis(imeis)) masReciente.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
         Map<String, List<TrabajoAbierto>> abiertos = dao.trabajosAbiertos(imeis);
+        Function<MovilNsys, LoQueVale.Valor> vale = taller.valedor(imeis);
         return imeis.stream().map(imei -> {
             MovilNsys m = masReciente.get(NsysDAO.claveCruce(imei));
-            if (m == null) return new MovilComprobado(imei, false, null, null, null, null, null, false, null, null, null, List.of());
-            return new MovilComprobado(imei, true, m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
-                    Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), ubicacionVisible(m),
-                    m.estado().name(), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
-                    abiertos.getOrDefault(NsysDAO.claveCruce(imei), List.of()));
+            if (m == null)
+                return new MovilComprobado(imei, false, null, null, null, null, null, false, null, null, null, List.of(), null, null);
+            LoQueVale.Valor v = vale.apply(m);
+            return new MovilComprobado(imei, true, m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
+                    v.bateriaNueva(), ubicacionVisible(m), m.estado().name(),
+                    m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
+                    abiertos.getOrDefault(NsysDAO.claveCruce(imei), List.of()), v.colorNsys(), v.gradoNsys());
         }).toList();
     }
 
@@ -219,11 +271,15 @@ public class StockTelefonosController {
         return desde == null ? null : (int) ChronoUnit.DAYS.between(desde, hoy);
     }
 
+    /** 0.9.21: {@code color}, {@code grado}, {@code bateriaNueva} y {@code sku} son lo que vale; {@code colorNsys},
+     *  {@code gradoNsys} (el grado entero de NSYS, con el 100) y {@code skuNsys}, lo de NSYS cuando el taller lo cambia. */
     private record MovilStock(String imeiSn, String lote, @Schema(nullable = true) String modelo,
                               @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                               @Schema(nullable = true) String color, String grado, boolean bateriaNueva, boolean esEsim,
                               @Schema(nullable = true) String sku, @Schema(nullable = true) String ubicacion, String estado,
-                              @Schema(nullable = true) Integer dias, List<TrabajoAbierto> trabajos) {}
+                              @Schema(nullable = true) Integer dias, List<TrabajoAbierto> trabajos,
+                              @Schema(nullable = true) String colorNsys, @Schema(nullable = true) String gradoNsys,
+                              @Schema(nullable = true) String skuNsys) {}
 
     private record EstadoImportacion(@Schema(nullable = true) LocalDateTime ultimaExportacion, String nivel,
                                      @Schema(nullable = true) LocalDateTime ultimoFallo,
@@ -232,8 +288,11 @@ public class StockTelefonosController {
     private record MovilBuscado(String imeiSn, @Schema(nullable = true) String modelo,
                                 @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                                 @Schema(nullable = true) String color, String estado,
-                                @Schema(nullable = true) String ubicacion, @Schema(nullable = true) LocalDate fechaVenta) {}
+                                @Schema(nullable = true) String ubicacion, @Schema(nullable = true) LocalDate fechaVenta,
+                                @Schema(nullable = true) String colorNsys) {}
 
+    /** 0.9.21: {@code porPasar}, el móvil tiene algo del taller vigente; {@code ponerProducto} (null: ningún móvil de ese color
+     *  en NSYS) y {@code ponerGrado}, lo que hay que poner en NSYS, solo con {@code porPasar}. */
     private record FichaMovil(String imeiSn, String lote, @Schema(nullable = true) String modelo,
                               @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                               @Schema(nullable = true) String color, String grado, boolean bateriaNueva,
@@ -242,10 +301,19 @@ public class StockTelefonosController {
                               @Schema(nullable = true) Integer dias, int entradas,
                               @Schema(nullable = true) LocalDate fechaVenta,
                               @Schema(nullable = true) LocalDateTime revisadoEl, boolean revisadoDevolucion,
-                              @Schema(nullable = true) LocalDate pendienteRevisionDesde) {}
+                              @Schema(nullable = true) LocalDate pendienteRevisionDesde,
+                              @Schema(nullable = true) String colorNsys, @Schema(nullable = true) String gradoNsys,
+                              @Schema(nullable = true) String skuNsys, boolean porPasar,
+                              @Schema(nullable = true) String ponerProducto, @Schema(nullable = true) String ponerGrado) {}
 
     /** Del paquete (no privado) para que los tests lo construyan; el esquema se llama StockTelefonosPeticionComprobar. */
     record PeticionComprobar(List<String> imeis) {}
+
+    /** Del paquete para que los tests lo construyan; esquema StockTelefonosPeticionTaller. El grado, como en NSYS. */
+    record PeticionTaller(@Schema(nullable = true) String color, @Schema(nullable = true) String grado, String motivo) {}
+
+    /** Esquema StockTelefonosPeticionVolver. */
+    record PeticionVolver(@Schema(nullable = true) String motivo) {}
 
     private record ListaImportaciones(List<FilaImportacion> importaciones, ProgresoHistorico historico) {}
 
@@ -262,5 +330,6 @@ public class StockTelefonosController {
                                    @Schema(nullable = true) String color, @Schema(nullable = true) String grado,
                                    boolean bateriaNueva, @Schema(nullable = true) String ubicacion,
                                    @Schema(nullable = true) String estado, @Schema(nullable = true) LocalDate fechaVenta,
-                                   List<TrabajoAbierto> trabajos) {}
+                                   List<TrabajoAbierto> trabajos, @Schema(nullable = true) String colorNsys,
+                                   @Schema(nullable = true) String gradoNsys) {}
 }

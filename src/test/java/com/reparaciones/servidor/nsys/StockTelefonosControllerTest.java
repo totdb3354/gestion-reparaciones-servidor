@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.reparaciones.servidor.dao.LogDAO;
+import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,8 +33,11 @@ class StockTelefonosControllerTest {
     private static final ObjectMapper JSON = new ObjectMapper().registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private final NsysDAO dao = mock(NsysDAO.class);
-    private final StockTelefonosController api = new StockTelefonosController(dao,
-            Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
+    private final TallerDAO tallerDao = mock(TallerDAO.class);
+    private final LogDAO logDao = mock(LogDAO.class);
+    private final Clock reloj = Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID);
+    private final StockTelefonosController api = new StockTelefonosController(dao, new TallerNsys(dao, tallerDao, logDao, reloj),
+            reloj);
 
     private static MovilNsys movil(String imei, String batch, String grade, String ubicacion, String ultima, EstadoMovil estado) {
         return new MovilNsys(imei, batch, "Apple iPhone 13 128GB Blue", grade, "Available", "x", "Proveedor A",
@@ -429,5 +434,142 @@ class StockTelefonosControllerTest {
         assertEquals(138, h.get("hechos").asInt());
         assertTrue(h.get("ultimo").asText().startsWith("2025-05-03T22:31"));
         assertTrue(h.get("hasta").asText().startsWith("2026-10-16T14:31"));
+    }
+
+    // ---------------------------------------------------------------- 0.9.21: lo que vale (spec «SKU del taller» §2.1 y §2.4)
+
+    private static final String IMEI = "350000000000001";
+
+    private void conMaestro() {
+        when(dao.cargarProductos()).thenReturn(List.of(TallerDePrueba.producto("Blue", "Azul", "A"),
+                TallerDePrueba.producto("(PRODUCT)RED", "Rojo", "A"), TallerDePrueba.producto("Blue", "Azul", "A100")));
+    }
+
+    @Test void elStockEnsenaLoQueValeYLoDeNsysAlLado() {
+        conMaestro();
+        when(dao.enEmpresa()).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK),
+                movil("350000000000002", "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes()).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.COLOR, "Rojo", "Azul")));
+        JsonNode stock = json(api.stock());
+        assertEquals("Rojo", stock.get(0).get("color").asText());
+        assertEquals("Azul", stock.get(0).get("colorNsys").asText());
+        assertEquals("i13128RojoA", stock.get(0).get("sku").asText());
+        assertEquals("i13128AzulA", stock.get(0).get("skuNsys").asText());
+        assertTrue(stock.get(0).get("gradoNsys").isNull());
+        assertTrue(stock.get(1).get("colorNsys").isNull(), "sin nada del taller, como hoy");
+        assertEquals("i13128AzulA", stock.get(1).get("sku").asText());
+    }
+
+    @Test void unStockSinNadaDelTallerNoLeeElMaestro() {
+        when(dao.enEmpresa()).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        api.stock();
+        verify(dao, never()).cargarProductos();
+    }
+
+    @Test void laFichaConElGradoDelTallerYLoQueHayQuePonerEnNsys() {
+        conMaestro();
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.GRADO, "A100", "A")));
+        JsonNode ficha = json(api.ficha(IMEI));
+        assertEquals("A", ficha.get("grado").asText());
+        assertTrue(ficha.get("bateriaNueva").asBoolean());
+        assertEquals("A", ficha.get("gradoNsys").asText());
+        assertEquals("i13128AzulA100", ficha.get("sku").asText());
+        assertTrue(ficha.get("porPasar").asBoolean());
+        assertEquals("Apple iPhone 13 128GB Blue", ficha.get("ponerProducto").asText(), "solo cambia el grado: el producto de ahora");
+        assertEquals("A100", ficha.get("ponerGrado").asText());
+        verify(dao, never()).goodsMasUsados(any());
+    }
+
+    @Test void laFichaConElColorDelTallerPideElProductoMasUsadoDeEseColor() {
+        conMaestro();
+        MovilNsys m = movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK);
+        when(dao.porImei(IMEI)).thenReturn(List.of(m));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.COLOR, "Rojo", "Azul")));
+        when(dao.goodsMasUsados(m)).thenReturn(Map.of("Rojo", "Apple iPhone 13 128GB (PRODUCT)RED"));
+        JsonNode ficha = json(api.ficha(IMEI));
+        assertEquals("Rojo", ficha.get("color").asText());
+        assertEquals("Azul", ficha.get("colorNsys").asText());
+        assertEquals("Apple iPhone 13 128GB (PRODUCT)RED", ficha.get("ponerProducto").asText());
+        when(dao.goodsMasUsados(m)).thenReturn(Map.of());
+        assertTrue(json(api.ficha(IMEI)).get("ponerProducto").isNull(), "ningún móvil de ese color: la web dice «búscalo a mano»");
+    }
+
+    @Test void laFichaSinNadaDelTallerNoTieneNadaPorPasar() {
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        JsonNode ficha = json(api.ficha(IMEI));
+        assertFalse(ficha.get("porPasar").asBoolean());
+        assertTrue(ficha.get("ponerProducto").isNull());
+        assertTrue(ficha.get("ponerGrado").isNull());
+        assertTrue(ficha.get("colorNsys").isNull());
+    }
+
+    @Test void comprobarConElColorYElGradoQueValen() {
+        conMaestro();
+        List<String> imeis = List.of(IMEI);
+        when(dao.porImeis(imeis)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes(imeis)).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.COLOR, "Rojo", "Azul"),
+                TallerDePrueba.vigente(2, IMEI, DatoTaller.GRADO, "A100", "A")));
+        JsonNode r = json(api.comprobar(pedir(IMEI))).get(0);
+        assertEquals("Rojo", r.get("color").asText());
+        assertEquals("Azul", r.get("colorNsys").asText());
+        assertEquals("A", r.get("grado").asText());
+        assertTrue(r.get("bateriaNueva").asBoolean());
+        assertEquals("A", r.get("gradoNsys").asText());
+    }
+
+    @Test void buscarConElColorQueVale() {
+        when(dao.buscar("3500", 10)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.COLOR, "Rojo", "Azul")));
+        JsonNode r = json(api.buscar("3500")).get(0);
+        assertEquals("Rojo", r.get("color").asText());
+        assertEquals("Azul", r.get("colorNsys").asText());
+    }
+
+    @Test void elRastroLlevaLosCambiosDelTaller() {
+        when(tallerDao.deImei(IMEI)).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.GRADO, "A100", "B")));
+        List<EventoRastro> rastro = api.rastro(IMEI);
+        assertEquals("TALLER_CAMBIO", rastro.get(0).tipo());
+        assertEquals("TALLER", rastro.get(0).fuente());
+        assertEquals("GRADO", rastro.get(0).dato());
+    }
+
+    // ---------------------------------------------------------------- 0.9.21: corrección, vuelta, lista y opciones
+
+    private static final UsuarioPrincipal SUPER = new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3);
+
+    @Test void corregirGuardaConElUsuarioDeLaSesion() {
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        api.corregir(IMEI, new StockTelefonosController.PeticionTaller(null, "A100", "batería nueva"), SUPER);
+        verify(tallerDao).guardar(eq(IMEI), eq(List.of(new TallerDAO.Nuevo(DatoTaller.GRADO, "A100", "A",
+                CambioTaller.Estado.VIGENTE))), eq(7), eq("batería nueva"), any());
+        verify(logDao).insertar(7, "CORREGIR_MOVIL_TALLER", "IMEI: 350000000000001, GRADO: A → A100", "batería nueva");
+    }
+
+    @Test void volverSinCuerpoVaSinMotivo() {
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.GRADO, "A100", "A")));
+        api.volver(IMEI, null, SUPER);
+        verify(tallerDao).guardar(eq(IMEI), eq(List.of(new TallerDAO.Nuevo(DatoTaller.GRADO, "A", "A",
+                CambioTaller.Estado.QUITADO))), eq(7), isNull(), any());
+    }
+
+    @Test void laListaYLasOpcionesSalenDelServicio() {
+        assertTrue(api.porPasar().isEmpty());
+        when(dao.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        OpcionesTaller o = api.colores(IMEI);
+        assertEquals("Apple iPhone 13 128GB Blue", o.productoActual());
+        assertTrue(o.colores().isEmpty(), "el maestro del mock está vacío");
+    }
+
+    @Test void elRastroLlevaLosAvisosDelTaller() {
+        // 0.9.21 (pieza 2 §2.5)
+        when(tallerDao.avisosDeImei(IMEI)).thenReturn(List.of(new AvisoTaller(1, IMEI, "R20261021_3", AvisoTaller.Tipo.SIN_COLOR,
+                null, DatoTaller.COLOR, "chai13xxx", null, "chasis chai13xxx nuevo", 8, "Técnico 2",
+                LocalDateTime.of(2026, 10, 21, 10, 0))));
+        List<EventoRastro> rastro = api.rastro(IMEI);
+        assertEquals("TALLER_SIN_COLOR", rastro.get(0).tipo());
+        assertEquals("chai13xxx", rastro.get(0).de());
+        assertEquals("Técnico 2", rastro.get(0).tecnico());
     }
 }

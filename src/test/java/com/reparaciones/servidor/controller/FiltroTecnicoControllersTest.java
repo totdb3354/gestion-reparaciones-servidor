@@ -5,6 +5,8 @@ import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.EntregaGlassService;
+import com.reparaciones.servidor.service.GuardadoReparacion;
+import com.reparaciones.servidor.nsys.TallerReparaciones;
 import com.reparaciones.servidor.nsys.ModeloNsys;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,7 +21,7 @@ class FiltroTecnicoControllersTest {
     private final ReparacionController rep = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), mock(LogDAO.class), mock(BorradorDAO.class),
             mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
-            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class));
+            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class), new GuardadoReparacion(dao, mock(TallerReparaciones.class)));
     private final GlassController glass = new GlassController(dao, mock(LogDAO.class), mock(TelefonoDAO.class),
             mock(ModeloNsys.class), mock(TecnicoDAO.class), mock(CargaAsignacionesService.class));
     private final PulidoController pulido = new PulidoController(dao, mock(LogDAO.class), mock(TelefonoDAO.class), mock(ModeloNsys.class));
