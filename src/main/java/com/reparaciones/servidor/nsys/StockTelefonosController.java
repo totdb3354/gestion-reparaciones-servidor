@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,15 +58,32 @@ public class StockTelefonosController {
     }
 
     /** Los móviles que están en la empresa (en stock, de pedido o que no cuentan), cada uno con sus trabajos abiertos del
-     *  taller (0.9.18). La web filtra en local y calcula «Quién lo tiene». */
+     *  taller (0.9.18). Los días y la caja de un móvil de pedido cuentan con su cadena de correcciones de NSYS (0.9.21). La
+     *  web filtra en local y calcula «Quién lo tiene». */
     @GetMapping
     public List<MovilStock> stock() {
         LocalDate hoy = LocalDate.now(clock);
         Map<String, List<TrabajoAbierto>> abiertos = dao.trabajosAbiertos();
-        return dao.enEmpresa().stream().map(m -> new MovilStock(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(),
-                m.capacidad(), m.color(), Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()),
-                m.esEsim(), m.sku(), ubicacionVisible(m), m.estado().name(), dias(m, hoy),
-                abiertos.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()))).toList();
+        Map<String, Correcciones> correcciones = correccionesPorImei();
+        return dao.enEmpresa().stream().map(m -> {
+            Correcciones c = correcciones.getOrDefault(m.imeiSn(), Correcciones.NINGUNA);
+            MovilNsys primero = Objects.requireNonNullElse(c.lote(c.primerLote(m.batch())), m);
+            return new MovilStock(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
+                    Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), m.esEsim(), m.sku(),
+                    ubicacionVisible(m, c), m.estado().name(), dias(primero, hoy),
+                    abiertos.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()));
+        }).toList();
+    }
+
+    /** Las cadenas de correcciones de los IMEI con más de un lote, de una vez (0.9.21). */
+    private Map<String, Correcciones> correccionesPorImei() {
+        Map<String, List<MovilNsys>> lotes = new HashMap<>();
+        for (MovilNsys m : dao.lotesDeImeisConVarios()) lotes.computeIfAbsent(m.imeiSn(), k -> new ArrayList<>()).add(m);
+        Map<String, List<EventoNsys>> bajas = new HashMap<>();
+        for (EventoNsys e : dao.bajasConHora()) bajas.computeIfAbsent(e.imeiSn(), k -> new ArrayList<>()).add(e);
+        Map<String, Correcciones> porImei = new HashMap<>();
+        lotes.forEach((imei, l) -> porImei.put(imei, Correcciones.de(l, bajas.getOrDefault(imei, List.of()))));
+        return porImei;
     }
 
     @GetMapping("/estado")
@@ -99,9 +117,14 @@ public class StockTelefonosController {
         if (lotes.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "NSYS no conoce el IMEI " + imeiSn);
         MovilNsys m = lotes.get(0);
         List<EventoNsys> eventos = dao.eventos(imeiSn);
+        // 0.9.21 (corrección en NSYS): la cadena de correcciones del lote cuenta como un solo móvil: días desde su primer
+        // lote, sus entradas de verdad y la revisión, el grado anterior y la espera con los eventos de toda la cadena.
+        Correcciones correcciones = Correcciones.de(lotes, eventos);
+        List<EventoNsys> deLaCadena = correcciones.paraRevision(eventos);
+        MovilNsys primero = Objects.requireNonNullElse(correcciones.lote(correcciones.primerLote(m.batch())), m);
         // El último cambio de grado de verdad del lote: un cambio de batería (A → A100) no cuenta, o taparía el grado
         // anterior real (C → A → A100 da C).
-        String gradoAnterior = eventos.stream()
+        String gradoAnterior = deLaCadena.stream()
                 .filter(e -> e.tipo() == TipoEvento.GRADO && Objects.equals(e.batch(), m.batch()))
                 .filter(e -> !Normalizacion.gradoSinBateria(e.de()).equals(Normalizacion.gradoSinBateria(e.a())))
                 .reduce((a, b) -> b).map(e -> e.de() == null ? null : Normalizacion.gradoSinBateria(e.de())).orElse(null);
@@ -109,13 +132,15 @@ public class StockTelefonosController {
                 || m.estado() == EstadoMovil.NO_CUENTA;
         // 0.9.18 (spec §5.2): la última revisión del lote y, si está en «En revisión», desde cuándo. Un vendido o una baja
         // no espera revisión (0.9.18.2).
-        Revision.Ultima revisado = Revision.ultima(eventos, m.batch());
+        Revision.Ultima revisado = Revision.ultima(deLaCadena, m.batch());
+        LocalDate recepcion = primero.receivingDate() != null ? primero.receivingDate() : m.receivingDate();
         return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(),
                 Normalizacion.gradoSinBateria(m.grade()), Normalizacion.bateriaNueva(m.grade()), gradoAnterior, m.sku(),
-                ubicacionVisible(m), m.estado().name(), enEmpresa ? dias(m, LocalDate.now(clock)) : null, lotes.size(),
+                ubicacionVisible(m, correcciones), m.estado().name(), enEmpresa ? dias(primero, LocalDate.now(clock)) : null,
+                lotes.size() - correcciones.todas().size(),
                 m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
                 revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
-                enEmpresa ? Revision.pendienteDesde(m, eventos) : null);
+                enEmpresa ? Revision.pendienteDesde(m.conRecepcion(recepcion), deLaCadena) : null);
     }
 
     @GetMapping("/{imeiSn}/rastro")
@@ -171,6 +196,13 @@ public class StockTelefonosController {
     /** Un móvil de pedido sigue «en su caja»: la última ubicación conocida antes de «Pedidos realizados». */
     private static String ubicacionVisible(MovilNsys m) {
         return m.estado() == EstadoMovil.DE_PEDIDO ? m.ubicacionUltima() : m.ubicacion();
+    }
+
+    /** Como {@link #ubicacionVisible(MovilNsys)} y, si un móvil de pedido no tiene última caja porque entró así tras una
+     *  corrección de NSYS, la del lote anterior de su cadena (0.9.21). */
+    private static String ubicacionVisible(MovilNsys m, Correcciones c) {
+        if (m.estado() != EstadoMovil.DE_PEDIDO) return m.ubicacion();
+        return m.ubicacionUltima() != null ? m.ubicacionUltima() : c.ultimaCajaAnterior(m.batch());
     }
 
     private static Integer dias(MovilNsys m, LocalDate hoy) {

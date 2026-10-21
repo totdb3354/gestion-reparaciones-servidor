@@ -207,6 +207,52 @@ class StockTelefonosControllerTest {
         assertTrue(ficha.get("dias").isNull());
     }
 
+    // 0.9.21 (corrección en NSYS): BT-1333 (recibido el 23/09, revisado el 13/10 y de pedido desde Listos) se da de baja el
+    // 15/10 y vuelve como BT-1345, de pedido y sin última caja.
+
+    private static MovilNsys loteNuevoCorregido() {
+        return new MovilNsys("350000000000001", "BT-1345", "Apple iPhone 15 eSIM 512GB Black", "A100", "InProcess",
+                "Pedidos realizados", "Proveedor A", LocalDate.of(2026, 10, 15), null, "i15eSIM512NegroA100", "15", "15",
+                "512GB", "Negro", "A100", true, null, null, EstadoMovil.DE_PEDIDO, AHORA.minusDays(1), AHORA.minusDays(1));
+    }
+
+    private static MovilNsys loteViejoCorregido() {
+        return new MovilNsys("350000000000001", "BT-1333", "Apple iPhone 15 eSIM 512GB Yellow", "A", "Removed", "",
+                "Proveedor A", LocalDate.of(2026, 9, 23), null, "i15eSIM512AmarilloA", "15", "15", "512GB", "Amarillo", "A",
+                true, null, "Listos", EstadoMovil.BAJA, AHORA.minusDays(20), AHORA.minusDays(1));
+    }
+
+    private static EventoNsys eventoCorregido(String lote, LocalDateTime fecha, TipoEvento tipo, String de, String a, String aNsys) {
+        return new EventoNsys("350000000000001", lote, fecha, false, tipo, de, a, aNsys);
+    }
+
+    private static final LocalDateTime BAJA = LocalDateTime.of(2026, 10, 15, 10, 1);
+
+    @Test void laFichaDeUnLoteCorregidoCuentaDesdeElPrimerLoteConSuRevisionYSuCaja() {
+        when(dao.porImei("350000000000001")).thenReturn(List.of(loteNuevoCorregido(), loteViejoCorregido()));
+        when(dao.eventos("350000000000001")).thenReturn(List.of(
+                eventoCorregido("BT-1333", LocalDateTime.of(2026, 10, 13, 8, 46), TipoEvento.UBICACION, "En revisión", "Listos", "CAJA LISTOS"),
+                eventoCorregido("BT-1333", LocalDateTime.of(2026, 10, 14, 13, 31), TipoEvento.UBICACION, "Listos", null, "Pedidos realizados"),
+                eventoCorregido("BT-1333", BAJA, TipoEvento.ESTADO, "InProcess", "Removed", null),
+                eventoCorregido("BT-1345", BAJA, TipoEvento.ENTRADA, null, null, "Pedidos realizados"),
+                eventoCorregido("BT-1345", BAJA, TipoEvento.REENTRADA, null, "BT-1345", null)));
+        JsonNode ficha = json(api.ficha("350000000000001"));
+        assertEquals("BT-1345", ficha.get("lote").asText());
+        assertEquals(23, ficha.get("dias").asInt(), "del 23/09 (primer lote) al 16/10");
+        assertEquals(1, ficha.get("entradas").asInt());
+        assertTrue(ficha.get("revisadoEl").asText().startsWith("2026-10-13T08:46"));
+        assertEquals("Listos", ficha.get("ubicacion").asText(), "la caja del lote de antes");
+    }
+
+    @Test void elStockCuentaLosDiasDesdeElPrimerLoteYLaCajaDelAnterior() {
+        when(dao.enEmpresa()).thenReturn(List.of(loteNuevoCorregido()));
+        when(dao.lotesDeImeisConVarios()).thenReturn(List.of(loteNuevoCorregido(), loteViejoCorregido()));
+        when(dao.bajasConHora()).thenReturn(List.of(eventoCorregido("BT-1333", BAJA, TipoEvento.ESTADO, "InProcess", "Removed", null)));
+        JsonNode stock = json(api.stock());
+        assertEquals(23, stock.get(0).get("dias").asInt());
+        assertEquals("Listos", stock.get(0).get("ubicacion").asText());
+    }
+
     @Test void fichaDeUnImeiQueNsysNoConoceEs404() {
         when(dao.porImei("x")).thenReturn(List.of());
         ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.ficha("x"));
