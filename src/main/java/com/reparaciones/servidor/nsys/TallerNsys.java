@@ -232,7 +232,7 @@ public class TallerNsys {
     }
 
     /** Un valor que se calcula la primera vez que se pide (el maestro, solo si algún móvil tiene algo del taller). */
-    private static <T> Supplier<T> perezoso(Supplier<T> fuente) {
+    static <T> Supplier<T> perezoso(Supplier<T> fuente) {
         return new Supplier<>() {
             private T valor;
 
