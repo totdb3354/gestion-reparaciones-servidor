@@ -152,6 +152,10 @@ class OpenApiContractTest {
         assertTrue(resumen.path("properties").path("clienteTelefono").path("nullable").asBoolean(false),
                 "clienteTelefono nullable (spec 0.9.8 §5)");
         assertFalse(resumen.path("properties").path("idRep").path("nullable").asBoolean(false), "idRep no nullable");
+        // 0.9.21 (spec «Descripción completa donde pone «Modelo»» §2.3): capacidad y color de NSYS, nullables y al final.
+        assertNullable(esquemas, "ReparacionResumen", "capacidad", "color");
+        assertEquals(List.of("capacidad", "color"), propiedades.subList(propiedades.size() - 2, propiedades.size()),
+                "capacidad y color van al final de ReparacionResumen");
         assertTrue(esquemas.path("LoginResponse").path("properties").path("idTec").path("nullable").asBoolean(false), "idTec nullable");
         assertTrue(esquemas.path("LoginResponse").path("required").toString().contains("\"token\""));
         assertTrue(esquemas.path("ReparacionMotivoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));

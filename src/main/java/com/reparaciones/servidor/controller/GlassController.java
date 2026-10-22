@@ -10,6 +10,7 @@ import com.reparaciones.servidor.model.Tecnico;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
+import com.reparaciones.servidor.nsys.DescripcionMovil;
 import com.reparaciones.servidor.nsys.ModeloNsys;
 import com.reparaciones.servidor.service.PrediccionGlass;
 import com.reparaciones.servidor.service.TipoTrabajo;
@@ -38,27 +39,30 @@ public class GlassController {
     private final ModeloNsys modeloNsys;
     private final TecnicoDAO tecnicoDao;
     private final CargaAsignacionesService cargaAsignaciones;
+    /** 0.9.21: la capacidad y el color de NSYS en el historial y las asignaciones de glass. */
+    private final DescripcionMovil descripcion;
 
     public GlassController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ModeloNsys modeloNsys,
-                           TecnicoDAO tecnicoDao, CargaAsignacionesService cargaAsignaciones) {
+                           TecnicoDAO tecnicoDao, CargaAsignacionesService cargaAsignaciones, DescripcionMovil descripcion) {
         this.dao = dao;
         this.logDao = logDao;
         this.telefonoDAO = telefonoDAO;
         this.modeloNsys = modeloNsys;
         this.tecnicoDao = tecnicoDao;
         this.cargaAsignaciones = cargaAsignaciones;
+        this.descripcion = descripcion;
     }
 
     @GetMapping("/asignaciones")
     public List<ReparacionResumen> getAsignaciones(@RequestParam(required = false) Integer tecnico,
                                                    @AuthenticationPrincipal UsuarioPrincipal principal) {
-        return dao.getAsignacionesGlass(FiltroTecnico.efectivo(principal, tecnico));
+        return descripcion.rellenar(dao.getAsignacionesGlass(FiltroTecnico.efectivo(principal, tecnico)));
     }
 
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(@RequestParam(required = false) Integer tecnico,
                                                 @AuthenticationPrincipal UsuarioPrincipal principal) {
-        return dao.getHistorialGlass(FiltroTecnico.efectivo(principal, tecnico));
+        return descripcion.rellenar(dao.getHistorialGlass(FiltroTecnico.efectivo(principal, tecnico)));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")

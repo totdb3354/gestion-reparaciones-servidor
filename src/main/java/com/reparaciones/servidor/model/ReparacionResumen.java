@@ -51,6 +51,12 @@ public class ReparacionResumen {
     private boolean       normalAbierta;            // AG: hay reparación normal abierta en el IMEI (alguien arriba debe entregar)
     @Schema(nullable = true) private String        normalTecnicoNombre;      // AG: dueño de esa normal (la más antigua)
 
+    // 0.9.21 (spec «Descripción completa donde pone «Modelo»» §2.3): la capacidad del espejo de NSYS y el color que vale (lo del
+    // taller vigente o el de NSYS), de la fila más reciente del IMEI. Solo los rellenan las seis listas del taller
+    // (nsys.DescripcionMovil); null fuera del espejo, si la lectura falla y en las demás rutas. Van al final del contrato.
+    @Schema(nullable = true) private String        capacidad;
+    @Schema(nullable = true) private String        color;
+
     public ReparacionResumen() {}
 
     public ReparacionResumen(String idRep, String imei, String nombreTecnico,
@@ -148,4 +154,8 @@ public class ReparacionResumen {
     public void          setNormalAbierta(boolean v)               { this.normalAbierta = v; }
     public String        getNormalTecnicoNombre()                  { return normalTecnicoNombre; }
     public void          setNormalTecnicoNombre(String v)          { this.normalTecnicoNombre = v; }
+    public String        getCapacidad()                            { return capacidad; }
+    public void          setCapacidad(String v)                    { this.capacidad = v; }
+    public String        getColor()                                { return color; }
+    public void          setColor(String v)                        { this.color = v; }
 }
