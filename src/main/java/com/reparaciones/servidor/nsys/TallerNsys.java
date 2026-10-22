@@ -64,6 +64,13 @@ public class TallerNsys {
     public Function<MovilNsys, LoQueVale.Valor> valedorDeTodos() {
         return valedor(tallerDao.vigentes());
     }
+    /** Solo el color que vale de cada móvil, con todos los cambios vigentes del taller (una consulta) y sin el maestro, que solo
+     *  hace falta para el SKU: las listas del taller (spec 0.9.21 «Descripción completa donde pone «Modelo»» §2.3). Da lo mismo
+     *  que {@code valedorDeTodos().apply(m).color()}. */
+    public Function<MovilNsys, String> colorDeTodos() {
+        Map<String, List<CambioTaller>> porImei = porImei(tallerDao.vigentes());
+        return m -> LoQueVale.valor(porImei.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()), DatoTaller.COLOR, m);
+    }
 
     private Function<MovilNsys, LoQueVale.Valor> valedor(List<CambioTaller> vigentes) {
         Map<String, List<CambioTaller>> porImei = porImei(vigentes);

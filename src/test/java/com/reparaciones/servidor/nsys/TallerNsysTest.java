@@ -67,6 +67,18 @@ class TallerNsysTest {
         when(taller.vigentes()).thenReturn(List.of(vigente(1, "f2lxabc123", GRADO, "A100", "B")));
         assertEquals("A100", servicio.valedorDeTodos().apply(movil("F2LXABC123", "Azul", "B")).grade());
     }
+    @Test void elColorQueValeDeTodosEsElDelValedorYNoLeeElMaestro() {
+        String otro = "350000000000002";
+        when(taller.vigentes()).thenReturn(List.of(vigente(1, IMEI, COLOR, "Rojo", "Azul"), vigente(2, IMEI, GRADO, "A100", "B"),
+                vigente(3, "f2lxabc123", COLOR, "Verde", "Azul")));
+        Function<MovilNsys, String> color = servicio.colorDeTodos();
+        assertEquals("Rojo", color.apply(movil(IMEI, "Azul", "B")));
+        assertEquals("Azul", color.apply(movil(otro, "Azul", "B")), "sin nada del taller, el de NSYS");
+        assertEquals("Verde", color.apply(movil("F2LXABC123", "Azul", "B")), "el número de serie cruza sin mirar mayúsculas");
+        verify(nsys, never()).cargarProductos();
+        verify(taller, times(1)).vigentes();
+        assertEquals(servicio.valedorDeTodos().apply(movil(IMEI, "Azul", "B")).color(), color.apply(movil(IMEI, "Azul", "B")));
+    }
 
     @Test void elProductoAPonerEsElDeAhoraSiSoloCambiaElGradoYElMasUsadoSiCambiaElColor() {
         MovilNsys m = movil(IMEI, "Azul", "B");
