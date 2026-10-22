@@ -6,6 +6,7 @@ import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.model.ReparacionResumen;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import com.reparaciones.servidor.nsys.DescripcionMovil;
 import com.reparaciones.servidor.nsys.ModeloNsys;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
@@ -25,26 +26,30 @@ public class PulidoController {
     private final LogDAO        logDao;
     private final TelefonoDAO   telefonoDAO;
     private final ModeloNsys modeloNsys;
+    /** 0.9.21: la capacidad y el color de NSYS en el historial y las asignaciones de pulido. */
+    private final DescripcionMovil descripcion;
 
-    public PulidoController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ModeloNsys modeloNsys) {
+    public PulidoController(ReparacionDAO dao, LogDAO logDao, TelefonoDAO telefonoDAO, ModeloNsys modeloNsys,
+                            DescripcionMovil descripcion) {
         this.dao    = dao;
         this.logDao = logDao;
         this.telefonoDAO = telefonoDAO;
         this.modeloNsys = modeloNsys;
+        this.descripcion = descripcion;
     }
 
     @GetMapping("/asignaciones")
     public List<ReparacionResumen> getAsignaciones(
             @RequestParam(required = false) Integer tecnico,
             @AuthenticationPrincipal UsuarioPrincipal principal) {
-        return dao.getAsignacionesPulido(FiltroTecnico.efectivo(principal, tecnico));
+        return descripcion.rellenar(dao.getAsignacionesPulido(FiltroTecnico.efectivo(principal, tecnico)));
     }
 
     @GetMapping("/historial")
     public List<ReparacionResumen> getHistorial(
             @RequestParam(required = false) Integer tecnico,
             @AuthenticationPrincipal UsuarioPrincipal principal) {
-        return dao.getHistorialPulido(FiltroTecnico.efectivo(principal, tecnico));
+        return descripcion.rellenar(dao.getHistorialPulido(FiltroTecnico.efectivo(principal, tecnico)));
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")

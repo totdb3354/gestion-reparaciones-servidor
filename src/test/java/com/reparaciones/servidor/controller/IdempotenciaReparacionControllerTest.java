@@ -15,6 +15,7 @@ import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.CargaAsignacionesService;
 import com.reparaciones.servidor.service.EntregaGlassService;
 import com.reparaciones.servidor.service.GuardadoReparacion;
+import com.reparaciones.servidor.nsys.DescripcionMovil;
 import com.reparaciones.servidor.nsys.TallerReparaciones;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -52,7 +53,7 @@ class IdempotenciaReparacionControllerTest {
     private final ReparacionController ctl = new ReparacionController(
             dao, mock(ReparacionComponenteDAO.class), logDao, borradorDao,
             mock(ComponenteDAO.class), mock(DificultadPuntosDAO.class), mock(TecnicoDAO.class), new RegistroIdempotencia(),
-            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class), new GuardadoReparacion(dao, mock(TallerReparaciones.class)));
+            mock(CargaAsignacionesService.class), mock(EntregaGlassService.class), new GuardadoReparacion(dao, mock(TallerReparaciones.class)), mock(DescripcionMovil.class));
 
     private final UsuarioPrincipal tecnico = new UsuarioPrincipal(8, "tecnico_n", "x", "TECNICO", 4);
     private final UsuarioPrincipal supertecnico = new UsuarioPrincipal(7, "tecnico_f", "x", "SUPERTECNICO", 3);

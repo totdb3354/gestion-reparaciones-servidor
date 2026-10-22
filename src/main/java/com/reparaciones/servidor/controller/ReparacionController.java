@@ -9,6 +9,7 @@ import com.reparaciones.servidor.dao.TecnicoDAO;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.job.UrgenteAutomaticoJob;
 import com.reparaciones.servidor.model.*;
+import com.reparaciones.servidor.nsys.DescripcionMovil;
 import com.reparaciones.servidor.security.FiltroTecnico;
 import com.reparaciones.servidor.security.PropiedadAsignacion;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
@@ -47,11 +48,14 @@ public class ReparacionController {
     private final CargaAsignacionesService cargaAsignaciones;
     private final EntregaGlassService entregaGlass;
     private final GuardadoReparacion guardado;
+    /** 0.9.21: la capacidad y el color de NSYS en el historial y las asignaciones. */
+    private final DescripcionMovil descripcion;
 
     public ReparacionController(ReparacionDAO dao, ReparacionComponenteDAO rcDao, LogDAO logDao,
                                 com.reparaciones.servidor.dao.BorradorDAO borradorDao, ComponenteDAO componenteDao,
                                 DificultadPuntosDAO dificultadDao, TecnicoDAO tecnicoDao, RegistroIdempotencia idempotencia,
-                                CargaAsignacionesService cargaAsignaciones, EntregaGlassService entregaGlass, GuardadoReparacion guardado) {
+                                CargaAsignacionesService cargaAsignaciones, EntregaGlassService entregaGlass, GuardadoReparacion guardado,
+                                DescripcionMovil descripcion) {
         this.dao         = dao;
         this.rcDao       = rcDao;
         this.logDao      = logDao;
@@ -63,6 +67,7 @@ public class ReparacionController {
         this.cargaAsignaciones = cargaAsignaciones;
         this.entregaGlass = entregaGlass;
         this.guardado = guardado;
+        this.descripcion = descripcion;
     }
 
     // Glass ≈ reparación: completar/editar/borrar se reutilizan; la acción de log
@@ -124,7 +129,7 @@ public class ReparacionController {
     public List<ReparacionResumen> getHistorial(
             @RequestParam(required = false) Integer tecnico,
             @AuthenticationPrincipal UsuarioPrincipal principal) {
-        return dao.getHistorial(FiltroTecnico.efectivo(principal, tecnico));
+        return descripcion.rellenar(dao.getHistorial(FiltroTecnico.efectivo(principal, tecnico)));
     }
 
     @GetMapping("/historial/imei/{imei}")
@@ -138,7 +143,7 @@ public class ReparacionController {
     public List<ReparacionResumen> getAsignaciones(
             @RequestParam(required = false) Integer tecnico,
             @AuthenticationPrincipal UsuarioPrincipal principal) {
-        return dao.getAsignaciones(FiltroTecnico.efectivo(principal, tecnico));
+        return descripcion.rellenar(dao.getAsignaciones(FiltroTecnico.efectivo(principal, tecnico)));
     }
 
     /**
