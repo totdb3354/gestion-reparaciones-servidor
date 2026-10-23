@@ -59,7 +59,8 @@ public class TallerReparaciones {
     }
 
     /** Un guardado: las R… de una misma llamada («Terminar asignación», «✓ Guardar fila» o una fila editada), en el orden de
-     *  sus filas. Cada R… que cambia algo crea sus propios cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. */
+     *  sus filas salvo el chasis, que va primero (0.9.21.1, ver EfectoTaller). Cada R… que cambia algo crea sus propios
+     *  cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. */
     public void aplicar(String imei, List<PiezaGuardada> guardado, int idUsu) {
         List<PiezaTaller> piezas = piezas(guardado.stream().filter(p -> esReparacion(p.idRep())).toList());
         if (piezas.isEmpty() || !tallerDao.bloquear(imei)) return;

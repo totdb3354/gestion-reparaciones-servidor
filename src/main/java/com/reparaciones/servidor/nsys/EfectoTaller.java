@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.nsys;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
@@ -9,8 +10,9 @@ import java.util.function.Function;
  *  fila a fila y en su orden, cada una desde lo que vale tras la anterior. Chasis: el color deducido (si es otro) y la
  *  letra A; tapa trasera: solo el color (0.9.21.1: no toca el grado ni avisa de él); batería: el 100. Si el valor nuevo es
  *  el de NSYS, nace QUITADO; si es el que ya vale, no se crea nada (la misma regla que la corrección a mano de la pieza 1).
- *  En un guardado con un chasis cuyo color se deduce, la tapa no toca el color. La misma cuenta para guardar y para la
- *  previsualización. Es puro. */
+ *  En un guardado con un chasis cuyo color se deduce, la tapa no toca el color. El chasis se aplica antes que las demás
+ *  piezas, sea cual sea el orden de las filas (0.9.21.1: n/a + batería nueva + chasis → A100, sin aviso de la batería).
+ *  La misma cuenta para guardar y para la previsualización. Es puro. */
 public final class EfectoTaller {
 
     /** Lo que hace una fila: sus cambios (0, 1 o 2) y sus avisos ({@code gradoSinCalcular}: el grado que no se pudo
@@ -39,7 +41,10 @@ public final class EfectoTaller {
         String color = colorVale;
         String grado = gradoVale;
         List<Paso> pasos = new ArrayList<>();
-        for (PiezaTaller p : guardado) {
+        // Primero el chasis (estable: el resto conserva su orden). Los pasos salen en este orden, cada uno con su pieza.
+        List<PiezaTaller> enOrden = guardado.stream()
+                .sorted(Comparator.comparing((PiezaTaller p) -> p.tipo() != PiezaTaller.Tipo.CHASIS)).toList();
+        for (PiezaTaller p : enOrden) {
             List<TallerDAO.Nuevo> nuevos = new ArrayList<>();
             boolean sinColor = false;
             if (p.tipo().conColor() && !(p.tipo() == PiezaTaller.Tipo.TAPA && chasisConColor)) {

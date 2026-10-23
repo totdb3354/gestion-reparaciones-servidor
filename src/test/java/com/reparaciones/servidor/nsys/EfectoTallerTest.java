@@ -30,6 +30,11 @@ class EfectoTallerTest {
         return new PiezaTaller(idRep, sku, tipo, nueva);
     }
 
+    /** El paso de una R… (el chasis va primero: el orden de los pasos no es el de las filas). */
+    private static EfectoTaller.Paso paso(EfectoTaller.Resultado r, String idRep) {
+        return r.pasos().stream().filter(p -> p.pieza().idRep().equals(idRep)).findFirst().orElseThrow();
+    }
+
     @Test void unChasisDeOtroColorCambiaElColorYPoneLaA() {
         EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B", List.of(pieza("R1", "chai13red", CHASIS, true)), COLORES);
         assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE), new TallerDAO.Nuevo(GRADO, "A", "B", VIGENTE)),
@@ -53,10 +58,10 @@ class EfectoTallerTest {
     @Test void siChasisYTapaDeducenColoresDistintosMandaElChasisSeaCualSeaElOrden() {
         EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B",
                 List.of(pieza("R1", "tapai13blue", TAPA, true), pieza("R2", "chai13red", CHASIS, true)), COLORES);
-        assertEquals(List.of(), r.pasos().get(0).nuevos(), "la tapa no toca el color (manda el chasis) ni el grado");
-        assertFalse(r.pasos().get(0).colorSinDeducir());
+        assertEquals(List.of(), paso(r, "R1").nuevos(), "la tapa no toca el color (manda el chasis) ni el grado");
+        assertFalse(paso(r, "R1").colorSinDeducir());
         assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE), new TallerDAO.Nuevo(GRADO, "A", "B", VIGENTE)),
-                r.pasos().get(1).nuevos());
+                paso(r, "R2").nuevos());
         assertEquals("Rojo", r.colorDespues());
     }
 
@@ -143,6 +148,55 @@ class EfectoTallerTest {
         assertFalse(r.pasos().get(0).colorSinDeducir(), "la tapa no avisa: manda el chasis");
         assertFalse(r.pasos().get(1).colorSinDeducir());
         assertEquals("Rojo", r.colorDespues());
+    }
+
+    @Test void unChasisSobreNaDejaLaA() {
+        MovilNsys na = movil(IMEI, "Azul", "n/a");
+        EfectoTaller.Resultado r = EfectoTaller.calcular(na, "Azul", "n/a", List.of(pieza("R1", "chai13red", CHASIS, true)), COLORES);
+        assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE), new TallerDAO.Nuevo(GRADO, "A", "n/a", VIGENTE)),
+                r.pasos().get(0).nuevos());
+        assertFalse(r.gradoSinCalcular());
+    }
+
+    @Test void unChasisSobreGradoVacioDejaLaA() {
+        MovilNsys vacio = movil(IMEI, "Azul", null);
+        EfectoTaller.Resultado r = EfectoTaller.calcular(vacio, "Azul", null, List.of(pieza("R1", "chai13red", CHASIS, false)), COLORES);
+        assertEquals("A", r.gradoDespues());
+        assertFalse(r.gradoSinCalcular());
+    }
+
+    @Test void naConBateriaNuevaYChasisQuedaA100SeaCualSeaElOrdenYSinAviso() {
+        MovilNsys na = movil(IMEI, "Azul", "n/a");
+        for (List<PiezaTaller> filas : List.of(
+                List.of(pieza("R1", "bati13", BATERIA, true), pieza("R2", "chai13red", CHASIS, true)),
+                List.of(pieza("R2", "chai13red", CHASIS, true), pieza("R1", "bati13", BATERIA, true)))) {
+            EfectoTaller.Resultado r = EfectoTaller.calcular(na, "Azul", "n/a", filas, COLORES);
+            assertEquals("A100", r.gradoDespues(), filas.toString());
+            assertFalse(r.gradoSinCalcular(), "la batería no avisa: el chasis ya puso la A");
+            assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE), new TallerDAO.Nuevo(GRADO, "A", "n/a", VIGENTE)),
+                    paso(r, "R2").nuevos());
+            assertEquals(List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", VIGENTE)), paso(r, "R1").nuevos());
+        }
+    }
+
+    @Test void laBateriaSolaSobreNaSigueEnNaConAviso() {
+        MovilNsys na = movil(IMEI, "Azul", "n/a");
+        EfectoTaller.Resultado r = EfectoTaller.calcular(na, "Azul", "n/a", List.of(pieza("R1", "bati13", BATERIA, true)), COLORES);
+        assertTrue(r.pasos().get(0).nuevos().isEmpty());
+        assertEquals("n/a", r.gradoDespues());
+        assertEquals("n/a", r.pasos().get(0).gradoSinCalcular());
+    }
+
+    @Test void unChasisSobreIdGOPCambiaElColorPeroNoElGradoYAvisa() {
+        for (String grado : List.of("ID", "F", "A+", "G", "P")) {
+            MovilNsys m = movil(IMEI, "Azul", grado);
+            EfectoTaller.Resultado r = EfectoTaller.calcular(m, "Azul", grado,
+                    List.of(pieza("R1", "chai13red", CHASIS, true), pieza("R2", "bati13", BATERIA, true)), COLORES);
+            assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE)), paso(r, "R1").nuevos(), grado);
+            assertEquals(grado, r.gradoDespues());
+            assertEquals(grado, paso(r, "R1").gradoSinCalcular());
+            assertEquals(grado, paso(r, "R2").gradoSinCalcular());
+        }
     }
 
     @Test void laBateriaReutilizadaSobreGradoIdAvisaDelGrado() {

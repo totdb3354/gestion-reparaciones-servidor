@@ -38,7 +38,7 @@ class GradoTallerTest {
     }
 
     @ParameterizedTest(name = "«{0}» no se puede calcular")
-    @CsvSource({"ID", "F", "FD", "n/a", "A+", "100", "a", "MsMsA", "''"})
+    @CsvSource({"ID", "F", "FD", "A+", "G", "P", "P+", "100", "a", "MsMsA"})
     void sinLaFormaNoCambiaConNingunaPieza(String grado) {
         for (PiezaTaller.Tipo tipo : PiezaTaller.Tipo.values()) {
             assertEquals(Optional.empty(), GradoTaller.conPieza(grado, tipo, true), grado + " " + tipo);
@@ -48,6 +48,20 @@ class GradoTallerTest {
 
     @Test void sinGradoTampoco() {
         assertEquals(Optional.empty(), GradoTaller.conPieza(null, PiezaTaller.Tipo.BATERIA, true));
+    }
+
+    @ParameterizedTest(name = "sin grado de NSYS («{0}»): el chasis pone A; la tapa y la batería no pueden")
+    @CsvSource({"n/a", "N/A", "' n/a '", "''", "' '"})
+    void sinGradoDeNsysSoloElChasisPoneLaA(String grado) {
+        // 0.9.21.1: un chasis sobre n/a o vacío deja el móvil en A (sin Ms ni 100: no hay nada que conservar).
+        assertEquals(Optional.of("A"), GradoTaller.conPieza(grado, PiezaTaller.Tipo.CHASIS, true));
+        assertEquals(Optional.of("A"), GradoTaller.conPieza(grado, PiezaTaller.Tipo.CHASIS, false));
+        assertEquals(Optional.empty(), GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, true));
+        assertEquals(Optional.empty(), GradoTaller.conPieza(grado, PiezaTaller.Tipo.TAPA, true));
+    }
+
+    @Test void sinGradoNingunoElChasisTambienPoneLaA() {
+        assertEquals(Optional.of("A"), GradoTaller.conPieza(null, PiezaTaller.Tipo.CHASIS, true));
     }
 
     @Test void elEjemploDeLaSpec() {

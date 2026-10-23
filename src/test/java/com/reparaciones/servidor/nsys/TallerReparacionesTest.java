@@ -64,13 +64,14 @@ class TallerReparacionesTest {
         verify(taller, never()).avisar(any(), anyInt(), any());
     }
 
-    @Test void lasFilasSeAplicanEnSuOrdenYCadaUnaConSuReparacion() {
+    @Test void elChasisSeAplicaAntesQueLaBateriaYCadaFilaConSuReparacion() {
+        // 0.9.21.1: el chasis va primero aunque su fila sea la segunda.
         servicio.aplicar(IMEI, List.of(fila(R1, 101, false), fila(R2, 131, true)), 8);
         InOrder orden = inOrder(taller);
-        orden.verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "B100", "B", VIGENTE)), R1, 8,
-                "batería bati13 nueva", AHORA);
         orden.verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE),
-                new TallerDAO.Nuevo(GRADO, "A100", "B", VIGENTE)), R2, 8, "chasis chai13red reutilizado", AHORA);
+                new TallerDAO.Nuevo(GRADO, "A", "B", VIGENTE)), R2, 8, "chasis chai13red reutilizado", AHORA);
+        orden.verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "B", VIGENTE)), R1, 8,
+                "batería bati13 nueva", AHORA);
     }
 
     @Test void unColorQueNoSeDeduceSeAvisaYElGradoCambia() {
