@@ -28,6 +28,11 @@ public record PiezaTaller(String idRep, String sku, Tipo tipo, boolean nueva) {
             return this != BATERIA;
         }
 
+        /** Chasis y batería cambian el grado; la tapa trasera, no (0.9.21.1: solo el chasis pone la A). */
+        public boolean conGrado() {
+            return this != TAPA;
+        }
+
         /** El tipo de un SKU por su prefijo (lo que va antes de la primera «i»: chai13red → cha); vacío si no cuenta. */
         public static Optional<Tipo> deSku(String sku) {
             if (sku == null || sku.isBlank()) return Optional.empty();
