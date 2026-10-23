@@ -6,10 +6,11 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /** Lo que hace un guardado de reparaciones en el color y el grado de un móvil (spec 0.9.21 «SKU del taller», pieza 2, §2.1):
- *  fila a fila y en su orden, cada una desde lo que vale tras la anterior. Chasis o tapa: el color deducido (si es otro) y
- *  la letra A; batería: el 100. Si el valor nuevo es el de NSYS, nace QUITADO; si es el que ya vale, no se crea nada (la
- *  misma regla que la corrección a mano de la pieza 1). En un guardado con un chasis cuyo color se deduce, la tapa no toca
- *  el color. La misma cuenta para guardar y para la banda del formulario. Es puro. */
+ *  fila a fila y en su orden, cada una desde lo que vale tras la anterior. Chasis: el color deducido (si es otro) y la
+ *  letra A; tapa trasera: solo el color (0.9.21.1: no toca el grado ni avisa de él); batería: el 100. Si el valor nuevo es
+ *  el de NSYS, nace QUITADO; si es el que ya vale, no se crea nada (la misma regla que la corrección a mano de la pieza 1).
+ *  En un guardado con un chasis cuyo color se deduce, la tapa no toca el color. La misma cuenta para guardar y para la
+ *  previsualización. Es puro. */
 public final class EfectoTaller {
 
     /** Lo que hace una fila: sus cambios (0, 1 o 2) y sus avisos ({@code gradoSinCalcular}: el grado que no se pudo
@@ -53,13 +54,15 @@ public final class EfectoTaller {
                 }
             }
             String gradoMal = null;
-            Optional<String> nuevoGrado = GradoTaller.conPieza(grado, p.tipo(), p.nueva());
-            if (nuevoGrado.isEmpty()) gradoMal = grado == null || grado.isBlank() ? LoQueVale.SIN_DATO : grado;
-            else {
-                Optional<TallerDAO.Nuevo> n = cambio(DatoTaller.GRADO, nuevoGrado.get(), grado, m);
-                if (n.isPresent()) {
-                    nuevos.add(n.get());
-                    grado = n.get().valor();
+            if (p.tipo().conGrado()) {
+                Optional<String> nuevoGrado = GradoTaller.conPieza(grado, p.tipo(), p.nueva());
+                if (nuevoGrado.isEmpty()) gradoMal = grado == null || grado.isBlank() ? LoQueVale.SIN_DATO : grado;
+                else {
+                    Optional<TallerDAO.Nuevo> n = cambio(DatoTaller.GRADO, nuevoGrado.get(), grado, m);
+                    if (n.isPresent()) {
+                        nuevos.add(n.get());
+                        grado = n.get().valor();
+                    }
                 }
             }
             pasos.add(new Paso(p, List.copyOf(nuevos), sinColor, gradoMal));

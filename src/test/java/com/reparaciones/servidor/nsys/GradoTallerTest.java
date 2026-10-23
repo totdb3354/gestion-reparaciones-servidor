@@ -8,19 +8,21 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** El grado con una pieza (spec 0.9.21 pieza 2 §2.1): [Ms]<letra>[100]; cada pieza toca su parte. */
+/** El grado con una pieza (spec 0.9.21 pieza 2 §2.1): [Ms]<letra>[100]; cada pieza toca su parte y la tapa trasera, ninguna
+ *  (0.9.21.1). */
 class GradoTallerTest {
 
     @ParameterizedTest(name = "{0} + {1} (nueva {2}) → {3}")
     @CsvSource({
-            // chasis y tapa: la letra pasa a A; Ms y 100 se quedan
+            // chasis: la letra pasa a A; Ms y 100 se quedan
             "B,       CHASIS,  true,  A",
             "B,       CHASIS,  false, A",
             "MsB,     CHASIS,  true,  MsA",
             "C100,    CHASIS,  false, A100",
-            "MsA-100, TAPA,    true,  MsA100",
             "A,       CHASIS,  true,  A",
-            "A-,      TAPA,    false, A",
+            // tapa trasera (0.9.21.1): no toca el grado
+            "MsA-100, TAPA,    true,  MsA-100",
+            "B,       TAPA,    false, B",
             // batería: nueva pone el 100, reutilizada lo quita; Ms y la letra se quedan
             "B,       BATERIA, true,  B100",
             "MsA-,    BATERIA, true,  MsA-100",

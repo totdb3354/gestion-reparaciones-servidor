@@ -53,16 +53,27 @@ class EfectoTallerTest {
     @Test void siChasisYTapaDeducenColoresDistintosMandaElChasisSeaCualSeaElOrden() {
         EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B",
                 List.of(pieza("R1", "tapai13blue", TAPA, true), pieza("R2", "chai13red", CHASIS, true)), COLORES);
-        assertEquals(List.of(new TallerDAO.Nuevo(GRADO, "A", "B", VIGENTE)), r.pasos().get(0).nuevos(), "la tapa no toca el color");
+        assertEquals(List.of(), r.pasos().get(0).nuevos(), "la tapa no toca el color (manda el chasis) ni el grado");
         assertFalse(r.pasos().get(0).colorSinDeducir());
-        assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE)), r.pasos().get(1).nuevos());
+        assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE), new TallerDAO.Nuevo(GRADO, "A", "B", VIGENTE)),
+                r.pasos().get(1).nuevos());
         assertEquals("Rojo", r.colorDespues());
     }
 
-    @Test void unaTapaSolaCambiaElColor() {
-        EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B", List.of(pieza("R1", "tapai13red", TAPA, false)), COLORES);
+    @Test void unaTapaSolaCambiaElColorPeroNoElGrado() {
+        // 0.9.21.1: solo el chasis pone la A; la tapa trasera cambia el color y nada más.
+        EfectoTaller.Resultado r = EfectoTaller.calcular(AZUL_B, "Azul", "B", List.of(pieza("R1", "tapai13red", TAPA, true)), COLORES);
+        assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE)), r.pasos().get(0).nuevos());
         assertEquals("Rojo", r.colorDespues());
-        assertEquals("A", r.gradoDespues());
+        assertEquals("B", r.gradoDespues());
+    }
+
+    @Test void unaTapaSobreUnGradoSinFormaNoAvisaDelGrado() {
+        MovilNsys id = movil(IMEI, "Azul", "ID");
+        EfectoTaller.Resultado r = EfectoTaller.calcular(id, "Azul", "ID", List.of(pieza("R1", "tapai13red", TAPA, true)), COLORES);
+        assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE)), r.pasos().get(0).nuevos());
+        assertNull(r.pasos().get(0).gradoSinCalcular());
+        assertFalse(r.gradoSinCalcular());
     }
 
     @Test void unColorQueNoSeDeduceNoCambiaPeroElGradoSi() {
