@@ -52,11 +52,11 @@ class HechoDAOTest {
         HechoTaller sigue = new HechoTaller("350000000000002", TarjetaHecho.GRADO, 7, "Supertécnico 1", AHORA.minusHours(1), null);
         dao.repasar(List.of(seFue), List.of(sigue), AHORA);
         ArgumentCaptor<List<Object[]>> borradas = ArgumentCaptor.forClass(List.class);
-        verify(jdbc).batchUpdate(eq(HechoDAO.SQL_DESMARCAR), borradas.capture());
-        assertArrayEquals(new Object[]{"350000000000001", "COLOR"}, borradas.getValue().get(0));
+        verify(jdbc).batchUpdate(eq(HechoDAO.SQL_QUITAR), borradas.capture());
+        assertArrayEquals(new Object[]{"350000000000001", "COLOR", Timestamp.valueOf(AHORA.minusHours(1))}, borradas.getValue().get(0));
         ArgumentCaptor<List<Object[]>> vueltas = ArgumentCaptor.forClass(List.class);
         verify(jdbc).batchUpdate(eq(HechoDAO.SQL_VOLVIO), vueltas.capture());
-        assertArrayEquals(new Object[]{Timestamp.valueOf(AHORA), "350000000000002", "GRADO"}, vueltas.getValue().get(0));
+        assertArrayEquals(new Object[]{Timestamp.valueOf(AHORA), "350000000000002", "GRADO", Timestamp.valueOf(AHORA.minusHours(1))}, vueltas.getValue().get(0));
         clearInvocations(jdbc);
         dao.repasar(List.of(), List.of(), AHORA);
         verifyNoInteractions(jdbc);

@@ -66,7 +66,8 @@ final class TarjetasNsys {
             MovilNsys m = p.movil();
             ProductoNsys.Poner poner = p.valor().colorNsys() == null ? new ProductoNsys.Poner(m.goods(), false) : p.poner();
             String deNsys = GrafiasNsys.colorDelGoods(m.goods());
-            String colorA = poner == null ? p.valor().color() : GrafiasNsys.colorDelGoods(poner.producto());
+            String colorA = p.valor().colorNsys() == null ? (deNsys != null ? deNsys : m.color())
+                    : poner == null ? p.valor().color() : GrafiasNsys.colorDelGoods(poner.producto());
             LocalDateTime desde = c.get().fecha();
             Marca h = marca(marcas, TarjetaHecho.COLOR, m.imeiSn(), desde);
             filas.add(new FilaColorNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), deNsys != null ? deNsys : m.color(),
@@ -136,8 +137,9 @@ final class TarjetasNsys {
         List<HechoTaller> borrar = new ArrayList<>();
         List<HechoTaller> vuelven = new ArrayList<>();
         for (HechoTaller h : marcas) {
-            LocalDateTime desde = filas.get(clave(h.tarjeta(), h.imeiSn()));
-            if (desde == null || h.fecha().isBefore(desde)) borrar.add(h);
+            String clave = clave(h.tarjeta(), h.imeiSn());
+            LocalDateTime desde = filas.get(clave);
+            if (!filas.containsKey(clave) || (desde != null && h.fecha().isBefore(desde))) borrar.add(h);
             else if (h.volvio() == null && h.fecha().isBefore(exportacion)) vuelven.add(h);
         }
         return new Repaso(borrar, vuelven);

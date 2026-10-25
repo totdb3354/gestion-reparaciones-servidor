@@ -2,6 +2,7 @@ package com.reparaciones.servidor.nsys;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +76,22 @@ class TarjetasNsysTest {
         FilaColorNsys c = TarjetasNsys.color(List.of(p), Map.of()).get(0);
         assertTrue(c.compruebalo());
         assertEquals("Pink", c.colorA());
+    }
+
+    @Test void sinColorCerradoEnNsysElColorNuevoEsElDeAhoraTambienSinCapacidadEnElGoods() {
+        TallerNsys.MovilPorPasar normal = porPasar(movil(IMEI, "Azul", "B"), vale("Azul", "B", null, null), null,
+                vigente(1, IMEI, COLOR, "Azul", "Azul"));
+        FilaColorNsys c = TarjetasNsys.color(List.of(normal), Map.of()).get(0);
+        assertEquals("Blue", c.colorDe());
+        assertEquals("Blue", c.colorA());
+        assertEquals("Apple iPhone 13 128GB Blue", c.ponerProducto());
+        MovilNsys raro = new MovilNsys(OTRO, "BT-9001", "Apple iPhone 13 Blue", "B", "Available", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 10, 1), null, null, "13", "13", "128GB", "Azul", "B", false, "Listos", "Listos",
+                EstadoMovil.STOCK, HOY, HOY);
+        FilaColorNsys r = TarjetasNsys.color(List.of(porPasar(raro, vale("Azul", "B", null, null), null,
+                vigente(2, OTRO, COLOR, "Azul", "Azul"))), Map.of()).get(0);
+        assertEquals("Azul", r.colorDe());
+        assertEquals("Azul", r.colorA());
     }
 
     @Test void laMarcaValeSiNoEsAnteriorAlCambioYQuedaComoVueltaConSuHora() {
@@ -167,5 +184,16 @@ class TarjetasNsysTest {
                 fichero);
         assertEquals(List.of(seFue, deOtroCambio), r.borrar());
         assertEquals(List.of(sigue), r.vuelven(), "un fichero de después de marcar que no lo trae: vuelve a salir");
+    }
+
+    @Test void unaFilaConDesdeNullNoEsUnaFilaQueYaNoEstaNiAnteriorALaMarca() {
+        LocalDateTime fichero = HOY.plusHours(1);
+        HechoTaller alta = marca(IMEI, TarjetaHecho.ALTA, HOY, null);
+        Map<String, LocalDateTime> filas = new java.util.HashMap<>();
+        filas.put(TarjetasNsys.clave(TarjetaHecho.ALTA, IMEI), null);
+        TarjetasNsys.Repaso r = TarjetasNsys.repasar(List.of(alta), filas, HOY.minusHours(1));
+        assertTrue(r.borrar().isEmpty());
+        assertTrue(r.vuelven().isEmpty(), "el fichero es anterior a la marca");
+        assertEquals(List.of(alta), TarjetasNsys.repasar(List.of(alta), filas, fichero).vuelven());
     }
 }

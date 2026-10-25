@@ -22,7 +22,10 @@ public class HechoDAO {
     static final String SQL_MARCAR = "INSERT INTO Taller_hecho (IMEI_SN, TARJETA, ID_USU, FECHA, VOLVIO) VALUES (?, ?, ?, ?, NULL)"
             + " ON DUPLICATE KEY UPDATE ID_USU = VALUES(ID_USU), FECHA = VALUES(FECHA), VOLVIO = NULL";
     static final String SQL_DESMARCAR = "DELETE FROM Taller_hecho WHERE IMEI_SN = ? AND TARJETA = ?";
-    static final String SQL_VOLVIO = "UPDATE Taller_hecho SET VOLVIO = ? WHERE IMEI_SN = ? AND TARJETA = ? AND VOLVIO IS NULL";
+    /** El borrado del repaso: solo si la marca sigue siendo la que se leyó (misma FECHA). */
+    static final String SQL_QUITAR = "DELETE FROM Taller_hecho WHERE IMEI_SN = ? AND TARJETA = ? AND FECHA = ?";
+    static final String SQL_VOLVIO = "UPDATE Taller_hecho SET VOLVIO = ? WHERE IMEI_SN = ? AND TARJETA = ? AND FECHA = ?"
+            + " AND VOLVIO IS NULL";
 
     private final JdbcTemplate jdbc;
 
@@ -48,14 +51,17 @@ public class HechoDAO {
     }
 
     /** El repaso tras una importación (spec §3.6): unas marcas se borran y otras «vuelven», todo o nada. Sin nada que hacer no
-     *  escribe. */
+     *  escribe. Cada una solo si la marca sigue siendo la que se leyó (misma FECHA): una marcada otra vez entre medias no se
+     *  toca. */
     @Transactional
     public void repasar(List<HechoTaller> borrar, List<HechoTaller> vuelven, LocalDateTime ahora) {
         if (!borrar.isEmpty())
-            jdbc.batchUpdate(SQL_DESMARCAR, borrar.stream().map(h -> new Object[]{h.imeiSn(), h.tarjeta().name()}).toList());
+            jdbc.batchUpdate(SQL_QUITAR, borrar.stream()
+                    .map(h -> new Object[]{h.imeiSn(), h.tarjeta().name(), Timestamp.valueOf(h.fecha())}).toList());
         Timestamp t = Timestamp.valueOf(ahora);
         if (!vuelven.isEmpty())
-            jdbc.batchUpdate(SQL_VOLVIO, vuelven.stream().map(h -> new Object[]{t, h.imeiSn(), h.tarjeta().name()}).toList());
+            jdbc.batchUpdate(SQL_VOLVIO, vuelven.stream()
+                    .map(h -> new Object[]{t, h.imeiSn(), h.tarjeta().name(), Timestamp.valueOf(h.fecha())}).toList());
     }
 
     static HechoTaller hecho(ResultSet rs, int n) throws SQLException {
