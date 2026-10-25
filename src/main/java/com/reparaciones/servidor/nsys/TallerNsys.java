@@ -78,11 +78,13 @@ public class TallerNsys {
         return m -> LoQueVale.de(m, porImei.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()), maestro);
     }
 
-    /** El producto («Goods») que hay que poner en NSYS (spec §2.4): si el color no cambia, el de ahora; si cambia, el más
-     *  usado de ese color entre los móviles del mismo modelo, capacidad y eSIM; null si ninguno lo tiene (la web dice
-     *  «búscalo a mano»). */
+    /** El producto («Goods») que hay que poner en NSYS (spec 0.9.21 §2.4 y 0.9.22 §2.1): si el color no cambia, el de ahora; si
+     *  cambia, el que da ProductoNsys (el más usado de ese color en el mismo modelo, capacidad y eSIM o, si no hay, el del móvil
+     *  con el color escrito como NSYS); null si no se sabe (la web dice «búscalo a mano»). */
     public String productoAPoner(MovilNsys m, LoQueVale.Valor v) {
-        return v.colorNsys() == null ? m.goods() : nsysDao.goodsMasUsados(m).get(v.color());
+        if (v.colorNsys() == null) return m.goods();
+        return ProductoNsys.paraColor(m, v.color(), nsysDao.goodsMasUsados(m),
+                perezoso(() -> new Maestro(nsysDao.cargarProductos())), perezoso(() -> GrafiasNsys.de(nsysDao.goodsContados())));
     }
 
     /** Los avisos del taller de un IMEI (pieza 2), para el rastro. */
@@ -187,6 +189,7 @@ public class TallerNsys {
         if (vigentes.isEmpty()) return List.of();
         Map<String, MovilNsys> masReciente = masRecientes(vigentes);
         Supplier<Maestro> maestro = perezoso(() -> new Maestro(nsysDao.cargarProductos()));
+        Supplier<GrafiasNsys> grafias = perezoso(() -> GrafiasNsys.de(nsysDao.goodsContados()));
         Map<List<Object>, Map<String, String>> goods = new HashMap<>();
         List<FilaPorPasar> filas = new ArrayList<>();
         porImei(vigentes).forEach((clave, cambios) -> {
@@ -195,8 +198,8 @@ public class TallerNsys {
             LoQueVale.Valor v = LoQueVale.de(m, cambios, maestro);
             // Los móviles del mismo modelo, capacidad y eSIM comparten la búsqueda del producto de cada color.
             String producto = v.colorNsys() == null ? m.goods()
-                    : goods.computeIfAbsent(Arrays.asList(m.modelo(), m.modeloMaestro(), m.capacidad(), m.esEsim()),
-                            k -> nsysDao.goodsMasUsados(m)).get(v.color());
+                    : ProductoNsys.paraColor(m, v.color(), goods.computeIfAbsent(Arrays.asList(m.modelo(), m.modeloMaestro(),
+                            m.capacidad(), m.esEsim()), k -> nsysDao.goodsMasUsados(m)), maestro, grafias);
             filas.add(new FilaPorPasar(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.goods(), m.grade(),
                     producto, v.grade(), v.sku(), cambios.stream().map(TallerNsys::porQue).toList(), cambios.get(0).fecha()));
         });
@@ -214,8 +217,9 @@ public class TallerNsys {
         Maestro maestro = new Maestro(nsysDao.cargarProductos());
         List<String> colores = maestro.colores(m);
         Map<String, String> goods = colores.isEmpty() ? Map.of() : nsysDao.goodsMasUsados(m);
-        List<OpcionColor> opciones = colores.stream().map(c -> new OpcionColor(c,
-                Normalizacion.mismoTexto(c, m.color()) ? m.goods() : goods.get(c))).toList();
+        Supplier<GrafiasNsys> grafias = perezoso(() -> GrafiasNsys.de(nsysDao.goodsContados()));
+        List<OpcionColor> opciones = colores.stream().map(c -> new OpcionColor(c, Normalizacion.mismoTexto(c, m.color())
+                ? m.goods() : ProductoNsys.paraColor(m, c, goods, () -> maestro, grafias))).toList();
         return new OpcionesTaller(m.goods(), opciones, maestro.skus(m));
     }
 

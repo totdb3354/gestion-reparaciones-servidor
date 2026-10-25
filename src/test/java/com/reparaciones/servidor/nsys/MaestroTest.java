@@ -75,4 +75,14 @@ class MaestroTest {
         assertEquals(List.of(new SkuMaestro("Azul", "A100", "i13128AzulA100")), maestro.skus(AZUL),
                 "Rojo B tiene dos SKU distintos: no sale");
     }
+
+    @Test void elNombreDeUnColorSaleDelProductNameDetrasDeLaCapacidad() {
+        Maestro maestro = new Maestro(List.of(productoConNombre("(PRODUCT)RED", "Rojo", "A"),
+                productoConNombre("(PRODUCT)RED", "Rojo", "B"), producto("Blue", "Azul", "B")));
+        assertEquals("(PRODUCT)RED", maestro.nombreColor(AZUL, "Rojo"));
+        assertEquals("(PRODUCT)RED", maestro.nombreColor(AZUL, " Rojo "));
+        assertNull(maestro.nombreColor(AZUL, "Azul"), "sin «Product Name»");
+        assertNull(maestro.nombreColor(AZUL, "Verde"));
+        assertNull(maestro.nombreColor(sinMaestro("350000000000002", "B"), "Rojo"), "sin modelo en el maestro");
+    }
 }
