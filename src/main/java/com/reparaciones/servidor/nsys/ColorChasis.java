@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
  *  inglés: el del Goods más usado de ese color en NSYS, detrás de la capacidad y normalizado («(PRODUCT)RED» → productred).
  *  Encaja el que tiene el mismo nombre que el color del SKU o, si ninguno, el mismo color base ({@link #BASE}); los alias
  *  de Color_equivalencia valen en los dos lados. Siempre por palabra entera, nunca por trozos («productred» contiene
- *  «pro» y no por eso encaja). Solo vale uno: con ninguno o varios, no se deduce. Es puro. */
+ *  «pro» y no por eso encaja). Solo vale uno: con ninguno o varios, no se deduce. Desde la 0.9.22, un color sin ningún móvil
+ *  en NSYS usa el nombre en inglés del «Product Name» del maestro. Es puro. */
 public final class ColorChasis {
 
     /** Color oficial → color base: la tabla fija de los SKU de chasis (los tokens de colores.ts de la web). Un SKU con el
@@ -48,6 +49,13 @@ public final class ColorChasis {
      *  ({@link NsysDAO#goodsMasUsados}), la capacidad del móvil y Color_equivalencia (texto → color oficial). */
     public static ColorChasis de(List<String> colores, Map<String, String> goodsPorColor, String capacidad,
                                  Map<String, String> alias) {
+        return de(colores, goodsPorColor, Map.of(), capacidad, alias);
+    }
+
+    /** Como la otra, y para los colores sin ningún móvil en NSYS, el nombre en inglés del maestro ({@code nombresMaestro}: color →
+     *  nombre, de {@link Maestro#nombreColor}; spec 0.9.22 §2.2). Si el color tiene Goods, manda el Goods. */
+    public static ColorChasis de(List<String> colores, Map<String, String> goodsPorColor, Map<String, String> nombresMaestro,
+                                 String capacidad, Map<String, String> alias) {
         Map<String, String> goods = new HashMap<>();
         goodsPorColor.forEach((color, g) -> {
             if (color != null) goods.put(color.strip(), g);
@@ -55,6 +63,10 @@ public final class ColorChasis {
         Map<String, String> nombres = new LinkedHashMap<>();
         for (String color : colores) {
             String nombre = nombreDelGoods(goods.get(color.strip()), capacidad);
+            if (nombre == null) {
+                String delMaestro = normalizar(nombresMaestro.get(color));
+                if (!delMaestro.isEmpty()) nombre = delMaestro;
+            }
             if (nombre != null) nombres.put(color, nombre);
         }
         Map<String, String> limpios = new HashMap<>();

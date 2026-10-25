@@ -61,6 +61,20 @@ class ColorChasisTest {
         assertEquals(Optional.empty(), TRECE.deducir("chai13pink"), "Rosa no tiene ningún móvil en NSYS: no se sabe su nombre");
     }
 
+    @Test void unColorSinMovilesEnNsysEncajaConElNombreDelMaestro() {
+        ColorChasis c = ColorChasis.de(List.of("Azul", "Rosa"), Map.of("Azul", "Apple iPhone 13 128GB Blue"),
+                Map.of("Rosa", "Pink"), "128GB", Map.of());
+        assertEquals(Optional.of("Rosa"), c.deducir("chai13pink"));
+        assertEquals(Optional.of("Azul"), c.deducir("chai13blue"));
+    }
+
+    @Test void conMovilesEnNsysMandaElGoodsSobreElMaestro() {
+        ColorChasis c = ColorChasis.de(List.of("Azul"), Map.of("Azul", "Apple iPhone 13 128GB Blue"), Map.of("Azul", "Navy"),
+                "128GB", Map.of());
+        assertEquals(Optional.of("Azul"), c.deducir("chai13blue"));
+        assertEquals(Optional.empty(), c.deducir("chai13navy"));
+    }
+
     @Test void variosNoSeDeduceSalvoQueUnoSeaExacto() {
         ColorChasis doce = ColorChasis.de(List.of("Azul Pacífico", "Azul Sierra"),
                 Map.of("Azul Pacífico", "Apple iPhone 12 Pro 128GB Pacific Blue", "Azul Sierra", "Apple iPhone 12 Pro 128GB Sierra Blue"),
