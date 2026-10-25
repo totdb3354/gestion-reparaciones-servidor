@@ -34,7 +34,8 @@ public final class Rastro {
     /** Cada cambio del taller sale a su hora («Taller: …» o, si vuelve a lo de NSYS, «Vuelve a lo de NSYS: …») y su cierre
      *  automático a la hora del cierre («Pasado a NSYS», «Manda NSYS»). Un SUSTITUIDO no tiene evento de cierre: lo cuenta el
      *  cambio que lo sustituye. Desde la pieza 2, los avisos del taller (TALLER_SIN_COLOR, TALLER_SIN_GRADO, TALLER_DESHECHO_*
-     *  y TALLER_SIN_DESHACER_*), a su hora; a la misma hora que un cambio, detrás de él. */
+     *  y TALLER_SIN_DESHACER_*), a su hora; a la misma hora que un cambio, detrás de él.
+     *  Desde la 0.9.22, un aviso revisado sale también a la hora de la revisión (TALLER_REVISADO_*). */
     public static List<EventoRastro> unir(List<MovilNsys> lotes, List<EventoNsys> nsys, List<TrabajoTaller> trabajos,
                                           List<CambioTaller> cambios, List<AvisoTaller> avisos) {
         Correcciones correcciones = Correcciones.de(lotes, nsys);
@@ -65,7 +66,10 @@ public final class Rastro {
         }
         // 0.9.21, pieza 2: los avisos van antes que los cambios en la lista para que, a la misma hora (una edición: se
         // deshace lo suyo y se aplica la pieza nueva en el mismo segundo), el cambio salga primero.
-        for (AvisoTaller a : avisos) todos.add(deAviso(a));
+        for (AvisoTaller a : avisos) {
+            todos.add(deAviso(a));
+            if (a.revisadoEn() != null) todos.add(deRevisado(a));
+        }
         for (CambioTaller c : cambios) {
             todos.add(deTaller(c.fecha(), c.estado() == CambioTaller.Estado.QUITADO ? "TALLER_VUELTA" : "TALLER_CAMBIO", c,
                     c.valorAntes(), c.valor()));
@@ -94,6 +98,13 @@ public final class Rastro {
         String tipo = "TALLER_" + a.tipo().name() + (a.causa() == null ? "" : "_" + a.causa().name());
         return new EventoRastro(a.fecha(), false, "TALLER", tipo, null, a.de(), a.a(), null, a.idRep(), a.usuario(), null, null,
                 null, a.dato().name(), CambioTaller.REPARACION, a.motivo());
+    }
+
+    /** «TALLER_REVISADO_» + el tipo del aviso (0.9.22): alguien lo dio por bueno desde «Revisar a mano», a la hora de la
+     *  revisión. {@code tecnico}: quién lo revisó; el resto, como el aviso. */
+    private static EventoRastro deRevisado(AvisoTaller a) {
+        return new EventoRastro(a.revisadoEn(), false, "TALLER", "TALLER_REVISADO_" + a.tipo().name(), null, a.de(), a.a(), null,
+                a.idRep(), a.revisadoPor(), null, null, null, a.dato().name(), CambioTaller.MANO, a.motivo());
     }
 
     /** Asignaciones A/AG/AP y trabajos hechos R/G/P. */

@@ -224,4 +224,51 @@ class TallerDAOTest {
         assertEquals(Set.of(), dao.reparacionesQueExisten(List.of()));
         verifyNoInteractions(jdbc);
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 2: «Revisar a mano»
+
+    @SuppressWarnings("unchecked")
+    @Test void losAvisosPorRevisarSonLosSinRevisarNiCorregidosAMano() {
+        assertTrue(dao.avisosPorRevisar().isEmpty());
+        verify(jdbc).query(eq(TallerDAO.SQL_POR_REVISAR), any(RowMapper.class));
+        String sql = TallerDAO.SQL_POR_REVISAR;
+        assertTrue(sql.contains(" WHERE v.TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER') AND v.REVISADO_EN IS NULL"), sql);
+        assertTrue(sql.contains(" AND NOT EXISTS (SELECT 1 FROM Taller_cambio c WHERE c.IMEI_SN = v.IMEI_SN AND c.DATO = v.DATO"
+                + " AND c.ORIGEN = 'MANO' AND c.FECHA > v.FECHA)"), sql);
+        assertTrue(sql.endsWith(" ORDER BY v.FECHA, v.ID_AVISO"), sql);
+    }
+
+    @Test void revisarApuntaQuienYCuandoSoloSiNoEstabaRevisado() {
+        dao.revisar(2, 7, HOY);
+        verify(jdbc).update(TallerDAO.SQL_REVISAR, 7, Timestamp.valueOf(HOY), 2);
+        assertEquals("UPDATE Taller_aviso SET REVISADO_POR = ?, REVISADO_EN = ? WHERE ID_AVISO = ? AND REVISADO_EN IS NULL"
+                + " AND TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER')", TallerDAO.SQL_REVISAR);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void unAvisoPorSuIdYConQuienLoReviso() {
+        assertTrue(dao.avisoPorId(2).isEmpty());
+        verify(jdbc).query(eq(TallerDAO.SQL_AVISO), any(RowMapper.class), eq(2));
+        assertTrue(TallerDAO.SQL_AVISO.endsWith(" WHERE v.ID_AVISO = ?"), TallerDAO.SQL_AVISO);
+        for (String sql : List.of(TallerDAO.SQL_AVISOS, TallerDAO.SQL_POR_REVISAR, TallerDAO.SQL_AVISO))
+            assertTrue(sql.contains("v.REVISADO_EN, r.NOMBRE_USUARIO AS REVISOR FROM Taller_aviso v"
+                    + " LEFT JOIN Usuario u ON u.ID_USU = v.ID_USU LEFT JOIN Usuario r ON r.ID_USU = v.REVISADO_POR"), sql);
+    }
+
+    @Test void unaFilaDeTallerAvisoRevisada() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getInt("ID_AVISO")).thenReturn(2);
+        when(rs.getString("IMEI_SN")).thenReturn(IMEI);
+        when(rs.getString("ID_REP")).thenReturn("R20261021_3");
+        when(rs.getString("TIPO")).thenReturn("SIN_COLOR");
+        when(rs.getString("DATO")).thenReturn("COLOR");
+        when(rs.getTimestamp("FECHA")).thenReturn(Timestamp.valueOf(HOY));
+        when(rs.getString("REVISOR")).thenReturn("Supertécnico 1");
+        when(rs.getTimestamp("REVISADO_EN")).thenReturn(Timestamp.valueOf(HOY.plusHours(2)));
+        AvisoTaller a = TallerDAO.aviso(rs, 0);
+        assertEquals("Supertécnico 1", a.revisadoPor());
+        assertEquals(HOY.plusHours(2), a.revisadoEn());
+        assertEquals(java.util.Set.of(AvisoTaller.Tipo.SIN_COLOR, AvisoTaller.Tipo.SIN_GRADO, AvisoTaller.Tipo.SIN_DESHACER),
+                AvisoTaller.POR_REVISAR);
+    }
 }
