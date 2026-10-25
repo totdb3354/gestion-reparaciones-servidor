@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.nsys;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
@@ -76,6 +77,11 @@ public class NsysDAO {
      *  (spec 0.9.18 §6.1). */
     static final String SQL_TRABAJOS_ABIERTOS = "SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG, r.ENTREGADO_AT, t.NOMBRE"
             + " FROM Reparacion r JOIN Tecnico t ON t.ID_TEC = r.ID_TEC WHERE r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL";
+    /** «No está en NSYS» (0.9.22 §3.4): las filas de Reparacion de unos IMEI con su técnico, el modelo del teléfono y el cliente del
+     *  trabajo o, si no tiene, el del teléfono. Se completa con las marcas del IN y ORDEN_TRABAJOS. */
+    static final String SQL_TRABAJOS_DE_IMEIS = "SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG, r.FECHA_FIN, t.NOMBRE AS TECNICO, tel.MODELO,"
+            + " c.NOMBRE AS CLIENTE FROM Reparacion r JOIN Tecnico t ON t.ID_TEC = r.ID_TEC JOIN Telefono tel ON tel.IMEI = r.IMEI"
+            + " LEFT JOIN Cliente c ON c.ID_CLI = COALESCE(r.ID_CLI, tel.ID_CLI) WHERE r.IMEI IN (";
     static final String ORDEN_TRABAJOS = " ORDER BY r.FECHA_ASIG, r.ID_REP";
     /** Tamaño de las tandas de los IN por IMEI (spec 0.9.18 §6.2). */
     static final int TANDA_IN = 500;
@@ -148,8 +154,24 @@ public class NsysDAO {
     /** El coste de cada lote del espejo que lo tiene (0.9.22). */
     Map<ClaveMovil, BigDecimal> cargarCostes() {
         Map<ClaveMovil, BigDecimal> mapa = new HashMap<>();
-        for (Coste c : jdbc.query(SQL_COSTES, (rs, n) -> new Coste(new ClaveMovil(rs.getString("IMEI_SN"),
-                rs.getString("BATCH")), rs.getBigDecimal("COSTE")))) mapa.put(c.clave(), c.coste());
+        for (Coste c : jdbc.query(SQL_COSTES, NsysDAO::coste)) mapa.put(c.clave(), c.coste());
+        return mapa;
+    }
+
+    static Coste coste(ResultSet rs, int n) throws SQLException {
+        return new Coste(new ClaveMovil(rs.getString("IMEI_SN"), rs.getString("BATCH")), rs.getBigDecimal("COSTE"));
+    }
+
+    /** El coste de NSYS («Total cost») de estos lotes, para la plantilla de color (0.9.22 §4): en tandas por IMEI de
+     *  {@value #TANDA_IN}; un lote sin coste no sale. */
+    public Map<ClaveMovil, BigDecimal> costes(Collection<ClaveMovil> lotes) {
+        Set<ClaveMovil> pedidos = new HashSet<>(lotes);
+        List<String> imeis = pedidos.stream().map(ClaveMovil::imeiSn).distinct().toList();
+        Map<ClaveMovil, BigDecimal> mapa = new HashMap<>();
+        for (List<String> tanda : trozos(imeis, TANDA_IN))
+            for (Coste c : jdbc.query(SQL_COSTES + " AND IMEI_SN IN (" + marcas(tanda.size()) + ")", NsysDAO::coste,
+                    tanda.toArray()))
+                if (pedidos.contains(c.clave())) mapa.put(c.clave(), c.coste());
         return mapa;
     }
 
@@ -349,6 +371,35 @@ public class NsysDAO {
                         + " JOIN Tecnico t ON t.ID_TEC = r.ID_TEC WHERE r.IMEI = ? ORDER BY r.FECHA_ASIG, r.ID_REP",
                 (rs, n) -> new TrabajoTaller(rs.getString("ID_REP"), utcAMadrid(rs.getTimestamp("FECHA_ASIG")),
                         utcAMadrid(rs.getTimestamp("FECHA_FIN")), rs.getString("NOMBRE")), imei);
+    }
+
+    /** Los IMEI/SN del espejo por {@link #claveCruce} (0.9.22 §3.4), uno por IMEI sea cual sea su lote: para cruzarlos en Java con
+     *  los del taller (las tablas tienen intercalaciones distintas). Una consulta sin pasar por una lista de filas. */
+    public Set<String> clavesDelEspejo() {
+        Set<String> claves = new HashSet<>();
+        jdbc.query("SELECT DISTINCT IMEI_SN FROM Nsys_movil",
+                (RowCallbackHandler) rs -> claves.add(claveCruce(rs.getString("IMEI_SN"))));
+        return claves;
+    }
+
+    /** Los IMEI con algún trabajo del taller, de cualquier categoría y fecha (0.9.22 §3.4). */
+    public List<String> imeisDelTaller() {
+        return jdbc.queryForList("SELECT DISTINCT IMEI FROM Reparacion", String.class);
+    }
+
+    /** Lo que «No está en NSYS» enseña de estos IMEI ({@link AltaTaller#de}), en tandas de {@value #TANDA_IN}. Horas de UTC a
+     *  Madrid. */
+    public List<AltaTaller> altas(Collection<String> imeis) {
+        List<AltaTaller.Trabajo> trabajos = new ArrayList<>();
+        for (List<String> tanda : trozos(List.copyOf(imeis), TANDA_IN))
+            trabajos.addAll(jdbc.query(SQL_TRABAJOS_DE_IMEIS + marcas(tanda.size()) + ")" + ORDEN_TRABAJOS,
+                    NsysDAO::trabajoDeAlta, tanda.toArray()));
+        return AltaTaller.de(trabajos);
+    }
+
+    static AltaTaller.Trabajo trabajoDeAlta(ResultSet rs, int n) throws SQLException {
+        return new AltaTaller.Trabajo(rs.getString("IMEI"), rs.getString("ID_REP"), utcAMadrid(rs.getTimestamp("FECHA_ASIG")),
+                utcAMadrid(rs.getTimestamp("FECHA_FIN")), rs.getString("TECNICO"), rs.getString("MODELO"), rs.getString("CLIENTE"));
     }
 
     /** Las asignaciones abiertas de todo el taller, por IMEI ({@link #claveCruce}). Son unos cientos como mucho. */
