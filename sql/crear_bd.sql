@@ -459,6 +459,7 @@ CREATE TABLE Nsys_movil (
     STATUS           VARCHAR(30)  NULL,
     LOCATION         VARCHAR(80)  NOT NULL DEFAULT '' COMMENT 'Caja de NSYS tal cual; vacía = sin caja',
     SUPPLIER         VARCHAR(80)  NULL,
+    COSTE            DECIMAL(10,2) NULL COMMENT '«Total cost» de NSYS de este lote (0.9.22)',
     RECEIVING_DATE   DATE         NULL,
     SOLD_DATE        DATE         NULL,
     SKU              VARCHAR(60)  NULL,
@@ -498,6 +499,7 @@ CREATE TABLE Nsys_evento (
 -- El maestro de productos: se recarga entero cuando cambia en Drive.
 CREATE TABLE Nsys_producto (
     CLAVE           VARCHAR(160) NOT NULL COMMENT '«Product Name Calidad» sin espacios y en minúsculas',
+    NOMBRE          VARCHAR(150) NULL COMMENT '«Product Name» del maestro tal cual (0.9.22)',
     MODELO          VARCHAR(20)  NULL COMMENT 'Código de modelo del ERP; NULL si no está en el catálogo',
     MODELO_MAESTRO  VARCHAR(40)  NULL,
     CAPACIDAD       VARCHAR(20)  NULL,

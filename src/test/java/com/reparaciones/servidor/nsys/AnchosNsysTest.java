@@ -17,6 +17,8 @@ class AnchosNsysTest {
 
     private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (Nsys_\\w+)");
     private static final Pattern COLUMNA = Pattern.compile("^\\s+(\\w+)\\s+VARCHAR\\((\\d+)\\)");
+    private static final Pattern ALTER = Pattern.compile("^ALTER TABLE (Nsys_\\w+)");
+    private static final Pattern ANADIDA = Pattern.compile("^\\s+ADD COLUMN (\\w+)\\s+VARCHAR\\((\\d+)\\)");
 
     /** «Tabla.COLUMNA» → ancho de cada VARCHAR de las tablas Nsys_ del fichero. */
     private static Map<String, Integer> anchos(String fichero) throws Exception {
@@ -30,6 +32,20 @@ class AnchosNsysTest {
             if (tabla != null && c.find()) anchos.put(tabla + "." + c.group(1), Integer.parseInt(c.group(2)));
         }
         return anchos;
+    }
+
+    /** «Tabla.COLUMNA» → ancho de cada VARCHAR que una migración posterior añade con «ALTER TABLE … ADD COLUMN» a una tabla Nsys_. */
+    private static Map<String, Integer> anadidas(String fichero) throws Exception {
+        Map<String, Integer> anadidas = new TreeMap<>();
+        String tabla = null;
+        for (String linea : Files.readAllLines(Path.of("sql", fichero), StandardCharsets.UTF_8)) {
+            Matcher a = ALTER.matcher(linea);
+            if (a.find()) tabla = a.group(1);
+            Matcher c = ANADIDA.matcher(linea);
+            if (tabla != null && c.find()) anadidas.put(tabla + "." + c.group(1), Integer.parseInt(c.group(2)));
+            if (tabla != null && linea.contains(";")) tabla = null;
+        }
+        return anadidas;
     }
 
     @Test void coincidenConElDdlDeLaMigracion() throws Exception {
@@ -76,8 +92,11 @@ class AnchosNsysTest {
         assertEquals(ddl.get("Nsys_movil.LOCATION"), ddl.get("Nsys_evento.A_NSYS"));
     }
 
+    // Las migraciones posteriores al espejo que añaden columnas a las tablas Nsys_ (0.9.22: Nsys_producto.NOMBRE).
     @Test void crearBdTieneLasMismasTablasDelEspejo() throws Exception {
-        assertEquals(anchos("migracion-nsys-espejo.sql"), anchos("crear_bd.sql"));
+        Map<String, Integer> migraciones = anchos("migracion-nsys-espejo.sql");
+        migraciones.putAll(anadidas("migracion-nombres-y-coste-nsys.sql"));
+        assertEquals(migraciones, anchos("crear_bd.sql"));
     }
 
     @Test void cortaSinPartirUnEmoji() {
