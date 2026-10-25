@@ -83,11 +83,11 @@ class TallerNsysTest {
     @Test void elProductoAPonerEsElDeAhoraSiSoloCambiaElGradoYElMasUsadoSiCambiaElColor() {
         MovilNsys m = movil(IMEI, "Azul", "B");
         LoQueVale.Valor grado = new LoQueVale.Valor("Azul", "A100", "i13128AzulA100", null, "B", "i13128AzulB", true);
-        assertEquals("Apple iPhone 13 128GB Blue", servicio.productoAPoner(m, grado));
+        assertEquals("Apple iPhone 13 128GB Blue", servicio.productoAPoner(m, grado).producto());
         verify(nsys, never()).goodsMasUsados(any());
         when(nsys.goodsMasUsados(m)).thenReturn(Map.of("Rojo", "Apple iPhone 13 128GB (PRODUCT)RED"));
         LoQueVale.Valor rojo = new LoQueVale.Valor("Rojo", "B", "i13128RojoB", "Azul", null, "i13128AzulB", true);
-        assertEquals("Apple iPhone 13 128GB (PRODUCT)RED", servicio.productoAPoner(m, rojo));
+        assertEquals("Apple iPhone 13 128GB (PRODUCT)RED", servicio.productoAPoner(m, rojo).producto());
         LoQueVale.Valor verde = new LoQueVale.Valor("Verde", "B", null, "Azul", null, "i13128AzulB", true);
         assertNull(servicio.productoAPoner(m, verde), "ningún móvil de ese color: la web dice «búscalo a mano»");
     }
@@ -207,9 +207,40 @@ class TallerNsysTest {
                 "Apple iPhone 13 128GB (PRODUCT)RED", "A100", "i13128RojoA100",
                 List.of(new PorQueTaller("COLOR", "MANO", "Técnico 1", "prueba", null),
                         new PorQueTaller("GRADO", "MANO", "Técnico 1", "prueba", null)),
-                AHORA.minusDays(3)), lista.get(0));
+                AHORA.minusDays(3), false), lista.get(0));
         assertEquals("Apple iPhone 13 128GB Blue", lista.get(1).ponerProducto(), "solo cambia el grado: el producto de ahora");
         assertEquals("i13128AzulA100", lista.get(1).sku());
+    }
+
+    @Test void siNsysNuncaHaEscritoEseColorElProductoSaleDelMaestroConCompruebalo() {
+        when(nsys.cargarProductos()).thenReturn(List.of(productoConNombre("Blue", "Azul", "B"),
+                productoConNombre("Pink", "Rosa", "B")));
+        when(taller.vigentes()).thenReturn(List.of(vigente(1, IMEI, COLOR, "Rosa", "Azul")));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B")));
+        FilaPorPasar f = servicio.porPasar().get(0);
+        assertEquals("Apple iPhone 13 128GB Pink", f.ponerProducto());
+        assertTrue(f.ponerCompruebalo());
+        assertEquals(List.of(new OpcionColor("Azul", "Apple iPhone 13 128GB Blue"),
+                new OpcionColor("Rosa", "Apple iPhone 13 128GB Pink", true)), servicio.opciones(IMEI).colores());
+    }
+
+    @Test void losMovilesPorPasarLlevanLoQueValeSusCambiosYElProducto() {
+        when(taller.vigentes()).thenReturn(List.of(vigente(1, IMEI, COLOR, "Rojo", "Azul"), vigente(2, IMEI, GRADO, "A100", "B")));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B")));
+        when(nsys.goodsMasUsados(any())).thenReturn(Map.of("Rojo", "Apple iPhone 13 128GB (PRODUCT)RED"));
+        List<TallerNsys.MovilPorPasar> moviles = servicio.movilesPorPasar();
+        assertEquals(1, moviles.size());
+        assertEquals("Rojo", moviles.get(0).valor().color());
+        assertEquals(List.of(1, 2), moviles.get(0).cambios().stream().map(CambioTaller::id).toList());
+        assertEquals(new ProductoNsys.Poner("Apple iPhone 13 128GB (PRODUCT)RED", false), moviles.get(0).poner());
+    }
+
+    @Test void unMovilQueSoloCambiaDeGradoNoBuscaProducto() {
+        when(taller.vigentes()).thenReturn(List.of(vigente(2, IMEI, GRADO, "A100", "B")));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B")));
+        assertNull(servicio.movilesPorPasar().get(0).poner());
+        assertEquals("Apple iPhone 13 128GB Blue", servicio.porPasar().get(0).ponerProducto(), "el producto de ahora");
+        verify(nsys, never()).goodsMasUsados(any());
     }
 
     @Test void sinMovilesDeEseColorElProductoSaleDelNombreDelMaestroEscritoComoNsys() {

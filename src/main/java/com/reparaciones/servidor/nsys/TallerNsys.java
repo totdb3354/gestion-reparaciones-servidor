@@ -79,10 +79,10 @@ public class TallerNsys {
     }
 
     /** El producto («Goods») que hay que poner en NSYS (spec 0.9.21 §2.4 y 0.9.22 §2.1): si el color no cambia, el de ahora; si
-     *  cambia, el que da ProductoNsys (el más usado de ese color en el mismo modelo, capacidad y eSIM o, si no hay, el del móvil
-     *  con el color escrito como NSYS); null si no se sabe (la web dice «búscalo a mano»). */
-    public String productoAPoner(MovilNsys m, LoQueVale.Valor v) {
-        if (v.colorNsys() == null) return m.goods();
+     *  cambia, el que da ProductoNsys, con «compruébalo» si sale del maestro tal cual; null si no se sabe (la web dice «búscalo a
+     *  mano»). */
+    public ProductoNsys.Poner productoAPoner(MovilNsys m, LoQueVale.Valor v) {
+        if (v.colorNsys() == null) return new ProductoNsys.Poner(m.goods(), false);
         return ProductoNsys.paraColor(m, v.color(), nsysDao.goodsMasUsados(m),
                 perezoso(() -> new Maestro(nsysDao.cargarProductos())), perezoso(() -> GrafiasNsys.de(nsysDao.goodsContados())));
     }
@@ -182,31 +182,47 @@ public class TallerNsys {
 
     // ---------------------------------------------------------------- «Por pasar a NSYS» y opciones del diálogo
 
-    /** La lista «Por pasar a NSYS» (spec §2.4): cada móvil con algo del taller vigente, de cualquier modelo, de su cambio más
-     *  antiguo al más reciente. Un móvil que ya no está en el espejo no sale. */
-    public List<FilaPorPasar> porPasar() {
+    /** Un móvil de «Por pasar a NSYS»: su fila más reciente del espejo, lo que vale, sus cambios vigentes (del más antiguo al más
+     *  reciente) y el producto a poner si cambia el color (null si no cambia o no se sabe; 0.9.22). */
+    record MovilPorPasar(MovilNsys movil, LoQueVale.Valor valor, List<CambioTaller> cambios, ProductoNsys.Poner poner) {}
+
+    /** Los móviles con algo del taller vigente que están en el espejo, de su cambio más antiguo al más reciente (spec 0.9.21
+     *  §2.4): la base de «Por pasar a NSYS» y de las tarjetas de la 0.9.22. Los del mismo modelo, capacidad y eSIM comparten la
+     *  búsqueda del producto; el maestro y las grafías se leen una vez y solo si hacen falta. */
+    List<MovilPorPasar> movilesPorPasar() {
         List<CambioTaller> vigentes = tallerDao.vigentes();
         if (vigentes.isEmpty()) return List.of();
         Map<String, MovilNsys> masReciente = masRecientes(vigentes);
         Supplier<Maestro> maestro = perezoso(() -> new Maestro(nsysDao.cargarProductos()));
         Supplier<GrafiasNsys> grafias = perezoso(() -> GrafiasNsys.de(nsysDao.goodsContados()));
         Map<List<Object>, Map<String, String>> goods = new HashMap<>();
-        List<FilaPorPasar> filas = new ArrayList<>();
+        List<MovilPorPasar> moviles = new ArrayList<>();
         porImei(vigentes).forEach((clave, cambios) -> {
             MovilNsys m = masReciente.get(clave);
             if (m == null) return;
             LoQueVale.Valor v = LoQueVale.de(m, cambios, maestro);
-            // Los móviles del mismo modelo, capacidad y eSIM comparten la búsqueda del producto de cada color.
-            String producto = v.colorNsys() == null ? m.goods()
+            ProductoNsys.Poner poner = v.colorNsys() == null ? null
                     : ProductoNsys.paraColor(m, v.color(), goods.computeIfAbsent(Arrays.asList(m.modelo(), m.modeloMaestro(),
                             m.capacidad(), m.esEsim()), k -> nsysDao.goodsMasUsados(m)), maestro, grafias);
-            filas.add(new FilaPorPasar(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.goods(), m.grade(),
-                    producto, v.grade(), v.sku(), cambios.stream().map(TallerNsys::porQue).toList(), cambios.get(0).fecha()));
+            moviles.add(new MovilPorPasar(m, v, cambios, poner));
         });
-        return filas;
+        return moviles;
     }
 
-    private static PorQueTaller porQue(CambioTaller c) {
+    /** La lista «Por pasar a NSYS» de la 0.9.21 (spec §2.4), para la web anterior: una fila por móvil de
+     *  {@link #movilesPorPasar()}. */
+    public List<FilaPorPasar> porPasar() {
+        return movilesPorPasar().stream().map(p -> {
+            MovilNsys m = p.movil();
+            LoQueVale.Valor v = p.valor();
+            String producto = v.colorNsys() == null ? m.goods() : p.poner() == null ? null : p.poner().producto();
+            return new FilaPorPasar(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.goods(), m.grade(), producto,
+                    v.grade(), v.sku(), p.cambios().stream().map(TallerNsys::porQue).toList(), p.cambios().get(0).fecha(),
+                    p.poner() != null && p.poner().compruebalo());
+        }).toList();
+    }
+
+    static PorQueTaller porQue(CambioTaller c) {
         return new PorQueTaller(c.dato().name(), c.origen(), c.usuario(), c.motivo(), c.idRep());
     }
 
@@ -218,8 +234,11 @@ public class TallerNsys {
         List<String> colores = maestro.colores(m);
         Map<String, String> goods = colores.isEmpty() ? Map.of() : nsysDao.goodsMasUsados(m);
         Supplier<GrafiasNsys> grafias = perezoso(() -> GrafiasNsys.de(nsysDao.goodsContados()));
-        List<OpcionColor> opciones = colores.stream().map(c -> new OpcionColor(c, Normalizacion.mismoTexto(c, m.color())
-                ? m.goods() : ProductoNsys.paraColor(m, c, goods, () -> maestro, grafias))).toList();
+        List<OpcionColor> opciones = colores.stream().map(c -> {
+            if (Normalizacion.mismoTexto(c, m.color())) return new OpcionColor(c, m.goods(), false);
+            ProductoNsys.Poner p = ProductoNsys.paraColor(m, c, goods, () -> maestro, grafias);
+            return new OpcionColor(c, p == null ? null : p.producto(), p != null && p.compruebalo());
+        }).toList();
         return new OpcionesTaller(m.goods(), opciones, maestro.skus(m));
     }
 

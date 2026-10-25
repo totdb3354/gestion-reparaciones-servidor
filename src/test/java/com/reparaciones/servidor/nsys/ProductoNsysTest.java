@@ -9,7 +9,8 @@ import java.util.function.Supplier;
 import static com.reparaciones.servidor.nsys.TallerDePrueba.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** El producto que hay que poner en NSYS para un color (spec 0.9.22 §2.1). El móvil de prueba es un iPhone 13 128GB Blue. */
+/** El producto que hay que poner en NSYS para un color (spec 0.9.22 §2.1, pasos 1 a 4). El móvil de prueba es un iPhone 13 128GB
+ *  Blue. */
 class ProductoNsysTest {
 
     private static final MovilNsys AZUL = movil("350000000000001", "Azul", "B");
@@ -23,18 +24,22 @@ class ProductoNsysTest {
     }
 
     @Test void conMovilesDeEseColorEnSuModeloYCapacidadValeEseGoods() {
-        assertEquals("Apple iPhone 13 128GB Pink", ProductoNsys.paraColor(AZUL, "Rosa",
+        assertEquals(new ProductoNsys.Poner("Apple iPhone 13 128GB Pink", false), ProductoNsys.paraColor(AZUL, "Rosa",
                 Map.of("Rosa", "Apple iPhone 13 128GB Pink"), prohibido(), prohibido()));
     }
 
     @Test void sinMovilesSeComponeConElNombreDelMaestroEscritoComoNsys() {
-        assertEquals("Apple iPhone 13 128GB Pink", ProductoNsys.paraColor(AZUL, "Rosa", Map.of(), MAESTRO, GRAFIAS));
+        assertEquals(new ProductoNsys.Poner("Apple iPhone 13 128GB Pink", false),
+                ProductoNsys.paraColor(AZUL, "Rosa", Map.of(), MAESTRO, GRAFIAS));
     }
 
-    @Test void sinNombreEnElMaestroONuncaEscritoEnNsysNoHayProducto() {
+    @Test void siNsysNuncaLoHaEscritoSaleElNombreDelMaestroTalCualConCompruebalo() {
+        assertEquals(new ProductoNsys.Poner("Apple iPhone 13 128GB Pink", true),
+                ProductoNsys.paraColor(AZUL, "Rosa", Map.of(), MAESTRO, () -> GrafiasNsys.de(List.of())));
+    }
+
+    @Test void sinNombreEnElMaestroNoHayProducto() {
         assertNull(ProductoNsys.paraColor(AZUL, "Verde", Map.of(), MAESTRO, prohibido()), "el maestro no da el nombre");
-        assertNull(ProductoNsys.paraColor(AZUL, "Rosa", Map.of(), MAESTRO, () -> GrafiasNsys.de(List.of())),
-                "NSYS nunca ha escrito «Pink»: el paso 4 llega con la pieza 2");
         assertNull(ProductoNsys.paraColor(AZUL, null, Map.of(), prohibido(), prohibido()));
     }
 
