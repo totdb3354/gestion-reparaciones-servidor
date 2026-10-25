@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /** El maestro de productos visto desde un móvil (spec 0.9.21 «SKU del taller» §2.1 y §2.3): su SKU con un color y un grado,
@@ -36,6 +37,16 @@ public final class Maestro {
     public List<String> colores(MovilNsys m) {
         return delModelo(m).map(ProductoMaestro::color).filter(c -> c != null && !c.isBlank()).map(String::strip).distinct()
                 .sorted(Comparator.comparing((String c) -> c.toLowerCase(Locale.ROOT))).toList();
+    }
+
+    /** El nombre en inglés de un color del maestro para el modelo del móvil (spec 0.9.22 §2.1): lo que va detrás de la
+     *  capacidad en el «Product Name» de sus filas (el más repetido; a igual número, el primero). null si ninguna fila de ese
+     *  color trae el nombre. */
+    public String nombreColor(MovilNsys m, String color) {
+        Map<String, Long> nombres = delModelo(m).filter(p -> Normalizacion.mismoTexto(p.color(), color))
+                .map(p -> GrafiasNsys.colorDelGoods(p.nombre())).filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(n -> n, LinkedHashMap::new, Collectors.counting()));
+        return nombres.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(null);
     }
 
     /** Los SKU del modelo por color y grado, solo los que tienen uno (las mismas reglas que {@link #sku}). */

@@ -10,6 +10,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /** Lee la hoja «Maestro producto NSYS» del maestro de productos (spec pieza 1 §4.4). Solo los iPhone tienen código de
  *  modelo del ERP: un iPad 11 nunca es un iPhone 11. */
 public final class LectorMaestro {
@@ -17,6 +20,9 @@ public final class LectorMaestro {
     public static final String HOJA = "Maestro producto NSYS";
     static final List<String> COLUMNAS = List.of("Product Name Calidad", "Familia", "Modelo", "Capacidad", "Color",
             "Calidad Detalle", "SKU (stock web)", "SKU (Amazon)", "SKU sin grado");
+    /** La columna con el nombre del producto sin el grado (0.9.22). Opcional: un maestro sin ella se carga como antes. */
+    static final String NOMBRE = "Product Name";
+    private static final Logger log = LoggerFactory.getLogger(LectorMaestro.class);
 
     private LectorMaestro() {}
 
@@ -36,6 +42,8 @@ public final class LectorMaestro {
         @Override public void fila(List<String> celdas) {
             if (columnas == null) {
                 columnas = HojaXlsx.columnas(celdas, COLUMNAS, "el maestro");
+                if (!columnas.containsKey(NOMBRE))
+                    log.warn("NSYS: el maestro no trae la columna «{}»: se carga sin nombres de producto", NOMBRE);
                 return;
             }
             String nombre = valor(celdas, "Product Name Calidad");
@@ -48,14 +56,16 @@ public final class LectorMaestro {
                     valor(celdas, "Capacidad", AnchosNsys.CAPACIDAD), valor(celdas, "Color", AnchosNsys.COLOR),
                     valor(celdas, "Calidad Detalle", AnchosNsys.CALIDAD_DETALLE),
                     valor(celdas, "SKU (stock web)", AnchosNsys.SKU), valor(celdas, "SKU (Amazon)", AnchosNsys.SKU),
-                    valor(celdas, "SKU sin grado", AnchosNsys.SKU), Normalizacion.esEsim(nombre));
+                    valor(celdas, "SKU sin grado", AnchosNsys.SKU), Normalizacion.esEsim(nombre),
+                    valor(celdas, NOMBRE, AnchosNsys.NOMBRE));
             ProductoMaestro previo = productos.get(p.clave());
             if (previo == null) {
                 productos.put(p.clave(), p);
             } else if (!Objects.equals(previo.skuWeb(), p.skuWeb())) {
                 conflictos.add(nombre);
                 productos.put(p.clave(), new ProductoMaestro(previo.clave(), previo.modelo(), previo.modeloMaestro(),
-                        previo.capacidad(), previo.color(), previo.calidadDetalle(), null, null, null, previo.esEsim()));
+                        previo.capacidad(), previo.color(), previo.calidadDetalle(), null, null, null, previo.esEsim(),
+                        previo.nombre()));
             }
         }
 

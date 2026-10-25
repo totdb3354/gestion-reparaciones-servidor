@@ -6,6 +6,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -50,11 +51,17 @@ public class NsysDAO {
     static final String SQL_EVENTO = "INSERT INTO Nsys_evento (IMEI_SN, BATCH, FECHA, SOLO_DIA, TIPO, DE, A, A_NSYS,"
             + " ID_IMPORTACION) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_PRODUCTO = "INSERT INTO Nsys_producto (CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR,"
-            + " CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + " CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM, NOMBRE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_EMPEZAR = "INSERT INTO Nsys_importacion (FICHERO, FECHA_EXPORTACION, ORIGEN, EMPEZADA)"
             + " VALUES (?, ?, ?, ?)";
     static final String SQL_TERMINAR = "UPDATE Nsys_importacion SET RESULTADO = ?, FILAS = ?, CAMBIOS = ?, MENSAJE = ?,"
             + " TERMINADA = ? WHERE ID_IMPORTACION = ?";
+    /** true si hay productos y ninguno tiene nombre: el maestro se cargó antes de la columna NOMBRE (0.9.22). */
+    static final String SQL_PRODUCTOS_SIN_NOMBRE =
+            "SELECT COUNT(*) > 0 AND COALESCE(SUM(NOMBRE IS NOT NULL), 0) = 0 FROM Nsys_producto";
+    /** El coste guardado de cada lote (0.9.22): para escribir solo los que cambian. */
+    static final String SQL_COSTES = "SELECT IMEI_SN, BATCH, COSTE FROM Nsys_movil WHERE COSTE IS NOT NULL";
+    static final String SQL_GUARDAR_COSTE = "UPDATE Nsys_movil SET COSTE = ? WHERE IMEI_SN = ? AND BATCH = ?";
     /** Rellena el modelo de los teléfonos del taller que no lo tienen, sin pisar nunca uno puesto, solo para IMEI de 15 cifras que ya existen en Telefono (spec §7). */
     static final String SQL_RELLENAR_MODELOS = "UPDATE Telefono t JOIN (SELECT IMEI_SN, MAX(MODELO) AS MODELO"
             + " FROM Nsys_movil WHERE MODELO IS NOT NULL GROUP BY IMEI_SN) n ON n.IMEI_SN = t.IMEI"
@@ -79,6 +86,11 @@ public class NsysDAO {
             + " WHERE MODELO <=> ? AND MODELO_MAESTRO = ? AND CAPACIDAD <=> ? AND ES_ESIM = ? AND COLOR IS NOT NULL"
             + " AND GOODS IS NOT NULL GROUP BY COLOR, GOODS ORDER BY COLOR, N DESC, GOODS";
 
+    /** Los Goods del espejo con el modelo del maestro de sus móviles y cuántos son (0.9.22 §2.1): de aquí sale cómo escribe NSYS
+     *  cada color. Una consulta para todos los modelos; solo se pide si un color no tiene móviles en su modelo y capacidad. */
+    static final String SQL_GOODS_CONTADOS = "SELECT MODELO_MAESTRO, GOODS, COUNT(*) AS N FROM Nsys_movil WHERE GOODS IS NOT NULL"
+            + " GROUP BY MODELO_MAESTRO, GOODS";
+
     private final JdbcTemplate jdbc;
 
     public NsysDAO(JdbcTemplate jdbc) {
@@ -101,11 +113,16 @@ public class NsysDAO {
 
     public List<ProductoMaestro> cargarProductos() {
         return jdbc.query("SELECT CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR, CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON,"
-                        + " SKU_SIN_GRADO, ES_ESIM FROM Nsys_producto",
+                        + " SKU_SIN_GRADO, ES_ESIM, NOMBRE FROM Nsys_producto",
                 (rs, n) -> new ProductoMaestro(rs.getString("CLAVE"), rs.getString("MODELO"), rs.getString("MODELO_MAESTRO"),
                         rs.getString("CAPACIDAD"), rs.getString("COLOR"), rs.getString("CALIDAD_DETALLE"),
                         rs.getString("SKU_WEB"), rs.getString("SKU_AMAZON"), rs.getString("SKU_SIN_GRADO"),
-                        rs.getBoolean("ES_ESIM")));
+                        rs.getBoolean("ES_ESIM"), rs.getString("NOMBRE")));
+    }
+
+    /** El maestro guardado no tiene ningún nombre de producto (se cargó antes de la 0.9.22). */
+    public boolean productosSinNombre() {
+        return Boolean.TRUE.equals(jdbc.queryForObject(SQL_PRODUCTOS_SIN_NOMBRE, Boolean.class));
     }
 
     @Transactional
@@ -113,7 +130,8 @@ public class NsysDAO {
         jdbc.update("DELETE FROM Nsys_producto");
         for (List<ProductoMaestro> lote : trozos(productos))
             jdbc.batchUpdate(SQL_PRODUCTO, lote.stream().map(p -> new Object[]{p.clave(), p.modelo(), p.modeloMaestro(),
-                    p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado(), p.esEsim()}).toList());
+                    p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado(), p.esEsim(),
+                    p.nombre()}).toList());
     }
 
     /** Guarda las filas nuevas o cambiadas y los eventos de una comparación, todo o nada. */
@@ -122,6 +140,41 @@ public class NsysDAO {
         for (List<MovilNsys> lote : trozos(r.aGuardar()))
             jdbc.batchUpdate(SQL_GUARDAR_MOVIL, lote.stream().map(NsysDAO::argumentos).toList());
         insertarEventos(r.eventos(), idImportacion);
+    }
+
+    /** Una fila de {@link #SQL_COSTES}. */
+    record Coste(ClaveMovil clave, BigDecimal coste) {}
+
+    /** El coste de cada lote del espejo que lo tiene (0.9.22). */
+    Map<ClaveMovil, BigDecimal> cargarCostes() {
+        Map<ClaveMovil, BigDecimal> mapa = new HashMap<>();
+        for (Coste c : jdbc.query(SQL_COSTES, (rs, n) -> new Coste(new ClaveMovil(rs.getString("IMEI_SN"),
+                rs.getString("BATCH")), rs.getBigDecimal("COSTE")))) mapa.put(c.clave(), c.coste());
+        return mapa;
+    }
+
+    /** Los argumentos {@code {coste, imeiSn, batch}} de {@link #SQL_GUARDAR_COSTE} para las filas de un Items cuyo «Total cost»
+     *  (spec 0.9.22 §2.3) cambia, en el orden del fichero; solo lee. Una fila sin coste no borra el que había, y un IMEI+lote
+     *  repetido cuenta la primera fila. Se llama después de {@link #aplicar}, con los móviles nuevos ya guardados; los escribe
+     *  {@link #guardarCostes} por lotes, cada uno en su transacción. */
+    public List<Object[]> costesCambiados(List<FilaItems> filas) {
+        Map<ClaveMovil, BigDecimal> antes = cargarCostes();
+        Set<ClaveMovil> vistas = new HashSet<>();
+        List<Object[]> cambios = new ArrayList<>();
+        for (FilaItems f : filas) {
+            if (!vistas.add(f.clave()) || f.coste() == null) continue;
+            BigDecimal previo = antes.get(f.clave());
+            if (previo == null || previo.compareTo(f.coste()) != 0)
+                cambios.add(new Object[]{f.coste(), f.clave().imeiSn(), f.clave().batch()});
+        }
+        return cambios;
+    }
+
+    /** Escribe un lote de {@link #costesCambiados}: un lote, una transacción, para no dejar bloqueadas miles de filas (el
+     *  guardado de una reparación bloquea su móvil) mientras dura toda la escritura. La llama el importador, lote a lote. */
+    @Transactional
+    public void guardarCostes(List<Object[]> lote) {
+        jdbc.batchUpdate(SQL_GUARDAR_COSTE, lote);
     }
 
     /** Los textos de los eventos son campos de Nsys_movil o ubicaciones, ya cortados al leer (AnchosNsys): caben. */
@@ -345,6 +398,12 @@ public class NsysDAO {
         if (m.modeloMaestro() == null) return Map.of();
         return primeroDeCadaColor(jdbc.query(SQL_GOODS_POR_COLOR, (rs, n) -> new GoodsDeColor(rs.getString("COLOR"),
                 rs.getString("GOODS")), m.modelo(), m.modeloMaestro(), m.capacidad(), m.esEsim()));
+    }
+
+    /** Los Goods del espejo con su modelo del maestro y cuántos móviles los llevan (0.9.22 §2.1). */
+    public List<GrafiasNsys.GoodsContado> goodsContados() {
+        return jdbc.query(SQL_GOODS_CONTADOS, (rs, n) -> new GrafiasNsys.GoodsContado(rs.getString("MODELO_MAESTRO"),
+                rs.getString("GOODS"), rs.getInt("N")));
     }
 
     /** Las filas llegan por color y, dentro de cada uno, de la más usada a la menos: vale la primera. */

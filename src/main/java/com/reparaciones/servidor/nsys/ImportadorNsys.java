@@ -57,6 +57,9 @@ public class ImportadorNsys {
     private final String carpeta;
     private final String maestro;
     private final Clock clock;
+    /** Ya no hace falta mirar en este arranque si al maestro guardado le faltan los nombres (0.9.22): se gasta cuando están o
+     *  cuando la recarga por ellos termina (OK o rechazada); si la mirada o la recarga fallan, se reintenta en la siguiente pasada. */
+    private boolean nombresMirados;
 
     @Autowired
     public ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller,
@@ -177,6 +180,7 @@ public class ImportadorNsys {
             Comparador.Modo modo = anteriores.isEmpty() ? Comparador.Modo.PRIMERA_CARGA : Comparador.Modo.NORMAL;
             ResultadoComparacion r = Comparador.comparar(anteriores, filas, f.fecha(), modo, traductor());
             dao.aplicar(r, id);
+            guardarCostes(filas);
             String modelos = rellenarModelos();
             dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
             cerrarTaller();
@@ -203,24 +207,31 @@ public class ImportadorNsys {
             ClienteDrive.FicheroDrive meta = drive.metadatos(maestro);
             LocalDateTime modificado = LocalDateTime.ofInstant(meta.modificado(), MADRID).truncatedTo(ChronoUnit.SECONDS);
             Optional<Importacion> ultimo = dao.ultimaImportacion(MAESTRO, Set.of(OK, RECHAZADO));
-            if (ultimo.isPresent() && !modificado.isAfter(ultimo.get().fechaExportacion())) return false;
+            boolean sinNombres = faltanNombres();
+            if (ultimo.isPresent() && !modificado.isAfter(ultimo.get().fechaExportacion()) && !sinNombres) return false;
             id = dao.empezarImportacion(meta.nombre(), modificado, MAESTRO, ahora());
             ResultadoMaestro m = LectorMaestro.leer(new ByteArrayInputStream(drive.descargar(maestro)));
             if (m.productos().isEmpty()) { // vaciar Nsys_producto dejaría todos los móviles sin SKU ni modelo
                 dao.terminarImportacion(id, RECHAZADO, 0, 0, "El maestro no trae productos", ahora());
+                nombresMirados = true;
                 return false;
             }
             dao.reemplazarProductos(m.productos());
             dao.terminarImportacion(id, OK, m.productos().size(), 0, resumen(m), ahora());
+            nombresMirados = true;
+            if (sinNombres) log.info("NSYS: maestro recargado para los nombres de producto: {} de {} con nombre",
+                    m.productos().stream().filter(p -> p.nombre() != null).count(), m.productos().size());
             return true;
         } catch (FormatoItemsException e) {
             if (id != null) dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
+            nombresMirados = true;
             return false;
         } catch (DataIntegrityViolationException e) {
             // La base de datos no admite este maestro (un dato que no cabe…): reintentarlo daría lo mismo cada pasada.
             log.warn("NSYS: la base de datos no admite el maestro: {}", motivo(e));
             if (id != null)
                 dao.terminarImportacion(id, RECHAZADO, 0, 0, "La base de datos no admite el maestro: " + motivo(e), ahora());
+            nombresMirados = true;
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -229,6 +240,21 @@ public class ImportadorNsys {
         } catch (Exception e) {
             log.warn("NSYS: no se pudo actualizar el maestro: {}", e.toString());
             if (id != null) dao.terminarImportacion(id, ERROR, 0, 0, e.toString(), ahora());
+            return false;
+        }
+    }
+
+    /** Al maestro guardado le faltan los nombres de producto (0.9.22: la columna es nueva): se recarga una vez aunque no haya
+     *  cambiado en Drive. Una vez recargado (o si ya los tiene) no se vuelve a mirar en este arranque, para no descargarlo en cada
+     *  pasada si el Excel no trae la columna; si la mirada falla, se vuelve a mirar en la siguiente pasada. */
+    private boolean faltanNombres() {
+        if (nombresMirados) return false;
+        try {
+            if (dao.productosSinNombre()) return true;
+            nombresMirados = true;
+            return false;
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudo mirar si al maestro le faltan los nombres: {}", e.toString());
             return false;
         }
     }
@@ -252,6 +278,20 @@ public class ImportadorNsys {
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudo rellenar el modelo de los teléfonos del taller", e);
             return "Modelos del taller no rellenados: " + motivo(e);
+        }
+    }
+
+    /** Tras guardar la foto, el coste de cada lote (spec 0.9.22 §2.3), por lotes de mil, cada uno en su transacción (la primera
+     *  vez son decenas de miles y una sola transacción bloquearía los móviles que un guardado de reparación necesita). Si falla,
+     *  la importación sigue OK y se avisa en el registro del servidor: los lotes ya escritos quedan y con el siguiente fichero se
+     *  vuelven a mirar todos. */
+    private void guardarCostes(List<FilaItems> filas) {
+        try {
+            List<Object[]> cambios = dao.costesCambiados(filas);
+            for (List<Object[]> lote : NsysDAO.trozos(cambios)) dao.guardarCostes(lote);
+            if (!cambios.isEmpty()) log.info("NSYS: coste guardado en {} móviles", cambios.size());
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron guardar los costes", e);
         }
     }
 

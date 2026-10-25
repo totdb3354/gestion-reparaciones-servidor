@@ -55,4 +55,11 @@ final class TallerDePrueba {
         return new ProductoMaestro(Normalizacion.clave("Apple iPhone 13 128GB " + goodsColor + " " + grado), "13", "13",
                 "128GB", color, grado, "i13128" + color + grado, null, "i13128" + color, false);
     }
+
+    /** Como {@link #producto}, con el «Product Name» del maestro (0.9.22): «Apple iPhone 13 128GB <goodsColor>». */
+    static ProductoMaestro productoConNombre(String goodsColor, String color, String grado) {
+        ProductoMaestro p = producto(goodsColor, color, grado);
+        return new ProductoMaestro(p.clave(), p.modelo(), p.modeloMaestro(), p.capacidad(), p.color(), p.calidadDetalle(),
+                p.skuWeb(), p.skuAmazon(), p.skuSinGrado(), p.esEsim(), "Apple iPhone 13 128GB " + goodsColor);
+    }
 }

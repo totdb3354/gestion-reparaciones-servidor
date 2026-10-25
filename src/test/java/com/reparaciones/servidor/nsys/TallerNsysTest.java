@@ -212,6 +212,30 @@ class TallerNsysTest {
         assertEquals("i13128AzulA100", lista.get(1).sku());
     }
 
+    @Test void sinMovilesDeEseColorElProductoSaleDelNombreDelMaestroEscritoComoNsys() {
+        when(nsys.cargarProductos()).thenReturn(List.of(productoConNombre("Blue", "Azul", "B"),
+                productoConNombre("Pink", "Rosa", "B")));
+        when(taller.vigentes()).thenReturn(List.of(vigente(1, IMEI, COLOR, "Rosa", "Azul")));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B")));
+        when(nsys.goodsContados()).thenReturn(List.of(new GrafiasNsys.GoodsContado("13", "Apple iPhone 13 256GB Pink", 4)));
+        assertEquals("Apple iPhone 13 128GB Pink", servicio.porPasar().get(0).ponerProducto());
+    }
+
+    @Test void sinNombreEnElMaestroNoSeLeenLasGrafias() {
+        when(taller.vigentes()).thenReturn(List.of(vigente(1, IMEI, COLOR, "Rojo", "Azul")));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B")));
+        assertNull(servicio.porPasar().get(0).ponerProducto());
+        verify(nsys, never()).goodsContados();
+    }
+
+    @Test void lasOpcionesUsanTambienElNombreDelMaestro() {
+        when(nsys.cargarProductos()).thenReturn(List.of(productoConNombre("Blue", "Azul", "B"),
+                productoConNombre("Pink", "Rosa", "B")));
+        when(nsys.goodsContados()).thenReturn(List.of(new GrafiasNsys.GoodsContado("13", "Apple iPhone 13 256GB Pink", 4)));
+        assertEquals(List.of(new OpcionColor("Azul", "Apple iPhone 13 128GB Blue"),
+                new OpcionColor("Rosa", "Apple iPhone 13 128GB Pink")), servicio.opciones(IMEI).colores());
+    }
+
     @Test void sinNingunMovilDeEseColorElProductoVaVacio() {
         when(taller.vigentes()).thenReturn(List.of(vigente(1, IMEI, COLOR, "Rojo", "Azul")));
         when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B")));

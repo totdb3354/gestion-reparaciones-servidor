@@ -47,7 +47,7 @@ final class XlsxDePrueba {
         return libro(hojas);
     }
 
-    /** Una fila de Items en el orden de LectorItems.CABECERAS; lleva un coste para comprobar que no se lee. */
+    /** Una fila de Items en el orden de LectorItems.CABECERAS, con un coste de 123,45 (se lee desde la 0.9.22). */
     static List<Object> fila(String imei, String goods, String grade, String status, String batch, String location,
                              String recibido, String vendido) {
         Object[] v = new Object[LectorItems.CABECERAS.size()];

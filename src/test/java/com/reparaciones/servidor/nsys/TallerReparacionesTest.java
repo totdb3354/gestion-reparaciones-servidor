@@ -81,6 +81,15 @@ class TallerReparacionesTest {
                 "chasis chai13pink nuevo"), 8, AHORA);
     }
 
+    @Test void unColorSinMovilesEnNsysSeDeduceConElNombreDelMaestro() {
+        when(nsys.cargarProductos()).thenReturn(List.of(producto("Blue", "Azul", "B"), producto("(PRODUCT)RED", "Rojo", "B"),
+                productoConNombre("Pink", "Rosa", "B")));
+        servicio.aplicar(IMEI, List.of(fila(R1, 132, false)), 8);
+        verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(COLOR, "Rosa", "Azul", VIGENTE),
+                new TallerDAO.Nuevo(GRADO, "A", "B", VIGENTE)), R1, 8, "chasis chai13pink nuevo", AHORA);
+        verify(taller, never()).avisar(any(), anyInt(), any());
+    }
+
     @Test void unGradoQueNoSePuedeCalcularSeAvisaYNoCambia() {
         when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "ID")));
         servicio.aplicar(IMEI, List.of(fila(R1, 101, false)), 8);

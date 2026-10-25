@@ -16,6 +16,7 @@ final class AnchosNsys {
 
     // Nsys_producto. Nsys_movil copia SKU, MODELO_MAESTRO, CAPACIDAD, COLOR y la calidad (GRADO_DETALLE) con el mismo ancho.
     static final int CLAVE = 160;
+    static final int NOMBRE = 150;
     static final int MODELO_MAESTRO = 40;
     static final int CAPACIDAD = 20;
     static final int COLOR = 40;

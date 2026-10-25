@@ -216,11 +216,19 @@ public class TallerReparaciones {
         return nsysDao.porImei(imei).stream().findFirst();
     }
 
-    /** SKU → color del maestro, con el maestro, el Goods más usado de cada color y Color_equivalencia leídos solo si hace
-     *  falta (una batería no los necesita). */
+    /** SKU → color del maestro, con el maestro (y el nombre en inglés de cada color, 0.9.22), el Goods más usado de cada color y
+     *  Color_equivalencia leídos solo si hace falta (una batería no los necesita). */
     private Function<String, Optional<String>> colorDeChasis(MovilNsys m) {
-        Supplier<ColorChasis> chasis = TallerNsys.perezoso(() -> ColorChasis.de(new Maestro(nsysDao.cargarProductos()).colores(m),
-                nsysDao.goodsMasUsados(m), m.capacidad(), alias()));
+        Supplier<ColorChasis> chasis = TallerNsys.perezoso(() -> {
+            Maestro maestro = new Maestro(nsysDao.cargarProductos());
+            List<String> colores = maestro.colores(m);
+            Map<String, String> nombres = new HashMap<>();
+            for (String c : colores) {
+                String nombre = maestro.nombreColor(m, c);
+                if (nombre != null) nombres.put(c, nombre);
+            }
+            return ColorChasis.de(colores, nsysDao.goodsMasUsados(m), nombres, m.capacidad(), alias());
+        });
         return sku -> chasis.get().deducir(sku);
     }
 

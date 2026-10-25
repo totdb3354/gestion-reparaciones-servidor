@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -28,16 +29,28 @@ class LectorItemsTest {
         return LectorItems.leer(new ByteArrayInputStream(xlsx));
     }
 
-    @Test void leeLasFilasConSusFechasAmericanasYSinCostes() throws Exception {
+    @Test void leeLasFilasConSusFechasAmericanasYSuCoste() throws Exception {
         byte[] xlsx = XlsxDePrueba.items(List.of(
                 XlsxDePrueba.fila("350000000000001", "Apple iPhone 13 128GB Blue", "A", "Available", "BT-9001", "CAJA LISTOS", "9/2/2026", null),
                 XlsxDePrueba.fila("350000000000002", "Apple iPhone 13 128GB Blue", "A-100", "Released", "BT-9001", "Pedidos realizados", "9/2/2026", "10/15/2026")));
         assertEquals(List.of(
                 new FilaItems("350000000000001", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS",
-                        "Proveedor A", LocalDate.of(2026, 9, 2), null),
+                        "Proveedor A", LocalDate.of(2026, 9, 2), null, new BigDecimal("123.45")),
                 new FilaItems("350000000000002", "BT-9001", "Apple iPhone 13 128GB Blue", "A-100", "Released", "Pedidos realizados",
-                        "Proveedor A", LocalDate.of(2026, 9, 2), LocalDate.of(2026, 10, 15))),
+                        "Proveedor A", LocalDate.of(2026, 9, 2), LocalDate.of(2026, 10, 15), new BigDecimal("123.45"))),
                 leer(xlsx));
+    }
+
+    @Test void elCosteVaADosDecimalesConPuntoOComaYSinNumeroEsNull() {
+        assertEquals(new BigDecimal("535.41"), LectorItems.coste("535.41"));
+        assertEquals(new BigDecimal("535.41"), LectorItems.coste(" 535,41 "));
+        assertEquals(new BigDecimal("669.00"), LectorItems.coste("669"));
+        assertEquals(new BigDecimal("386.80"), LectorItems.coste("386.8"));
+        assertNull(LectorItems.coste(null));
+        assertNull(LectorItems.coste(""));
+        assertNull(LectorItems.coste("n/a"));
+        assertNull(LectorItems.coste("350000000000001"));
+        assertEquals(new BigDecimal("99999999.99"), LectorItems.coste("99999999.99"));
     }
 
     @Test void cabecerasConEspacioFinalYEnOtroOrdenValen() throws Exception {
