@@ -3,6 +3,8 @@ package com.reparaciones.servidor.nsys;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EstadoMovilTest {
 
@@ -32,5 +34,13 @@ class EstadoMovilTest {
 
     @Test void unaCajaDesconocidaEsBaja() {
         assertEquals(EstadoMovil.BAJA, EstadoMovil.de("Available", null));
+    }
+
+    @Test void enEmpresaSoloSiNoEsVendidoNiBaja() {
+        assertTrue(EstadoMovil.STOCK.enEmpresa());
+        assertTrue(EstadoMovil.DE_PEDIDO.enEmpresa());
+        assertTrue(EstadoMovil.NO_CUENTA.enEmpresa());
+        assertFalse(EstadoMovil.VENDIDO.enEmpresa());
+        assertFalse(EstadoMovil.BAJA.enEmpresa());
     }
 }

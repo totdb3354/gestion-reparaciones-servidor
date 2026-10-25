@@ -23,4 +23,9 @@ public enum EstadoMovil {
         if (caja == null || caja.ubicacion() == null) return BAJA;
         return caja.cuentaStock() ? STOCK : NO_CUENTA;
     }
+
+    /** ¿Lo tiene NSYS en la empresa (en stock, de pedido o en una caja que no cuenta)? Un vendido o de baja, no. */
+    public boolean enEmpresa() {
+        return this == STOCK || this == DE_PEDIDO || this == NO_CUENTA;
+    }
 }

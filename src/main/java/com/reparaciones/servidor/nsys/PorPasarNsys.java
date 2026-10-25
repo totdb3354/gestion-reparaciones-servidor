@@ -55,11 +55,18 @@ public class PorPasarNsys {
 
     /** Las cuatro tarjetas (§3), con una lectura de cada cosa. */
     public TarjetasPorPasar tarjetas() {
-        List<TallerNsys.MovilPorPasar> moviles = taller.movilesPorPasar();
+        List<TallerNsys.MovilPorPasar> moviles = movilesEnEmpresa();
         Map<String, HechoTaller> marcas = TarjetasNsys.porClave(hechoDao.todas());
         List<AvisoTaller> avisos = tallerDao.avisosPorRevisar();
         return new TarjetasPorPasar(TarjetasNsys.color(moviles, marcas), TarjetasNsys.grado(moviles, marcas),
                 TarjetasNsys.altas(altas(), marcas), TarjetasNsys.revisar(avisos, espejo(avisos)));
+    }
+
+    /** Los móviles de «Cambio de color» y «Cambio de grado»: los de «Por pasar a NSYS» que NSYS tiene en la empresa. Un vendido o de
+     *  baja no se vuelve a subir (sería stock que no hay) ni se le cambia el grado; su cambio sigue vigente y, si el móvil vuelve,
+     *  sale otra vez solo. */
+    private List<TallerNsys.MovilPorPasar> movilesEnEmpresa() {
+        return taller.movilesPorPasar().stream().filter(p -> p.movil().estado().enEmpresa()).toList();
     }
 
     /** «No está en NSYS» (§3.4): los IMEI del taller que no están en el espejo, cruzados en Java por claveCruce (las tablas tienen
@@ -124,7 +131,7 @@ public class PorPasarNsys {
     public void repasarHechos(LocalDateTime exportacion) {
         List<HechoTaller> marcas = hechoDao.todas();
         if (marcas.isEmpty()) return;
-        TarjetasNsys.Repaso r = TarjetasNsys.repasar(marcas, TarjetasNsys.filas(taller.movilesPorPasar(), altas()), exportacion);
+        TarjetasNsys.Repaso r = TarjetasNsys.repasar(marcas, TarjetasNsys.filas(movilesEnEmpresa(), altas()), exportacion);
         if (r.borrar().isEmpty() && r.vuelven().isEmpty()) return;
         hechoDao.repasar(r.borrar(), r.vuelven(), ahora());
         log.info("NSYS: marcas «Hecho» tras la importación: {} quitadas, {} vuelven a salir", r.borrar().size(), r.vuelven().size());
@@ -148,7 +155,7 @@ public class PorPasarNsys {
     /** La plantilla de color (spec §4): los móviles de «Cambio de color» con producto y sin marca «Hecho» que valga, en el orden de
      *  la lista, con el coste de su lote actual (una consulta, solo si hay alguno). */
     public Plantilla plantillaColor() {
-        List<TallerNsys.MovilPorPasar> moviles = taller.movilesPorPasar();
+        List<TallerNsys.MovilPorPasar> moviles = movilesEnEmpresa();
         List<FilaColorNsys> van = TarjetasNsys.color(moviles, TarjetasNsys.porClave(hechoDao.todas())).stream()
                 .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()) && f.ponerProducto() != null).toList();
         Map<String, MovilNsys> porImei = new HashMap<>();

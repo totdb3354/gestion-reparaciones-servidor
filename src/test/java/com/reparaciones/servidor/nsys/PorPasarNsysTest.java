@@ -232,4 +232,51 @@ class PorPasarNsysTest {
         assertEquals(0, p.filas());
         verify(nsys, never()).costes(any());
     }
+
+    private static MovilNsys conEstado(MovilNsys m, EstadoMovil estado) {
+        return new MovilNsys(m.imeiSn(), m.batch(), m.goods(), m.grade(), m.status(), m.location(), m.supplier(), m.receivingDate(),
+                m.soldDate(), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(), m.gradoDetalle(), m.esEsim(),
+                m.ubicacion(), m.ubicacionUltima(), estado, m.vistoPrimero(), m.cambiado());
+    }
+
+    /** Un móvil con cambio de color y de grado vigentes, en el estado dado. */
+    private static TallerNsys.MovilPorPasar conAmbosCambios(String imei, EstadoMovil estado) {
+        return new TallerNsys.MovilPorPasar(conEstado(movil(imei, "Azul", "B"), estado),
+                new LoQueVale.Valor("Rosa", "A100", null, "Azul", "B", null, true),
+                List.of(vigente(1, imei, COLOR, "Rosa", "Azul", AHORA.minusDays(1)), vigente(2, imei, GRADO, "A100", "B", AHORA.minusDays(1))),
+                new ProductoNsys.Poner("Apple iPhone 13 128GB Pink", false));
+    }
+
+    @Test void colorYGradoSoloLlevanLosQueNsysTieneEnLaEmpresa() {
+        when(taller.movilesPorPasar()).thenReturn(List.of(conAmbosCambios(IMEI, EstadoMovil.STOCK),
+                conAmbosCambios("350000000000002", EstadoMovil.VENDIDO)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(IMEI), t.color().stream().map(FilaColorNsys::imeiSn).toList());
+        assertEquals(List.of(IMEI), t.grado().stream().map(FilaGradoNsys::imeiSn).toList());
+    }
+
+    @Test void unaBajaNoSaleYUnoDePedidoSi() {
+        when(taller.movilesPorPasar()).thenReturn(List.of(conAmbosCambios(IMEI, EstadoMovil.BAJA),
+                conAmbosCambios("350000000000002", EstadoMovil.DE_PEDIDO)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of("350000000000002"), t.color().stream().map(FilaColorNsys::imeiSn).toList());
+        assertEquals(List.of("350000000000002"), t.grado().stream().map(FilaGradoNsys::imeiSn).toList());
+    }
+
+    @Test void laPlantillaDeColorNoLlevaLosVendidos() {
+        MovilNsys enStock = conAmbosCambios(IMEI, EstadoMovil.STOCK).movil();
+        when(taller.movilesPorPasar()).thenReturn(List.of(conAmbosCambios(IMEI, EstadoMovil.STOCK),
+                conAmbosCambios("350000000000002", EstadoMovil.VENDIDO)));
+        when(nsys.costes(List.of(enStock.clave()))).thenReturn(Map.of(enStock.clave(), new BigDecimal("412.35")));
+        assertEquals(1, servicio.plantillaColor().filas());
+        verify(nsys).costes(List.of(enStock.clave()));
+    }
+
+    @Test void elRepasoBorraLaMarcaDeUnVendidoAunqueSeaPosteriorAlCambio() {
+        HechoTaller deVendido = new HechoTaller(IMEI, TarjetaHecho.COLOR, 7, "Supertécnico 1", AHORA.minusHours(2), null);
+        when(hechos.todas()).thenReturn(List.of(deVendido));
+        when(taller.movilesPorPasar()).thenReturn(List.of(conAmbosCambios(IMEI, EstadoMovil.VENDIDO)));
+        servicio.repasarHechos(AHORA.minusMinutes(30));
+        verify(hechos).repasar(List.of(deVendido), List.of(), AHORA);
+    }
 }
