@@ -49,11 +49,16 @@ public final class LectorItems {
         return null;
     }
 
-    /** El coste de NSYS («Total cost»): un número con punto o coma decimal, a dos decimales; null si no viene o no es un número. */
+    /** Tope de DECIMAL(10,2): el valor absoluto del coste es menor que esto. */
+    private static final BigDecimal MAX_COSTE = new BigDecimal("100000000");
+
+    /** El coste de NSYS («Total cost»): un número con punto o coma decimal, a dos decimales; null si no viene, no es un número o
+     *  no cabe en DECIMAL(10,2) (un IMEI pegado en la celda, por ejemplo), para que no tumbe el guardado de todos los costes. */
     static BigDecimal coste(String texto) {
         if (texto == null || texto.isBlank()) return null;
         try {
-            return new BigDecimal(texto.strip().replace(',', '.')).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal coste = new BigDecimal(texto.strip().replace(',', '.')).setScale(2, RoundingMode.HALF_UP);
+            return coste.abs().compareTo(MAX_COSTE) < 0 ? coste : null;
         } catch (NumberFormatException noEsUnNumero) {
             return null;
         }

@@ -49,6 +49,8 @@ class LectorItemsTest {
         assertNull(LectorItems.coste(null));
         assertNull(LectorItems.coste(""));
         assertNull(LectorItems.coste("n/a"));
+        assertNull(LectorItems.coste("350000000000001"));
+        assertEquals(new BigDecimal("99999999.99"), LectorItems.coste("99999999.99"));
     }
 
     @Test void cabecerasConEspacioFinalYEnOtroOrdenValen() throws Exception {
