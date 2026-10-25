@@ -524,8 +524,14 @@ class OpenApiContractTest {
 
         // 0.9.21 (spec «SKU del taller» §4): la corrección a mano, la lista «Por pasar a NSYS» y las opciones del diálogo.
         for (String ruta : List.of("/api/stock-telefonos/por-pasar", "/api/stock-telefonos/{imeiSn}/colores",
-                "/api/stock-telefonos/{imeiSn}/taller")) {
+                "/api/stock-telefonos/{imeiSn}/taller", "/api/stock-telefonos/por-pasar/tarjetas",
+                "/api/stock-telefonos/por-pasar/hecho", "/api/stock-telefonos/por-pasar/avisos/{idAviso}/revisado",
+                "/api/stock-telefonos/por-pasar/plantilla-color", "/api/stock-telefonos/por-pasar/plantilla-altas")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        }
+        for (String esquema : List.of("TarjetasPorPasar", "FilaColorNsys", "FilaGradoNsys", "FilaAltaNsys", "FilaRevisarNsys",
+                "PorPasarPeticionHecho", "PorPasarPeticionDeshacer")) {
+            assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "put").endsWith("/StockTelefonosPeticionTaller"));
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "delete").endsWith("/StockTelefonosPeticionVolver"));
@@ -543,6 +549,14 @@ class OpenApiContractTest {
         assertNullable(esquemas, "OpcionColor", "producto");
         assertNoNullable(esquemas, "OpcionColor", "color");
         assertNoNullable(esquemas, "SkuMaestro", "color", "grado", "sku");
+        assertNullable(esquemas, "FilaColorNsys", "colorDe", "colorA", "ponerProducto", "hechoPor", "hechoEn", "hechoVolvio");
+        assertNullable(esquemas, "FilaGradoNsys", "gradoDe", "gradoA", "hechoEn", "hechoVolvio");
+        assertNullable(esquemas, "FilaAltaNsys", "modelo", "tecnico", "cliente", "hechoEn", "hechoVolvio");
+        assertNullable(esquemas, "FilaRevisarNsys", "modelo", "causa", "usuario");
+        assertNullable(esquemas, "FilaPorPasar", "ponerProducto");
+        assertTrue(esquemas.path("FilaPorPasar").path("properties").has("ponerCompruebalo"));
+        assertTrue(esquemas.path("OpcionColor").path("properties").has("compruebalo"));
+        assertTrue(esquemas.path("StockTelefonosFichaMovil").path("properties").has("ponerCompruebalo"));
     }
 
     /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */
