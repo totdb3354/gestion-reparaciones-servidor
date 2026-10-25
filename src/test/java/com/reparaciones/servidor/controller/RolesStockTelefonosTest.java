@@ -17,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -65,6 +66,8 @@ class RolesStockTelefonosTest {
     @MockBean TelefonoDAO telefonoDao;
     @MockBean TallerDAO tallerDao;
     @MockBean HechoDAO hechoDao;
+    /** «Revisado» es @Transactional y este test no tiene base de datos: sin esto no abre conexión. */
+    @MockBean PlatformTransactionManager transactionManager;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico2", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }

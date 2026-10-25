@@ -99,6 +99,23 @@ class PorPasarNsysTest {
         verifyNoInteractions(hechos);
     }
 
+    @Test void marcarRechazaUnImeiDeMasDe40Caracteres() {
+        String largo = "9".repeat(41);
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.marcar("COLOR", List.of(IMEI, largo), 7)));
+        verify(hechos, never()).marcar(any(), any(), anyInt(), any());
+    }
+
+    @Test void marcarAdmiteUnImeiDe40CaracteresYLoLimpia() {
+        String justo = "9".repeat(40);
+        servicio.marcar("COLOR", List.of(" " + justo + " "), 7);
+        verify(hechos).marcar(TarjetaHecho.COLOR, List.of(justo), 7, AHORA);
+    }
+
+    @Test void deshacerRechazaUnImeiDeMasDe40Caracteres() {
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.desmarcar("COLOR", "9".repeat(41))));
+        verify(hechos, never()).desmarcar(any(), any());
+    }
+
     @Test void deshacerQuitaLaMarcaDeEsaTarjeta() {
         servicio.desmarcar("ALTA", " 350000000000088 ");
         verify(hechos).desmarcar(TarjetaHecho.ALTA, "350000000000088");
@@ -113,11 +130,33 @@ class PorPasarNsysTest {
         verify(registro).insertar(7, "REVISAR_AVISO_TALLER", "IMEI: 350000000000001, SIN_GRADO de R20261024_19", null);
     }
 
-    @Test void revisadoDeUnAvisoQueNoExisteOYaEstaRevisado() {
+    @Test void revisadoDeUnAvisoQueNoExiste() {
         assertEquals(HttpStatus.NOT_FOUND, estado(() -> servicio.revisado(9, 7)));
-        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(sinGrado()));
+    }
+
+    @Test void revisadoDeUnAvisoYaRevisadoNoHaceNada() {
+        AvisoTaller a = sinGrado();
+        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(new AvisoTaller(a.id(), a.imeiSn(), a.idRep(), a.tipo(), a.causa(),
+                a.dato(), a.de(), a.a(), a.motivo(), a.idUsu(), a.usuario(), a.fecha(), "Supertécnico 1", AHORA.minusMinutes(1))));
+        assertDoesNotThrow(() -> servicio.revisado(5, 7));
+        verify(tallerDao, never()).revisar(anyInt(), anyInt(), any());
+        verify(registro, never()).insertar(anyInt(), any(), any(), any());
+    }
+
+    @Test void revisadoDeUnAvisoQueNoEsDeRevisarAManoDa400() {
+        AvisoTaller a = sinGrado();
+        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(new AvisoTaller(a.id(), a.imeiSn(), a.idRep(),
+                AvisoTaller.Tipo.DESHECHO, AvisoTaller.Causa.BORRADA, a.dato(), a.de(), a.a(), a.motivo(), a.idUsu(), a.usuario(),
+                a.fecha())));
         when(tallerDao.revisar(5, 7, AHORA)).thenReturn(0);
         assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.revisado(5, 7)));
+        verifyNoInteractions(registro);
+    }
+
+    @Test void revisadoSiLoAcabaDeRevisarOtroEntreMediasNoHaceNada() {
+        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(sinGrado()));
+        when(tallerDao.revisar(5, 7, AHORA)).thenReturn(0);
+        assertDoesNotThrow(() -> servicio.revisado(5, 7));
         verifyNoInteractions(registro);
     }
 

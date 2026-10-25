@@ -77,6 +77,14 @@ public final class GrafiasNsys {
         return resto.isEmpty() || resto.equalsIgnoreCase("esim") ? null : resto;
     }
 
+    /** true si el Goods lleva la «eSIM» detrás de la capacidad («Apple iPhone 13 128GB Pink eSIM»): ahí la plantilla no sabe dónde
+     *  ponerla. false con null o sin capacidad. */
+    static boolean esimDetras(String goods) {
+        if (goods == null) return false;
+        Matcher c = CAPACIDAD.matcher(goods);
+        return c.find() && ESIM_DETRAS.matcher(goods.substring(c.end()).strip()).find();
+    }
+
     /** El Goods {@code goods} con el color cambiado por {@code grafia}: el modelo y la capacidad como los tiene el móvil, y su
      *  «eSIM» donde estaba («Apple iPhone 13 128GB Blue eSIM» + «Pink» → «Apple iPhone 13 128GB Pink eSIM»). null sin
      *  capacidad o sin grafía. */

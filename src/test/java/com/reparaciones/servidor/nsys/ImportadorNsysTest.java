@@ -497,6 +497,19 @@ class ImportadorNsysTest {
         verify(dao, times(2)).aplicar(any(), anyInt());
     }
 
+    @Test void siElCierreFallaNoSeRepasanLasMarcasYLaImportacionSigueOk() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        when(taller.cerrar()).thenThrow(new RuntimeException("la base de datos no responde"));
+
+        importador.pasada();
+
+        verify(porPasar, never()).repasarHechos(any());
+        verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
+    }
+
     @Test void trasCerrarLoDelTallerSeRepasanLasMarcasConLaHoraDelFichero() throws Exception {
         ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
         when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));

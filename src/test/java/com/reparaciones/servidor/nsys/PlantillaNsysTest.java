@@ -90,6 +90,14 @@ class PlantillaNsysTest {
         }
     }
 
+    @Test void unProductoConLaEsimDetrasDeLaCapacidadVaEnAmarilloAunqueNoSeaDelMaestro() throws IOException {
+        PlantillaNsys.FilaColor f = PlantillaNsys.FilaColor.de(TallerDePrueba.movil("350000000000013", "Blue", "B"),
+                "Apple iPhone 13 128GB Pink eSIM", false, new BigDecimal("400.00"));
+        try (XSSFWorkbook libro = abrir(PlantillaNsys.color(List.of(f)))) {
+            assertArrayEquals(PlantillaNsys.FONDO_AMARILLO, fondo(celda(libro, 0, 4)));
+        }
+    }
+
     @Test void laDeAltasLlevaElImeiYElModeloDelTallerEnRojoYLoDemasParaRellenar() throws IOException {
         try (XSSFWorkbook libro = abrir(PlantillaNsys.altas(List.of(new PlantillaNsys.FilaAlta("350000000000088", "iPhone 14"))))) {
             assertEquals("350000000000088", celda(libro, 0, 0).getStringCellValue());

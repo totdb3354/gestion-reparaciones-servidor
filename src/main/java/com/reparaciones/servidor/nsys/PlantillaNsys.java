@@ -45,10 +45,11 @@ final class PlantillaNsys {
                      BigDecimal coste, String proveedor) {
 
         /** Del lote actual del móvil: modelo y capacidad de su Goods, el color del producto a poner, su grado de hoy, su coste y
-         *  su proveedor tal cual. */
+         *  su proveedor tal cual. Va a comprobar si el color es del maestro o si el producto lleva la eSIM detrás de la
+         *  capacidad, que la plantilla no sabe dónde poner. */
         static FilaColor de(MovilNsys m, String producto, boolean compruebalo, BigDecimal coste) {
             return new FilaColor(m.imeiSn(), GrafiasNsys.modeloDelGoods(m.goods()), GrafiasNsys.capacidadDelGoods(m.goods()),
-                    GrafiasNsys.colorDelGoods(producto), compruebalo, m.grade(), coste, m.supplier());
+                    GrafiasNsys.colorDelGoods(producto), compruebalo || GrafiasNsys.esimDetras(producto), m.grade(), coste, m.supplier());
         }
     }
 

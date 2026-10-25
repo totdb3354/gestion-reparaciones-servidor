@@ -20,6 +20,15 @@ class GrafiasNsysTest {
         assertNull(GrafiasNsys.colorDelGoods(null));
     }
 
+    @Test void elEsimDetrasDeLaCapacidadSeDetecta() {
+        assertTrue(GrafiasNsys.esimDetras("Apple iPhone 13 128GB Pink eSIM"));
+        assertTrue(GrafiasNsys.esimDetras("Apple iPhone 13 128GB Pink ESIM"));
+        assertFalse(GrafiasNsys.esimDetras("Apple iPhone 14 eSIM 256GB Midnight"));
+        assertFalse(GrafiasNsys.esimDetras("Apple iPhone 13 128GB Pink"));
+        assertFalse(GrafiasNsys.esimDetras("Apple iPhone 13 Pink eSIM"), "sin capacidad no se sabe");
+        assertFalse(GrafiasNsys.esimDetras(null));
+    }
+
     @Test void cambiarElColorConservaElModeloLaCapacidadYElEsimDelMovil() {
         assertEquals("Apple iPhone 14 eSIM 256GB Yellow", GrafiasNsys.cambiarColor("Apple iPhone 14 eSIM 256GB Midnight", "Yellow"));
         assertEquals("Apple iphone 15 pro 128GB Blue Titanium",

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -28,6 +29,8 @@ public class PorPasarNsys {
     static final String ACCION_REVISADO = "REVISAR_AVISO_TALLER";
     /** Como mucho los IMEI de un «Marcar todo» (como «Pegar varios IMEIs»). */
     static final int MAX_MARCAR = 500;
+    /** El largo de Taller_hecho.IMEI_SN. */
+    static final int MAX_IMEI = 40;
 
     private final TallerNsys taller;
     private final TallerDAO tallerDao;
@@ -86,23 +89,33 @@ public class PorPasarNsys {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Como mucho " + MAX_MARCAR + " móviles por vez");
         if (imeis.stream().anyMatch(i -> i == null || i.isBlank()))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La lista lleva IMEIs vacíos");
-        hechoDao.marcar(t, imeis.stream().map(String::strip).distinct().toList(), idUsu, ahora());
+        List<String> limpios = imeis.stream().map(String::strip).distinct().toList();
+        if (limpios.stream().anyMatch(i -> i.length() > MAX_IMEI))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un IMEI no puede pasar de " + MAX_IMEI + " caracteres");
+        hechoDao.marcar(t, limpios, idUsu, ahora());
     }
 
     /** «deshacer» de una marca. */
     public void desmarcar(String tarjeta, String imeiSn) {
         TarjetaHecho t = tarjeta(tarjeta);
         if (imeiSn == null || imeiSn.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta el IMEI");
+        if (imeiSn.strip().length() > MAX_IMEI)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un IMEI no puede pasar de " + MAX_IMEI + " caracteres");
         hechoDao.desmarcar(t, imeiSn.strip());
     }
 
-    /** «Revisado» (§3.5): quién y cuándo en el aviso y una línea en el registro de actividad. 404 si el aviso no existe; 400 si ya
-     *  estaba revisado o no es de «Revisar a mano». */
+    /** «Revisado» (§3.5): quién y cuándo en el aviso y una línea en el registro de actividad. 404 si el aviso no existe; 400 si no
+     *  es de «Revisar a mano»; si ya estaba revisado no hace nada (un segundo clic). */
+    @Transactional
     public void revisado(int idAviso, int idUsu) {
         AvisoTaller a = tallerDao.avisoPorId(idAviso).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe el aviso " + idAviso));
-        if (tallerDao.revisar(idAviso, idUsu, ahora()) == 0)
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ese aviso ya está revisado o no es de «Revisar a mano»");
+        if (a.revisadoEn() != null) return;
+        if (tallerDao.revisar(idAviso, idUsu, ahora()) == 0) {
+            if (!AvisoTaller.POR_REVISAR.contains(a.tipo()))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ese aviso no es de «Revisar a mano»");
+            return; // lo acaba de revisar otro entre medias
+        }
         logDao.insertar(idUsu, ACCION_REVISADO, "IMEI: " + a.imeiSn() + ", " + a.tipo().name() + " de " + a.idRep(), null);
     }
 
