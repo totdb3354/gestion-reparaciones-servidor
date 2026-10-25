@@ -2,6 +2,8 @@ package com.reparaciones.servidor.nsys;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -10,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Lee el fichero Items de NSYS (spec pieza 1 §5.1): valida las 19 columnas por su nombre y se queda con las que usa el
- *  ERP. Los costes y precios no se leen. */
+ *  ERP. Desde la 0.9.22 lee también el coste («Total cost»); los precios de venta no se leen. */
 public final class LectorItems {
 
     static final List<String> CABECERAS = List.of("IMEI/SN", "Goods", "SKU", "Grade", "Status", "Warehouse", "Supplier",
@@ -47,6 +49,16 @@ public final class LectorItems {
         return null;
     }
 
+    /** El coste de NSYS («Total cost»): un número con punto o coma decimal, a dos decimales; null si no viene o no es un número. */
+    static BigDecimal coste(String texto) {
+        if (texto == null || texto.isBlank()) return null;
+        try {
+            return new BigDecimal(texto.strip().replace(',', '.')).setScale(2, RoundingMode.HALF_UP);
+        } catch (NumberFormatException noEsUnNumero) {
+            return null;
+        }
+    }
+
     private static final class Recolector implements HojaXlsx.Filas {
         Map<String, Integer> columnas;
         final List<FilaItems> filas = new ArrayList<>();
@@ -62,7 +74,8 @@ public final class LectorItems {
             filas.add(new FilaItems(imei, lote == null ? "" : lote, valor(celdas, "Goods", AnchosNsys.GOODS),
                     valor(celdas, "Grade", AnchosNsys.GRADE), valor(celdas, "Status", AnchosNsys.STATUS),
                     valor(celdas, "Location", AnchosNsys.LOCATION), valor(celdas, "Supplier", AnchosNsys.SUPPLIER),
-                    fecha(valor(celdas, "Receiving date")), fecha(valor(celdas, "Sold date"))));
+                    fecha(valor(celdas, "Receiving date")), fecha(valor(celdas, "Sold date")),
+                    coste(valor(celdas, "Total cost"))));
         }
 
         private String valor(List<String> celdas, String columna) {

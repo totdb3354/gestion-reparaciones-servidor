@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.UncategorizedSQLException;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -515,5 +516,38 @@ class ImportadorNsysTest {
         verify(dao).reemplazarProductos(List.of(new ProductoMaestro(Normalizacion.clave("Apple iPhone 13 128GB Blue A"), "13",
                 "13", "128GB", "Azul", "A", "i13128AzulA", "i13128AzulA", "i13128Azul", false, "Apple iPhone 13 128GB Blue")));
         verify(dao, times(1)).productosSinNombre();
+    }
+
+    // ---------------------------------------------------------------- 0.9.22: coste de cada móvil
+
+    @SuppressWarnings("unchecked")
+    @Test void trasGuardarLaFotoSeGuardanLosCostesDelFichero() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        InOrder orden = inOrder(dao);
+        orden.verify(dao).aplicar(any(), eq(1));
+        ArgumentCaptor<List<FilaItems>> filas = ArgumentCaptor.forClass(List.class);
+        orden.verify(dao).guardarCostes(filas.capture());
+        assertEquals(2, filas.getValue().size());
+        assertEquals(new BigDecimal("123.45"), filas.getValue().get(0).coste());
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), isNull(), eq(AHORA));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void siFallanLosCostesLaImportacionSigueOk() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        when(dao.guardarCostes(any())).thenThrow(new UncategorizedSQLException("costes", "UPDATE Nsys_movil",
+                new java.sql.SQLException("fallo")));
+
+        importador.pasada();
+
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
+        verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
     }
 }

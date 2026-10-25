@@ -6,6 +6,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -58,6 +59,9 @@ public class NsysDAO {
     /** true si hay productos y ninguno tiene nombre: el maestro se cargó antes de la columna NOMBRE (0.9.22). */
     static final String SQL_PRODUCTOS_SIN_NOMBRE =
             "SELECT COUNT(*) > 0 AND COALESCE(SUM(NOMBRE IS NOT NULL), 0) = 0 FROM Nsys_producto";
+    /** El coste guardado de cada lote (0.9.22): para escribir solo los que cambian. */
+    static final String SQL_COSTES = "SELECT IMEI_SN, BATCH, COSTE FROM Nsys_movil WHERE COSTE IS NOT NULL";
+    static final String SQL_GUARDAR_COSTE = "UPDATE Nsys_movil SET COSTE = ? WHERE IMEI_SN = ? AND BATCH = ?";
     /** Rellena el modelo de los teléfonos del taller que no lo tienen, sin pisar nunca uno puesto, solo para IMEI de 15 cifras que ya existen en Telefono (spec §7). */
     static final String SQL_RELLENAR_MODELOS = "UPDATE Telefono t JOIN (SELECT IMEI_SN, MAX(MODELO) AS MODELO"
             + " FROM Nsys_movil WHERE MODELO IS NOT NULL GROUP BY IMEI_SN) n ON n.IMEI_SN = t.IMEI"
@@ -131,6 +135,36 @@ public class NsysDAO {
         for (List<MovilNsys> lote : trozos(r.aGuardar()))
             jdbc.batchUpdate(SQL_GUARDAR_MOVIL, lote.stream().map(NsysDAO::argumentos).toList());
         insertarEventos(r.eventos(), idImportacion);
+    }
+
+    /** Una fila de {@link #SQL_COSTES}. */
+    record Coste(ClaveMovil clave, BigDecimal coste) {}
+
+    /** El coste de cada lote del espejo que lo tiene (0.9.22). */
+    Map<ClaveMovil, BigDecimal> cargarCostes() {
+        Map<ClaveMovil, BigDecimal> mapa = new HashMap<>();
+        for (Coste c : jdbc.query(SQL_COSTES, (rs, n) -> new Coste(new ClaveMovil(rs.getString("IMEI_SN"),
+                rs.getString("BATCH")), rs.getBigDecimal("COSTE")))) mapa.put(c.clave(), c.coste());
+        return mapa;
+    }
+
+    /** Guarda el «Total cost» de las filas de un Items (spec 0.9.22 §2.3): solo los que cambian, por lotes de mil; una fila sin
+     *  coste no borra el que había. Se llama después de {@link #aplicar}, con los móviles nuevos ya guardados. Devuelve cuántos
+     *  ha escrito. */
+    @Transactional
+    public int guardarCostes(List<FilaItems> filas) {
+        Map<ClaveMovil, BigDecimal> antes = cargarCostes();
+        Map<ClaveMovil, BigDecimal> nuevos = new LinkedHashMap<>();
+        for (FilaItems f : filas) {
+            if (f.coste() == null) continue;
+            BigDecimal previo = antes.get(f.clave());
+            if (previo == null || previo.compareTo(f.coste()) != 0) nuevos.put(f.clave(), f.coste());
+        }
+        if (nuevos.isEmpty()) return 0;
+        List<Object[]> argumentos = nuevos.entrySet().stream()
+                .map(e -> new Object[]{e.getValue(), e.getKey().imeiSn(), e.getKey().batch()}).toList();
+        for (List<Object[]> lote : trozos(argumentos)) jdbc.batchUpdate(SQL_GUARDAR_COSTE, lote);
+        return nuevos.size();
     }
 
     /** Los textos de los eventos son campos de Nsys_movil o ubicaciones, ya cortados al leer (AnchosNsys): caben. */

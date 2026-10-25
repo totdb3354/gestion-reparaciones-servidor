@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.KeyHolder;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -333,5 +334,37 @@ class NsysDAOTest {
         dao.bajasConHora();
         verify(jdbc).query(and(contains("FROM Nsys_evento"), contains("TIPO = 'ESTADO' AND A = 'Removed' AND NOT SOLO_DIA")),
                 any(RowMapper.class));
+    }
+
+    // ---------------------------------------------------------------- 0.9.22: coste de cada móvil
+
+    private static FilaItems conCoste(String imei, String coste) {
+        return new FilaItems(imei, "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 9, 2), null, coste == null ? null : new BigDecimal(coste));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void guardarCostesSoloActualizaLosQueCambian() {
+        when(jdbc.query(eq(NsysDAO.SQL_COSTES), any(RowMapper.class))).thenReturn(List.of(
+                new NsysDAO.Coste(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("535.41")),
+                new NsysDAO.Coste(new ClaveMovil("350000000000002", "BT-9001"), new BigDecimal("200.00"))));
+        int n = dao.guardarCostes(List.of(conCoste("350000000000001", "535.41"), conCoste("350000000000002", "210.50"),
+                conCoste("350000000000003", "99.90"), conCoste("350000000000004", null)));
+        assertEquals(2, n);
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq(NsysDAO.SQL_GUARDAR_COSTE), lote.capture());
+        assertEquals(2, lote.getValue().size());
+        assertArrayEquals(new Object[]{new BigDecimal("210.50"), "350000000000002", "BT-9001"}, lote.getValue().get(0));
+        assertArrayEquals(new Object[]{new BigDecimal("99.90"), "350000000000003", "BT-9001"}, lote.getValue().get(1));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void sinCostesNuevosNoSeEscribeNada() {
+        when(jdbc.query(eq(NsysDAO.SQL_COSTES), any(RowMapper.class))).thenReturn(List.of(
+                new NsysDAO.Coste(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("535.41"))));
+        assertEquals(0, dao.guardarCostes(List.of(conCoste("350000000000001", "535.410"))));
+        verify(jdbc, never()).batchUpdate(eq(NsysDAO.SQL_GUARDAR_COSTE), any(List.class));
+        assertEquals("UPDATE Nsys_movil SET COSTE = ? WHERE IMEI_SN = ? AND BATCH = ?", NsysDAO.SQL_GUARDAR_COSTE);
+        assertEquals("SELECT IMEI_SN, BATCH, COSTE FROM Nsys_movil WHERE COSTE IS NOT NULL", NsysDAO.SQL_COSTES);
     }
 }

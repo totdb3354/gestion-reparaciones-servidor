@@ -179,6 +179,7 @@ public class ImportadorNsys {
             Comparador.Modo modo = anteriores.isEmpty() ? Comparador.Modo.PRIMERA_CARGA : Comparador.Modo.NORMAL;
             ResultadoComparacion r = Comparador.comparar(anteriores, filas, f.fecha(), modo, traductor());
             dao.aplicar(r, id);
+            guardarCostes(filas);
             String modelos = rellenarModelos();
             dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
             cerrarTaller();
@@ -268,6 +269,16 @@ public class ImportadorNsys {
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudo rellenar el modelo de los teléfonos del taller", e);
             return "Modelos del taller no rellenados: " + motivo(e);
+        }
+    }
+
+    /** Tras guardar la foto, el coste de cada lote (spec 0.9.22 §2.3). Si falla, la importación sigue OK y se avisa en el registro
+     *  del servidor: con el siguiente fichero se vuelven a mirar todos. */
+    private void guardarCostes(List<FilaItems> filas) {
+        try {
+            dao.guardarCostes(filas);
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron guardar los costes", e);
         }
     }
 
