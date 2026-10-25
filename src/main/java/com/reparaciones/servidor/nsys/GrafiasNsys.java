@@ -3,6 +3,7 @@ package com.reparaciones.servidor.nsys;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,7 +18,8 @@ public final class GrafiasNsys {
     /** Un Goods del espejo, el modelo del maestro de sus móviles (null si no lo tienen) y cuántos móviles lo llevan. */
     public record GoodsContado(String modeloMaestro, String goods, int n) {}
 
-    static final Pattern CAPACIDAD = Pattern.compile("\\b\\d+\\s?(?:GB|TB)\\b", Pattern.CASE_INSENSITIVE);
+    static final Pattern CAPACIDAD = Pattern.compile("\\b(\\d+)\\s?(GB|TB)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FABRICANTE = Pattern.compile("^(?i)apple\\s+");
     private static final Pattern ESIM_DELANTE = Pattern.compile("^(?i)(esim)\\s+");
     private static final Pattern ESIM_DETRAS = Pattern.compile("\\s+(?i)(esim)$");
 
@@ -87,5 +89,23 @@ public final class GrafiasNsys {
         Matcher detras = ESIM_DETRAS.matcher(resto);
         return goods.substring(0, c.end()) + " " + (delante.find() ? delante.group(1) + " " : "") + grafia
                 + (detras.find() ? " " + detras.group(1) : "");
+    }
+
+    /** El modelo de un Goods como lo lleva la plantilla de NSYS (spec 0.9.22 §4, columna C): lo que va antes de la capacidad, sin
+     *  el fabricante («Apple iPhone 14 eSIM 256GB Midnight» → «iPhone 14 eSIM»). null sin capacidad. */
+    static String modeloDelGoods(String goods) {
+        if (goods == null) return null;
+        Matcher c = CAPACIDAD.matcher(goods);
+        if (!c.find()) return null;
+        String modelo = FABRICANTE.matcher(goods.substring(0, c.start()).strip()).replaceFirst("").strip();
+        return modelo.isEmpty() ? null : modelo;
+    }
+
+    /** La capacidad de un Goods con espacio y la unidad en mayúsculas, como la lleva la plantilla (columna D; con espacio, NSYS la
+     *  leyó bien en la subida del 22/10): «256GB» → «256 GB». null sin capacidad. */
+    static String capacidadDelGoods(String goods) {
+        if (goods == null) return null;
+        Matcher c = CAPACIDAD.matcher(goods);
+        return c.find() ? c.group(1) + " " + c.group(2).toUpperCase(Locale.ROOT) : null;
     }
 }

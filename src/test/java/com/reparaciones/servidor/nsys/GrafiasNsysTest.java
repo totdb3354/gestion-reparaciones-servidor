@@ -50,4 +50,17 @@ class GrafiasNsysTest {
                 new GrafiasNsys.GoodsContado("13", "Apple iPhone 13 256GB Blue", 2)));
         assertEquals("Blue", g.color("13", "BLUE"));
     }
+
+    @Test void elModeloYLaCapacidadDeUnGoodsComoLosLlevaLaPlantilla() {
+        assertEquals("iPhone 14 eSIM", GrafiasNsys.modeloDelGoods("Apple iPhone 14 eSIM 256GB Midnight"));
+        assertEquals("iPhone 13", GrafiasNsys.modeloDelGoods("Apple iPhone 13 128 GB Blue"));
+        assertEquals("iphone 15 pro", GrafiasNsys.modeloDelGoods("apple iphone 15 pro 128GB black titanium"), "como lo tiene el móvil");
+        assertNull(GrafiasNsys.modeloDelGoods("Apple iPhone 13 Blue"));
+        assertNull(GrafiasNsys.modeloDelGoods(null));
+        assertEquals("256 GB", GrafiasNsys.capacidadDelGoods("Apple iPhone 14 eSIM 256GB Midnight"));
+        assertEquals("1 TB", GrafiasNsys.capacidadDelGoods("Apple iPhone 17 Pro Max eSIM 1tb Cosmic Orange"));
+        assertEquals("128 GB", GrafiasNsys.capacidadDelGoods("Apple iPhone 13 128 GB Blue"));
+        assertNull(GrafiasNsys.capacidadDelGoods("Apple iPhone 13 Blue"));
+        assertNull(GrafiasNsys.capacidadDelGoods(null));
+    }
 }

@@ -1,21 +1,27 @@
 package com.reparaciones.servidor.nsys;
 
 import com.reparaciones.servidor.dao.LogDAO;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.ByteArrayInputStream;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.reparaciones.servidor.nsys.DatoTaller.COLOR;
 import static com.reparaciones.servidor.nsys.DatoTaller.GRADO;
 import static com.reparaciones.servidor.nsys.TallerDePrueba.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -135,5 +141,56 @@ class PorPasarNsysTest {
         when(taller.movilesPorPasar()).thenReturn(List.of(soloGrado(IMEI)));
         servicio.repasarHechos(AHORA.minusMinutes(30));
         verify(hechos, never()).repasar(any(), any(), any());
+    }
+
+    private static TallerNsys.MovilPorPasar deColor(MovilNsys m, ProductoNsys.Poner poner) {
+        return new TallerNsys.MovilPorPasar(m, new LoQueVale.Valor("Rosa", "B", null, "Azul", null, null, true),
+                List.of(vigente(1, m.imeiSn(), COLOR, "Rosa", "Azul", AHORA.minusDays(1))), poner);
+    }
+
+    @Test void laPlantillaDeColorLlevaLoPendienteConProductoYElCosteDeSuLote() throws Exception {
+        MovilNsys conProducto = movil(IMEI, "Azul", "B");
+        MovilNsys sinProducto = movil("350000000000002", "Azul", "B");
+        MovilNsys marcado = movil("350000000000003", "Azul", "B");
+        ProductoNsys.Poner rosa = new ProductoNsys.Poner("Apple iPhone 13 128GB Pink", false);
+        when(taller.movilesPorPasar()).thenReturn(List.of(deColor(conProducto, rosa), deColor(sinProducto, null),
+                deColor(marcado, rosa)));
+        when(hechos.todas()).thenReturn(List.of(new HechoTaller("350000000000003", TarjetaHecho.COLOR, 7, "Supertécnico 1",
+                AHORA, null)));
+        when(nsys.costes(List.of(conProducto.clave()))).thenReturn(Map.of(conProducto.clave(), new BigDecimal("412.35")));
+        PorPasarNsys.Plantilla p = servicio.plantillaColor();
+        assertEquals("NSYS_color_2026-10-25.xlsx", p.nombre());
+        assertEquals(1, p.filas());
+        try (XSSFWorkbook libro = new XSSFWorkbook(new ByteArrayInputStream(p.contenido()))) {
+            Row fila = libro.getSheetAt(0).getRow(PlantillaNsys.PRIMERA_FILA);
+            assertEquals(IMEI, fila.getCell(0).getStringCellValue());
+            assertEquals("iPhone 13", fila.getCell(2).getStringCellValue());
+            assertEquals("128 GB", fila.getCell(3).getStringCellValue());
+            assertEquals("Pink", fila.getCell(4).getStringCellValue());
+            assertEquals("B", fila.getCell(5).getStringCellValue(), "el grado de NSYS hoy");
+            assertEquals(412.35, fila.getCell(6).getNumericCellValue(), 0.0001);
+            assertEquals("Proveedor A", fila.getCell(7).getStringCellValue());
+        }
+    }
+
+    @Test void laPlantillaDeAltasLlevaLoPendienteConElModeloDelTaller() throws Exception {
+        when(nsys.imeisDelTaller()).thenReturn(List.of("350000000000088"));
+        when(nsys.altas(List.of("350000000000088"))).thenReturn(List.of(new AltaTaller("350000000000088", "14pro",
+                "R20261006_57", false, "Técnico 2", null, 1, AHORA.minusDays(19))));
+        PorPasarNsys.Plantilla p = servicio.plantillaAltas();
+        assertEquals("NSYS_altas_2026-10-25.xlsx", p.nombre());
+        assertEquals(1, p.filas());
+        try (XSSFWorkbook libro = new XSSFWorkbook(new ByteArrayInputStream(p.contenido()))) {
+            Row fila = libro.getSheetAt(0).getRow(PlantillaNsys.PRIMERA_FILA);
+            assertEquals("350000000000088", fila.getCell(0).getStringCellValue());
+            assertEquals("iPhone 14 Pro", fila.getCell(2).getStringCellValue());
+            assertEquals("AJUSTE", fila.getCell(8).getStringCellValue());
+        }
+    }
+
+    @Test void sinNadaPendienteLaPlantillaVaVaciaYNoPideCostes() {
+        PorPasarNsys.Plantilla p = servicio.plantillaColor();
+        assertEquals(0, p.filas());
+        verify(nsys, never()).costes(any());
     }
 }

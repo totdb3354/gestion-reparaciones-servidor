@@ -8,9 +8,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -124,5 +127,34 @@ public class PorPasarNsys {
 
     private LocalDateTime ahora() {
         return LocalDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    /** Un fichero para descargar: su nombre, lo que lleva y cuántos móviles. */
+    public record Plantilla(String nombre, byte[] contenido, int filas) {}
+
+    /** La plantilla de color (spec §4): los móviles de «Cambio de color» con producto y sin marca «Hecho» que valga, en el orden de
+     *  la lista, con el coste de su lote actual (una consulta, solo si hay alguno). */
+    public Plantilla plantillaColor() {
+        List<TallerNsys.MovilPorPasar> moviles = taller.movilesPorPasar();
+        List<FilaColorNsys> van = TarjetasNsys.color(moviles, TarjetasNsys.porClave(hechoDao.todas())).stream()
+                .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()) && f.ponerProducto() != null).toList();
+        Map<String, MovilNsys> porImei = new HashMap<>();
+        for (TallerNsys.MovilPorPasar p : moviles) porImei.put(NsysDAO.claveCruce(p.movil().imeiSn()), p.movil());
+        List<MovilNsys> lotes = van.stream().map(f -> porImei.get(NsysDAO.claveCruce(f.imeiSn()))).toList();
+        Map<ClaveMovil, BigDecimal> costes = lotes.isEmpty() ? Map.of() : nsysDao.costes(lotes.stream().map(MovilNsys::clave).toList());
+        List<PlantillaNsys.FilaColor> filas = new ArrayList<>();
+        for (int i = 0; i < van.size(); i++) {
+            MovilNsys m = lotes.get(i);
+            filas.add(PlantillaNsys.FilaColor.de(m, van.get(i).ponerProducto(), van.get(i).compruebalo(), costes.get(m.clave())));
+        }
+        return new Plantilla("NSYS_color_" + LocalDate.now(clock) + ".xlsx", PlantillaNsys.color(filas), filas.size());
+    }
+
+    /** La plantilla de altas (spec §4): los IMEI de «No está en NSYS» sin marca «Hecho» que valga, con el modelo del taller. */
+    public Plantilla plantillaAltas() {
+        List<PlantillaNsys.FilaAlta> filas = TarjetasNsys.altas(altas(), TarjetasNsys.porClave(hechoDao.todas())).stream()
+                .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()))
+                .map(f -> new PlantillaNsys.FilaAlta(f.imeiSn(), PlantillaNsys.nombreModelo(f.modelo()))).toList();
+        return new Plantilla("NSYS_altas_" + LocalDate.now(clock) + ".xlsx", PlantillaNsys.altas(filas), filas.size());
     }
 }
