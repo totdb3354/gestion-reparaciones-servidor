@@ -481,6 +481,17 @@ class StockTelefonosControllerTest {
         verify(dao, never()).goodsMasUsados(any());
     }
 
+    @Test void laFichaDiceCompruebaloSiElProductoSaleDelMaestroTalCual() {
+        when(dao.cargarProductos()).thenReturn(List.of(TallerDePrueba.productoConNombre("Blue", "Azul", "A"),
+                TallerDePrueba.productoConNombre("Pink", "Rosa", "A")));
+        MovilNsys m = movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK);
+        when(dao.porImei(IMEI)).thenReturn(List.of(m));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.COLOR, "Rosa", "Azul")));
+        JsonNode ficha = json(api.ficha(IMEI));
+        assertEquals("Apple iPhone 13 128GB Pink", ficha.get("ponerProducto").asText());
+        assertTrue(ficha.get("ponerCompruebalo").asBoolean());
+    }
+
     @Test void laFichaConElColorDelTallerPideElProductoMasUsadoDeEseColor() {
         conMaestro();
         MovilNsys m = movil(IMEI, "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK);

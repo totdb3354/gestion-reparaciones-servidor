@@ -24,6 +24,7 @@ UPDATE Reparacion SET ID_REP_ANTERIOR = NULL;
 DELETE FROM Reparacion;
 
 -- 5a. SKU del taller (0.9.21): va por IMEI, así que cae con el espejo. Romper la auto-referencia antes de borrar.
+DELETE FROM Taller_hecho;
 UPDATE Taller_cambio SET ID_CAMBIO_ANTERIOR = NULL;
 DELETE FROM Taller_cambio;
 DELETE FROM Taller_aviso;

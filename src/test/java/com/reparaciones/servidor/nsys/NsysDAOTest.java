@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.KeyHolder;
 
@@ -390,5 +391,46 @@ class NsysDAOTest {
         verify(jdbc, never()).batchUpdate(eq(NsysDAO.SQL_GUARDAR_COSTE), any(List.class));
         assertEquals("UPDATE Nsys_movil SET COSTE = ? WHERE IMEI_SN = ? AND BATCH = ?", NsysDAO.SQL_GUARDAR_COSTE);
         assertEquals("SELECT IMEI_SN, BATCH, COSTE FROM Nsys_movil WHERE COSTE IS NOT NULL", NsysDAO.SQL_COSTES);
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 2: «No está en NSYS» y la plantilla
+
+    @Test void lasClavesDelEspejoSonUnaPorImeiSinEspaciosYEnMayusculas() throws SQLException {
+        doAnswer(inv -> {
+            RowCallbackHandler filas = inv.getArgument(1);
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("IMEI_SN")).thenReturn("350000000000001", " f2lxabc123 ");
+            filas.processRow(rs);
+            filas.processRow(rs);
+            return null;
+        }).when(jdbc).query(eq("SELECT DISTINCT IMEI_SN FROM Nsys_movil"), any(RowCallbackHandler.class));
+        assertEquals(Set.of("350000000000001", "F2LXABC123"), dao.clavesDelEspejo());
+    }
+
+    @Test void losImeisDelTallerDeUnaVez() {
+        dao.imeisDelTaller();
+        verify(jdbc).queryForList("SELECT DISTINCT IMEI FROM Reparacion", String.class);
+    }
+
+    @Test void losTrabajosDeLasAltasVanEnTandasConElClienteDelTrabajoODelTelefono() {
+        List<String> imeis = new ArrayList<>();
+        for (int n = 0; n < 501; n++) imeis.add(String.format("3500000000%05d", n));
+        assertTrue(dao.altas(imeis).isEmpty());
+        List<String> sql = mockingDetails(jdbc).getInvocations().stream()
+                .filter(inv -> inv.getMethod().getName().equals("query"))
+                .map(inv -> inv.getArgument(0).toString()).toList();
+        assertEquals(2, sql.size(), "500 + 1");
+        assertTrue(sql.get(1).endsWith(" WHERE r.IMEI IN (?) ORDER BY r.FECHA_ASIG, r.ID_REP"), sql.get(1));
+        assertTrue(NsysDAO.SQL_TRABAJOS_DE_IMEIS.contains("JOIN Telefono tel ON tel.IMEI = r.IMEI"
+                + " LEFT JOIN Cliente c ON c.ID_CLI = COALESCE(r.ID_CLI, tel.ID_CLI)"), NsysDAO.SQL_TRABAJOS_DE_IMEIS);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void losCostesDeUnosLotesSonSoloLosDeEsosLotes() {
+        when(jdbc.query(eq(NsysDAO.SQL_COSTES + " AND IMEI_SN IN (?)"), any(RowMapper.class), eq("350000000000001")))
+                .thenReturn(List.of(new NsysDAO.Coste(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("412.35")),
+                        new NsysDAO.Coste(new ClaveMovil("350000000000001", "BT-8000"), new BigDecimal("300.00"))));
+        assertEquals(Map.of(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("412.35")),
+                dao.costes(List.of(new ClaveMovil("350000000000001", "BT-9001"))));
     }
 }

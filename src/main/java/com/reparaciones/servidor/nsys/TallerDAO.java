@@ -44,9 +44,22 @@ public class TallerDAO {
             + " WHERE ID_CAMBIO = ? AND ESTADO = 'SUSTITUIDO'";
     static final String SQL_AVISAR = "INSERT INTO Taller_aviso (IMEI_SN, ID_REP, TIPO, CAUSA, DATO, DE, A, MOTIVO, ID_USU,"
             + " FECHA) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String SQL_AVISOS = "SELECT v.ID_AVISO, v.IMEI_SN, v.ID_REP, v.TIPO, v.CAUSA, v.DATO, v.DE, v.A, v.MOTIVO,"
-            + " v.ID_USU, u.NOMBRE_USUARIO, v.FECHA FROM Taller_aviso v LEFT JOIN Usuario u ON u.ID_USU = v.ID_USU"
-            + " WHERE v.IMEI_SN = ? ORDER BY v.FECHA, v.ID_AVISO";
+    /** Las columnas de un aviso, con el nombre de quien lo guardó y, desde la 0.9.22, el de quien lo dio por revisado. */
+    static final String COLUMNAS_AVISO = "v.ID_AVISO, v.IMEI_SN, v.ID_REP, v.TIPO, v.CAUSA, v.DATO, v.DE, v.A, v.MOTIVO,"
+            + " v.ID_USU, u.NOMBRE_USUARIO, v.FECHA, v.REVISADO_EN, r.NOMBRE_USUARIO AS REVISOR";
+    static final String DESDE_AVISO = " FROM Taller_aviso v LEFT JOIN Usuario u ON u.ID_USU = v.ID_USU"
+            + " LEFT JOIN Usuario r ON r.ID_USU = v.REVISADO_POR";
+    static final String SQL_AVISOS = "SELECT " + COLUMNAS_AVISO + DESDE_AVISO + " WHERE v.IMEI_SN = ? ORDER BY v.FECHA, v.ID_AVISO";
+    /** «Revisar a mano» (spec 0.9.22 §3.5): los SIN_COLOR, SIN_GRADO y SIN_DESHACER sin «Revisado» y sin una corrección a mano del
+     *  mismo IMEI y dato después del aviso («Corregir…» o «Volver a lo de NSYS»: los dos dejan un cambio de origen MANO). */
+    static final String SQL_POR_REVISAR = "SELECT " + COLUMNAS_AVISO + DESDE_AVISO
+            + " WHERE v.TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER') AND v.REVISADO_EN IS NULL"
+            + " AND NOT EXISTS (SELECT 1 FROM Taller_cambio c WHERE c.IMEI_SN = v.IMEI_SN AND c.DATO = v.DATO"
+            + " AND c.ORIGEN = 'MANO' AND c.FECHA > v.FECHA) ORDER BY v.FECHA, v.ID_AVISO";
+    static final String SQL_AVISO = "SELECT " + COLUMNAS_AVISO + DESDE_AVISO + " WHERE v.ID_AVISO = ?";
+    /** «Revisado»: solo una vez y solo los de «Revisar a mano». */
+    static final String SQL_REVISAR = "UPDATE Taller_aviso SET REVISADO_POR = ?, REVISADO_EN = ? WHERE ID_AVISO = ?"
+            + " AND REVISADO_EN IS NULL AND TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER')";
     /** La fila con uso real de una reparación (una R… tiene una). */
     static final String SQL_PIEZA = "SELECT r.IMEI, rc.ID_COM, rc.ES_REUTILIZADO FROM Reparacion r"
             + " JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0 WHERE r.ID_REP = ?";
@@ -145,6 +158,20 @@ public class TallerDAO {
         return jdbc.query(SQL_AVISOS, TallerDAO::aviso, imeiSn);
     }
 
+    /** «Revisar a mano» (spec 0.9.22 §3.5), del más antiguo al más reciente. Son unos pocos. */
+    public List<AvisoTaller> avisosPorRevisar() {
+        return jdbc.query(SQL_POR_REVISAR, TallerDAO::aviso);
+    }
+
+    public Optional<AvisoTaller> avisoPorId(int idAviso) {
+        return jdbc.query(SQL_AVISO, TallerDAO::aviso, idAviso).stream().findFirst();
+    }
+
+    /** «Revisado» (spec 0.9.22 §3.5): quién y cuándo. 0 si el aviso no existe, ya estaba revisado o no es de «Revisar a mano». */
+    public int revisar(int idAviso, int idUsu, LocalDateTime ahora) {
+        return jdbc.update(SQL_REVISAR, idUsu, Timestamp.valueOf(ahora), idAviso);
+    }
+
     /** El SKU (Componente.TIPO) de cada componente, en una consulta; uno que no existe no sale. */
     public Map<Integer, String> tiposDeComponentes(Collection<Integer> idComs) {
         List<Integer> ids = List.copyOf(new LinkedHashSet<>(idComs));
@@ -174,7 +201,8 @@ public class TallerDAO {
         return new AvisoTaller(rs.getInt("ID_AVISO"), rs.getString("IMEI_SN"), rs.getString("ID_REP"),
                 AvisoTaller.Tipo.valueOf(rs.getString("TIPO")), causa == null ? null : AvisoTaller.Causa.valueOf(causa),
                 DatoTaller.valueOf(rs.getString("DATO")), rs.getString("DE"), rs.getString("A"), rs.getString("MOTIVO"),
-                entero(rs, "ID_USU"), rs.getString("NOMBRE_USUARIO"), rs.getTimestamp("FECHA").toLocalDateTime());
+                entero(rs, "ID_USU"), rs.getString("NOMBRE_USUARIO"), rs.getTimestamp("FECHA").toLocalDateTime(),
+                rs.getString("REVISOR"), fechaHora(rs.getTimestamp("REVISADO_EN")));
     }
 
     static CambioTaller cambio(ResultSet rs, int n) throws SQLException {

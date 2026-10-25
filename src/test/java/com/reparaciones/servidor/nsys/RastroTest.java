@@ -200,4 +200,23 @@ class RastroTest {
         assertEquals(Rastro.unir(List.of(), List.of(), List.of(), List.of()),
                 Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of()));
     }
+
+    @Test void unAvisoRevisadoSaleTambienALaHoraDeLaRevisionConQuienLoReviso() {
+        LocalDateTime hora = LocalDateTime.of(2026, 10, 22, 11, 14);
+        AvisoTaller a = new AvisoTaller(1, "350000000000001", "R20261022_2", AvisoTaller.Tipo.SIN_COLOR, null, DatoTaller.COLOR,
+                "chai14yellowesim", null, "chasis chai14yellowesim nuevo", 8, "Técnico 2", hora, "Supertécnico 1",
+                hora.plusDays(1));
+        List<EventoRastro> rastro = Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of(a));
+        assertEquals(List.of("TALLER_REVISADO_SIN_COLOR", "TALLER_SIN_COLOR"), rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(new EventoRastro(hora.plusDays(1), false, "TALLER", "TALLER_REVISADO_SIN_COLOR", null, "chai14yellowesim",
+                null, null, "R20261022_2", "Supertécnico 1", null, null, null, "COLOR", "MANO", "chasis chai14yellowesim nuevo"),
+                rastro.get(0));
+    }
+
+    @Test void unAvisoSinRevisarNoTieneEventoDeRevision() {
+        AvisoTaller a = new AvisoTaller(1, "350000000000001", "R20261022_2", AvisoTaller.Tipo.SIN_GRADO, null, DatoTaller.GRADO,
+                "ID", null, "chasis chai13blue nuevo", 8, "Técnico 2", LocalDateTime.of(2026, 10, 22, 11, 14));
+        assertEquals(List.of("TALLER_SIN_GRADO"),
+                Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of(a)).stream().map(EventoRastro::tipo).toList());
+    }
 }

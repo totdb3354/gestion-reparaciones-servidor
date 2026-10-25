@@ -160,14 +160,15 @@ public class StockTelefonosController {
         // no espera revisión (0.9.18.2).
         Revision.Ultima revisado = Revision.ultima(deLaCadena, m.batch());
         LocalDate recepcion = primero.receivingDate() != null ? primero.receivingDate() : m.receivingDate();
+        ProductoNsys.Poner poner = v.porPasar() ? taller.productoAPoner(m, v) : null;
         return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
                 v.bateriaNueva(), gradoAnterior, v.sku(), ubicacionVisible(m, correcciones), m.estado().name(),
                 enEmpresa ? dias(primero, LocalDate.now(clock)) : null, lotes.size() - correcciones.todas().size(),
                 m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
                 revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
                 enEmpresa ? Revision.pendienteDesde(m.conRecepcion(recepcion), deLaCadena) : null,
-                v.colorNsys(), v.gradoNsys(), v.skuNsys(), v.porPasar(), v.porPasar() ? taller.productoAPoner(m, v) : null,
-                v.porPasar() ? v.grade() : null);
+                v.colorNsys(), v.gradoNsys(), v.skuNsys(), v.porPasar(), poner == null ? null : poner.producto(),
+                v.porPasar() ? v.grade() : null, poner != null && poner.compruebalo());
     }
 
     /** NSYS, los trabajos del taller y, desde la 0.9.21, los cambios del taller por encima de NSYS y sus avisos. */
@@ -292,7 +293,8 @@ public class StockTelefonosController {
                                 @Schema(nullable = true) String colorNsys) {}
 
     /** 0.9.21: {@code porPasar}, el móvil tiene algo del taller vigente; {@code ponerProducto} (null: ningún móvil de ese color
-     *  en NSYS) y {@code ponerGrado}, lo que hay que poner en NSYS, solo con {@code porPasar}. */
+     *  en NSYS) y {@code ponerGrado}, lo que hay que poner en NSYS, solo con {@code porPasar}.
+     *  {@code ponerCompruebalo} (0.9.22): el producto sale del nombre del maestro tal cual. */
     private record FichaMovil(String imeiSn, String lote, @Schema(nullable = true) String modelo,
                               @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                               @Schema(nullable = true) String color, String grado, boolean bateriaNueva,
@@ -304,7 +306,8 @@ public class StockTelefonosController {
                               @Schema(nullable = true) LocalDate pendienteRevisionDesde,
                               @Schema(nullable = true) String colorNsys, @Schema(nullable = true) String gradoNsys,
                               @Schema(nullable = true) String skuNsys, boolean porPasar,
-                              @Schema(nullable = true) String ponerProducto, @Schema(nullable = true) String ponerGrado) {}
+                              @Schema(nullable = true) String ponerProducto, @Schema(nullable = true) String ponerGrado,
+                              boolean ponerCompruebalo) {}
 
     /** Del paquete (no privado) para que los tests lo construyan; el esquema se llama StockTelefonosPeticionComprobar. */
     record PeticionComprobar(List<String> imeis) {}

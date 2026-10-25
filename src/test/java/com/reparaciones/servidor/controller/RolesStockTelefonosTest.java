@@ -3,10 +3,12 @@ package com.reparaciones.servidor.controller;
 import com.reparaciones.servidor.UsuariosOperativosTestConfig;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
+import com.reparaciones.servidor.nsys.HechoDAO;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
 import com.reparaciones.servidor.nsys.ResumenHistorico;
 import com.reparaciones.servidor.nsys.TallerDAO;
+import com.reparaciones.servidor.nsys.TarjetaHecho;
 import com.reparaciones.servidor.security.JwtUtil;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -25,9 +28,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -36,6 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -59,6 +65,9 @@ class RolesStockTelefonosTest {
     @MockBean NsysDAO dao;
     @MockBean TelefonoDAO telefonoDao;
     @MockBean TallerDAO tallerDao;
+    @MockBean HechoDAO hechoDao;
+    /** «Revisado» es @Transactional y este test no tiene base de datos: sin esto no abre conexión. */
+    @MockBean PlatformTransactionManager transactionManager;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico2", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }
@@ -67,11 +76,13 @@ class RolesStockTelefonosTest {
     private static final List<String> RUTAS = List.of("/api/stock-telefonos", "/api/stock-telefonos/estado",
             "/api/stock-telefonos/buscar?imei=3500", "/api/stock-telefonos/350000000000001",
             "/api/stock-telefonos/350000000000001/rastro", "/api/stock-telefonos/importaciones",
-            "/api/stock-telefonos/por-pasar", "/api/stock-telefonos/350000000000001/colores");
+            "/api/stock-telefonos/por-pasar", "/api/stock-telefonos/350000000000001/colores",
+            "/api/stock-telefonos/por-pasar/tarjetas", "/api/stock-telefonos/por-pasar/plantilla-color",
+            "/api/stock-telefonos/por-pasar/plantilla-altas");
 
     @Test void elTecnicoRecibe403SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) mvc.perform(get(ruta).header("Authorization", tecnico())).andExpect(status().isForbidden());
-        verifyNoInteractions(dao, tallerDao);
+        verifyNoInteractions(dao, tallerDao, hechoDao);
     }
 
     @Test void supertecnicoYAdminLasLeen() throws Exception {
@@ -89,14 +100,14 @@ class RolesStockTelefonosTest {
     @Test void sinTokenRecibe403SinLlegarAlDao() throws Exception {
         // Sin cabecera Authorization este servidor responde 403 (ver OpenApiContractTest).
         for (String ruta : RUTAS) mvc.perform(get(ruta)).andExpect(status().isForbidden());
-        verifyNoInteractions(dao, tallerDao);
+        verifyNoInteractions(dao, tallerDao, hechoDao);
     }
 
     @Test void conTokenInvalidoRecibe401SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) {
             mvc.perform(get(ruta).header("Authorization", "Bearer no-es-un-jwt")).andExpect(status().isUnauthorized());
         }
-        verifyNoInteractions(dao, tallerDao);
+        verifyNoInteractions(dao, tallerDao, hechoDao);
     }
 
     @Test void elTecnicoSigueLeyendoElModeloDeUnImeiQueAhoraSaleDeNsys() throws Exception {
@@ -180,5 +191,36 @@ class RolesStockTelefonosTest {
                     .andExpect(status().isNotFound());
         }
         verify(tallerDao, never()).guardar(any(), any(), anyInt(), any(), any());
+    }
+
+    /** 0.9.22 (spec «plantillas NSYS» §3.5 y §3.6): «Hecho», «deshacer» y «Revisado», con la misma guarda que el resto. */
+    @Test void lasEscriturasDeLasTarjetasSoloParaSupertecnicoYAdmin() throws Exception {
+        String marcar = "{\"tarjeta\":\"GRADO\",\"imeis\":[\"350000000000001\"]}";
+        String deshacer = "{\"tarjeta\":\"GRADO\",\"imeiSn\":\"350000000000001\"}";
+        mvc.perform(put("/api/stock-telefonos/por-pasar/hecho").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(marcar)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/hecho").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(deshacer)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/stock-telefonos/por-pasar/avisos/5/revisado").header("Authorization", tecnico()))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(hechoDao, tallerDao);
+
+        mvc.perform(put("/api/stock-telefonos/por-pasar/hecho").header("Authorization", supertecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(marcar)).andExpect(status().isNoContent());
+        verify(hechoDao).marcar(eq(TarjetaHecho.GRADO), eq(List.of("350000000000001")), eq(7), any());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/hecho").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content(deshacer)).andExpect(status().isNoContent());
+        verify(hechoDao).desmarcar(TarjetaHecho.GRADO, "350000000000001");
+        mvc.perform(post("/api/stock-telefonos/por-pasar/avisos/5/revisado").header("Authorization", admin()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test void laPlantillaSeDescargaConSuNombreYSuNumeroDeMoviles() throws Exception {
+        mvc.perform(get("/api/stock-telefonos/por-pasar/plantilla-altas").header("Authorization", admin()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string("Content-Disposition",
+                        matchesPattern("attachment; filename=\"NSYS_altas_\\d{4}-\\d{2}-\\d{2}\\.xlsx\"")))
+                .andExpect(header().string("X-Filas", "0"));
     }
 }
