@@ -450,7 +450,8 @@ CREATE TABLE Nsys_importacion (
     KEY idx_nsys_importacion (ORIGEN, RESULTADO, FECHA_EXPORTACION)
 );
 
--- La foto actual: una fila por móvil y lote, como en la última exportación. Sin costes ni precios.
+-- La foto actual: una fila por móvil y lote, como en la última exportación. Con el coste de NSYS de cada lote
+-- (COSTE, 0.9.22, solo para la plantilla de color); sin precios de venta.
 CREATE TABLE Nsys_movil (
     IMEI_SN          VARCHAR(40)  NOT NULL COMMENT '«IMEI/SN» de NSYS: puede ser un número de serie',
     BATCH            VARCHAR(40)  NOT NULL,
