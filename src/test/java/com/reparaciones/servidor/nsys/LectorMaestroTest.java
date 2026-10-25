@@ -19,7 +19,8 @@ class LectorMaestroTest {
 
     private static List<Object> fila(String nombre, String familia, Object modelo, String color, String detalle,
                                      String web, String amazon) {
-        return Arrays.asList(nombre, "x", familia, modelo, "128GB", color, detalle, web, amazon, "i13128Azul");
+        return Arrays.asList(nombre, nombre.substring(0, nombre.lastIndexOf(' ')).strip(), familia, modelo, "128GB", color,
+                detalle, web, amazon, "i13128Azul");
     }
 
     private static byte[] maestro(List<List<Object>> filas) throws Exception {
@@ -43,7 +44,7 @@ class LectorMaestroTest {
                 fila("Apple iPad 11 11in 128GB Blue n/a", "iPad", "11", null, "n/a", null, null))));
 
         assertEquals(new ProductoMaestro(Normalizacion.clave("Apple iPhone 13 128GB Blue A"), "13", "13", "128GB", "Azul",
-                "A", "i13128AzulA", "i13128AzulA", "i13128Azul", false), r.productos().get(0));
+                "A", "i13128AzulA", "i13128AzulA", "i13128Azul", false, "Apple iPhone 13 128GB Blue"), r.productos().get(0));
         ProductoMaestro diecisiete = r.productos().get(1);
         assertNull(diecisiete.modelo(), "17e no está en el catálogo del ERP");
         assertEquals("17 e eSIM", diecisiete.modeloMaestro());
@@ -62,6 +63,25 @@ class LectorMaestroTest {
         assertEquals(List.of("Apple iPhone 13 128GB  Blue A"), r.conflictos());
     }
 
+    @Test void unaClaveRepetidaConservaElNombreDelPrimero() throws Exception {
+        ResultadoMaestro r = leer(maestro(List.of(
+                fila("Apple iPhone 13 128GB Blue A", "iPhone", "13", "Azul", "A", "i13128AzulA", "i13128AzulA"),
+                fila("Apple iPhone 13 128GB  Blue A", "iPhone", "13", "Azul", "A", "i13128AzulB", "i13128AzulB"))));
+        assertEquals("Apple iPhone 13 128GB Blue", r.productos().get(0).nombre());
+    }
+
+    @Test void sinLaColumnaProductNameSeCargaIgualSinNombres() throws Exception {
+        List<List<Object>> hoja = new ArrayList<>();
+        hoja.add(new ArrayList<Object>(LectorMaestro.COLUMNAS));
+        hoja.add(List.of("Apple iPhone 13 128GB Blue A", "iPhone", "13", "128GB", "Azul", "A", "i13128AzulA", "i13128AzulA",
+                "i13128Azul"));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        ProductoMaestro p = leer(XlsxDePrueba.libro(hojas)).productos().get(0);
+        assertNull(p.nombre());
+        assertEquals("i13128AzulA", p.skuWeb());
+    }
+
     @Test void unColorLargoSeCortaAlAnchoDeSuColumna() throws Exception {
         String color = "Azul Sierra con reflejos de medianoche y mar";      // 44 caracteres; COLOR es VARCHAR(40)
         ProductoMaestro p = leer(maestro(List.of(fila("Apple iPhone 13 128GB Blue A", "iPhone", "13", color, "A",
@@ -70,11 +90,11 @@ class LectorMaestroTest {
     }
 
     @Test void cadaCampoSeCortaAlAnchoDeSuColumna() throws Exception {
-        List<Object> larga = Arrays.asList("Apple iPhone 13 " + "x".repeat(200), "x", "iPhone", "M".repeat(45),
+        List<Object> larga = Arrays.asList("Apple iPhone 13 " + "x".repeat(200), "N".repeat(160), "iPhone", "M".repeat(45),
                 "C".repeat(25), "K".repeat(45), "D".repeat(25), "W".repeat(65), "Z".repeat(65), "S".repeat(65));
         ProductoMaestro p = leer(maestro(List.of(larga))).productos().get(0);
-        assertEquals(List.of(160, 40, 20, 40, 20, 60, 60, 60), java.util.stream.Stream.of(p.clave(), p.modeloMaestro(),
-                p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado())
+        assertEquals(List.of(160, 150, 40, 20, 40, 20, 60, 60, 60), java.util.stream.Stream.of(p.clave(), p.nombre(),
+                p.modeloMaestro(), p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado())
                 .map(String::length).toList());
     }
 

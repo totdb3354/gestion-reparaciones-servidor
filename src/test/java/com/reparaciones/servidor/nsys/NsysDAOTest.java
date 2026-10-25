@@ -61,11 +61,25 @@ class NsysDAOTest {
 
     @SuppressWarnings("unchecked")
     @Test void reemplazarProductosBorraYCargaTodo() {
-        dao.reemplazarProductos(List.of(new ProductoMaestro("clave", "13", "13", "128GB", "Azul", "A", "w", "a", "s", true)));
+        dao.reemplazarProductos(List.of(new ProductoMaestro("clave", "13", "13", "128GB", "Azul", "A", "w", "a", "s", true,
+                "Apple iPhone 13 128GB Blue")));
         verify(jdbc).update("DELETE FROM Nsys_producto");
         ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
         verify(jdbc).batchUpdate(eq(NsysDAO.SQL_PRODUCTO), lote.capture());
-        assertArrayEquals(new Object[]{"clave", "13", "13", "128GB", "Azul", "A", "w", "a", "s", true}, lote.getValue().get(0));
+        assertArrayEquals(new Object[]{"clave", "13", "13", "128GB", "Azul", "A", "w", "a", "s", true,
+                "Apple iPhone 13 128GB Blue"}, lote.getValue().get(0));
+        assertTrue(NsysDAO.SQL_PRODUCTO.contains("ES_ESIM, NOMBRE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"), NsysDAO.SQL_PRODUCTO);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void cargarProductosLeeElNombre() throws SQLException {
+        dao.cargarProductos();
+        ArgumentCaptor<RowMapper<ProductoMaestro>> mapeo = ArgumentCaptor.forClass(RowMapper.class);
+        verify(jdbc).query(contains(", NOMBRE FROM Nsys_producto"), mapeo.capture());
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("CLAVE")).thenReturn("clave");
+        when(rs.getString("NOMBRE")).thenReturn("Apple iPhone 13 128GB Blue");
+        assertEquals("Apple iPhone 13 128GB Blue", mapeo.getValue().mapRow(rs, 0).nombre());
     }
 
     @Test void empezarImportacionDevuelveElIdGenerado() {

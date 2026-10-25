@@ -50,7 +50,7 @@ public class NsysDAO {
     static final String SQL_EVENTO = "INSERT INTO Nsys_evento (IMEI_SN, BATCH, FECHA, SOLO_DIA, TIPO, DE, A, A_NSYS,"
             + " ID_IMPORTACION) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_PRODUCTO = "INSERT INTO Nsys_producto (CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR,"
-            + " CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + " CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM, NOMBRE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_EMPEZAR = "INSERT INTO Nsys_importacion (FICHERO, FECHA_EXPORTACION, ORIGEN, EMPEZADA)"
             + " VALUES (?, ?, ?, ?)";
     static final String SQL_TERMINAR = "UPDATE Nsys_importacion SET RESULTADO = ?, FILAS = ?, CAMBIOS = ?, MENSAJE = ?,"
@@ -101,11 +101,11 @@ public class NsysDAO {
 
     public List<ProductoMaestro> cargarProductos() {
         return jdbc.query("SELECT CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR, CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON,"
-                        + " SKU_SIN_GRADO, ES_ESIM FROM Nsys_producto",
+                        + " SKU_SIN_GRADO, ES_ESIM, NOMBRE FROM Nsys_producto",
                 (rs, n) -> new ProductoMaestro(rs.getString("CLAVE"), rs.getString("MODELO"), rs.getString("MODELO_MAESTRO"),
                         rs.getString("CAPACIDAD"), rs.getString("COLOR"), rs.getString("CALIDAD_DETALLE"),
                         rs.getString("SKU_WEB"), rs.getString("SKU_AMAZON"), rs.getString("SKU_SIN_GRADO"),
-                        rs.getBoolean("ES_ESIM")));
+                        rs.getBoolean("ES_ESIM"), rs.getString("NOMBRE")));
     }
 
     @Transactional
@@ -113,7 +113,8 @@ public class NsysDAO {
         jdbc.update("DELETE FROM Nsys_producto");
         for (List<ProductoMaestro> lote : trozos(productos))
             jdbc.batchUpdate(SQL_PRODUCTO, lote.stream().map(p -> new Object[]{p.clave(), p.modelo(), p.modeloMaestro(),
-                    p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado(), p.esEsim()}).toList());
+                    p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado(), p.esEsim(),
+                    p.nombre()}).toList());
     }
 
     /** Guarda las filas nuevas o cambiadas y los eventos de una comparación, todo o nada. */
