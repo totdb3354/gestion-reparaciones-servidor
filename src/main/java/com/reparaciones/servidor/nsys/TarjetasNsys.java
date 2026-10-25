@@ -1,0 +1,145 @@
+package com.reparaciones.servidor.nsys;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/** Las reglas de las cuatro tarjetas de «Por pasar a NSYS» (spec 0.9.22 §3): las listas a partir de los móviles con algo del
+ *  taller vigente (TallerNsys#movilesPorPasar), los IMEI que NSYS no conoce y los avisos por revisar; la marca «Hecho» de cada fila
+ *  y su repaso tras cada importación (§3.6, con los ajustes 1 y 2 del plan). Es puro. */
+final class TarjetasNsys {
+
+    private TarjetasNsys() {}
+
+    /** La marca «Hecho» que vale para una fila; NINGUNA si no hay. */
+    record Marca(String por, LocalDateTime en, LocalDateTime volvio) {
+        static final Marca NINGUNA = new Marca(null, null, null);
+    }
+
+    /** Lo que hace el repaso de las marcas tras una importación OK. */
+    record Repaso(List<HechoTaller> borrar, List<HechoTaller> vuelven) {}
+
+    /** La clave de una marca: la tarjeta y el IMEI por {@link NsysDAO#claveCruce}. */
+    static String clave(TarjetaHecho tarjeta, String imeiSn) {
+        return tarjeta.name() + "|" + NsysDAO.claveCruce(imeiSn);
+    }
+
+    static Map<String, HechoTaller> porClave(List<HechoTaller> marcas) {
+        Map<String, HechoTaller> mapa = new HashMap<>();
+        for (HechoTaller h : marcas) mapa.put(clave(h.tarjeta(), h.imeiSn()), h);
+        return mapa;
+    }
+
+    /** La marca de una fila que sale desde {@code desde}: la del IMEI y la tarjeta, si no es anterior a la fila (una anterior era
+     *  de un cambio de antes del mismo móvil y no vale). */
+    static Marca marca(Map<String, HechoTaller> marcas, TarjetaHecho tarjeta, String imeiSn, LocalDateTime desde) {
+        HechoTaller h = marcas.get(clave(tarjeta, imeiSn));
+        if (h == null || (desde != null && h.fecha().isBefore(desde))) return Marca.NINGUNA;
+        return new Marca(h.usuario(), h.fecha(), h.volvio());
+    }
+
+    /** Una fila marcada que vale y no ha vuelto: no cuenta ni va en las plantillas ni en «Copiar lista». */
+    static boolean marcada(LocalDateTime hechoEn, LocalDateTime hechoVolvio) {
+        return hechoEn != null && hechoVolvio == null;
+    }
+
+    /** El cambio vigente de {@code dato} de un móvil (el de mayor id si hubiera dos, como LoQueVale). */
+    private static Optional<CambioTaller> cambio(TallerNsys.MovilPorPasar p, DatoTaller dato) {
+        return p.cambios().stream().filter(c -> c.dato() == dato).max(Comparator.comparingInt(CambioTaller::id));
+    }
+
+    private static List<PorQueTaller> porQue(TallerNsys.MovilPorPasar p, DatoTaller dato) {
+        return p.cambios().stream().filter(c -> c.dato() == dato).map(TallerNsys::porQue).toList();
+    }
+
+    /** «Cambio de color» (§3.2): los móviles con un cambio de color vigente. Si el color que vale es el de NSYS (aún sin cerrar),
+     *  el producto es el de ahora. */
+    static List<FilaColorNsys> color(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
+        List<FilaColorNsys> filas = new ArrayList<>();
+        for (TallerNsys.MovilPorPasar p : moviles) {
+            Optional<CambioTaller> c = cambio(p, DatoTaller.COLOR);
+            if (c.isEmpty()) continue;
+            MovilNsys m = p.movil();
+            ProductoNsys.Poner poner = p.valor().colorNsys() == null ? new ProductoNsys.Poner(m.goods(), false) : p.poner();
+            String deNsys = GrafiasNsys.colorDelGoods(m.goods());
+            String colorA = poner == null ? p.valor().color() : GrafiasNsys.colorDelGoods(poner.producto());
+            LocalDateTime desde = c.get().fecha();
+            Marca h = marca(marcas, TarjetaHecho.COLOR, m.imeiSn(), desde);
+            filas.add(new FilaColorNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), deNsys != null ? deNsys : m.color(),
+                    colorA, m.goods(), m.grade(), poner == null ? null : poner.producto(), poner != null && poner.compruebalo(),
+                    cambio(p, DatoTaller.GRADO).isPresent(), porQue(p, DatoTaller.COLOR), desde, h.por(), h.en(), h.volvio()));
+        }
+        filas.sort(Comparator.comparing(FilaColorNsys::desde).thenComparing(FilaColorNsys::imeiSn));
+        return filas;
+    }
+
+    /** «Cambio de grado» (§3.3): los móviles con un cambio de grado vigente, también los que cambian de color. */
+    static List<FilaGradoNsys> grado(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
+        List<FilaGradoNsys> filas = new ArrayList<>();
+        for (TallerNsys.MovilPorPasar p : moviles) {
+            Optional<CambioTaller> c = cambio(p, DatoTaller.GRADO);
+            if (c.isEmpty()) continue;
+            MovilNsys m = p.movil();
+            LocalDateTime desde = c.get().fecha();
+            Marca h = marca(marcas, TarjetaHecho.GRADO, m.imeiSn(), desde);
+            filas.add(new FilaGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), p.valor().grade(),
+                    m.goods(), cambio(p, DatoTaller.COLOR).isPresent(), porQue(p, DatoTaller.GRADO), desde, h.por(), h.en(),
+                    h.volvio()));
+        }
+        filas.sort(Comparator.comparing(FilaGradoNsys::desde).thenComparing(FilaGradoNsys::imeiSn));
+        return filas;
+    }
+
+    /** «No está en NSYS» (§3.4). */
+    static List<FilaAltaNsys> altas(List<AltaTaller> altas, Map<String, HechoTaller> marcas) {
+        List<FilaAltaNsys> filas = new ArrayList<>();
+        for (AltaTaller a : altas) {
+            Marca h = marca(marcas, TarjetaHecho.ALTA, a.imei(), a.desde());
+            filas.add(new FilaAltaNsys(a.imei(), a.modelo(), a.ultimo(), Rastro.categoria(a.ultimo()), a.abierto(), a.tecnico(),
+                    a.cliente(), a.trabajos(), a.desde(), h.por(), h.en(), h.volvio()));
+        }
+        filas.sort(Comparator.comparing(FilaAltaNsys::desde, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(FilaAltaNsys::imeiSn));
+        return filas;
+    }
+
+    /** «Revisar a mano» (§3.5), en el orden de los avisos, con el modelo de la fila más reciente del espejo de su IMEI
+     *  ({@code espejo}, por {@link NsysDAO#claveCruce}). */
+    static List<FilaRevisarNsys> revisar(List<AvisoTaller> avisos, Map<String, MovilNsys> espejo) {
+        return avisos.stream().filter(a -> AvisoTaller.POR_REVISAR.contains(a.tipo())).map(a -> {
+            MovilNsys m = espejo.get(NsysDAO.claveCruce(a.imeiSn()));
+            return new FilaRevisarNsys(a.id(), a.imeiSn(), m == null ? null : m.modelo(), m == null ? null : m.modeloMaestro(),
+                    m == null ? null : m.capacidad(), a.tipo().name(), a.causa() == null ? null : a.causa().name(),
+                    a.dato().name(), a.de(), a.a(), a.motivo(), a.idRep(), a.usuario(), a.fecha());
+        }).toList();
+    }
+
+    /** Las filas de Color, Grado y No está en NSYS que hay ahora, por clave de marca, con su «desde» (para el repaso). */
+    static Map<String, LocalDateTime> filas(List<TallerNsys.MovilPorPasar> moviles, List<AltaTaller> altas) {
+        Map<String, LocalDateTime> filas = new HashMap<>();
+        for (TallerNsys.MovilPorPasar p : moviles) {
+            cambio(p, DatoTaller.COLOR).ifPresent(c -> filas.put(clave(TarjetaHecho.COLOR, p.movil().imeiSn()), c.fecha()));
+            cambio(p, DatoTaller.GRADO).ifPresent(c -> filas.put(clave(TarjetaHecho.GRADO, p.movil().imeiSn()), c.fecha()));
+        }
+        for (AltaTaller a : altas) filas.put(clave(TarjetaHecho.ALTA, a.imei()), a.desde());
+        return filas;
+    }
+
+    /** El repaso con la hora de exportación del fichero (§3.6): una marca cuya fila ya no está, o anterior a su fila, se borra;
+     *  una que sigue pendiente y es anterior al fichero «vuelve»; una posterior al fichero (un fichero de antes de marcar no dice
+     *  nada) o ya vuelta se queda como está. */
+    static Repaso repasar(List<HechoTaller> marcas, Map<String, LocalDateTime> filas, LocalDateTime exportacion) {
+        List<HechoTaller> borrar = new ArrayList<>();
+        List<HechoTaller> vuelven = new ArrayList<>();
+        for (HechoTaller h : marcas) {
+            LocalDateTime desde = filas.get(clave(h.tarjeta(), h.imeiSn()));
+            if (desde == null || h.fecha().isBefore(desde)) borrar.add(h);
+            else if (h.volvio() == null && h.fecha().isBefore(exportacion)) vuelven.add(h);
+        }
+        return new Repaso(borrar, vuelven);
+    }
+}

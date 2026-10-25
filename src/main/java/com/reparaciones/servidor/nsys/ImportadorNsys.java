@@ -54,6 +54,7 @@ public class ImportadorNsys {
     private final ClienteDrive drive;
     private final NsysDAO dao;
     private final TallerNsys taller;
+    private final PorPasarNsys porPasar;
     private final String carpeta;
     private final String maestro;
     private final Clock clock;
@@ -62,16 +63,17 @@ public class ImportadorNsys {
     private boolean nombresMirados;
 
     @Autowired
-    public ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller,
+    public ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller, PorPasarNsys porPasar,
                           @Value("${nsys.drive.carpeta-items:}") String carpeta,
                           @Value("${nsys.drive.maestro:}") String maestro) {
-        this(drive, dao, taller, carpeta, maestro, Clock.system(MADRID));
+        this(drive, dao, taller, porPasar, carpeta, maestro, Clock.system(MADRID));
     }
 
-    ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller, String carpeta, String maestro, Clock clock) {
+    ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller, PorPasarNsys porPasar, String carpeta, String maestro, Clock clock) {
         this.drive = drive;
         this.dao = dao;
         this.taller = taller;
+        this.porPasar = porPasar;
         this.carpeta = carpeta == null ? "" : carpeta;
         this.maestro = maestro == null ? "" : maestro;
         this.clock = clock;
@@ -184,6 +186,7 @@ public class ImportadorNsys {
             String modelos = rellenarModelos();
             dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
             cerrarTaller();
+            repasarHechos(f.fecha());
             return true;
         } catch (FormatoItemsException e) {
             dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
@@ -302,6 +305,16 @@ public class ImportadorNsys {
             taller.cerrar();
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudo cerrar lo del taller tras la importación", e);
+        }
+    }
+
+    /** Tras el cierre, el repaso de las marcas «Hecho» (spec 0.9.22 §3.6) con la hora de exportación del fichero. La importación ya
+     *  es OK: si el repaso falla, se avisa en el registro del servidor y se reintenta con el siguiente. */
+    private void repasarHechos(LocalDateTime exportacion) {
+        try {
+            porPasar.repasarHechos(exportacion);
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron repasar las marcas «Hecho» tras la importación", e);
         }
     }
 

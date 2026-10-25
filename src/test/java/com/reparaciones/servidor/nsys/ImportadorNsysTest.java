@@ -34,7 +34,8 @@ class ImportadorNsysTest {
     private final ClienteDrive drive = mock(ClienteDrive.class);
     private final NsysDAO dao = mock(NsysDAO.class);
     private final TallerNsys taller = mock(TallerNsys.class);
-    private final ImportadorNsys importador = new ImportadorNsys(drive, dao, taller, "carpeta-1", "maestro-1",
+    private final PorPasarNsys porPasar = mock(PorPasarNsys.class);
+    private final ImportadorNsys importador = new ImportadorNsys(drive, dao, taller, porPasar, "carpeta-1", "maestro-1",
             Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     @BeforeEach void base() throws Exception {
@@ -181,7 +182,7 @@ class ImportadorNsysTest {
     }
 
     @Test void sinCarpetaNoHaceNada() {
-        new ImportadorNsys(drive, dao, taller, "", "", Clock.systemUTC()).pasada();
+        new ImportadorNsys(drive, dao, taller, porPasar, "", "", Clock.systemUTC()).pasada();
         verifyNoInteractions(drive);
         verifyNoInteractions(dao);
         verifyNoInteractions(taller);
@@ -201,7 +202,7 @@ class ImportadorNsysTest {
         verify(drive, never()).descargar(anyString());
         verify(dao, never()).empezarImportacion(anyString(), any(), anyString(), any());
 
-        ImportadorNsys tresMinutosDespues = new ImportadorNsys(drive, dao, taller, "carpeta-1", "maestro-1",
+        ImportadorNsys tresMinutosDespues = new ImportadorNsys(drive, dao, taller, porPasar, "carpeta-1", "maestro-1",
                 Clock.fixed(AHORA.plusMinutes(3).atZone(MADRID).toInstant(), MADRID));
         tresMinutosDespues.pasada();
         verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
@@ -285,7 +286,7 @@ class ImportadorNsysTest {
         verify(drive, never()).descargar(anyString());
         verify(dao, never()).empezarImportacion(anyString(), any(), anyString(), any());
 
-        new ImportadorNsys(drive, dao, taller, "carpeta-1", "maestro-1",
+        new ImportadorNsys(drive, dao, taller, porPasar, "carpeta-1", "maestro-1",
                 Clock.fixed(AHORA.plusMinutes(3).atZone(MADRID).toInstant(), MADRID)).pasada();
         InOrder orden = inOrder(drive);
         orden.verify(drive).descargar("id-Items_2026.10.16_09.01.xlsx");
@@ -494,6 +495,28 @@ class ImportadorNsysTest {
 
         verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
         verify(dao, times(2)).aplicar(any(), anyInt());
+    }
+
+    @Test void trasCerrarLoDelTallerSeRepasanLasMarcasConLaHoraDelFichero() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+
+        importador.pasada();
+
+        InOrder orden = inOrder(taller, porPasar);
+        orden.verify(taller).cerrar();
+        orden.verify(porPasar).repasarHechos(LocalDateTime.of(2026, 10, 16, 9, 1));
+    }
+
+    @Test void siFallaElRepasoLaPasadaSigue() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        doThrow(new IllegalStateException("fallo")).when(porPasar).repasarHechos(any());
+
+        assertDoesNotThrow(importador::pasada);
+        verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
     }
 
     @Test void sinNombresEnElMaestroGuardadoSeRecargaUnaVezAunqueNoHayaCambiado() throws Exception {
