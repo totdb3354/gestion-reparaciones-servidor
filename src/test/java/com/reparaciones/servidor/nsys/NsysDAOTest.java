@@ -258,6 +258,14 @@ class NsysDAOTest {
         verifyNoInteractions(jdbc);
     }
 
+    @SuppressWarnings("unchecked")
+    @Test void losGoodsContadosSeLeenDeUnaVez() {
+        dao.goodsContados();
+        verify(jdbc).query(eq(NsysDAO.SQL_GOODS_CONTADOS), any(RowMapper.class));
+        assertEquals("SELECT MODELO_MAESTRO, GOODS, COUNT(*) AS N FROM Nsys_movil WHERE GOODS IS NOT NULL"
+                + " GROUP BY MODELO_MAESTRO, GOODS", NsysDAO.SQL_GOODS_CONTADOS);
+    }
+
     // ---------------------------------------------------------------- 0.9.18: lista de importaciones (spec §6.5)
 
     @SuppressWarnings("unchecked")

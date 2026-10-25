@@ -86,6 +86,11 @@ public class NsysDAO {
             + " WHERE MODELO <=> ? AND MODELO_MAESTRO = ? AND CAPACIDAD <=> ? AND ES_ESIM = ? AND COLOR IS NOT NULL"
             + " AND GOODS IS NOT NULL GROUP BY COLOR, GOODS ORDER BY COLOR, N DESC, GOODS";
 
+    /** Los Goods del espejo con el modelo del maestro de sus móviles y cuántos son (0.9.22 §2.1): de aquí sale cómo escribe NSYS
+     *  cada color. Una consulta para todos los modelos; solo se pide si un color no tiene móviles en su modelo y capacidad. */
+    static final String SQL_GOODS_CONTADOS = "SELECT MODELO_MAESTRO, GOODS, COUNT(*) AS N FROM Nsys_movil WHERE GOODS IS NOT NULL"
+            + " GROUP BY MODELO_MAESTRO, GOODS";
+
     private final JdbcTemplate jdbc;
 
     public NsysDAO(JdbcTemplate jdbc) {
@@ -388,6 +393,12 @@ public class NsysDAO {
         if (m.modeloMaestro() == null) return Map.of();
         return primeroDeCadaColor(jdbc.query(SQL_GOODS_POR_COLOR, (rs, n) -> new GoodsDeColor(rs.getString("COLOR"),
                 rs.getString("GOODS")), m.modelo(), m.modeloMaestro(), m.capacidad(), m.esEsim()));
+    }
+
+    /** Los Goods del espejo con su modelo del maestro y cuántos móviles los llevan (0.9.22 §2.1). */
+    public List<GrafiasNsys.GoodsContado> goodsContados() {
+        return jdbc.query(SQL_GOODS_CONTADOS, (rs, n) -> new GrafiasNsys.GoodsContado(rs.getString("MODELO_MAESTRO"),
+                rs.getString("GOODS"), rs.getInt("N")));
     }
 
     /** Las filas llegan por color y, dentro de cada uno, de la más usada a la menos: vale la primera. */
