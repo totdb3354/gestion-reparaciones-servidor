@@ -12,6 +12,7 @@ SET NAMES utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Taller_hecho;
 DROP TABLE IF EXISTS Taller_aviso;
 DROP TABLE IF EXISTS Taller_cambio;
 DROP TABLE IF EXISTS Nsys_evento;
@@ -588,8 +589,23 @@ CREATE TABLE Taller_aviso (
     MOTIVO     VARCHAR(500) NULL COMMENT 'La pieza: «chasis chai13red nuevo»',
     ID_USU     INT          NULL,
     FECHA      DATETIME     NOT NULL,
+    REVISADO_POR INT          NULL COMMENT '«Revisado» (0.9.22): quién',
+    REVISADO_EN  DATETIME     NULL COMMENT '«Revisado» (0.9.22): cuándo, hora de Madrid',
     PRIMARY KEY (ID_AVISO),
     KEY idx_taller_aviso_imei (IMEI_SN, FECHA),
     KEY idx_taller_aviso_rep (ID_REP),
-    CONSTRAINT fk_taller_aviso_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+    CONSTRAINT fk_taller_aviso_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
+    CONSTRAINT fk_taller_aviso_revisado FOREIGN KEY (REVISADO_POR) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+
+-- 0.9.22 pieza 2 («Por pasar a NSYS» con cuatro tarjetas): la marca «Hecho» de cada fila, una por IMEI y tarjeta. Se borra sola
+-- cuando la importación ve NSYS al día; si no, «vuelve» (VOLVIO) y la fila sale otra vez.
+CREATE TABLE Taller_hecho (
+    IMEI_SN  VARCHAR(40) NOT NULL COMMENT 'Como Nsys_movil.IMEI_SN; en ALTA, el IMEI del taller',
+    TARJETA  ENUM('COLOR','GRADO','ALTA') NOT NULL,
+    ID_USU   INT         NULL,
+    FECHA    DATETIME    NOT NULL COMMENT 'Cuándo se marcó (hora de Madrid)',
+    VOLVIO   DATETIME    NULL COMMENT 'La importación vio NSYS igual tras marcarlo: la marca deja de valer',
+    PRIMARY KEY (IMEI_SN, TARJETA),
+    CONSTRAINT fk_taller_hecho_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
