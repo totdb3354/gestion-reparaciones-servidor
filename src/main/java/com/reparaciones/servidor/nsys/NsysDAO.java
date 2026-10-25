@@ -153,23 +153,28 @@ public class NsysDAO {
         return mapa;
     }
 
-    /** Guarda el «Total cost» de las filas de un Items (spec 0.9.22 §2.3): solo los que cambian, por lotes de mil; una fila sin
-     *  coste no borra el que había. Se llama después de {@link #aplicar}, con los móviles nuevos ya guardados. Devuelve cuántos
-     *  ha escrito. */
-    @Transactional
-    public int guardarCostes(List<FilaItems> filas) {
+    /** Los argumentos {@code {coste, imeiSn, batch}} de {@link #SQL_GUARDAR_COSTE} para las filas de un Items cuyo «Total cost»
+     *  (spec 0.9.22 §2.3) cambia, en el orden del fichero; solo lee. Una fila sin coste no borra el que había, y un IMEI+lote
+     *  repetido cuenta la primera fila. Se llama después de {@link #aplicar}, con los móviles nuevos ya guardados; los escribe
+     *  {@link #guardarCostes} por lotes, cada uno en su transacción. */
+    public List<Object[]> costesCambiados(List<FilaItems> filas) {
         Map<ClaveMovil, BigDecimal> antes = cargarCostes();
-        Map<ClaveMovil, BigDecimal> nuevos = new LinkedHashMap<>();
+        Set<ClaveMovil> vistas = new HashSet<>();
+        List<Object[]> cambios = new ArrayList<>();
         for (FilaItems f : filas) {
-            if (f.coste() == null) continue;
+            if (!vistas.add(f.clave()) || f.coste() == null) continue;
             BigDecimal previo = antes.get(f.clave());
-            if (previo == null || previo.compareTo(f.coste()) != 0) nuevos.put(f.clave(), f.coste());
+            if (previo == null || previo.compareTo(f.coste()) != 0)
+                cambios.add(new Object[]{f.coste(), f.clave().imeiSn(), f.clave().batch()});
         }
-        if (nuevos.isEmpty()) return 0;
-        List<Object[]> argumentos = nuevos.entrySet().stream()
-                .map(e -> new Object[]{e.getValue(), e.getKey().imeiSn(), e.getKey().batch()}).toList();
-        for (List<Object[]> lote : trozos(argumentos)) jdbc.batchUpdate(SQL_GUARDAR_COSTE, lote);
-        return nuevos.size();
+        return cambios;
+    }
+
+    /** Escribe un lote de {@link #costesCambiados}: un lote, una transacción, para no dejar bloqueadas miles de filas (el
+     *  guardado de una reparación bloquea su móvil) mientras dura toda la escritura. La llama el importador, lote a lote. */
+    @Transactional
+    public void guardarCostes(List<Object[]> lote) {
+        jdbc.batchUpdate(SQL_GUARDAR_COSTE, lote);
     }
 
     /** Los textos de los eventos son campos de Nsys_movil o ubicaciones, ya cortados al leer (AnchosNsys): caben. */

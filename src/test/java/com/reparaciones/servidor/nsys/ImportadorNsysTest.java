@@ -522,6 +522,8 @@ class ImportadorNsysTest {
 
     @SuppressWarnings("unchecked")
     @Test void trasGuardarLaFotoSeGuardanLosCostesDelFichero() throws Exception {
+        List<Object[]> lote = List.<Object[]>of(new Object[]{new BigDecimal("123.45"), "350000000000001", "BT-9001"});
+        when(dao.costesCambiados(any())).thenReturn(lote);
         ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
         when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
         when(drive.descargar(anyString())).thenReturn(items(2));
@@ -531,9 +533,10 @@ class ImportadorNsysTest {
         InOrder orden = inOrder(dao);
         orden.verify(dao).aplicar(any(), eq(1));
         ArgumentCaptor<List<FilaItems>> filas = ArgumentCaptor.forClass(List.class);
-        orden.verify(dao).guardarCostes(filas.capture());
+        orden.verify(dao).costesCambiados(filas.capture());
         assertEquals(2, filas.getValue().size());
         assertEquals(new BigDecimal("123.45"), filas.getValue().get(0).coste());
+        orden.verify(dao).guardarCostes(lote);
         verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), isNull(), eq(AHORA));
     }
 
@@ -542,12 +545,50 @@ class ImportadorNsysTest {
         ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
         when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
         when(drive.descargar(anyString())).thenReturn(items(2));
-        when(dao.guardarCostes(any())).thenThrow(new UncategorizedSQLException("costes", "UPDATE Nsys_movil",
+        when(dao.costesCambiados(any())).thenThrow(new UncategorizedSQLException("costes", "UPDATE Nsys_movil",
                 new java.sql.SQLException("fallo")));
 
         importador.pasada();
 
         verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
         verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
+    }
+
+    @Test void losCostesSeGuardanPorLotesDeMil() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        List<Object[]> cambios = new ArrayList<>();
+        for (int i = 0; i < 2500; i++) cambios.add(new Object[]{new BigDecimal("1.00"), "IMEI" + i, "BT-9001"});
+        when(dao.costesCambiados(any())).thenReturn(cambios);
+
+        importador.pasada();
+
+        @SuppressWarnings("unchecked") ArgumentCaptor<List<Object[]>> lotes = ArgumentCaptor.forClass(List.class);
+        verify(dao, times(3)).guardarCostes(lotes.capture());
+        assertEquals(1000, lotes.getAllValues().get(0).size());
+        assertEquals(1000, lotes.getAllValues().get(1).size());
+        assertEquals(500, lotes.getAllValues().get(2).size());
+    }
+
+    @Test void siLaPrimeraDescargaDelMaestroFallaSeReintentaEnLaSiguientePasada() throws Exception {
+        when(dao.productosSinNombre()).thenReturn(true);
+        List<List<Object>> hoja = new ArrayList<>();
+        List<Object> cabecera = new ArrayList<>(LectorMaestro.COLUMNAS);
+        cabecera.add(LectorMaestro.NOMBRE);
+        hoja.add(cabecera);
+        hoja.add(List.of("Apple iPhone 13 128GB Blue A", "iPhone", "13", "128GB", "Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128Azul", "Apple iPhone 13 128GB Blue"));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        when(drive.descargar("maestro-1")).thenThrow(new RuntimeException("Drive no responde"))
+                .thenReturn(XlsxDePrueba.libro(hojas));
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of());
+
+        importador.pasada();
+        importador.pasada();
+
+        verify(drive, times(2)).descargar("maestro-1");
+        verify(dao, times(1)).reemplazarProductos(any());
     }
 }

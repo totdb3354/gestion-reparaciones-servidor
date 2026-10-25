@@ -352,25 +352,41 @@ class NsysDAOTest {
     }
 
     @SuppressWarnings("unchecked")
-    @Test void guardarCostesSoloActualizaLosQueCambian() {
+    @Test void costesCambiadosDevuelveSoloLosQueCambian() {
         when(jdbc.query(eq(NsysDAO.SQL_COSTES), any(RowMapper.class))).thenReturn(List.of(
                 new NsysDAO.Coste(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("535.41")),
                 new NsysDAO.Coste(new ClaveMovil("350000000000002", "BT-9001"), new BigDecimal("200.00"))));
-        int n = dao.guardarCostes(List.of(conCoste("350000000000001", "535.41"), conCoste("350000000000002", "210.50"),
-                conCoste("350000000000003", "99.90"), conCoste("350000000000004", null)));
-        assertEquals(2, n);
-        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
-        verify(jdbc).batchUpdate(eq(NsysDAO.SQL_GUARDAR_COSTE), lote.capture());
-        assertEquals(2, lote.getValue().size());
-        assertArrayEquals(new Object[]{new BigDecimal("210.50"), "350000000000002", "BT-9001"}, lote.getValue().get(0));
-        assertArrayEquals(new Object[]{new BigDecimal("99.90"), "350000000000003", "BT-9001"}, lote.getValue().get(1));
+        List<Object[]> cambios = dao.costesCambiados(List.of(conCoste("350000000000001", "535.41"),
+                conCoste("350000000000002", "210.50"), conCoste("350000000000003", "99.90"),
+                conCoste("350000000000004", null)));
+        assertEquals(2, cambios.size());
+        assertArrayEquals(new Object[]{new BigDecimal("210.50"), "350000000000002", "BT-9001"}, cambios.get(0));
+        assertArrayEquals(new Object[]{new BigDecimal("99.90"), "350000000000003", "BT-9001"}, cambios.get(1));
+        verify(jdbc, never()).batchUpdate(anyString(), any(List.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void unImeiYLoteRepetidosEnElFicheroCuentanLaPrimeraFila() {
+        when(jdbc.query(eq(NsysDAO.SQL_COSTES), any(RowMapper.class))).thenReturn(List.of());
+        List<Object[]> cambios = dao.costesCambiados(List.of(conCoste("350000000000001", null),
+                conCoste("350000000000001", "50.00"), conCoste("350000000000002", "10.00"),
+                conCoste("350000000000002", "20.00")));
+        assertEquals(1, cambios.size());
+        assertArrayEquals(new Object[]{new BigDecimal("10.00"), "350000000000002", "BT-9001"}, cambios.get(0));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void guardarCostesEscribeElLoteEnUnBatchUpdate() {
+        List<Object[]> lote = List.<Object[]>of(new Object[]{new BigDecimal("1.00"), "350000000000001", "BT-9001"});
+        dao.guardarCostes(lote);
+        verify(jdbc).batchUpdate(NsysDAO.SQL_GUARDAR_COSTE, lote);
     }
 
     @SuppressWarnings("unchecked")
     @Test void sinCostesNuevosNoSeEscribeNada() {
         when(jdbc.query(eq(NsysDAO.SQL_COSTES), any(RowMapper.class))).thenReturn(List.of(
                 new NsysDAO.Coste(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("535.41"))));
-        assertEquals(0, dao.guardarCostes(List.of(conCoste("350000000000001", "535.410"))));
+        assertEquals(0, dao.costesCambiados(List.of(conCoste("350000000000001", "535.410"))).size());
         verify(jdbc, never()).batchUpdate(eq(NsysDAO.SQL_GUARDAR_COSTE), any(List.class));
         assertEquals("UPDATE Nsys_movil SET COSTE = ? WHERE IMEI_SN = ? AND BATCH = ?", NsysDAO.SQL_GUARDAR_COSTE);
         assertEquals("SELECT IMEI_SN, BATCH, COSTE FROM Nsys_movil WHERE COSTE IS NOT NULL", NsysDAO.SQL_COSTES);
