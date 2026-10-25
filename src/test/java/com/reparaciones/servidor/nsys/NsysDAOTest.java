@@ -82,6 +82,15 @@ class NsysDAOTest {
         assertEquals("Apple iPhone 13 128GB Blue", mapeo.getValue().mapRow(rs, 0).nombre());
     }
 
+    @Test void productosSinNombreMiraSiNingunoLoTiene() {
+        when(jdbc.queryForObject(NsysDAO.SQL_PRODUCTOS_SIN_NOMBRE, Boolean.class)).thenReturn(true);
+        assertTrue(dao.productosSinNombre());
+        when(jdbc.queryForObject(NsysDAO.SQL_PRODUCTOS_SIN_NOMBRE, Boolean.class)).thenReturn(null);
+        assertFalse(dao.productosSinNombre());
+        assertEquals("SELECT COUNT(*) > 0 AND COALESCE(SUM(NOMBRE IS NOT NULL), 0) = 0 FROM Nsys_producto",
+                NsysDAO.SQL_PRODUCTOS_SIN_NOMBRE);
+    }
+
     @Test void empezarImportacionDevuelveElIdGenerado() {
         when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
             KeyHolder claves = inv.getArgument(1);

@@ -57,6 +57,8 @@ public class ImportadorNsys {
     private final String carpeta;
     private final String maestro;
     private final Clock clock;
+    /** Si ya se ha mirado en este arranque si al maestro guardado le faltan los nombres (0.9.22). */
+    private boolean nombresMirados;
 
     @Autowired
     public ImportadorNsys(ClienteDrive drive, NsysDAO dao, TallerNsys taller,
@@ -203,7 +205,8 @@ public class ImportadorNsys {
             ClienteDrive.FicheroDrive meta = drive.metadatos(maestro);
             LocalDateTime modificado = LocalDateTime.ofInstant(meta.modificado(), MADRID).truncatedTo(ChronoUnit.SECONDS);
             Optional<Importacion> ultimo = dao.ultimaImportacion(MAESTRO, Set.of(OK, RECHAZADO));
-            if (ultimo.isPresent() && !modificado.isAfter(ultimo.get().fechaExportacion())) return false;
+            boolean sinNombres = faltanNombres();
+            if (ultimo.isPresent() && !modificado.isAfter(ultimo.get().fechaExportacion()) && !sinNombres) return false;
             id = dao.empezarImportacion(meta.nombre(), modificado, MAESTRO, ahora());
             ResultadoMaestro m = LectorMaestro.leer(new ByteArrayInputStream(drive.descargar(maestro)));
             if (m.productos().isEmpty()) { // vaciar Nsys_producto dejaría todos los móviles sin SKU ni modelo
@@ -229,6 +232,19 @@ public class ImportadorNsys {
         } catch (Exception e) {
             log.warn("NSYS: no se pudo actualizar el maestro: {}", e.toString());
             if (id != null) dao.terminarImportacion(id, ERROR, 0, 0, e.toString(), ahora());
+            return false;
+        }
+    }
+
+    /** Al maestro guardado le faltan los nombres de producto (0.9.22: la columna es nueva): se recarga una vez aunque no haya
+     *  cambiado en Drive. Se mira una sola vez por arranque, para no descargarlo en cada pasada si el Excel no trae la columna. */
+    private boolean faltanNombres() {
+        if (nombresMirados) return false;
+        nombresMirados = true;
+        try {
+            return dao.productosSinNombre();
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudo mirar si al maestro le faltan los nombres: {}", e.toString());
             return false;
         }
     }

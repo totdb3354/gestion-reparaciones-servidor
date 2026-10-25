@@ -55,6 +55,9 @@ public class NsysDAO {
             + " VALUES (?, ?, ?, ?)";
     static final String SQL_TERMINAR = "UPDATE Nsys_importacion SET RESULTADO = ?, FILAS = ?, CAMBIOS = ?, MENSAJE = ?,"
             + " TERMINADA = ? WHERE ID_IMPORTACION = ?";
+    /** true si hay productos y ninguno tiene nombre: el maestro se cargó antes de la columna NOMBRE (0.9.22). */
+    static final String SQL_PRODUCTOS_SIN_NOMBRE =
+            "SELECT COUNT(*) > 0 AND COALESCE(SUM(NOMBRE IS NOT NULL), 0) = 0 FROM Nsys_producto";
     /** Rellena el modelo de los teléfonos del taller que no lo tienen, sin pisar nunca uno puesto, solo para IMEI de 15 cifras que ya existen en Telefono (spec §7). */
     static final String SQL_RELLENAR_MODELOS = "UPDATE Telefono t JOIN (SELECT IMEI_SN, MAX(MODELO) AS MODELO"
             + " FROM Nsys_movil WHERE MODELO IS NOT NULL GROUP BY IMEI_SN) n ON n.IMEI_SN = t.IMEI"
@@ -106,6 +109,11 @@ public class NsysDAO {
                         rs.getString("CAPACIDAD"), rs.getString("COLOR"), rs.getString("CALIDAD_DETALLE"),
                         rs.getString("SKU_WEB"), rs.getString("SKU_AMAZON"), rs.getString("SKU_SIN_GRADO"),
                         rs.getBoolean("ES_ESIM"), rs.getString("NOMBRE")));
+    }
+
+    /** El maestro guardado no tiene ningún nombre de producto (se cargó antes de la 0.9.22). */
+    public boolean productosSinNombre() {
+        return Boolean.TRUE.equals(jdbc.queryForObject(SQL_PRODUCTOS_SIN_NOMBRE, Boolean.class));
     }
 
     @Transactional
