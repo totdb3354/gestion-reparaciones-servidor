@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -112,8 +113,10 @@ public class PorPasarNsys {
     }
 
     /** «Revisado» (§3.5): quién y cuándo en el aviso y una línea en el registro de actividad. 404 si el aviso no existe; 400 si no
-     *  es de «Revisar a mano»; si ya estaba revisado no hace nada (un segundo clic). */
-    @Transactional
+     *  es de «Revisar a mano»; si ya estaba revisado no hace nada (un segundo clic). READ COMMITTED: con REPEATABLE READ, MariaDB
+     *  11.6+ (innodb_snapshot_isolation) rechaza con el error 1020 el UPDATE del segundo clic, que leyó el aviso antes de que el
+     *  primero lo revisara; así espera al primero y su UPDATE no cambia nada. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void revisado(int idAviso, int idUsu) {
         AvisoTaller a = tallerDao.avisoPorId(idAviso).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe el aviso " + idAviso));

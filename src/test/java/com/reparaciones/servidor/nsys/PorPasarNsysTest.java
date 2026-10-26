@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayInputStream;
@@ -158,6 +160,14 @@ class PorPasarNsysTest {
         when(tallerDao.revisar(5, 7, AHORA)).thenReturn(0);
         assertDoesNotThrow(() -> servicio.revisado(5, 7));
         verifyNoInteractions(registro);
+    }
+
+    /** Con REPEATABLE READ, MariaDB 11.6+ (innodb_snapshot_isolation) rechaza con el error 1020 el UPDATE de un segundo clic que
+     *  leyó el aviso antes de que el primero lo revisara (visto en preprod el 26/10); con READ COMMITTED espera y no cambia nada. */
+    @Test void revisadoVaEnReadCommittedParaQueUnSegundoClicNoFalle() throws NoSuchMethodException {
+        Transactional t = PorPasarNsys.class.getMethod("revisado", int.class, int.class).getAnnotation(Transactional.class);
+        assertNotNull(t, "el UPDATE y la línea del registro van en una transacción");
+        assertEquals(Isolation.READ_COMMITTED, t.isolation());
     }
 
     @Test void elRepasoSinMarcasNoLeeNadaMas() {
