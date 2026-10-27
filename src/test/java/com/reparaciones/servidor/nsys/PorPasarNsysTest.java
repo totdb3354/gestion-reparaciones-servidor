@@ -548,4 +548,19 @@ class PorPasarNsysTest {
         verify(nsys, never()).porImeis(any());
         verify(tallerDao, never()).vigentes(any());
     }
+
+    @Test void siUnMovilFallaLosDemasSiSeAplican() {
+        String otro = "350000000000002";
+        BateriaRecordada b1 = bateria(40, true, AHORA.minusDays(1));
+        BateriaRecordada b2 = new BateriaRecordada(41, otro, "R20261024_41", true, "batería bati13 nueva", 8, AHORA.minusDays(1));
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(b1, b2));
+        when(nsys.porImeis(List.of(IMEI, otro))).thenReturn(List.of(movil(IMEI, "Azul", "A"), movil(otro, "Azul", "A")));
+        when(tallerDao.usarBaterias(any(), any(), any())).thenReturn(1);
+        doThrow(new IllegalStateException("fallo")).when(tallerDao).guardar(eq(IMEI), any(), any(), any(), any(), any());
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao).guardar(otro, List.of(new TallerDAO.Nuevo(GRADO, "A100", "A", CambioTaller.Estado.VIGENTE)), "R20261024_41",
+                8, "batería bati13 nueva", AHORA);
+        verify(tallerDao).usarBaterias(List.of(41), "A100", AHORA);
+        verify(tallerDao, never()).usarBaterias(eq(List.of(40)), any(), any());
+    }
 }

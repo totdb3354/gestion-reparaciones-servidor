@@ -229,7 +229,7 @@ public class PorPasarNsys {
     /** Tras cada importación ACTUAL que acaba en OK (pieza 4 §5.2): las baterías recordadas de los móviles cuyo grado (lo que vale)
      *  ya tiene letra se aplican —un cambio de grado a nombre de la R… de la batería, si hace falta— y se dan por usadas; con un
      *  grado ignorado (F, Fd, RMA, ID) se dan por usadas sin cambiar nada; las de un «como n/a» siguen. Sin baterías no lee nada
-     *  más. */
+     *  más. Un móvil que falla se apunta en el registro del servidor y no para a los demás. */
     public void usarBateriasRecordadas() {
         List<BateriaRecordada> todas = tallerDao.bateriasRecordadas();
         if (todas.isEmpty()) return;
@@ -245,23 +245,27 @@ public class PorPasarNsys {
         int usadas = 0;
         int cambios = 0;
         for (Map.Entry<String, List<BateriaRecordada>> e : porImei.entrySet()) {
-            MovilNsys m = espejo.get(e.getKey());
-            if (m == null) continue;
-            String grado = LoQueVale.valor(vigentes.getOrDefault(e.getKey(), List.of()), DatoTaller.GRADO, m);
-            GradoTaller.Grupo grupo = GradoTaller.grupo(grado);
-            if (grupo == GradoTaller.Grupo.COMO_NA) continue;
-            String queda = grado;
-            if (grupo == GradoTaller.Grupo.CON_FORMA) {
-                BateriaRecordada b = BateriaRecordada.ultima(e.getValue()).orElseThrow();
-                Optional<TallerDAO.Nuevo> n = GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, b.nueva())
-                        .flatMap(nuevo -> EfectoTaller.cambio(DatoTaller.GRADO, nuevo, grado, m));
-                if (n.isPresent()) {
-                    tallerDao.guardar(m.imeiSn(), List.of(n.get()), b.idRep(), b.idUsu(), b.motivo(), ahora);
-                    queda = n.get().valor();
-                    cambios++;
+            try {
+                MovilNsys m = espejo.get(e.getKey());
+                if (m == null) continue;
+                String grado = LoQueVale.valor(vigentes.getOrDefault(e.getKey(), List.of()), DatoTaller.GRADO, m);
+                GradoTaller.Grupo grupo = GradoTaller.grupo(grado);
+                if (grupo == GradoTaller.Grupo.COMO_NA) continue;
+                String queda = grado;
+                if (grupo == GradoTaller.Grupo.CON_FORMA) {
+                    BateriaRecordada b = BateriaRecordada.ultima(e.getValue()).orElseThrow();
+                    Optional<TallerDAO.Nuevo> n = GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, b.nueva())
+                            .flatMap(nuevo -> EfectoTaller.cambio(DatoTaller.GRADO, nuevo, grado, m));
+                    if (n.isPresent()) {
+                        tallerDao.guardar(m.imeiSn(), List.of(n.get()), b.idRep(), b.idUsu(), b.motivo(), ahora);
+                        queda = n.get().valor();
+                        cambios++;
+                    }
                 }
+                usadas += tallerDao.usarBaterias(e.getValue().stream().map(BateriaRecordada::idAviso).toList(), queda, ahora);
+            } catch (RuntimeException ex) {
+                log.warn("NSYS: no se pudo usar la batería recordada de {}", e.getValue().get(0).imeiSn(), ex);
             }
-            usadas += tallerDao.usarBaterias(e.getValue().stream().map(BateriaRecordada::idAviso).toList(), queda, ahora);
         }
         if (usadas > 0) log.info("NSYS: baterías recordadas usadas: {} (cambios de grado: {})", usadas, cambios);
     }
