@@ -506,6 +506,7 @@ class ImportadorNsysTest {
         importador.pasada();
 
         verify(porPasar, never()).repasarHechos(any());
+        verify(porPasar, never()).repasarDescartes();
         verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
         verify(dao).terminarImportacion(eq(1), eq("OK"), eq(2), anyInt(), any(), eq(AHORA));
     }
@@ -520,6 +521,7 @@ class ImportadorNsysTest {
         InOrder orden = inOrder(taller, porPasar);
         orden.verify(taller).cerrar();
         orden.verify(porPasar).repasarHechos(LocalDateTime.of(2026, 10, 16, 9, 1));
+        orden.verify(porPasar).repasarDescartes();
     }
 
     @Test void siFallaElRepasoLaPasadaSigue() throws Exception {
@@ -528,6 +530,19 @@ class ImportadorNsysTest {
                 enDrive("Items_2026.10.16_09.31.xlsx")));
         when(drive.descargar(anyString())).thenReturn(items(2));
         doThrow(new IllegalStateException("fallo")).when(porPasar).repasarHechos(any());
+
+        importador.pasada();
+
+        verify(dao, never()).terminarImportacion(anyInt(), eq("ERROR"), anyInt(), anyInt(), any(), any());
+        verify(dao, times(2)).aplicar(any(), anyInt());
+    }
+
+    @Test void siFallaElRepasoDeLosDescartesLaPasadaSigue() throws Exception {
+        ultimaActual(LocalDateTime.of(2026, 10, 16, 8, 31), 2);
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of(enDrive("Items_2026.10.16_09.01.xlsx"),
+                enDrive("Items_2026.10.16_09.31.xlsx")));
+        when(drive.descargar(anyString())).thenReturn(items(2));
+        doThrow(new IllegalStateException("fallo")).when(porPasar).repasarDescartes();
 
         importador.pasada();
 
@@ -544,6 +559,7 @@ class ImportadorNsysTest {
 
         verify(dao).terminarImportacion(eq(1), eq("RECHAZADO"), anyInt(), anyInt(), any(), any());
         verify(porPasar, never()).repasarHechos(any());
+        verify(porPasar, never()).repasarDescartes();
     }
 
     @Test void sinNombresEnElMaestroGuardadoSeRecargaUnaVezAunqueNoHayaCambiado() throws Exception {

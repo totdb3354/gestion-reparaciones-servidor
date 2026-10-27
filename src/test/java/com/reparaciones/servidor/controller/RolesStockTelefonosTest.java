@@ -1,7 +1,9 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.UsuariosOperativosTestConfig;
+import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
+import com.reparaciones.servidor.nsys.DescarteDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.HechoDAO;
 import com.reparaciones.servidor.nsys.MovilNsys;
@@ -66,6 +68,8 @@ class RolesStockTelefonosTest {
     @MockBean TelefonoDAO telefonoDao;
     @MockBean TallerDAO tallerDao;
     @MockBean HechoDAO hechoDao;
+    @MockBean DescarteDAO descarteDao;
+    @MockBean LogDAO logDao;
     /** «Revisado» es @Transactional y este test no tiene base de datos: sin esto no abre conexión. */
     @MockBean PlatformTransactionManager transactionManager;
 
@@ -213,6 +217,29 @@ class RolesStockTelefonosTest {
         verify(hechoDao).desmarcar(TarjetaHecho.GRADO, "350000000000001");
         mvc.perform(post("/api/stock-telefonos/por-pasar/avisos/5/revisado").header("Authorization", admin()))
                 .andExpect(status().isNotFound());
+    }
+
+    /** 0.9.22 pieza 3: «descartar» y su «deshacer», con la misma guarda que el resto. */
+    @Test void elDescarteSoloParaSupertecnicoYAdmin() throws Exception {
+        String descartar = "{\"imeiSn\":\"SIN-IMEI-CAM\",\"motivo\":\"no es un móvil\"}";
+        String deshacer = "{\"imeiSn\":\"SIN-IMEI-CAM\"}";
+        mvc.perform(put("/api/stock-telefonos/por-pasar/descarte").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(descartar)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/descarte").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(deshacer)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/stock-telefonos/por-pasar/descarte")
+                .contentType(MediaType.APPLICATION_JSON).content(descartar)).andExpect(status().isForbidden());
+        verifyNoInteractions(descarteDao);
+
+        mvc.perform(put("/api/stock-telefonos/por-pasar/descarte").header("Authorization", supertecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(descartar)).andExpect(status().isNoContent());
+        verify(descarteDao).descartar(eq("SIN-IMEI-CAM"), eq(7), eq("no es un móvil"), any());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/descarte").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content(deshacer)).andExpect(status().isNoContent());
+        verify(descarteDao).deshacer("SIN-IMEI-CAM");
+        mvc.perform(put("/api/stock-telefonos/por-pasar/descarte").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"imeiSn\":\"SIN-IMEI-CAM\",\"motivo\":\" \"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test void laPlantillaSeDescargaConSuNombreYSuNumeroDeMoviles() throws Exception {
