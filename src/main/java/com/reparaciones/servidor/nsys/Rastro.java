@@ -101,10 +101,13 @@ public final class Rastro {
     }
 
     /** «TALLER_REVISADO_» + el tipo del aviso (0.9.22): alguien lo dio por bueno desde «Revisar a mano», a la hora de la
-     *  revisión. {@code tecnico}: quién lo revisó; el resto, como el aviso. */
+     *  revisión. {@code tecnico}: quién lo revisó; el resto, como el aviso. Una batería recordada que usó el ERP (pieza 4 §5.3: un
+     *  aviso de grado revisado sin quién) es «TALLER_BATERIA_USADA», con el grado que quedó en {@code a}. */
     private static EventoRastro deRevisado(AvisoTaller a) {
-        return new EventoRastro(a.revisadoEn(), false, "TALLER", "TALLER_REVISADO_" + a.tipo().name(), null, a.de(), a.a(), null,
-                a.idRep(), a.revisadoPor(), null, null, null, a.dato().name(), CambioTaller.MANO, a.motivo());
+        boolean bateriaUsada = a.tipo() == AvisoTaller.Tipo.SIN_GRADO && a.revisadoPor() == null;
+        return new EventoRastro(a.revisadoEn(), false, "TALLER", bateriaUsada ? "TALLER_BATERIA_USADA" : "TALLER_REVISADO_" + a.tipo().name(),
+                null, a.de(), a.a(), null, a.idRep(), a.revisadoPor(), null, null, null, a.dato().name(),
+                bateriaUsada ? CambioTaller.REPARACION : CambioTaller.MANO, a.motivo());
     }
 
     /** Asignaciones A/AG/AP y trabajos hechos R/G/P. */

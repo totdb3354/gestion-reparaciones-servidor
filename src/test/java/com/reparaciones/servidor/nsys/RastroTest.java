@@ -219,4 +219,14 @@ class RastroTest {
         assertEquals(List.of("TALLER_SIN_GRADO"),
                 Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of(a)).stream().map(EventoRastro::tipo).toList());
     }
+
+    @Test void unaBateriaUsadaPorElErpSaleComoTallerBateriaUsadaConElGradoQueQuedo() {
+        LocalDateTime hora = LocalDateTime.of(2026, 10, 26, 17, 28);
+        AvisoTaller a = new AvisoTaller(40, "350000000000001", "R20261026_205", AvisoTaller.Tipo.SIN_GRADO, null, DatoTaller.GRADO,
+                "n/a", "A100", "batería bati13 nueva", 8, "Técnico 2", hora, null, hora.plusSeconds(4));
+        List<EventoRastro> rastro = Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of(a));
+        assertEquals(List.of("TALLER_BATERIA_USADA", "TALLER_SIN_GRADO"), rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(new EventoRastro(hora.plusSeconds(4), false, "TALLER", "TALLER_BATERIA_USADA", null, "n/a", "A100", null,
+                "R20261026_205", null, null, null, null, "GRADO", "REPARACION", "batería bati13 nueva"), rastro.get(0));
+    }
 }
