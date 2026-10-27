@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -83,6 +84,12 @@ public class NsysDAO {
             + " c.NOMBRE AS CLIENTE FROM Reparacion r JOIN Tecnico t ON t.ID_TEC = r.ID_TEC JOIN Telefono tel ON tel.IMEI = r.IMEI"
             + " LEFT JOIN Cliente c ON c.ID_CLI = COALESCE(r.ID_CLI, tel.ID_CLI) WHERE r.IMEI IN (";
     static final String ORDEN_TRABAJOS = " ORDER BY r.FECHA_ASIG, r.ID_REP";
+
+    /** 0.9.22 pieza 4 (§4.1): los trabajos del taller desde una hora (UTC, como guarda la BD), para «Sin grado en NSYS». */
+    static final String SQL_TRABAJOS_DESDE = "SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG FROM Reparacion r WHERE r.FECHA_ASIG >= ?";
+    /** 0.9.22 pieza 4 (§6): los trabajos de unos IMEI con su fecha, para saber si un vendido o de baja ha vuelto. Se completa con
+     *  las marcas del IN y ORDEN_TRABAJOS. */
+    static final String SQL_FECHAS_DE_IMEIS = "SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG FROM Reparacion r WHERE r.IMEI IN (";
     /** Tamaño de las tandas de los IN por IMEI (spec 0.9.18 §6.2). */
     static final int TANDA_IN = 500;
 
@@ -402,6 +409,29 @@ public class NsysDAO {
                 utcAMadrid(rs.getTimestamp("FECHA_FIN")), rs.getString("TECNICO"), rs.getString("MODELO"), rs.getString("CLIENTE"));
     }
 
+    /** Una fila de Reparacion para «Sin grado en NSYS» y los que han vuelto (spec 0.9.22 pieza 4 §4.1 y §6): el IMEI del taller, su
+     *  trabajo y su asignación, en hora de Madrid. */
+    public record TrabajoFecha(String imei, String idRep, LocalDateTime asignado) {}
+
+    /** Los trabajos del taller asignados desde {@code desdeMadrid} (hora de Madrid), de una consulta. */
+    public List<TrabajoFecha> trabajosDesde(LocalDateTime desdeMadrid) {
+        return jdbc.query(SQL_TRABAJOS_DESDE + ORDEN_TRABAJOS, NsysDAO::trabajoFecha, madridAUtc(desdeMadrid));
+    }
+
+    /** Los trabajos de estos IMEI, en tandas de {@value #TANDA_IN}; sin IMEI no consulta. */
+    public List<TrabajoFecha> trabajosDe(Collection<String> imeis) {
+        List<String> lista = List.copyOf(new LinkedHashSet<>(imeis));
+        List<TrabajoFecha> trabajos = new ArrayList<>();
+        for (List<String> tanda : trozos(lista, TANDA_IN))
+            trabajos.addAll(jdbc.query(SQL_FECHAS_DE_IMEIS + marcas(tanda.size()) + ")" + ORDEN_TRABAJOS, NsysDAO::trabajoFecha,
+                    tanda.toArray()));
+        return trabajos;
+    }
+
+    static TrabajoFecha trabajoFecha(ResultSet rs, int n) throws SQLException {
+        return new TrabajoFecha(rs.getString("IMEI"), rs.getString("ID_REP"), utcAMadrid(rs.getTimestamp("FECHA_ASIG")));
+    }
+
     /** Las asignaciones abiertas de todo el taller, por IMEI ({@link #claveCruce}). Son unos cientos como mucho. */
     public Map<String, List<TrabajoAbierto>> trabajosAbiertos() {
         return porImeiDelTaller(jdbc.query(SQL_TRABAJOS_ABIERTOS + ORDEN_TRABAJOS, NsysDAO::filaTrabajoAbierto));
@@ -501,6 +531,11 @@ public class NsysDAO {
 
     private static LocalDateTime fechaHora(Timestamp ts) {
         return ts == null ? null : ts.toLocalDateTime();
+    }
+
+    /** Una hora de Madrid como la guarda la BD del taller (UTC sin zona): lo contrario de {@link #utcAMadrid}. */
+    static Timestamp madridAUtc(LocalDateTime madrid) {
+        return Timestamp.valueOf(madrid.atZone(MADRID).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
     }
 
     /** Una hora del taller (UTC sin zona, como guarda la BD con la JVM y la sesión en UTC) en hora de Madrid. */

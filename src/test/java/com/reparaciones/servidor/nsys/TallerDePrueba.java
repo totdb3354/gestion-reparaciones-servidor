@@ -25,6 +25,20 @@ final class TallerDePrueba {
                 EstadoMovil.STOCK, HOY.minusDays(20), HOY.minusDays(1));
     }
 
+    /** Como {@link #movil}, vendido en NSYS (Released) el día {@code venta} (null: sin fecha de venta). */
+    static MovilNsys vendido(String imei, String color, String grade, LocalDate venta) {
+        return new MovilNsys(imei, "BT-9001", "Apple iPhone 13 128GB Blue", grade, "Released", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 10, 1), venta, "i13128" + color + grade, "13", "13", "128GB", color, grade, false, "Listos",
+                "Listos", EstadoMovil.VENDIDO, HOY.minusDays(20), HOY.minusDays(1));
+    }
+
+    /** Como {@link #movil}, de baja en NSYS (Removed); {@code cambiado}: la última vez que NSYS cambió su fila. */
+    static MovilNsys deBaja(String imei, String color, String grade, LocalDateTime cambiado) {
+        return new MovilNsys(imei, "BT-9001", "Apple iPhone 13 128GB Blue", grade, "Removed", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 10, 1), null, "i13128" + color + grade, "13", "13", "128GB", color, grade, false, "Listos",
+                "Listos", EstadoMovil.BAJA, HOY.minusDays(20), cambiado);
+    }
+
     /** Un cambio VIGENTE a mano de «Técnico 1» (ID_USU 7), de ayer, que no sustituye a ninguno. */
     static CambioTaller vigente(int id, String imei, DatoTaller dato, String valor, String valorNsys) {
         return vigente(id, imei, dato, valor, valorNsys, HOY.minusDays(1));

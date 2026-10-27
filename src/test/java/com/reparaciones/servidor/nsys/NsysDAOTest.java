@@ -433,4 +433,42 @@ class NsysDAOTest {
         assertEquals(Map.of(new ClaveMovil("350000000000001", "BT-9001"), new BigDecimal("412.35")),
                 dao.costes(List.of(new ClaveMovil("350000000000001", "BT-9001"))));
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: trabajos con su fecha (spec §4.1 y §6)
+
+    @Test void lasHorasDeMadridPasanAUtcParaPreguntarALaBd() {
+        assertEquals(Timestamp.valueOf(LocalDateTime.of(2026, 10, 22, 10, 49)), NsysDAO.madridAUtc(LocalDateTime.of(2026, 10, 22, 12, 49)),
+                "verano, +2");
+        assertEquals(Timestamp.valueOf(LocalDateTime.of(2026, 1, 12, 11, 1)), NsysDAO.madridAUtc(LocalDateTime.of(2026, 1, 12, 12, 1)),
+                "invierno, +1");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void losTrabajosDesdeUnaHoraVanEnUnaConsultaConLaHoraEnUtc() {
+        assertEquals("SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG FROM Reparacion r WHERE r.FECHA_ASIG >= ?", NsysDAO.SQL_TRABAJOS_DESDE);
+        assertTrue(dao.trabajosDesde(LocalDateTime.of(2026, 10, 22, 12, 49)).isEmpty());
+        verify(jdbc).query(eq(NsysDAO.SQL_TRABAJOS_DESDE + NsysDAO.ORDEN_TRABAJOS), any(RowMapper.class),
+                eq(Timestamp.valueOf(LocalDateTime.of(2026, 10, 22, 10, 49))));
+    }
+
+    @Test void losTrabajosConFechaDeUnosImeisVanEnTandasYSinImeisNoConsulta() {
+        assertTrue(dao.trabajosDe(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+        List<String> imeis = new ArrayList<>();
+        for (int n = 0; n < 501; n++) imeis.add(String.format("3500000000%05d", n));
+        assertTrue(dao.trabajosDe(imeis).isEmpty());
+        List<String> sql = mockingDetails(jdbc).getInvocations().stream()
+                .filter(inv -> inv.getMethod().getName().equals("query")).map(inv -> inv.getArgument(0).toString()).toList();
+        assertEquals(2, sql.size(), "500 + 1");
+        assertEquals(NsysDAO.SQL_FECHAS_DE_IMEIS + "?)" + NsysDAO.ORDEN_TRABAJOS, sql.get(1));
+    }
+
+    @Test void unTrabajoConSuFechaEnMadrid() throws SQLException {
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("IMEI")).thenReturn("350000000000001");
+        when(rs.getString("ID_REP")).thenReturn("R20261026_201");
+        when(rs.getTimestamp("FECHA_ASIG")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2026, 10, 26, 16, 28)));
+        assertEquals(new NsysDAO.TrabajoFecha("350000000000001", "R20261026_201", LocalDateTime.of(2026, 10, 26, 17, 28)),
+                NsysDAO.trabajoFecha(rs, 0), "UTC → Madrid (invierno, +1)");
+    }
 }
