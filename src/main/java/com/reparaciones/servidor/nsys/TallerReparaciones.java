@@ -60,7 +60,8 @@ public class TallerReparaciones {
 
     /** Un guardado: las R… de una misma llamada («Terminar asignación», «✓ Guardar fila» o una fila editada), en el orden de
      *  sus filas salvo el chasis, que va primero (0.9.21.1, ver EfectoTaller). Cada R… que cambia algo crea sus propios
-     *  cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. */
+     *  cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. Un chasis que da letra a un móvil sin grado
+     *  aplica su batería recordada (0.9.22 pieza 4) y la da por usada. */
     public void aplicar(String imei, List<PiezaGuardada> guardado, int idUsu) {
         List<PiezaTaller> piezas = piezas(guardado.stream().filter(p -> esReparacion(p.idRep())).toList());
         if (piezas.isEmpty() || !tallerDao.bloquear(imei)) return;
@@ -68,8 +69,10 @@ public class TallerReparaciones {
         if (movil.isEmpty()) return;
         MovilNsys m = movil.get();
         List<CambioTaller> vigentes = tallerDao.vigentes(List.of(m.imeiSn()));
+        List<BateriaRecordada> recordadas = tallerDao.bateriasRecordadas(List.of(m.imeiSn()));
         EfectoTaller.Resultado r = EfectoTaller.calcular(m, LoQueVale.valor(vigentes, DatoTaller.COLOR, m),
-                LoQueVale.valor(vigentes, DatoTaller.GRADO, m), piezas, colorDeChasis(m));
+                LoQueVale.valor(vigentes, DatoTaller.GRADO, m), piezas, colorDeChasis(m),
+                BateriaRecordada.ultima(recordadas).orElse(null));
         LocalDateTime ahora = ahora();
         for (EfectoTaller.Paso p : r.pasos()) {
             PiezaTaller pieza = p.pieza();
@@ -81,6 +84,9 @@ public class TallerReparaciones {
                 tallerDao.avisar(new AvisoTaller.Nuevo(m.imeiSn(), pieza.idRep(), AvisoTaller.Tipo.SIN_GRADO, null,
                         DatoTaller.GRADO, p.gradoSinCalcular(), null, pieza.texto()), idUsu, ahora);
         }
+        // 0.9.22 pieza 4 (§5.2): si un chasis aplicó la batería recordada, esa y las anteriores del móvil quedan usadas.
+        if (r.recordadaUsada())
+            tallerDao.usarBaterias(recordadas.stream().map(BateriaRecordada::idAviso).toList(), r.gradoDespues(), ahora);
     }
 
     // ---------------------------------------------------------------- editar y borrar (spec §2.3)
@@ -152,6 +158,7 @@ public class TallerReparaciones {
         ValoresTaller antes = new ValoresTaller(LoQueVale.valor(vigentes, DatoTaller.COLOR, m),
                 LoQueVale.valor(vigentes, DatoTaller.GRADO, m));
         Function<String, Optional<String>> colorDe = colorDeChasis(m);
+        BateriaRecordada recordada = BateriaRecordada.ultima(tallerDao.bateriasRecordadas(List.of(m.imeiSn()))).orElse(null);
         String color = antes.color();
         String grado = antes.grado();
         boolean sinColor = false;
@@ -164,7 +171,8 @@ public class TallerReparaciones {
             List<CambioTaller> trasDeshacer = planDeshacer(todos, f.idRep()).vigentes(vigentes);
             EfectoTaller.Resultado r = EfectoTaller.calcular(m, LoQueVale.valor(trasDeshacer, DatoTaller.COLOR, m),
                     LoQueVale.valor(trasDeshacer, DatoTaller.GRADO, m),
-                    piezas(List.of(new PiezaGuardada(f.idRep(), f.idCom(), f.reutilizada()))), colorDe);
+                    piezas(List.of(new PiezaGuardada(f.idRep(), f.idCom(), f.reutilizada()))), colorDe, recordada);
+            if (r.recordadaUsada()) recordada = null;
             color = r.colorDespues();
             grado = r.gradoDespues();
             sinColor = r.colorSinDeducir();
@@ -173,7 +181,7 @@ public class TallerReparaciones {
         List<PiezaTaller> nuevas = piezas(filas.stream().filter(f -> f.idRep() == null)
                 .map(f -> new PiezaGuardada(null, f.idCom(), f.reutilizada())).toList());
         if (!nuevas.isEmpty()) {
-            EfectoTaller.Resultado r = EfectoTaller.calcular(m, color, grado, nuevas, colorDe);
+            EfectoTaller.Resultado r = EfectoTaller.calcular(m, color, grado, nuevas, colorDe, recordada);
             color = r.colorDespues();
             grado = r.gradoDespues();
             sinColor |= r.colorSinDeducir();

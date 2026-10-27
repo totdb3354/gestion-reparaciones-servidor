@@ -277,4 +277,25 @@ class TallerReparacionesTest {
         assertEquals(new PreviaTaller(true, new ValoresTaller("Rojo", "B"), new ValoresTaller("Rojo", "B"), false, false),
                 servicio.previsualizar(new PeticionPreviaTaller(IMEI, List.of(new FilaPreviaTaller(R1, 131, false)))));
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: la batería recordada (spec §5.2)
+
+    @Test void unChasisDespuesDeUnaBateriaNuevaRecordadaQuedaEnA100YLaDaPorUsada() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(
+                new BateriaRecordada(40, IMEI, R1, true, "batería bati13 nueva", 8, AHORA.minusSeconds(4))));
+        servicio.aplicar(IMEI, List.of(fila(R2, 133, true)), 8);
+        verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", VIGENTE)), R2, 8,
+                "chasis chai13blue reutilizado", AHORA);
+        verify(taller).usarBaterias(List.of(40), "A100", AHORA);
+        verify(taller, never()).avisar(any(), anyInt(), any());
+    }
+
+    @Test void sinChasisLaBateriaRecordadaSigue() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(
+                new BateriaRecordada(40, IMEI, R1, true, "batería bati13 nueva", 8, AHORA.minusSeconds(4))));
+        servicio.aplicar(IMEI, List.of(fila(R2, 101, false)), 8);
+        verify(taller, never()).usarBaterias(any(), any(), any());
+    }
 }

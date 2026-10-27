@@ -215,4 +215,48 @@ class EfectoTallerTest {
         assertTrue(r.pasos().get(0).nuevos().isEmpty());
         assertNull(r.pasos().get(0).gradoSinCalcular());
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: la batería recordada (spec §5.2)
+
+    private static BateriaRecordada recordada(boolean nueva) {
+        return new BateriaRecordada(40, IMEI, "R0", nueva, nueva ? "batería bati13 nueva" : "batería bati13 reutilizada", 8, null);
+    }
+
+    @Test void unChasisSobreUnComoNaAplicaLaBateriaRecordada() {
+        MovilNsys na = movil(IMEI, "Azul", "n/a");
+        EfectoTaller.Resultado nueva = EfectoTaller.calcular(na, "Azul", "n/a", List.of(pieza("R1", "chai13blue", CHASIS, false)),
+                COLORES, recordada(true));
+        assertEquals(List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", VIGENTE)), nueva.pasos().get(0).nuevos());
+        assertTrue(nueva.recordadaUsada());
+        EfectoTaller.Resultado reutilizada = EfectoTaller.calcular(na, "Azul", "n/a",
+                List.of(pieza("R1", "chai13blue", CHASIS, false)), COLORES, recordada(false));
+        assertEquals("A", reutilizada.gradoDespues());
+        assertTrue(reutilizada.recordadaUsada());
+    }
+
+    @Test void conLetraOIgnoradoLaBateriaRecordadaNoSeUsa() {
+        for (String grado : List.of("B", "ID")) {
+            EfectoTaller.Resultado r = EfectoTaller.calcular(movil(IMEI, "Azul", grado), "Azul", grado,
+                    List.of(pieza("R1", "chai13blue", CHASIS, false)), COLORES, recordada(true));
+            assertFalse(r.recordadaUsada(), grado);
+        }
+        EfectoTaller.Resultado b = EfectoTaller.calcular(movil(IMEI, "Azul", "B"), "Azul", "B",
+                List.of(pieza("R1", "chai13blue", CHASIS, false)), COLORES, recordada(true));
+        assertEquals("A", b.gradoDespues(), "con letra, el chasis hace lo de siempre");
+    }
+
+    @Test void unaBateriaDelMismoGuardadoVaDespuesDeLaRecordada() {
+        EfectoTaller.Resultado r = EfectoTaller.calcular(movil(IMEI, "Azul", "n/a"), "Azul", "n/a",
+                List.of(pieza("R2", "bati13", BATERIA, false), pieza("R1", "chai13blue", CHASIS, false)), COLORES, recordada(true));
+        assertEquals("A", r.gradoDespues(), "el chasis pone A100 con la recordada y la batería reutilizada de este guardado le quita el 100");
+        assertTrue(r.recordadaUsada());
+        assertFalse(r.gradoSinCalcular());
+    }
+
+    @Test void sinBateriaRecordadaComoAntes() {
+        EfectoTaller.Resultado r = EfectoTaller.calcular(movil(IMEI, "Azul", "n/a"), "Azul", "n/a",
+                List.of(pieza("R1", "chai13blue", CHASIS, false)), COLORES);
+        assertEquals("A", r.gradoDespues());
+        assertFalse(r.recordadaUsada());
+    }
 }
