@@ -482,4 +482,70 @@ class PorPasarNsysTest {
         when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "B")));
         assertTrue(servicio.tarjetas().sinGrado().isEmpty());
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: baterías tras la importación (spec §5.2)
+
+    private static BateriaRecordada bateria(int id, boolean nueva, LocalDateTime fecha) {
+        return new BateriaRecordada(id, IMEI, "R20261024_" + id, nueva, nueva ? "batería bati13 nueva" : "batería bati13 reutilizada",
+                8, fecha);
+    }
+
+    @Test void conLetraDeNsysLaBateriaNuevaRecordadaPoneEl100ANombreDeSuReparacion() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A")));
+        when(tallerDao.usarBaterias(any(), any(), any())).thenReturn(1);
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "A", CambioTaller.Estado.VIGENTE)), "R20261024_40",
+                8, "batería bati13 nueva", AHORA);
+        verify(tallerDao).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
+    @Test void conLetraDelTallerTambienSeAplica() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(vigente(9, IMEI, GRADO, "A", "n/a")));
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", CambioTaller.Estado.VIGENTE)),
+                "R20261024_40", 8, "batería bati13 nueva", AHORA);
+        verify(tallerDao).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
+    @Test void siYaLlevaEl100NoCambiaNadaYLaDaPorUsada() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A100")));
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(tallerDao).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
+    @Test void conUnGradoIgnoradoSeDaPorUsadaSinCambiar() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "F")));
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(tallerDao).usarBaterias(List.of(40), "F", AHORA);
+    }
+
+    @Test void sinGradoTodaviaSigueRecordada() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao, never()).usarBaterias(any(), any(), any());
+        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test void conVariasValeLaMasRecienteYSeUsanTodas() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(2)), bateria(41, false, AHORA.minusDays(1))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A100")));
+        servicio.usarBateriasRecordadas();
+        verify(tallerDao).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A", "A100", CambioTaller.Estado.VIGENTE)), "R20261024_41",
+                8, "batería bati13 reutilizada", AHORA);
+        verify(tallerDao).usarBaterias(List.of(40, 41), "A", AHORA);
+    }
+
+    @Test void sinBateriasRecordadasNoLeeNadaMas() {
+        servicio.usarBateriasRecordadas();
+        verify(nsys, never()).porImeis(any());
+        verify(tallerDao, never()).vigentes(any());
+    }
 }

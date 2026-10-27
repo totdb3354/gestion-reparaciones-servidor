@@ -189,6 +189,7 @@ public class ImportadorNsys {
             if (cerrarTaller()) {
                 repasarHechos(f.fecha());
                 repasarDescartes();
+                usarBaterias();
             }
             return true;
         } catch (FormatoItemsException e) {
@@ -332,6 +333,17 @@ public class ImportadorNsys {
             porPasar.repasarDescartes();
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudieron repasar los descartes tras la importación", e);
+        }
+    }
+
+    /** Tras el repaso de los descartes, las baterías recordadas (spec 0.9.22 pieza 4 §5.2): las de los móviles que ya tienen letra
+     *  se aplican y se dan por usadas. Con la misma condición (cierre bueno); si falla, se avisa en el registro del servidor y se
+     *  repite con el siguiente fichero. */
+    private void usarBaterias() {
+        try {
+            porPasar.usarBateriasRecordadas();
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron usar las baterías recordadas tras la importación", e);
         }
     }
 
