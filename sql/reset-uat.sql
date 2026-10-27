@@ -23,6 +23,9 @@ DELETE FROM Reparacion_borrador;
 UPDATE Reparacion SET ID_REP_ANTERIOR = NULL;
 DELETE FROM Reparacion;
 
+-- Descartes de «No está en NSYS» (0.9.22 pieza 3): van por IMEI, sin clave ajena al resto.
+DELETE FROM Taller_descarte;
+
 -- 5a. SKU del taller (0.9.21): va por IMEI, así que cae con el espejo. Romper la auto-referencia antes de borrar.
 DELETE FROM Taller_hecho;
 UPDATE Taller_cambio SET ID_CAMBIO_ANTERIOR = NULL;

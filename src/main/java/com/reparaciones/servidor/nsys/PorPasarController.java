@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3 y §4): las listas, «Hecho», «Revisado» y las plantillas para subir a
+/** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3 y §4): las listas, «Hecho», «Revisado», los descartes de «No está en NSYS» (pieza 3) y las plantillas para subir a
  *  NSYS. Junto a StockTelefonosController, con la misma guarda (SUPERTECNICO y ADMIN). La lista de la 0.9.21
  *  (GET /api/stock-telefonos/por-pasar) sigue allí para la web anterior. */
 @RestController
@@ -64,6 +64,20 @@ public class PorPasarController {
         porPasar.revisado(idAviso, principal.getIdUsu());
     }
 
+    /** «descartar» de una fila de «No está en NSYS» (pieza 3 §4.3), con motivo. */
+    @PutMapping("/descarte")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void descartar(@RequestBody PeticionDescarte peticion, @AuthenticationPrincipal UsuarioPrincipal principal) {
+        porPasar.descartar(peticion.imeiSn(), peticion.motivo(), principal.getIdUsu());
+    }
+
+    /** «deshacer» de un descarte («Ver descartados»). */
+    @DeleteMapping("/descarte")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deshacerDescarte(@RequestBody PeticionDeshacerDescarte peticion, @AuthenticationPrincipal UsuarioPrincipal principal) {
+        porPasar.deshacerDescarte(peticion.imeiSn(), principal.getIdUsu());
+    }
+
     @GetMapping(value = "/plantilla-color", produces = XLSX)
     public ResponseEntity<byte[]> plantillaColor() {
         return descarga(porPasar.plantillaColor());
@@ -86,4 +100,10 @@ public class PorPasarController {
 
     /** Esquema PorPasarPeticionDeshacer. */
     record PeticionDeshacer(String tarjeta, String imeiSn) {}
+
+    /** Esquema PorPasarPeticionDescarte. */
+    record PeticionDescarte(String imeiSn, String motivo) {}
+
+    /** Esquema PorPasarPeticionDeshacerDescarte. */
+    record PeticionDeshacerDescarte(String imeiSn) {}
 }

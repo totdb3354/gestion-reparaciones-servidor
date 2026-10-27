@@ -22,7 +22,8 @@ class AltaTallerTest {
                 trabajo("350000000000088", "A20261006_1", 0, true, "Técnico 2", null),
                 trabajo("350000000000088", "R20261006_57", 0, true, "Técnico 2", "AMAZON"),
                 trabajo("350000000000088", "A20261010_4", 4, false, "Técnico 1", null)));
-        assertEquals(List.of(new AltaTaller("350000000000088", "14", "A20261010_4", true, "Técnico 1", null, 2, DIA)), altas);
+        assertEquals(List.of(new AltaTaller("350000000000088", "14", "A20261010_4", true, "Técnico 1", null, 2, DIA,
+                DIA.plusDays(4))), altas);
     }
 
     @Test void unoPorImeiEnElOrdenEnQueLlegan() {
@@ -34,6 +35,21 @@ class AltaTallerTest {
         assertFalse(altas.get(0).abierto());
         assertEquals(1, altas.get(0).trabajos());
         assertEquals("AMAZON", altas.get(1).cliente());
+    }
+
+    @Test void terminarLaAsignacionNoMueveUltimoEnPorqueSuFilaRNaceConLaHoraDelCierre() {
+        AltaTaller.Trabajo a = new AltaTaller.Trabajo("350000000000088", "A20261006_1", DIA, DIA.plusHours(2), "Técnico 2", "14", null);
+        AltaTaller.Trabajo r = new AltaTaller.Trabajo("350000000000088", "R20261006_57", DIA.plusHours(2), DIA.plusHours(2), "Técnico 2", "14", null);
+        AltaTaller alta = AltaTaller.de(List.of(a, r)).get(0);
+        assertEquals("R20261006_57", alta.ultimo());
+        assertEquals(DIA, alta.ultimoEn());
+    }
+
+    @Test void sinAsignacionesUltimoEnEsLaFechaDeSuUltimaFila() {
+        List<AltaTaller> altas = AltaTaller.de(List.of(
+                trabajo("350000000000099", "R20261006_57", 0, true, "Técnico 2", null),
+                trabajo("350000000000099", "R20261008_3", 2, true, "Técnico 2", null)));
+        assertEquals(DIA.plusDays(2), altas.get(0).ultimoEn());
     }
 
     @Test void sinTrabajosNoHayAltas() {

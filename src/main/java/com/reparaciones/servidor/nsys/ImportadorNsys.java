@@ -186,7 +186,10 @@ public class ImportadorNsys {
             guardarCostes(filas);
             String modelos = rellenarModelos();
             dao.terminarImportacion(id, OK, filas.size(), r.eventos().size(), resumen(r, repetidas, modelos), ahora());
-            if (cerrarTaller()) repasarHechos(f.fecha());
+            if (cerrarTaller()) {
+                repasarHechos(f.fecha());
+                repasarDescartes();
+            }
             return true;
         } catch (FormatoItemsException e) {
             dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
@@ -318,6 +321,17 @@ public class ImportadorNsys {
             porPasar.repasarHechos(exportacion);
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudieron repasar las marcas «Hecho» tras la importación", e);
+        }
+    }
+
+    /** Tras el repaso de las marcas, el de los descartes de «No está en NSYS» (spec 0.9.22 pieza 3 §4.4): fuera los de IMEI que
+     *  NSYS ya conoce. Con la misma condición (cierre bueno); si falla, se avisa en el registro del servidor y se repite con el
+     *  siguiente fichero. */
+    private void repasarDescartes() {
+        try {
+            porPasar.repasarDescartes();
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron repasar los descartes tras la importación", e);
         }
     }
 

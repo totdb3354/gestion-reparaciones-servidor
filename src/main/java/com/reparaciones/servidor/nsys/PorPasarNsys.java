@@ -21,8 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado» y el repaso de las marcas tras cada
- *  importación. Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
+/** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
+ *  importación y los descartes de «No está en NSYS» (pieza 3). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
 @Service
 public class PorPasarNsys {
 
@@ -32,35 +32,51 @@ public class PorPasarNsys {
     static final int MAX_MARCAR = 500;
     /** El largo de Taller_hecho.IMEI_SN. */
     static final int MAX_IMEI = 40;
+    static final String ACCION_DESCARTAR = "DESCARTAR_ALTA_NSYS";
+    static final String ACCION_DESHACER_DESCARTE = "DESHACER_DESCARTE_NSYS";
+    /** El largo de Taller_descarte.MOTIVO. */
+    static final int MAX_MOTIVO = 500;
 
     private final TallerNsys taller;
     private final TallerDAO tallerDao;
     private final NsysDAO nsysDao;
     private final HechoDAO hechoDao;
+    private final DescarteDAO descarteDao;
     private final LogDAO logDao;
     private final Clock clock;
 
     @Autowired
-    public PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, LogDAO logDao) {
-        this(taller, tallerDao, nsysDao, hechoDao, logDao, Clock.system(ImportadorNsys.MADRID));
+    public PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao,
+                        LogDAO logDao) {
+        this(taller, tallerDao, nsysDao, hechoDao, descarteDao, logDao, Clock.system(ImportadorNsys.MADRID));
     }
 
-    PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, LogDAO logDao, Clock clock) {
+    PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao, LogDAO logDao,
+                 Clock clock) {
         this.taller = taller;
         this.tallerDao = tallerDao;
         this.nsysDao = nsysDao;
         this.hechoDao = hechoDao;
+        this.descarteDao = descarteDao;
         this.logDao = logDao;
         this.clock = clock;
     }
 
-    /** Las cuatro tarjetas (§3), con una lectura de cada cosa. */
+    /** Las cuatro tarjetas (§3) y los descartados de «No está en NSYS» (pieza 3), con una lectura de cada cosa. */
     public TarjetasPorPasar tarjetas() {
         List<TallerNsys.MovilPorPasar> moviles = movilesEnEmpresa();
         Map<String, HechoTaller> marcas = TarjetasNsys.porClave(hechoDao.todas());
         List<AvisoTaller> avisos = tallerDao.avisosPorRevisar();
+        List<AltaTaller> altas = altas();
+        Map<String, DescarteTaller> descartes = descartes(altas);
         return new TarjetasPorPasar(TarjetasNsys.color(moviles, marcas), TarjetasNsys.grado(moviles, marcas),
-                TarjetasNsys.altas(altas(), marcas), TarjetasNsys.revisar(avisos, espejo(avisos)));
+                TarjetasNsys.altas(altas, marcas, descartes), TarjetasNsys.revisar(avisos, espejo(avisos)),
+                TarjetasNsys.descartadas(altas, descartes));
+    }
+
+    /** Los descartes por IMEI (pieza 3); sin filas en «No está en NSYS» no los lee. */
+    private Map<String, DescarteTaller> descartes(List<AltaTaller> altas) {
+        return altas.isEmpty() ? Map.of() : TarjetasNsys.descartesPorClave(descarteDao.todos());
     }
 
     /** Los móviles de «Cambio de color» y «Cambio de grado»: los de «Por pasar a NSYS» que NSYS tiene en la empresa. Un vendido o de
@@ -103,13 +119,52 @@ public class PorPasarNsys {
         hechoDao.marcar(t, limpios, idUsu, ahora());
     }
 
+    /** El IMEI de una petición, sin espacios a los lados: 400 si falta o pasa de {@value #MAX_IMEI} caracteres. */
+    private static String imei(String imeiSn) {
+        if (imeiSn == null || imeiSn.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta el IMEI");
+        String limpio = imeiSn.strip();
+        if (limpio.length() > MAX_IMEI)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un IMEI no puede pasar de " + MAX_IMEI + " caracteres");
+        return limpio;
+    }
+
     /** «deshacer» de una marca. */
     public void desmarcar(String tarjeta, String imeiSn) {
         TarjetaHecho t = tarjeta(tarjeta);
-        if (imeiSn == null || imeiSn.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta el IMEI");
-        if (imeiSn.strip().length() > MAX_IMEI)
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Un IMEI no puede pasar de " + MAX_IMEI + " caracteres");
-        hechoDao.desmarcar(t, imeiSn.strip());
+        hechoDao.desmarcar(t, imei(imeiSn));
+    }
+
+    /** «descartar» de «No está en NSYS» (pieza 3 §4.3): guarda el descarte (o sustituye el que hubiera), quita la marca «Hecho» de
+     *  esa fila y lo apunta en el registro de actividad con el motivo. READ COMMITTED, como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void descartar(String imeiSn, String motivo, int idUsu) {
+        String imei = imei(imeiSn);
+        String limpio = motivo == null ? "" : motivo.strip();
+        if (limpio.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta el motivo");
+        if (limpio.length() > MAX_MOTIVO)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El motivo no puede pasar de " + MAX_MOTIVO + " caracteres");
+        descarteDao.descartar(imei, idUsu, limpio, ahora());
+        hechoDao.desmarcar(TarjetaHecho.ALTA, imei);
+        logDao.insertar(idUsu, ACCION_DESCARTAR, "IMEI: " + imei, limpio);
+    }
+
+    /** «deshacer» de «Ver descartados»: quita el descarte y, si había uno, lo apunta. READ COMMITTED, como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void deshacerDescarte(String imeiSn, int idUsu) {
+        String imei = imei(imeiSn);
+        if (descarteDao.deshacer(imei) > 0) logDao.insertar(idUsu, ACCION_DESHACER_DESCARTE, "IMEI: " + imei, null);
+    }
+
+    /** Tras cada importación ACTUAL que acaba en OK (pieza 3 §4.4): fuera los descartes de los IMEI que NSYS ya conoce. Los
+     *  superados por un trabajo nuevo se quedan (dan el aviso de la fila). Sin descartes no lee el espejo. */
+    public void repasarDescartes() {
+        List<DescarteTaller> descartes = descarteDao.todos();
+        if (descartes.isEmpty()) return;
+        Set<String> espejo = nsysDao.clavesDelEspejo();
+        List<String> enNsys = descartes.stream().map(DescarteTaller::imeiSn).filter(i -> espejo.contains(NsysDAO.claveCruce(i))).toList();
+        if (enNsys.isEmpty()) return;
+        descarteDao.quitar(enNsys);
+        log.info("NSYS: descartes de «No está en NSYS» quitados: {} (ya en NSYS)", enNsys.size());
     }
 
     /** «Revisado» (§3.5): quién y cuándo en el aviso y una línea en el registro de actividad. 404 si el aviso no existe; 400 si no
@@ -173,9 +228,12 @@ public class PorPasarNsys {
         return new Plantilla("NSYS_color_" + LocalDate.now(clock) + ".xlsx", PlantillaNsys.color(filas), filas.size());
     }
 
-    /** La plantilla de altas (spec §4): los IMEI de «No está en NSYS» sin marca «Hecho» que valga, con el modelo del taller. */
+    /** La plantilla de altas (spec §4): los IMEI de «No está en NSYS» sin marca «Hecho» que valga ni descarte, con el modelo del
+     *  taller. */
     public Plantilla plantillaAltas() {
-        List<PlantillaNsys.FilaAlta> filas = TarjetasNsys.altas(altas(), TarjetasNsys.porClave(hechoDao.todas())).stream()
+        List<AltaTaller> altas = altas();
+        List<PlantillaNsys.FilaAlta> filas = TarjetasNsys.altas(altas, TarjetasNsys.porClave(hechoDao.todas()), descartes(altas))
+                .stream()
                 .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()))
                 .map(f -> new PlantillaNsys.FilaAlta(f.imeiSn(), PlantillaNsys.nombreModelo(f.modelo()))).toList();
         return new Plantilla("NSYS_altas_" + LocalDate.now(clock) + ".xlsx", PlantillaNsys.altas(filas), filas.size());

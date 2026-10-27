@@ -526,11 +526,13 @@ class OpenApiContractTest {
         for (String ruta : List.of("/api/stock-telefonos/por-pasar", "/api/stock-telefonos/{imeiSn}/colores",
                 "/api/stock-telefonos/{imeiSn}/taller", "/api/stock-telefonos/por-pasar/tarjetas",
                 "/api/stock-telefonos/por-pasar/hecho", "/api/stock-telefonos/por-pasar/avisos/{idAviso}/revisado",
-                "/api/stock-telefonos/por-pasar/plantilla-color", "/api/stock-telefonos/por-pasar/plantilla-altas")) {
+                "/api/stock-telefonos/por-pasar/plantilla-color", "/api/stock-telefonos/por-pasar/plantilla-altas",
+                "/api/stock-telefonos/por-pasar/descarte")) {
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         }
         for (String esquema : List.of("TarjetasPorPasar", "FilaColorNsys", "FilaGradoNsys", "FilaAltaNsys", "FilaRevisarNsys",
-                "PorPasarPeticionHecho", "PorPasarPeticionDeshacer")) {
+                "PorPasarPeticionHecho", "PorPasarPeticionDeshacer", "FilaDescartadaNsys", "PorPasarPeticionDescarte",
+                "PorPasarPeticionDeshacerDescarte")) {
             assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "put").endsWith("/StockTelefonosPeticionTaller"));
@@ -548,6 +550,14 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "OpcionesTaller", "colores", "skus");
         assertNullable(esquemas, "OpcionColor", "producto");
         assertNoNullable(esquemas, "OpcionColor", "color");
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/por-pasar/descarte", "put").endsWith("/PorPasarPeticionDescarte"));
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/por-pasar/descarte", "delete").endsWith("/PorPasarPeticionDeshacerDescarte"));
+        assertNoNullable(esquemas, "PorPasarPeticionDescarte", "imeiSn", "motivo");
+        assertNoNullable(esquemas, "PorPasarPeticionDeshacerDescarte", "imeiSn");
+        assertNullable(esquemas, "FilaAltaNsys", "descartadoAntesPor", "descartadoAntesEn", "descartadoAntesMotivo");
+        assertNullable(esquemas, "FilaDescartadaNsys", "modelo", "descartadoPor");
+        assertNoNullable(esquemas, "FilaDescartadaNsys", "imeiSn", "ultimoTrabajo", "categoria", "descartadoEn", "motivo");
+        assertNoNullable(esquemas, "TarjetasPorPasar", "descartadas");
         assertNoNullable(esquemas, "SkuMaestro", "color", "grado", "sku");
         assertNullable(esquemas, "FilaColorNsys", "colorDe", "colorA", "ponerProducto", "hechoPor", "hechoEn", "hechoVolvio");
         assertNullable(esquemas, "FilaGradoNsys", "gradoDe", "gradoA", "hechoEn", "hechoVolvio");
