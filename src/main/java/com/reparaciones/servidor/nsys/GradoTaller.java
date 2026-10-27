@@ -48,9 +48,4 @@ public final class GradoTaller {
         boolean cien = tipo == PiezaTaller.Tipo.BATERIA ? nueva : f.group(3) != null;
         return Optional.of(ms + letra + (cien ? "100" : ""));
     }
-
-    /** NSYS aún no le ha puesto grado: «n/a» o vacío. */
-    static boolean sinGrado(String grado) {
-        return grado == null || grado.isBlank() || grado.strip().equalsIgnoreCase("n/a");
-    }
 }

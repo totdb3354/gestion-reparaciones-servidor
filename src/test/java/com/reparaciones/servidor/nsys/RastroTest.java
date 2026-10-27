@@ -229,4 +229,28 @@ class RastroTest {
         assertEquals(new EventoRastro(hora.plusSeconds(4), false, "TALLER", "TALLER_BATERIA_USADA", null, "n/a", "A100", null,
                 "R20261026_205", null, null, null, null, "GRADO", "REPARACION", "batería bati13 nueva"), rastro.get(0));
     }
+
+    /** Un «Grado sin calcular» viejo dado por bueno a mano (de antes de la pieza 4, o de los que marca el guion de producción) no es
+     *  una batería usada por el ERP: solo darla por usada escribe A; «✓ Revisado» y el guion no. */
+    @Test void unGradoSinCalcularRevisadoAManoSaleComoRevisadoConQuienLoReviso() {
+        LocalDateTime hora = LocalDateTime.of(2026, 10, 21, 9, 30);
+        AvisoTaller a = new AvisoTaller(41, "350000000000001", "R20261021_7", AvisoTaller.Tipo.SIN_GRADO, null, DatoTaller.GRADO,
+                "n/a", null, "tapa trasera tapi13blue nueva", 8, "Técnico 2", hora, "Supertécnico 1", hora.plusHours(2));
+        List<EventoRastro> rastro = Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of(a));
+        assertEquals(List.of("TALLER_REVISADO_SIN_GRADO", "TALLER_SIN_GRADO"), rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(new EventoRastro(hora.plusHours(2), false, "TALLER", "TALLER_REVISADO_SIN_GRADO", null, "n/a", null, null,
+                "R20261021_7", "Supertécnico 1", null, null, null, "GRADO", "MANO", "tapa trasera tapi13blue nueva"), rastro.get(0));
+    }
+
+    /** Si se borra el usuario que lo revisó, REVISADO_POR queda a null (la FK es ON DELETE SET NULL) y el nombre no sale; sin A
+     *  sigue siendo un «Revisado» a mano, no «Batería resuelta por el ERP». */
+    @Test void unGradoSinCalcularRevisadoPorUnUsuarioBorradoSigueSiendoRevisadoAMano() {
+        LocalDateTime hora = LocalDateTime.of(2026, 10, 21, 9, 30);
+        AvisoTaller a = new AvisoTaller(42, "350000000000001", "R20261021_8", AvisoTaller.Tipo.SIN_GRADO, null, DatoTaller.GRADO,
+                "n/a", null, "tapa trasera tapi13blue nueva", 8, "Técnico 2", hora, null, hora.plusHours(2));
+        List<EventoRastro> rastro = Rastro.unir(List.of(), List.of(), List.of(), List.of(), List.of(a));
+        assertEquals(List.of("TALLER_REVISADO_SIN_GRADO", "TALLER_SIN_GRADO"), rastro.stream().map(EventoRastro::tipo).toList());
+        assertEquals(new EventoRastro(hora.plusHours(2), false, "TALLER", "TALLER_REVISADO_SIN_GRADO", null, "n/a", null, null,
+                "R20261021_8", null, null, null, null, "GRADO", "MANO", "tapa trasera tapi13blue nueva"), rastro.get(0));
+    }
 }
