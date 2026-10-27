@@ -40,8 +40,9 @@ class PorPasarNsysTest {
     private final TallerDAO tallerDao = mock(TallerDAO.class);
     private final NsysDAO nsys = mock(NsysDAO.class);
     private final HechoDAO hechos = mock(HechoDAO.class);
+    private final DescarteDAO descartes = mock(DescarteDAO.class);
     private final LogDAO registro = mock(LogDAO.class);
-    private final PorPasarNsys servicio = new PorPasarNsys(taller, tallerDao, nsys, hechos, registro,
+    private final PorPasarNsys servicio = new PorPasarNsys(taller, tallerDao, nsys, hechos, descartes, registro,
             Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     private static HttpStatusCode estado(Executable accion) {
@@ -82,6 +83,7 @@ class PorPasarNsysTest {
         assertTrue(t.revisar().isEmpty());
         verify(nsys, never()).altas(any());
         verify(nsys, never()).porImeis(any());
+        verify(descartes, never()).todos();
     }
 
     @Test void marcarLimpiaLosImeisYPoneLaHoraDeMadrid() {
@@ -288,5 +290,102 @@ class PorPasarNsysTest {
         when(taller.movilesPorPasar()).thenReturn(List.of(conAmbosCambios(IMEI, EstadoMovil.VENDIDO)));
         servicio.repasarHechos(AHORA.minusMinutes(30));
         verify(hechos).repasar(List.of(deVendido), List.of(), AHORA);
+    }
+
+    private static AltaTaller alta(String imei, LocalDateTime ultimoEn) {
+        return new AltaTaller(imei, "14", "R20261006_57", false, "Técnico 2", null, 1, AHORA.minusDays(19), ultimoEn);
+    }
+
+    @Test void lasTarjetasSeparanLosDescartados() {
+        when(nsys.imeisDelTaller()).thenReturn(List.of("350000000000088", "SIN-IMEI-CAM"));
+        when(nsys.altas(List.of("350000000000088", "SIN-IMEI-CAM"))).thenReturn(List.of(
+                alta("350000000000088", AHORA.minusDays(2)), alta("SIN-IMEI-CAM", AHORA.minusDays(2))));
+        when(descartes.todos()).thenReturn(List.of(new DescarteTaller("sin-imei-cam", 7, "Supertécnico 1", AHORA.minusDays(1),
+                "no es un móvil")));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of("350000000000088"), t.altas().stream().map(FilaAltaNsys::imeiSn).toList());
+        assertEquals(List.of("SIN-IMEI-CAM"), t.descartadas().stream().map(FilaDescartadaNsys::imeiSn).toList());
+    }
+
+    @Test void laPlantillaDeAltasNoLlevaLosDescartados() {
+        when(nsys.imeisDelTaller()).thenReturn(List.of("350000000000088", "SIN-IMEI-CAM"));
+        when(nsys.altas(List.of("350000000000088", "SIN-IMEI-CAM"))).thenReturn(List.of(
+                alta("350000000000088", AHORA.minusDays(2)), alta("SIN-IMEI-CAM", AHORA.minusDays(2))));
+        when(descartes.todos()).thenReturn(List.of(new DescarteTaller("SIN-IMEI-CAM", 7, "Supertécnico 1", AHORA.minusDays(1),
+                "no es un móvil")));
+        assertEquals(1, servicio.plantillaAltas().filas());
+    }
+
+    @Test void descartarGuardaQuitaLaMarcaYLoApuntaConElMotivo() {
+        servicio.descartar(" SIN-IMEI-CAM ", "  no es un móvil, es una cámara ", 7);
+        verify(descartes).descartar("SIN-IMEI-CAM", 7, "no es un móvil, es una cámara", AHORA);
+        verify(hechos).desmarcar(TarjetaHecho.ALTA, "SIN-IMEI-CAM");
+        verify(registro).insertar(7, "DESCARTAR_ALTA_NSYS", "IMEI: SIN-IMEI-CAM", "no es un móvil, es una cámara");
+    }
+
+    @Test void descartarRechazaLoQueNoVale() {
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.descartar(null, "motivo", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.descartar(" ", "motivo", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.descartar("9".repeat(41), "motivo", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.descartar("SIN-IMEI-CAM", null, 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.descartar("SIN-IMEI-CAM", "   ", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.descartar("SIN-IMEI-CAM", "x".repeat(501), 7)));
+        verifyNoInteractions(descartes, hechos, registro);
+        servicio.descartar("SIN-IMEI-CAM", "x".repeat(500), 7);
+        verify(descartes).descartar("SIN-IMEI-CAM", 7, "x".repeat(500), AHORA);
+    }
+
+    @Test void losMensajesDeLos400() {
+        assertEquals("Falta el IMEI", assertThrows(ResponseStatusException.class, () -> servicio.descartar(" ", "m", 7)).getReason());
+        assertEquals("Un IMEI no puede pasar de 40 caracteres",
+                assertThrows(ResponseStatusException.class, () -> servicio.descartar("9".repeat(41), "m", 7)).getReason());
+        assertEquals("Falta el motivo",
+                assertThrows(ResponseStatusException.class, () -> servicio.descartar("SIN-IMEI-CAM", " ", 7)).getReason());
+        assertEquals("El motivo no puede pasar de 500 caracteres",
+                assertThrows(ResponseStatusException.class, () -> servicio.descartar("SIN-IMEI-CAM", "x".repeat(501), 7)).getReason());
+    }
+
+    @Test void deshacerElDescarteSoloApuntaSiHabiaUno() {
+        when(descartes.deshacer("SIN-IMEI-CAM")).thenReturn(1);
+        servicio.deshacerDescarte(" SIN-IMEI-CAM ", 7);
+        verify(registro).insertar(7, "DESHACER_DESCARTE_NSYS", "IMEI: SIN-IMEI-CAM", null);
+        clearInvocations(registro);
+        servicio.deshacerDescarte("350000000000088", 7);
+        verify(descartes).deshacer("350000000000088");
+        verifyNoInteractions(registro);
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.deshacerDescarte(" ", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.deshacerDescarte("9".repeat(41), 7)));
+    }
+
+    /** Como «Revisado»: escritura y línea del registro en la misma transacción, en READ COMMITTED (error 1020 de MariaDB). */
+    @Test void lasEscriturasDelDescarteVanEnReadCommitted() throws NoSuchMethodException {
+        for (var m : List.of(PorPasarNsys.class.getMethod("descartar", String.class, String.class, int.class),
+                PorPasarNsys.class.getMethod("deshacerDescarte", String.class, int.class))) {
+            Transactional t = m.getAnnotation(Transactional.class);
+            assertNotNull(t, m.getName());
+            assertEquals(Isolation.READ_COMMITTED, t.isolation(), m.getName());
+        }
+    }
+
+    @Test void elRepasoQuitaLosDescartesDeImeisQueNsysYaConoce() {
+        when(descartes.todos()).thenReturn(List.of(
+                new DescarteTaller("sin-imei-cam", 7, "Supertécnico 1", AHORA, "no es un móvil"),
+                new DescarteTaller("350000000000088", 7, "Supertécnico 1", AHORA, "móvil de un cliente")));
+        when(nsys.clavesDelEspejo()).thenReturn(Set.of("SIN-IMEI-CAM"));
+        servicio.repasarDescartes();
+        verify(descartes).quitar(List.of("sin-imei-cam"));
+    }
+
+    @Test void sinDescartesElRepasoNoLeeElEspejo() {
+        servicio.repasarDescartes();
+        verify(nsys, never()).clavesDelEspejo();
+        verify(descartes, never()).quitar(any());
+    }
+
+    @Test void siNsysNoConoceNingunoElRepasoNoEscribe() {
+        when(descartes.todos()).thenReturn(List.of(new DescarteTaller("SIN-IMEI-CAM", 7, "Supertécnico 1", AHORA, "no es un móvil")));
+        when(nsys.clavesDelEspejo()).thenReturn(Set.of("350000000000001"));
+        servicio.repasarDescartes();
+        verify(descartes, never()).quitar(any());
     }
 }
