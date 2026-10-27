@@ -164,6 +164,8 @@ public class TallerReparaciones {
                 avisarSinDeshacer(imei, idRep, causa, c, idUsu, ahora);
                 continue;
             }
+            // 0.9.22 pieza 4 (D1): las baterias que se usaron con este grado (mismo instante) vuelven a pendientes.
+            if (c.dato() == DatoTaller.GRADO) tallerDao.reabrirBaterias(imei, c.fecha());
             if (d.vuelve() != null) tallerDao.reactivar(d.vuelve().id());
             String vuelveA = d.vuelve() != null ? d.vuelve().valor() : m.map(c.dato()::deNsys).orElse(c.valorNsys());
             tallerDao.avisar(new AvisoTaller.Nuevo(imei, idRep, AvisoTaller.Tipo.DESHECHO, causa, c.dato(), c.valor(),

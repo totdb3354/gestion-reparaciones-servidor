@@ -301,6 +301,61 @@ class TallerReparacionesTest {
         verify(taller, never()).usarBaterias(any(), any(), any());
     }
 
+    // ---------------------------------------------------------------- 0.9.22 pieza 4 (D1): deshacer un cambio de grado reabre sus baterias
+
+    @Test void borrarElChasisQueDeshaceUnGradoReabreLasBateriasDeLaFechaDeEseCambio() {
+        CambioTaller grado = deReparacion(6, IMEI, GRADO, "A100", "n/a", R1, VIGENTE, null);
+        when(taller.deReparacion(R1)).thenReturn(List.of(grado));
+        when(taller.deImei(IMEI)).thenReturn(List.of(grado));
+        servicio.deshacer(R1, AvisoTaller.Causa.BORRADA, 7);
+        InOrder orden = inOrder(taller);
+        orden.verify(taller).deshacer(6, AHORA);
+        orden.verify(taller).reabrirBaterias(IMEI, grado.fecha());
+    }
+
+    @Test void deshacerSoloUnCambioDeColorNoReabreNada() {
+        CambioTaller color = deReparacion(5, IMEI, COLOR, "Rojo", "Azul", R1, VIGENTE, null);
+        when(taller.deReparacion(R1)).thenReturn(List.of(color));
+        when(taller.deImei(IMEI)).thenReturn(List.of(color));
+        servicio.deshacer(R1, AvisoTaller.Causa.BORRADA, 7);
+        verify(taller, never()).reabrirBaterias(any(), any());
+    }
+
+    @Test void unGradoQueNoSePuedeDeshacerNoReabreNada() {
+        CambioTaller pasado = deReparacion(6, IMEI, GRADO, "A100", "n/a", R1, PASADO, null);
+        when(taller.deReparacion(R1)).thenReturn(List.of(pasado));
+        when(taller.deImei(IMEI)).thenReturn(List.of(pasado));
+        servicio.deshacer(R1, AvisoTaller.Causa.EDITADA, 7);
+        verify(taller, never()).reabrirBaterias(any(), any());
+        // Y el que el UPDATE no llega a deshacer (0) tampoco.
+        CambioTaller grado = deReparacion(7, IMEI, GRADO, "A100", "n/a", R2, VIGENTE, null);
+        when(taller.deReparacion(R2)).thenReturn(List.of(grado));
+        when(taller.deImei(IMEI)).thenReturn(List.of(grado));
+        when(taller.deshacer(7, AHORA)).thenReturn(0);
+        servicio.deshacer(R2, AvisoTaller.Causa.BORRADA, 7);
+        verify(taller, never()).reabrirBaterias(any(), any());
+    }
+
+    @Test void editarElChasisReabreLaBateriaYElAplicarSiguienteLaEncuentraYLaDaPorUsadaOtraVez() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        CambioTaller grado = deReparacion(6, IMEI, GRADO, "A100", "n/a", R2, VIGENTE, null);
+        when(taller.deReparacion(R2)).thenReturn(List.of(grado));
+        when(taller.deImei(IMEI)).thenReturn(List.of(grado));
+        boolean[] reabierta = {false};
+        when(taller.reabrirBaterias(IMEI, grado.fecha())).thenAnswer(i -> {
+            reabierta[0] = true;
+            return 1;
+        });
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenAnswer(i -> reabierta[0]
+                ? List.of(new BateriaRecordada(40, IMEI, R1, true, "batería bati13 nueva", 8, AHORA.minusDays(1))) : List.of());
+        servicio.editar(new TallerDAO.PiezaDeReparacion(R2, IMEI, 131, false), fila(R2, 133, true), 7);
+        InOrder orden = inOrder(taller);
+        orden.verify(taller).reabrirBaterias(IMEI, grado.fecha());
+        orden.verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", VIGENTE)), R2, 7,
+                "chasis chai13blue reutilizado", AHORA);
+        orden.verify(taller).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
     // ---------------------------------------------------------------- 0.9.22 pieza 4: la batería recordada tras la importación (§5.2)
 
     private static BateriaRecordada bateria(int id, boolean nueva, LocalDateTime fecha) {

@@ -76,6 +76,11 @@ public class TallerDAO {
     static final String SQL_USAR = "UPDATE Taller_aviso SET REVISADO_EN = ?, A = ? WHERE TIPO = 'SIN_GRADO' AND REVISADO_EN IS NULL"
             + " AND ID_AVISO IN (";
 
+    /** Deshacer un cambio de grado (D1): las baterias que se usaron con el (mismo instante que su FECHA) vuelven a pendientes.
+     *  Solo las que uso el ERP (sin quien, con grado): un «Revisado» a mano no se toca. */
+    static final String SQL_REABRIR = "UPDATE Taller_aviso SET REVISADO_EN = NULL, A = NULL WHERE IMEI_SN = ? AND TIPO = 'SIN_GRADO'"
+            + " AND REVISADO_POR IS NULL AND A IS NOT NULL AND REVISADO_EN = ?";
+
     private final JdbcTemplate jdbc;
 
     public TallerDAO(JdbcTemplate jdbc) {
@@ -269,6 +274,12 @@ public class TallerDAO {
         args[1] = gradoQueQueda;
         for (int i = 0; i < ids.size(); i++) args[i + 2] = ids.get(i);
         return jdbc.update(SQL_USAR + NsysDAO.marcas(ids.size()) + ")", args);
+    }
+
+    /** Vuelve a dejar pendientes las baterias que se dieron por usadas en {@code usadasEn} (la fecha del cambio de grado que se
+     *  deshace). 0 si no hay ninguna. */
+    public int reabrirBaterias(String imeiSn, LocalDateTime usadasEn) {
+        return jdbc.update(SQL_REABRIR, imeiSn, Timestamp.valueOf(usadasEn));
     }
 
     static Candidata candidata(ResultSet rs, int n) throws SQLException {

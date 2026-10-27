@@ -322,4 +322,12 @@ class TallerDAOTest {
         assertEquals(0, dao.usarBaterias(List.of(), "A", HOY));
         verifyNoInteractions(jdbc);
     }
+
+    @Test void reabrirLasBateriasSoloTocaLasQueUsoElErpEnEsaHora() {
+        assertEquals("UPDATE Taller_aviso SET REVISADO_EN = NULL, A = NULL WHERE IMEI_SN = ? AND TIPO = 'SIN_GRADO'"
+                + " AND REVISADO_POR IS NULL AND A IS NOT NULL AND REVISADO_EN = ?", TallerDAO.SQL_REABRIR);
+        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(2);
+        assertEquals(2, dao.reabrirBaterias(IMEI, HOY));
+        verify(jdbc).update(TallerDAO.SQL_REABRIR, IMEI, Timestamp.valueOf(HOY));
+    }
 }
