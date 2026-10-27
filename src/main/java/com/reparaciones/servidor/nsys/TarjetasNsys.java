@@ -56,9 +56,15 @@ final class TarjetasNsys {
         return p.cambios().stream().filter(c -> c.dato() == dato).map(TallerNsys::porQue).toList();
     }
 
-    /** «Cambio de color» (§3.2): los móviles con un cambio de color vigente. Si el color que vale es el de NSYS (aún sin cerrar),
-     *  el producto es el de ahora. */
     static List<FilaColorNsys> color(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
+        return color(moviles, marcas, Map.of());
+    }
+
+    /** «Cambio de color» (§3.2): los móviles con un cambio de color vigente. Si el color que vale es el de NSYS (aún sin cerrar),
+     *  el producto es el de ahora. {@code vueltas}: la vuelta de cada móvil por clave de cruce (pieza 4 §6); sin ella, en la
+     *  empresa. */
+    static List<FilaColorNsys> color(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas,
+                                     Map<String, VueltaNsys> vueltas) {
         List<FilaColorNsys> filas = new ArrayList<>();
         for (TallerNsys.MovilPorPasar p : moviles) {
             Optional<CambioTaller> c = cambio(p, DatoTaller.COLOR);
@@ -70,16 +76,24 @@ final class TarjetasNsys {
                     : poner == null ? p.valor().color() : GrafiasNsys.colorDelGoods(poner.producto());
             LocalDateTime desde = c.get().fecha();
             Marca h = marca(marcas, TarjetaHecho.COLOR, m.imeiSn(), desde);
+            VueltaNsys v = vueltas.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
             filas.add(new FilaColorNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), deNsys != null ? deNsys : m.color(),
                     colorA, m.goods(), m.grade(), poner == null ? null : poner.producto(), poner != null && poner.compruebalo(),
-                    cambio(p, DatoTaller.GRADO).isPresent(), porQue(p, DatoTaller.COLOR), desde, h.por(), h.en(), h.volvio()));
+                    cambio(p, DatoTaller.GRADO).isPresent(), porQue(p, DatoTaller.COLOR), desde, h.por(), h.en(), h.volvio(),
+                    v.vendidoEn(), v.bajaEn(), v.desde()));
         }
         filas.sort(Comparator.comparing(FilaColorNsys::desde).thenComparing(FilaColorNsys::imeiSn));
         return filas;
     }
 
-    /** «Cambio de grado» (§3.3): los móviles con un cambio de grado vigente, también los que cambian de color. */
     static List<FilaGradoNsys> grado(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
+        return grado(moviles, marcas, Map.of());
+    }
+
+    /** «Cambio de grado» (§3.3): los móviles con un cambio de grado vigente, también los que cambian de color; con su vuelta
+     *  (pieza 4 §6). */
+    static List<FilaGradoNsys> grado(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas,
+                                     Map<String, VueltaNsys> vueltas) {
         List<FilaGradoNsys> filas = new ArrayList<>();
         for (TallerNsys.MovilPorPasar p : moviles) {
             Optional<CambioTaller> c = cambio(p, DatoTaller.GRADO);
@@ -87,9 +101,10 @@ final class TarjetasNsys {
             MovilNsys m = p.movil();
             LocalDateTime desde = c.get().fecha();
             Marca h = marca(marcas, TarjetaHecho.GRADO, m.imeiSn(), desde);
+            VueltaNsys v = vueltas.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
             filas.add(new FilaGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), p.valor().grade(),
                     m.goods(), cambio(p, DatoTaller.COLOR).isPresent(), porQue(p, DatoTaller.GRADO), desde, h.por(), h.en(),
-                    h.volvio()));
+                    h.volvio(), v.vendidoEn(), v.bajaEn(), v.desde()));
         }
         filas.sort(Comparator.comparing(FilaGradoNsys::desde).thenComparing(FilaGradoNsys::imeiSn));
         return filas;
@@ -146,14 +161,22 @@ final class TarjetasNsys {
     }
 
     /** «Revisar a mano» (§3.5), en el orden de los avisos, con el modelo de la fila más reciente del espejo de su IMEI
-     *  ({@code espejo}, por {@link NsysDAO#claveCruce}). */
-    static List<FilaRevisarNsys> revisar(List<AvisoTaller> avisos, Map<String, MovilNsys> espejo) {
+     *  ({@code espejo}, por {@link NsysDAO#claveCruce}) y, desde la pieza 4, su vuelta ({@code vueltas}; sin ella, en la empresa).
+     *  Qué avisos salen lo decide quien llama (PorPasarNsys). */
+    static List<FilaRevisarNsys> revisar(List<AvisoTaller> avisos, Map<String, MovilNsys> espejo, Map<String, VueltaNsys> vueltas) {
         return avisos.stream().filter(a -> AvisoTaller.POR_REVISAR.contains(a.tipo())).map(a -> {
-            MovilNsys m = espejo.get(NsysDAO.claveCruce(a.imeiSn()));
+            String clave = NsysDAO.claveCruce(a.imeiSn());
+            MovilNsys m = espejo.get(clave);
+            VueltaNsys v = vueltas.getOrDefault(clave, VueltaNsys.EN_EMPRESA);
             return new FilaRevisarNsys(a.id(), a.imeiSn(), m == null ? null : m.modelo(), m == null ? null : m.modeloMaestro(),
                     m == null ? null : m.capacidad(), a.tipo().name(), a.causa() == null ? null : a.causa().name(),
-                    a.dato().name(), a.de(), a.a(), a.motivo(), a.idRep(), a.usuario(), a.fecha());
+                    a.dato().name(), a.de(), a.a(), a.motivo(), a.idRep(), a.usuario(), a.fecha(), v.vendidoEn(), v.bajaEn(),
+                    v.desde());
         }).toList();
+    }
+
+    static List<FilaRevisarNsys> revisar(List<AvisoTaller> avisos, Map<String, MovilNsys> espejo) {
+        return revisar(avisos, espejo, Map.of());
     }
 
     /** Las filas de Color, Grado y No está en NSYS que hay ahora, por clave de marca, con su «desde» (para el repaso). */

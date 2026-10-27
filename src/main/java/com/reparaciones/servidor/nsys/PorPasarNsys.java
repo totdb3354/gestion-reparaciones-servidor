@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,14 +65,14 @@ public class PorPasarNsys {
 
     /** Las cuatro tarjetas (§3) y los descartados de «No está en NSYS» (pieza 3), con una lectura de cada cosa. */
     public TarjetasPorPasar tarjetas() {
-        List<TallerNsys.MovilPorPasar> moviles = movilesEnEmpresa();
+        Salen salen = movilesQueSalen();
         Map<String, HechoTaller> marcas = TarjetasNsys.porClave(hechoDao.todas());
         List<AvisoTaller> avisos = tallerDao.avisosPorRevisar();
         List<AltaTaller> altas = altas();
         Map<String, DescarteTaller> descartes = descartes(altas);
-        return new TarjetasPorPasar(TarjetasNsys.color(moviles, marcas), TarjetasNsys.grado(moviles, marcas),
-                TarjetasNsys.altas(altas, marcas, descartes), TarjetasNsys.revisar(avisos, espejo(avisos)),
-                TarjetasNsys.descartadas(altas, descartes));
+        return new TarjetasPorPasar(TarjetasNsys.color(salen.moviles(), marcas, salen.vueltas()),
+                TarjetasNsys.grado(salen.moviles(), marcas, salen.vueltas()), TarjetasNsys.altas(altas, marcas, descartes),
+                revisar(avisos), TarjetasNsys.descartadas(altas, descartes));
     }
 
     /** Los descartes por IMEI (pieza 3); sin filas en «No está en NSYS» no los lee. */
@@ -79,11 +80,47 @@ public class PorPasarNsys {
         return altas.isEmpty() ? Map.of() : TarjetasNsys.descartesPorClave(descarteDao.todos());
     }
 
-    /** Los móviles de «Cambio de color» y «Cambio de grado»: los de «Por pasar a NSYS» que NSYS tiene en la empresa. Un vendido o de
-     *  baja no se vuelve a subir (sería stock que no hay) ni se le cambia el grado; su cambio sigue vigente y, si el móvil vuelve,
-     *  sale otra vez solo. */
-    private List<TallerNsys.MovilPorPasar> movilesEnEmpresa() {
-        return taller.movilesPorPasar().stream().filter(p -> p.movil().estado().enEmpresa()).toList();
+    /** Los móviles de «Cambio de color» y «Cambio de grado» con su vuelta (pieza 4 §6). */
+    private record Salen(List<TallerNsys.MovilPorPasar> moviles, Map<String, VueltaNsys> vueltas) {}
+
+    /** Los de «Por pasar a NSYS» que NSYS tiene en la empresa y los vendidos o de baja que han vuelto (pieza 4 §6). Un vendido o
+     *  de baja que no ha vuelto no se vuelve a subir (sería stock que no hay) ni se le cambia el grado; su cambio sigue vigente y,
+     *  si vuelve, sale otra vez solo. */
+    private Salen movilesQueSalen() {
+        List<TallerNsys.MovilPorPasar> todos = taller.movilesPorPasar();
+        Map<String, VueltaNsys> vueltas = vueltas(todos.stream().map(TallerNsys.MovilPorPasar::movil).toList());
+        return new Salen(todos.stream().filter(p -> vueltas.containsKey(NsysDAO.claveCruce(p.movil().imeiSn()))).toList(), vueltas);
+    }
+
+    /** La vuelta de cada móvil que sale, por clave de cruce (pieza 4 §6): los de la empresa sin leer nada; los vendidos o de baja,
+     *  con sus trabajos (una consulta, solo si hay alguno). Un vendido o de baja que no ha vuelto no está. */
+    Map<String, VueltaNsys> vueltas(Collection<MovilNsys> moviles) {
+        Map<String, VueltaNsys> vueltas = new HashMap<>();
+        List<MovilNsys> fuera = new ArrayList<>();
+        for (MovilNsys m : moviles) {
+            if (m.estado().enEmpresa()) vueltas.put(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
+            else fuera.add(m);
+        }
+        if (fuera.isEmpty()) return vueltas;
+        Map<String, List<LocalDateTime>> asignaciones = VueltaNsys.asignacionesPorImei(
+                nsysDao.trabajosDe(fuera.stream().map(MovilNsys::imeiSn).toList()));
+        for (MovilNsys m : fuera) {
+            String clave = NsysDAO.claveCruce(m.imeiSn());
+            VueltaNsys.de(m, asignaciones.getOrDefault(clave, List.of())).ifPresent(v -> vueltas.put(clave, v));
+        }
+        return vueltas;
+    }
+
+    /** «Revisar a mano»: los avisos de móviles que salen (en la empresa o que han vuelto; uno que ya no está en el espejo, como
+     *  antes), con su vuelta. */
+    private List<FilaRevisarNsys> revisar(List<AvisoTaller> avisos) {
+        Map<String, MovilNsys> espejo = espejo(avisos);
+        Map<String, VueltaNsys> vueltas = vueltas(espejo.values());
+        List<AvisoTaller> salen = avisos.stream().filter(a -> {
+            String clave = NsysDAO.claveCruce(a.imeiSn());
+            return !espejo.containsKey(clave) || vueltas.containsKey(clave);
+        }).toList();
+        return TarjetasNsys.revisar(salen, espejo, vueltas);
     }
 
     /** «No está en NSYS» (§3.4): los IMEI del taller que no están en el espejo, cruzados en Java por claveCruce (las tablas tienen
@@ -189,7 +226,7 @@ public class PorPasarNsys {
     public void repasarHechos(LocalDateTime exportacion) {
         List<HechoTaller> marcas = hechoDao.todas();
         if (marcas.isEmpty()) return;
-        TarjetasNsys.Repaso r = TarjetasNsys.repasar(marcas, TarjetasNsys.filas(movilesEnEmpresa(), altas()), exportacion);
+        TarjetasNsys.Repaso r = TarjetasNsys.repasar(marcas, TarjetasNsys.filas(movilesQueSalen().moviles(), altas()), exportacion);
         if (r.borrar().isEmpty() && r.vuelven().isEmpty()) return;
         hechoDao.repasar(r.borrar(), r.vuelven(), ahora());
         log.info("NSYS: marcas «Hecho» tras la importación: {} quitadas, {} vuelven a salir", r.borrar().size(), r.vuelven().size());
@@ -211,11 +248,14 @@ public class PorPasarNsys {
     public record Plantilla(String nombre, byte[] contenido, int filas) {}
 
     /** La plantilla de color (spec §4): los móviles de «Cambio de color» con producto y sin marca «Hecho» que valga, en el orden de
-     *  la lista, con el coste de su lote actual (una consulta, solo si hay alguno). */
+     *  la lista, con el coste de su lote actual (una consulta, solo si hay alguno). Sin los que han vuelto (pieza 4 §6): antes, la devolución en
+     *  NSYS. */
     public Plantilla plantillaColor() {
-        List<TallerNsys.MovilPorPasar> moviles = movilesEnEmpresa();
-        List<FilaColorNsys> van = TarjetasNsys.color(moviles, TarjetasNsys.porClave(hechoDao.todas())).stream()
-                .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()) && f.ponerProducto() != null).toList();
+        Salen salen = movilesQueSalen();
+        List<TallerNsys.MovilPorPasar> moviles = salen.moviles();
+        List<FilaColorNsys> van = TarjetasNsys.color(moviles, TarjetasNsys.porClave(hechoDao.todas()), salen.vueltas()).stream()
+                .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()) && f.ponerProducto() != null
+                        && f.vueltoDesde() == null).toList();
         Map<String, MovilNsys> porImei = new HashMap<>();
         for (TallerNsys.MovilPorPasar p : moviles) porImei.put(NsysDAO.claveCruce(p.movil().imeiSn()), p.movil());
         List<MovilNsys> lotes = van.stream().map(f -> porImei.get(NsysDAO.claveCruce(f.imeiSn()))).toList();

@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -395,5 +396,63 @@ class PorPasarNsysTest {
         when(nsys.clavesDelEspejo()).thenReturn(Set.of("350000000000001"));
         servicio.repasarDescartes();
         verify(descartes, never()).quitar(any());
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: los que han vuelto (spec §6)
+
+    private static TallerNsys.MovilPorPasar vendidoConAmbosCambios(String imei, LocalDate venta) {
+        return new TallerNsys.MovilPorPasar(vendido(imei, "Azul", "B", venta),
+                new LoQueVale.Valor("Rosa", "A100", null, "Azul", "B", null, true),
+                List.of(vigente(1, imei, COLOR, "Rosa", "Azul", AHORA.minusDays(1)), vigente(2, imei, GRADO, "A100", "B", AHORA.minusDays(1))),
+                new ProductoNsys.Poner("Apple iPhone 13 128GB Pink", false));
+    }
+
+    private static AvisoTaller sinColorDe(int id, String imei) {
+        return new AvisoTaller(id, imei, "R20261024_" + id, AvisoTaller.Tipo.SIN_COLOR, null, COLOR, "chai13yellow", null,
+                "chasis chai13yellow nuevo", 8, "Técnico 2", AHORA.minusDays(1));
+    }
+
+    @Test void unVendidoQueHaVueltoSaleMarcadoEnColorYGradoYUnoQueNoNo() {
+        String vuelto = "350000000000002";
+        when(taller.movilesPorPasar()).thenReturn(List.of(vendidoConAmbosCambios(vuelto, LocalDate.of(2026, 9, 14)),
+                vendidoConAmbosCambios("350000000000003", LocalDate.of(2026, 10, 24))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(
+                new NsysDAO.TrabajoFecha(vuelto, "R20261022_101", LocalDateTime.of(2026, 10, 22, 14, 6)),
+                new NsysDAO.TrabajoFecha("350000000000003", "R20261023_7", LocalDateTime.of(2026, 10, 23, 9, 17))));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(vuelto), t.color().stream().map(FilaColorNsys::imeiSn).toList());
+        assertEquals(LocalDate.of(2026, 9, 14), t.color().get(0).vendidoEn());
+        assertEquals(LocalDateTime.of(2026, 10, 22, 14, 6), t.color().get(0).vueltoDesde());
+        assertEquals(List.of(vuelto), t.grado().stream().map(FilaGradoNsys::imeiSn).toList());
+        assertEquals(LocalDate.of(2026, 9, 14), t.grado().get(0).vendidoEn());
+    }
+
+    @Test void laPlantillaDeColorNoLlevaLosQueHanVuelto() {
+        String vuelto = "350000000000002";
+        when(taller.movilesPorPasar()).thenReturn(List.of(vendidoConAmbosCambios(vuelto, LocalDate.of(2026, 9, 14))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(
+                new NsysDAO.TrabajoFecha(vuelto, "R20261022_101", LocalDateTime.of(2026, 10, 22, 14, 6))));
+        assertEquals(0, servicio.plantillaColor().filas());
+        verify(nsys, never()).costes(any());
+    }
+
+    @Test void revisarSinLosAvisosDeVendidosQueNoHanVueltoYConLosQueSi() {
+        String vuelto = "350000000000002";
+        String vendidoSinMas = "350000000000003";
+        when(tallerDao.avisosPorRevisar()).thenReturn(List.of(sinColorDe(1, IMEI), sinColorDe(2, vuelto), sinColorDe(3, vendidoSinMas)));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B"), vendido(vuelto, "Azul", "B", LocalDate.of(2026, 9, 14)),
+                vendido(vendidoSinMas, "Azul", "B", LocalDate.of(2026, 10, 24))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(
+                new NsysDAO.TrabajoFecha(vuelto, "R20261022_101", LocalDateTime.of(2026, 10, 22, 14, 6))));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(IMEI, vuelto), t.revisar().stream().map(FilaRevisarNsys::imeiSn).toList());
+        assertNull(t.revisar().get(0).vueltoDesde());
+        assertEquals(LocalDate.of(2026, 9, 14), t.revisar().get(1).vendidoEn());
+    }
+
+    @Test void conTodoEnLaEmpresaNoSeLeenTrabajos() {
+        when(taller.movilesPorPasar()).thenReturn(List.of(soloGrado(IMEI)));
+        servicio.tarjetas();
+        verify(nsys, never()).trabajosDe(any());
     }
 }

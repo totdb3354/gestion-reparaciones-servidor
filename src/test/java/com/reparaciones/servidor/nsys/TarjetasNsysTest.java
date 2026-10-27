@@ -260,4 +260,17 @@ class TarjetasNsysTest {
         assertEquals(List.of("350000000000099", "350000000000088"),
                 TarjetasNsys.descartadas(List.of(uno, dos), d).stream().map(FilaDescartadaNsys::imeiSn).toList());
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: los que han vuelto (spec §6)
+
+    @Test void revisarMarcaElQueHaVuelto() {
+        AvisoTaller a = new AvisoTaller(1, IMEI, "R20261022_2", AvisoTaller.Tipo.SIN_COLOR, null, COLOR, "chai13yellow", null,
+                "chasis chai13yellow nuevo", 8, "Técnico 2", AYER);
+        VueltaNsys v = new VueltaNsys(LocalDate.of(2026, 9, 14), null, HOY);
+        FilaRevisarNsys f = TarjetasNsys.revisar(List.of(a), Map.of(IMEI, movil(IMEI, "Azul", "B")), Map.of(IMEI, v)).get(0);
+        assertEquals(LocalDate.of(2026, 9, 14), f.vendidoEn());
+        assertNull(f.bajaEn());
+        assertEquals(HOY, f.vueltoDesde());
+        assertNull(TarjetasNsys.revisar(List.of(a), Map.of(IMEI, movil(IMEI, "Azul", "B"))).get(0).vueltoDesde(), "sin vuelta: en la empresa");
+    }
 }
