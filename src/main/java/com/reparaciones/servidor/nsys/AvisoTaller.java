@@ -23,8 +23,9 @@ public record AvisoTaller(int id, String imeiSn, String idRep, Tipo tipo, Causa 
      *  [Ms]<letra>[100]. DESHECHO: se deshizo el cambio de la reparación. SIN_DESHACER: ya no mandaba y no se tocó. */
     public enum Tipo { SIN_COLOR, SIN_GRADO, DESHECHO, SIN_DESHACER }
 
-    /** Los que van a «Revisar a mano» (spec 0.9.22 §3.5); DESHECHO solo informa y se queda en el rastro. */
-    public static final Set<Tipo> POR_REVISAR = Set.of(Tipo.SIN_COLOR, Tipo.SIN_GRADO, Tipo.SIN_DESHACER);
+    /** Los que van a «Revisar a mano» (spec 0.9.22 §3.5); DESHECHO solo informa y se queda en el rastro. Desde la pieza 4,
+     *  SIN_GRADO tampoco: es el registro de la batería recordada (BateriaRecordada) y el móvil sale como «Sin grado en NSYS». */
+    public static final Set<Tipo> POR_REVISAR = Set.of(Tipo.SIN_COLOR, Tipo.SIN_DESHACER);
 
     /** Por qué se deshace (DESHECHO y SIN_DESHACER). */
     public enum Causa { BORRADA, EDITADA }

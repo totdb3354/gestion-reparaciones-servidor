@@ -4,6 +4,8 @@ import com.reparaciones.servidor.dao.ColorEquivalenciaDAO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -22,7 +24,8 @@ import java.util.function.Supplier;
 /** El SKU del taller desde las reparaciones (spec 0.9.21, pieza 2): al guardar una R… con chasis, tapa trasera o batería, el
  *  color y el grado del móvil cambian solos (Taller_cambio, ORIGEN REPARACION); al editarla o borrarla se deshace lo suyo si
  *  sigue mandando; y la banda del formulario hace la misma cuenta sin escribir. Solo las R…: glass (G…) y el resto no
- *  cambian nada. Lo llama GuardadoReparacion dentro de la transacción de la reparación. */
+ *  cambian nada. Lo llama GuardadoReparacion dentro de la transacción de la reparación; desde la 0.9.22 pieza 4, también
+ *  PorPasarNsys tras cada importación, para la batería recordada de cada móvil (en su propia transacción). */
 @Service
 public class TallerReparaciones {
 
@@ -60,7 +63,8 @@ public class TallerReparaciones {
 
     /** Un guardado: las R… de una misma llamada («Terminar asignación», «✓ Guardar fila» o una fila editada), en el orden de
      *  sus filas salvo el chasis, que va primero (0.9.21.1, ver EfectoTaller). Cada R… que cambia algo crea sus propios
-     *  cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. */
+     *  cambios y sus avisos. Un IMEI que NSYS no conoce no cambia nada. Un chasis que da letra a un móvil sin grado
+     *  aplica su batería recordada (0.9.22 pieza 4) y la da por usada. */
     public void aplicar(String imei, List<PiezaGuardada> guardado, int idUsu) {
         List<PiezaTaller> piezas = piezas(guardado.stream().filter(p -> esReparacion(p.idRep())).toList());
         if (piezas.isEmpty() || !tallerDao.bloquear(imei)) return;
@@ -68,8 +72,10 @@ public class TallerReparaciones {
         if (movil.isEmpty()) return;
         MovilNsys m = movil.get();
         List<CambioTaller> vigentes = tallerDao.vigentes(List.of(m.imeiSn()));
+        List<BateriaRecordada> recordadas = tallerDao.bateriasRecordadas(List.of(m.imeiSn()));
         EfectoTaller.Resultado r = EfectoTaller.calcular(m, LoQueVale.valor(vigentes, DatoTaller.COLOR, m),
-                LoQueVale.valor(vigentes, DatoTaller.GRADO, m), piezas, colorDeChasis(m));
+                LoQueVale.valor(vigentes, DatoTaller.GRADO, m), piezas, colorDeChasis(m),
+                BateriaRecordada.ultima(recordadas).orElse(null));
         LocalDateTime ahora = ahora();
         for (EfectoTaller.Paso p : r.pasos()) {
             PiezaTaller pieza = p.pieza();
@@ -81,6 +87,47 @@ public class TallerReparaciones {
                 tallerDao.avisar(new AvisoTaller.Nuevo(m.imeiSn(), pieza.idRep(), AvisoTaller.Tipo.SIN_GRADO, null,
                         DatoTaller.GRADO, p.gradoSinCalcular(), null, pieza.texto()), idUsu, ahora);
         }
+        // 0.9.22 pieza 4 (§5.2): si un chasis aplicó la batería recordada, esa y las anteriores del móvil quedan usadas.
+        if (r.recordadaUsada())
+            tallerDao.usarBaterias(recordadas.stream().map(BateriaRecordada::idAviso).toList(), r.gradoDespues(), ahora);
+    }
+
+    /** Lo que hizo la batería recordada de un móvil tras la importación: cuántos avisos dio por usados y si creó un cambio de grado
+     *  (para la línea del registro del servidor). */
+    public record BateriaUsada(int usadas, boolean cambio) {
+        static final BateriaUsada NADA = new BateriaUsada(0, false);
+    }
+
+    /** Tras cada importación ACTUAL que acaba en OK (0.9.22 pieza 4 §5.2), las baterías recordadas de un móvil ({@code m}: su fila
+     *  del espejo), en su transacción y con el candado del móvil tomado lo primero: lo vigente y las baterías de ese IMEI se releen
+     *  dentro (lo que vio la lectura de todos pudo cambiar con un «Corregir…» o un chasis a la vez, y con «Corregir…» manda lo
+     *  escrito). Si el grado que vale tiene letra, el cambio de grado que haga falta a nombre de la R… de la más reciente (ORIGEN
+     *  REPARACION, motivo el de la pieza) y todas por usadas con el grado que queda; con un ignorado, solo por usadas; si sigue
+     *  «como n/a» o ya no queda ninguna, nada. READ COMMITTED como «Revisado» y «Corregir…». Lo llama PorPasarNsys desde fuera
+     *  (pasa por el proxy). */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public BateriaUsada usarBateriaRecordada(MovilNsys m) {
+        if (!tallerDao.bloquear(m.imeiSn())) return BateriaUsada.NADA;
+        List<BateriaRecordada> recordadas = tallerDao.bateriasRecordadas(List.of(m.imeiSn()));
+        if (recordadas.isEmpty()) return BateriaUsada.NADA;
+        String grado = LoQueVale.valor(tallerDao.vigentes(List.of(m.imeiSn())), DatoTaller.GRADO, m);
+        GradoTaller.Grupo grupo = GradoTaller.grupo(grado);
+        if (grupo == GradoTaller.Grupo.COMO_NA) return BateriaUsada.NADA;
+        LocalDateTime ahora = ahora();
+        String queda = grado;
+        boolean cambio = false;
+        if (grupo == GradoTaller.Grupo.CON_FORMA) {
+            BateriaRecordada b = BateriaRecordada.ultima(recordadas).orElseThrow();
+            Optional<TallerDAO.Nuevo> n = GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, b.nueva())
+                    .flatMap(nuevo -> EfectoTaller.cambio(DatoTaller.GRADO, nuevo, grado, m));
+            if (n.isPresent()) {
+                tallerDao.guardar(m.imeiSn(), List.of(n.get()), b.idRep(), b.idUsu(), b.motivo(), ahora);
+                queda = n.get().valor();
+                cambio = true;
+            }
+        }
+        int usadas = tallerDao.usarBaterias(recordadas.stream().map(BateriaRecordada::idAviso).toList(), queda, ahora);
+        return new BateriaUsada(usadas, cambio);
     }
 
     // ---------------------------------------------------------------- editar y borrar (spec §2.3)
@@ -117,6 +164,8 @@ public class TallerReparaciones {
                 avisarSinDeshacer(imei, idRep, causa, c, idUsu, ahora);
                 continue;
             }
+            // 0.9.22 pieza 4 (D1): las baterias que se usaron con este grado (mismo instante) vuelven a pendientes.
+            if (c.dato() == DatoTaller.GRADO) tallerDao.reabrirBaterias(imei, c.fecha());
             if (d.vuelve() != null) tallerDao.reactivar(d.vuelve().id());
             String vuelveA = d.vuelve() != null ? d.vuelve().valor() : m.map(c.dato()::deNsys).orElse(c.valorNsys());
             tallerDao.avisar(new AvisoTaller.Nuevo(imei, idRep, AvisoTaller.Tipo.DESHECHO, causa, c.dato(), c.valor(),
@@ -152,6 +201,7 @@ public class TallerReparaciones {
         ValoresTaller antes = new ValoresTaller(LoQueVale.valor(vigentes, DatoTaller.COLOR, m),
                 LoQueVale.valor(vigentes, DatoTaller.GRADO, m));
         Function<String, Optional<String>> colorDe = colorDeChasis(m);
+        BateriaRecordada recordada = BateriaRecordada.ultima(tallerDao.bateriasRecordadas(List.of(m.imeiSn()))).orElse(null);
         String color = antes.color();
         String grado = antes.grado();
         boolean sinColor = false;
@@ -164,7 +214,8 @@ public class TallerReparaciones {
             List<CambioTaller> trasDeshacer = planDeshacer(todos, f.idRep()).vigentes(vigentes);
             EfectoTaller.Resultado r = EfectoTaller.calcular(m, LoQueVale.valor(trasDeshacer, DatoTaller.COLOR, m),
                     LoQueVale.valor(trasDeshacer, DatoTaller.GRADO, m),
-                    piezas(List.of(new PiezaGuardada(f.idRep(), f.idCom(), f.reutilizada()))), colorDe);
+                    piezas(List.of(new PiezaGuardada(f.idRep(), f.idCom(), f.reutilizada()))), colorDe, recordada);
+            if (r.recordadaUsada()) recordada = null;
             color = r.colorDespues();
             grado = r.gradoDespues();
             sinColor = r.colorSinDeducir();
@@ -173,7 +224,7 @@ public class TallerReparaciones {
         List<PiezaTaller> nuevas = piezas(filas.stream().filter(f -> f.idRep() == null)
                 .map(f -> new PiezaGuardada(null, f.idCom(), f.reutilizada())).toList());
         if (!nuevas.isEmpty()) {
-            EfectoTaller.Resultado r = EfectoTaller.calcular(m, color, grado, nuevas, colorDe);
+            EfectoTaller.Resultado r = EfectoTaller.calcular(m, color, grado, nuevas, colorDe, recordada);
             color = r.colorDespues();
             grado = r.gradoDespues();
             sinColor |= r.colorSinDeducir();

@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -309,5 +311,59 @@ class TallerNsysTest {
     @Test void lasOpcionesDeUnImeiFueraDelEspejoSon404() {
         when(nsys.porImei("350000000000099")).thenReturn(List.of());
         assertEquals(HttpStatus.NOT_FOUND, estado(() -> servicio.opciones("350000000000099")));
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: la batería recordada (spec §5.2 y §5.5)
+
+    private static BateriaRecordada recordada() {
+        return new BateriaRecordada(40, IMEI, "R20261021_3", true, "batería bati13 nueva", 8, AHORA.minusDays(1));
+    }
+
+    @Test void corregirElGradoConLetraDaPorUsadaLaBateriaRecordadaYMandaLoEscrito() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(recordada()));
+        servicio.corregir(IMEI, null, "A", "visto en mano", 7);
+        verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A", "n/a", VIGENTE)), 7, "visto en mano", AHORA);
+        verify(taller).usarBaterias(List.of(40), "A", AHORA);
+    }
+
+    @Test void corregirSoloElColorNoTocaLaBateriaRecordada() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(recordada()));
+        servicio.corregir(IMEI, "Rojo", null, "chasis rojo", 7);
+        verify(taller, never()).usarBaterias(any(), any(), any());
+    }
+
+    @Test void volverALoDeNsysEnNaDejaLaBateriaRecordada() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(taller.vigentes(List.of(IMEI))).thenReturn(List.of(vigente(1, IMEI, GRADO, "A", "n/a")));
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(recordada()));
+        servicio.volver(IMEI, null, 7);
+        verify(taller, never()).usarBaterias(any(), any(), any());
+    }
+
+    @Test void lasOpcionesTraenLaBateriaRecordada() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(recordada()));
+        OpcionesTaller o = servicio.opciones(IMEI);
+        assertEquals("R20261021_3", o.bateriaIdRep());
+        assertEquals(Boolean.TRUE, o.bateriaNueva());
+        assertEquals(AHORA.minusDays(1), o.bateriaEn());
+    }
+
+    @Test void sinBateriaRecordadaLasOpcionesLaTraenANull() {
+        OpcionesTaller o = servicio.opciones(IMEI);
+        assertNull(o.bateriaIdRep());
+        assertNull(o.bateriaNueva());
+        assertNull(o.bateriaEn());
+    }
+
+    /** Grado y batería recordada, todo o nada; READ COMMITTED como «Revisado» (error 1020 de MariaDB). */
+    @Test void corregirYVolverVanEnUnaTransaccionReadCommitted() throws NoSuchMethodException {
+        for (var m : List.of(TallerNsys.class.getMethod("corregir", String.class, String.class, String.class, String.class, int.class),
+                TallerNsys.class.getMethod("volver", String.class, String.class, int.class))) {
+            Transactional t = m.getAnnotation(Transactional.class);
+            assertNotNull(t, m.getName());
+            assertEquals(Isolation.READ_COMMITTED, t.isolation(), m.getName());
+        }
     }
 }

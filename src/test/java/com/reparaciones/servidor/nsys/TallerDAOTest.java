@@ -12,6 +12,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -136,7 +137,7 @@ class TallerDAOTest {
     }
 
     @Test void guardarDesdeUnaReparacionTambienEsTodoONada() throws NoSuchMethodException {
-        assertNotNull(TallerDAO.class.getMethod("guardar", String.class, List.class, String.class, int.class, String.class,
+        assertNotNull(TallerDAO.class.getMethod("guardar", String.class, List.class, String.class, Integer.class, String.class,
                 LocalDateTime.class).getAnnotation(Transactional.class));
     }
 
@@ -232,7 +233,7 @@ class TallerDAOTest {
         assertTrue(dao.avisosPorRevisar().isEmpty());
         verify(jdbc).query(eq(TallerDAO.SQL_POR_REVISAR), any(RowMapper.class));
         String sql = TallerDAO.SQL_POR_REVISAR;
-        assertTrue(sql.contains(" WHERE v.TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER') AND v.REVISADO_EN IS NULL"), sql);
+        assertTrue(sql.contains(" WHERE v.TIPO IN ('SIN_COLOR', 'SIN_DESHACER') AND v.REVISADO_EN IS NULL"), sql);
         assertTrue(sql.contains(" AND NOT EXISTS (SELECT 1 FROM Taller_cambio c WHERE c.IMEI_SN = v.IMEI_SN AND c.DATO = v.DATO"
                 + " AND c.ORIGEN = 'MANO' AND c.FECHA > v.FECHA)"), sql);
         assertTrue(sql.endsWith(" ORDER BY v.FECHA, v.ID_AVISO"), sql);
@@ -242,7 +243,7 @@ class TallerDAOTest {
         dao.revisar(2, 7, HOY);
         verify(jdbc).update(TallerDAO.SQL_REVISAR, 7, Timestamp.valueOf(HOY), 2);
         assertEquals("UPDATE Taller_aviso SET REVISADO_POR = ?, REVISADO_EN = ? WHERE ID_AVISO = ? AND REVISADO_EN IS NULL"
-                + " AND TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER')", TallerDAO.SQL_REVISAR);
+                + " AND TIPO IN ('SIN_COLOR', 'SIN_DESHACER')", TallerDAO.SQL_REVISAR);
     }
 
     @SuppressWarnings("unchecked")
@@ -268,7 +269,65 @@ class TallerDAOTest {
         AvisoTaller a = TallerDAO.aviso(rs, 0);
         assertEquals("Supertécnico 1", a.revisadoPor());
         assertEquals(HOY.plusHours(2), a.revisadoEn());
-        assertEquals(java.util.Set.of(AvisoTaller.Tipo.SIN_COLOR, AvisoTaller.Tipo.SIN_GRADO, AvisoTaller.Tipo.SIN_DESHACER),
+        assertEquals(java.util.Set.of(AvisoTaller.Tipo.SIN_COLOR, AvisoTaller.Tipo.SIN_DESHACER),
                 AvisoTaller.POR_REVISAR);
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: baterias recordadas (spec 5)
+
+    @Test void revisarAManoYaNoLlevaGradoSinCalcular() {
+        assertTrue(TallerDAO.SQL_POR_REVISAR.contains("v.TIPO IN ('SIN_COLOR', 'SIN_DESHACER')"), TallerDAO.SQL_POR_REVISAR);
+        assertTrue(TallerDAO.SQL_REVISAR.contains("TIPO IN ('SIN_COLOR', 'SIN_DESHACER')"), TallerDAO.SQL_REVISAR);
+        assertEquals(Set.of(AvisoTaller.Tipo.SIN_COLOR, AvisoTaller.Tipo.SIN_DESHACER), AvisoTaller.POR_REVISAR);
+    }
+
+    @Test void lasCandidatasSonLosAvisosDeGradoSinRevisarYLaPiezaSeLeeAparte() {
+        assertEquals("SELECT v.ID_AVISO, v.IMEI_SN, v.ID_REP, v.DE, v.MOTIVO, v.ID_USU, v.FECHA FROM Taller_aviso v"
+                + " WHERE v.TIPO = 'SIN_GRADO' AND v.REVISADO_EN IS NULL", TallerDAO.SQL_BATERIAS);
+        assertTrue(TallerDAO.SQL_PIEZAS.contains("rc.ES_SOLICITUD = 0 AND rc.ID_REP IN ("), TallerDAO.SQL_PIEZAS);
+        assertTrue(TallerDAO.SQL_USAR.startsWith("UPDATE Taller_aviso SET REVISADO_EN = ?, A = ? WHERE TIPO = 'SIN_GRADO'"
+                + " AND REVISADO_EN IS NULL AND ID_AVISO IN ("), TallerDAO.SQL_USAR);
+    }
+
+    @Test void unaBateriaRecordadaEsUnaBateriaQueSigueExistiendoEnUnComoNa() {
+        LocalDateTime hora = HOY.minusDays(1);
+        List<TallerDAO.Candidata> candidatas = List.of(
+                new TallerDAO.Candidata(1, IMEI, "R1", "n/a", "batería bati13 nueva", 8, hora),
+                new TallerDAO.Candidata(2, IMEI, "R2", "—", "batería bati13 reutilizada", 8, hora),
+                new TallerDAO.Candidata(3, IMEI, "R3", "ID", "batería bati13 nueva", 8, hora),        // ignorado: no
+                new TallerDAO.Candidata(4, IMEI, "R4", "n/a", "tapa tapai13red nueva", 8, hora),       // tapa: no
+                new TallerDAO.Candidata(5, IMEI, "R5", "n/a", "batería bati13 nueva", null, hora));    // R borrada: no
+        Map<String, TallerDAO.PiezaLeida> piezas = Map.of("R1", new TallerDAO.PiezaLeida("bati13", false),
+                "R2", new TallerDAO.PiezaLeida("bati13", true), "R3", new TallerDAO.PiezaLeida("bati13", false),
+                "R4", new TallerDAO.PiezaLeida("tapai13red", false));
+        assertEquals(List.of(new BateriaRecordada(1, IMEI, "R1", true, "batería bati13 nueva", 8, hora),
+                new BateriaRecordada(2, IMEI, "R2", false, "batería bati13 reutilizada", 8, hora)), TallerDAO.baterias(candidatas, piezas));
+    }
+
+    @Test void lasBateriasDeUnosImeisVanEnTandasYSinImeisNoConsulta() {
+        assertTrue(dao.bateriasRecordadas(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+        assertTrue(dao.bateriasRecordadas(List.of(IMEI)).isEmpty());
+        List<String> sql = mockingDetails(jdbc).getInvocations().stream()
+                .filter(inv -> inv.getMethod().getName().equals("query")).map(inv -> inv.getArgument(0).toString()).toList();
+        assertEquals(List.of(TallerDAO.SQL_BATERIAS + " AND v.IMEI_SN IN (?)" + TallerDAO.ORDEN_AVISOS), sql,
+                "sin candidatas no lee las piezas");
+    }
+
+    @Test void usarLasBateriasLasRevisaSinQuienConElGradoQueQueda() {
+        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(2);
+        assertEquals(2, dao.usarBaterias(List.of(40, 41, 40), "A100", HOY));
+        verify(jdbc).update(TallerDAO.SQL_USAR + "?, ?)", Timestamp.valueOf(HOY), "A100", 40, 41);
+        clearInvocations(jdbc);
+        assertEquals(0, dao.usarBaterias(List.of(), "A", HOY));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void reabrirLasBateriasSoloTocaLasQueUsoElErpEnEsaHora() {
+        assertEquals("UPDATE Taller_aviso SET REVISADO_EN = NULL, A = NULL WHERE IMEI_SN = ? AND TIPO = 'SIN_GRADO'"
+                + " AND REVISADO_POR IS NULL AND A IS NOT NULL AND REVISADO_EN = ?", TallerDAO.SQL_REABRIR);
+        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(2);
+        assertEquals(2, dao.reabrirBaterias(IMEI, HOY));
+        verify(jdbc).update(TallerDAO.SQL_REABRIR, IMEI, Timestamp.valueOf(HOY));
     }
 }

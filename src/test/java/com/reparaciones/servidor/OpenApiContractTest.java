@@ -558,6 +558,15 @@ class OpenApiContractTest {
         assertNullable(esquemas, "FilaDescartadaNsys", "modelo", "descartadoPor");
         assertNoNullable(esquemas, "FilaDescartadaNsys", "imeiSn", "ultimoTrabajo", "categoria", "descartadoEn", "motivo");
         assertNoNullable(esquemas, "TarjetasPorPasar", "descartadas");
+        // 0.9.22 pieza 4 (spec §4-§6): «Sin grado en NSYS», los que han vuelto y la batería recordada en el diálogo.
+        assertTrue(esquemas.has("FilaSinGradoNsys"), () -> "falta el esquema FilaSinGradoNsys; publicados: " + nombres(esquemas));
+        assertNoNullable(esquemas, "TarjetasPorPasar", "sinGrado");
+        assertNullable(esquemas, "FilaSinGradoNsys", "modelo", "modeloMaestro", "capacidad", "gradoNsys", "bateriaIdRep",
+                "bateriaNueva", "bateriaEn", "vendidoEn", "bajaEn", "vueltoDesde");
+        assertNoNullable(esquemas, "FilaSinGradoNsys", "imeiSn", "ultimoTrabajo", "ultimoTrabajoEn", "categoria");
+        for (String fila : List.of("FilaColorNsys", "FilaGradoNsys", "FilaRevisarNsys"))
+            assertNullable(esquemas, fila, "vendidoEn", "bajaEn", "vueltoDesde");
+        assertNullable(esquemas, "OpcionesTaller", "bateriaIdRep", "bateriaNueva", "bateriaEn");
         assertNoNullable(esquemas, "SkuMaestro", "color", "grado", "sku");
         assertNullable(esquemas, "FilaColorNsys", "colorDe", "colorA", "ponerProducto", "hechoPor", "hechoEn", "hechoVolvio");
         assertNullable(esquemas, "FilaGradoNsys", "gradoDe", "gradoA", "hechoEn", "hechoVolvio");
