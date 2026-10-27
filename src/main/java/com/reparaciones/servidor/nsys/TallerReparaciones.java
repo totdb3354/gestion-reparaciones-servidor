@@ -4,6 +4,8 @@ import com.reparaciones.servidor.dao.ColorEquivalenciaDAO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -22,7 +24,8 @@ import java.util.function.Supplier;
 /** El SKU del taller desde las reparaciones (spec 0.9.21, pieza 2): al guardar una R… con chasis, tapa trasera o batería, el
  *  color y el grado del móvil cambian solos (Taller_cambio, ORIGEN REPARACION); al editarla o borrarla se deshace lo suyo si
  *  sigue mandando; y la banda del formulario hace la misma cuenta sin escribir. Solo las R…: glass (G…) y el resto no
- *  cambian nada. Lo llama GuardadoReparacion dentro de la transacción de la reparación. */
+ *  cambian nada. Lo llama GuardadoReparacion dentro de la transacción de la reparación; desde la 0.9.22 pieza 4, también
+ *  PorPasarNsys tras cada importación, para la batería recordada de cada móvil (en su propia transacción). */
 @Service
 public class TallerReparaciones {
 
@@ -87,6 +90,44 @@ public class TallerReparaciones {
         // 0.9.22 pieza 4 (§5.2): si un chasis aplicó la batería recordada, esa y las anteriores del móvil quedan usadas.
         if (r.recordadaUsada())
             tallerDao.usarBaterias(recordadas.stream().map(BateriaRecordada::idAviso).toList(), r.gradoDespues(), ahora);
+    }
+
+    /** Lo que hizo la batería recordada de un móvil tras la importación: cuántos avisos dio por usados y si creó un cambio de grado
+     *  (para la línea del registro del servidor). */
+    public record BateriaUsada(int usadas, boolean cambio) {
+        static final BateriaUsada NADA = new BateriaUsada(0, false);
+    }
+
+    /** Tras cada importación ACTUAL que acaba en OK (0.9.22 pieza 4 §5.2), las baterías recordadas de un móvil ({@code m}: su fila
+     *  del espejo), en su transacción y con el candado del móvil tomado lo primero: lo vigente y las baterías de ese IMEI se releen
+     *  dentro (lo que vio la lectura de todos pudo cambiar con un «Corregir…» o un chasis a la vez, y con «Corregir…» manda lo
+     *  escrito). Si el grado que vale tiene letra, el cambio de grado que haga falta a nombre de la R… de la más reciente (ORIGEN
+     *  REPARACION, motivo el de la pieza) y todas por usadas con el grado que queda; con un ignorado, solo por usadas; si sigue
+     *  «como n/a» o ya no queda ninguna, nada. READ COMMITTED como «Revisado» y «Corregir…». Lo llama PorPasarNsys desde fuera
+     *  (pasa por el proxy). */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public BateriaUsada usarBateriaRecordada(MovilNsys m) {
+        if (!tallerDao.bloquear(m.imeiSn())) return BateriaUsada.NADA;
+        List<BateriaRecordada> recordadas = tallerDao.bateriasRecordadas(List.of(m.imeiSn()));
+        if (recordadas.isEmpty()) return BateriaUsada.NADA;
+        String grado = LoQueVale.valor(tallerDao.vigentes(List.of(m.imeiSn())), DatoTaller.GRADO, m);
+        GradoTaller.Grupo grupo = GradoTaller.grupo(grado);
+        if (grupo == GradoTaller.Grupo.COMO_NA) return BateriaUsada.NADA;
+        LocalDateTime ahora = ahora();
+        String queda = grado;
+        boolean cambio = false;
+        if (grupo == GradoTaller.Grupo.CON_FORMA) {
+            BateriaRecordada b = BateriaRecordada.ultima(recordadas).orElseThrow();
+            Optional<TallerDAO.Nuevo> n = GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, b.nueva())
+                    .flatMap(nuevo -> EfectoTaller.cambio(DatoTaller.GRADO, nuevo, grado, m));
+            if (n.isPresent()) {
+                tallerDao.guardar(m.imeiSn(), List.of(n.get()), b.idRep(), b.idUsu(), b.motivo(), ahora);
+                queda = n.get().valor();
+                cambio = true;
+            }
+        }
+        int usadas = tallerDao.usarBaterias(recordadas.stream().map(BateriaRecordada::idAviso).toList(), queda, ahora);
+        return new BateriaUsada(usadas, cambio);
     }
 
     // ---------------------------------------------------------------- editar y borrar (spec §2.3)

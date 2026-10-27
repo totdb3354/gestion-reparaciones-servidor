@@ -43,7 +43,8 @@ class PorPasarNsysTest {
     private final HechoDAO hechos = mock(HechoDAO.class);
     private final DescarteDAO descartes = mock(DescarteDAO.class);
     private final LogDAO registro = mock(LogDAO.class);
-    private final PorPasarNsys servicio = new PorPasarNsys(taller, tallerDao, nsys, hechos, descartes, registro,
+    private final TallerReparaciones reparaciones = mock(TallerReparaciones.class);
+    private final PorPasarNsys servicio = new PorPasarNsys(taller, tallerDao, nsys, hechos, descartes, registro, reparaciones,
             Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     private static HttpStatusCode estado(Executable accion) {
@@ -504,83 +505,94 @@ class PorPasarNsysTest {
     }
 
     // ---------------------------------------------------------------- 0.9.22 pieza 4: baterías tras la importación (spec §5.2)
+    // Lo de cada móvil (releer con el candado, el cambio de grado y darlas por usadas) está en TallerReparaciones y sus pruebas;
+    // aquí, el prefiltro, una llamada por móvil, el fallo de uno y la línea del registro del servidor.
 
-    private static BateriaRecordada bateria(int id, boolean nueva, LocalDateTime fecha) {
-        return new BateriaRecordada(id, IMEI, "R20261024_" + id, nueva, nueva ? "batería bati13 nueva" : "batería bati13 reutilizada",
-                8, fecha);
+    private static BateriaRecordada bateria(int id, String imei) {
+        return new BateriaRecordada(id, imei, "R20261024_" + id, true, "batería bati13 nueva", 8, AHORA.minusDays(1));
     }
 
-    @Test void conLetraDeNsysLaBateriaNuevaRecordadaPoneEl100ANombreDeSuReparacion() {
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
-        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A")));
-        when(tallerDao.usarBaterias(any(), any(), any())).thenReturn(1);
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "A", CambioTaller.Estado.VIGENTE)), "R20261024_40",
-                8, "batería bati13 nueva", AHORA);
-        verify(tallerDao).usarBaterias(List.of(40), "A100", AHORA);
-    }
-
-    @Test void conLetraDelTallerTambienSeAplica() {
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
-        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
-        when(tallerDao.vigentes(List.of(IMEI))).thenReturn(List.of(vigente(9, IMEI, GRADO, "A", "n/a")));
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", CambioTaller.Estado.VIGENTE)),
-                "R20261024_40", 8, "batería bati13 nueva", AHORA);
-        verify(tallerDao).usarBaterias(List.of(40), "A100", AHORA);
-    }
-
-    @Test void siYaLlevaEl100NoCambiaNadaYLaDaPorUsada() {
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
-        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A100")));
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
-        verify(tallerDao).usarBaterias(List.of(40), "A100", AHORA);
-    }
-
-    @Test void conUnGradoIgnoradoSeDaPorUsadaSinCambiar() {
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
-        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "F")));
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
-        verify(tallerDao).usarBaterias(List.of(40), "F", AHORA);
-    }
-
-    @Test void sinGradoTodaviaSigueRecordada() {
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
-        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao, never()).usarBaterias(any(), any(), any());
-        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
-    }
-
-    @Test void conVariasValeLaMasRecienteYSeUsanTodas() {
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, true, AHORA.minusDays(2)), bateria(41, false, AHORA.minusDays(1))));
-        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A100")));
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A", "A100", CambioTaller.Estado.VIGENTE)), "R20261024_41",
-                8, "batería bati13 reutilizada", AHORA);
-        verify(tallerDao).usarBaterias(List.of(40, 41), "A", AHORA);
+    /** Las líneas del registro del servidor de PorPasarNsys mientras dura {@code accion}. */
+    private static List<String> registroDelServidor(Runnable accion) {
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(PorPasarNsys.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> lineas =
+                new ch.qos.logback.core.read.ListAppender<>();
+        lineas.start();
+        logger.addAppender(lineas);
+        try {
+            accion.run();
+        } finally {
+            logger.detachAppender(lineas);
+        }
+        return lineas.list.stream().map(e -> e.getLevel() + " " + e.getFormattedMessage()).toList();
     }
 
     @Test void sinBateriasRecordadasNoLeeNadaMas() {
         servicio.usarBateriasRecordadas();
         verify(nsys, never()).porImeis(any());
         verify(tallerDao, never()).vigentes(any());
+        verifyNoInteractions(reparaciones);
+    }
+
+    /** La lectura de todos solo es el prefiltro: los que ya tienen letra (de NSYS o del taller) o un grado ignorado pasan, una vez
+     *  cada uno y con su fila del espejo, a TallerReparaciones (su transacción, con el candado); los «como n/a» ni se miran. */
+    @Test void soloLosQueYaTienenLetraOUnIgnoradoPasanCadaUnoASuTransaccion() {
+        String conLetraDelTaller = "350000000000002", sinLetra = "350000000000003", ignorado = "350000000000004";
+        MovilNsys deNsys = movil(IMEI, "Azul", "A"), delTaller = movil(conLetraDelTaller, "Azul", "n/a"),
+                comoNa = movil(sinLetra, "Azul", "n/a"), conF = movil(ignorado, "Azul", "F");
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, IMEI), bateria(41, conLetraDelTaller),
+                bateria(42, sinLetra), bateria(43, ignorado), bateria(44, IMEI)));
+        when(nsys.porImeis(List.of(IMEI, conLetraDelTaller, sinLetra, ignorado))).thenReturn(List.of(deNsys, delTaller, comoNa, conF));
+        when(tallerDao.vigentes(anyCollection())).thenReturn(List.of(vigente(9, conLetraDelTaller, GRADO, "A", "n/a")));
+        when(reparaciones.usarBateriaRecordada(any())).thenReturn(new TallerReparaciones.BateriaUsada(1, false));
+        servicio.usarBateriasRecordadas();
+        verify(reparaciones).usarBateriaRecordada(deNsys);
+        verify(reparaciones).usarBateriaRecordada(delTaller);
+        verify(reparaciones).usarBateriaRecordada(conF);
+        verify(reparaciones, never()).usarBateriaRecordada(comoNa);
+        verify(tallerDao, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(tallerDao, never()).usarBaterias(any(), any(), any());
+    }
+
+    @Test void unoQueYaNoEstaEnElEspejoNoSeMira() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, IMEI), bateria(41, "350000000000002")));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "A")));
+        when(reparaciones.usarBateriaRecordada(any())).thenReturn(new TallerReparaciones.BateriaUsada(1, true));
+        servicio.usarBateriasRecordadas();
+        verify(reparaciones).usarBateriaRecordada(movil(IMEI, "Azul", "A"));
+        verifyNoMoreInteractions(reparaciones);
+    }
+
+    @Test void elRegistroDelServidorCuentaLasUsadasYLosCambiosDeGrado() {
+        String otro = "350000000000002", tercero = "350000000000003";
+        MovilNsys uno = movil(IMEI, "Azul", "A"), dos = movil(otro, "Azul", "A100"), tres = movil(tercero, "Azul", "B");
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, IMEI), bateria(41, IMEI), bateria(42, otro),
+                bateria(43, tercero)));
+        when(nsys.porImeis(List.of(IMEI, otro, tercero))).thenReturn(List.of(uno, dos, tres));
+        when(reparaciones.usarBateriaRecordada(uno)).thenReturn(new TallerReparaciones.BateriaUsada(2, true));
+        when(reparaciones.usarBateriaRecordada(dos)).thenReturn(new TallerReparaciones.BateriaUsada(1, false));
+        when(reparaciones.usarBateriaRecordada(tres)).thenReturn(new TallerReparaciones.BateriaUsada(0, false));
+        assertEquals(List.of("INFO NSYS: baterías recordadas usadas: 3 (cambios de grado: 1)"),
+                registroDelServidor(servicio::usarBateriasRecordadas));
+    }
+
+    @Test void sinNingunaUsadaNoApuntaNadaEnElRegistroDelServidor() {
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, IMEI)));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "A")));
+        when(reparaciones.usarBateriaRecordada(any())).thenReturn(new TallerReparaciones.BateriaUsada(0, false));
+        assertEquals(List.of(), registroDelServidor(servicio::usarBateriasRecordadas));
     }
 
     @Test void siUnMovilFallaLosDemasSiSeAplican() {
         String otro = "350000000000002";
-        BateriaRecordada b1 = bateria(40, true, AHORA.minusDays(1));
-        BateriaRecordada b2 = new BateriaRecordada(41, otro, "R20261024_41", true, "batería bati13 nueva", 8, AHORA.minusDays(1));
-        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(b1, b2));
-        when(nsys.porImeis(List.of(IMEI, otro))).thenReturn(List.of(movil(IMEI, "Azul", "A"), movil(otro, "Azul", "A")));
-        when(tallerDao.usarBaterias(any(), any(), any())).thenReturn(1);
-        doThrow(new IllegalStateException("fallo")).when(tallerDao).guardar(eq(IMEI), any(), any(), any(), any(), any());
-        servicio.usarBateriasRecordadas();
-        verify(tallerDao).guardar(otro, List.of(new TallerDAO.Nuevo(GRADO, "A100", "A", CambioTaller.Estado.VIGENTE)), "R20261024_41",
-                8, "batería bati13 nueva", AHORA);
-        verify(tallerDao).usarBaterias(List.of(41), "A100", AHORA);
-        verify(tallerDao, never()).usarBaterias(eq(List.of(40)), any(), any());
+        MovilNsys falla = movil(IMEI, "Azul", "A"), sigue = movil(otro, "Azul", "A");
+        when(tallerDao.bateriasRecordadas()).thenReturn(List.of(bateria(40, IMEI), bateria(41, otro)));
+        when(nsys.porImeis(List.of(IMEI, otro))).thenReturn(List.of(falla, sigue));
+        when(reparaciones.usarBateriaRecordada(falla)).thenThrow(new IllegalStateException("fallo"));
+        when(reparaciones.usarBateriaRecordada(sigue)).thenReturn(new TallerReparaciones.BateriaUsada(1, true));
+        List<String> lineas = registroDelServidor(servicio::usarBateriasRecordadas);
+        verify(reparaciones).usarBateriaRecordada(sigue);
+        assertEquals(List.of("WARN NSYS: no se pudo usar la batería recordada de 350000000000001",
+                "INFO NSYS: baterías recordadas usadas: 1 (cambios de grado: 1)"), lineas);
     }
 }

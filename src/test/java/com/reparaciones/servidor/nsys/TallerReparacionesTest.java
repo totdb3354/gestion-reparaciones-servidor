@@ -4,6 +4,8 @@ import com.reparaciones.servidor.dao.ColorEquivalenciaDAO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -297,5 +299,102 @@ class TallerReparacionesTest {
                 new BateriaRecordada(40, IMEI, R1, true, "batería bati13 nueva", 8, AHORA.minusSeconds(4))));
         servicio.aplicar(IMEI, List.of(fila(R2, 101, false)), 8);
         verify(taller, never()).usarBaterias(any(), any(), any());
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: la batería recordada tras la importación (§5.2)
+
+    private static BateriaRecordada bateria(int id, boolean nueva, LocalDateTime fecha) {
+        return new BateriaRecordada(id, IMEI, "R20261020_" + id, nueva, nueva ? "batería bati13 nueva" : "batería bati13 reutilizada",
+                8, fecha);
+    }
+
+    @Test void trasLaImportacionConLetraDeNsysLaBateriaNuevaPoneEl100ANombreDeSuReparacion() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(taller.usarBaterias(any(), any(), any())).thenReturn(1);
+        assertEquals(new TallerReparaciones.BateriaUsada(1, true), servicio.usarBateriaRecordada(movil(IMEI, "Azul", "A")));
+        InOrder orden = inOrder(taller);
+        orden.verify(taller).bloquear(IMEI);
+        orden.verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "A", VIGENTE)), "R20261020_40", 8,
+                "batería bati13 nueva", AHORA);
+        orden.verify(taller).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
+    @Test void trasLaImportacionConLetraDelTallerTambienSeAplica() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(taller.vigentes(List.of(IMEI))).thenReturn(List.of(vigente(9, IMEI, GRADO, "A", "n/a")));
+        servicio.usarBateriaRecordada(movil(IMEI, "Azul", "n/a"));
+        verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A100", "n/a", VIGENTE)), "R20261020_40", 8,
+                "batería bati13 nueva", AHORA);
+        verify(taller).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
+    @Test void trasLaImportacionSiYaLlevaEl100NoCambiaNadaYLaDaPorUsada() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(taller.usarBaterias(any(), any(), any())).thenReturn(1);
+        assertEquals(new TallerReparaciones.BateriaUsada(1, false), servicio.usarBateriaRecordada(movil(IMEI, "Azul", "A100")));
+        verify(taller, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(taller).usarBaterias(List.of(40), "A100", AHORA);
+    }
+
+    @Test void trasLaImportacionConUnGradoIgnoradoSeDaPorUsadaSinCambiar() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        servicio.usarBateriaRecordada(movil(IMEI, "Azul", "F"));
+        verify(taller, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(taller).usarBaterias(List.of(40), "F", AHORA);
+    }
+
+    @Test void trasLaImportacionSinGradoTodaviaSigueRecordada() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        assertEquals(new TallerReparaciones.BateriaUsada(0, false), servicio.usarBateriaRecordada(movil(IMEI, "Azul", "n/a")));
+        verify(taller, never()).usarBaterias(any(), any(), any());
+        verify(taller, never()).guardar(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test void trasLaImportacionConVariasValeLaMasRecienteYSeUsanTodas() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(2)),
+                bateria(41, false, AHORA.minusDays(1))));
+        servicio.usarBateriaRecordada(movil(IMEI, "Azul", "A100"));
+        verify(taller).guardar(IMEI, List.of(new TallerDAO.Nuevo(GRADO, "A", "A100", VIGENTE)), "R20261020_41", 8,
+                "batería bati13 reutilizada", AHORA);
+        verify(taller).usarBaterias(List.of(40, 41), "A", AHORA);
+    }
+
+    /** La lectura de todos (el prefiltro de PorPasarNsys) vio la «A» de NSYS; entre medias se guardó a mano un «B100». Con el candado
+     *  se relee lo de ese IMEI: el grado que vale es B100 y ya lleva el 100, así que no crea nada que lo pise y solo la da por usada. */
+    @Test void trasLaImportacionReleeLoVigenteDeEseImeiConElCandado() {
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        when(taller.vigentes(List.of(IMEI))).thenReturn(List.of(vigente(9, IMEI, GRADO, "B100", "A")));
+        servicio.usarBateriaRecordada(movil(IMEI, "Azul", "A"));
+        InOrder orden = inOrder(taller);
+        orden.verify(taller).bloquear(IMEI);
+        orden.verify(taller).vigentes(List.of(IMEI));
+        orden.verify(taller).usarBaterias(List.of(40), "B100", AHORA);
+        verify(taller, never()).guardar(any(), any(), any(), any(), any(), any());
+    }
+
+    /** Un «Corregir…» que dejó letra entre medias ya las dio por usadas: al releer no queda ninguna y no se hace nada. */
+    @Test void trasLaImportacionSiYaNoQuedaNingunaRecordadaNoHaceNada() {
+        assertEquals(new TallerReparaciones.BateriaUsada(0, false), servicio.usarBateriaRecordada(movil(IMEI, "Azul", "A")));
+        InOrder orden = inOrder(taller);
+        orden.verify(taller).bloquear(IMEI);
+        orden.verify(taller).bateriasRecordadas(List.of(IMEI));
+        verify(taller, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(taller, never()).usarBaterias(any(), any(), any());
+    }
+
+    @Test void trasLaImportacionUnImeiQueNsysYaNoConoceNoCambiaNada() {
+        when(taller.bloquear(IMEI)).thenReturn(false);
+        when(taller.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(bateria(40, true, AHORA.minusDays(1))));
+        servicio.usarBateriaRecordada(movil(IMEI, "Azul", "A"));
+        verify(taller, never()).guardar(any(), any(), any(), any(), any(), any());
+        verify(taller, never()).usarBaterias(any(), any(), any());
+    }
+
+    /** Cada móvil en su transacción, con el candado del IMEI tomado dentro, y READ COMMITTED como «Revisado» y «Corregir…» (con
+     *  REPEATABLE READ, MariaDB 11.6+ da el error 1020). PorPasarNsys la llama desde fuera: pasa por el proxy de Spring. */
+    @Test void trasLaImportacionCadaMovilVaEnSuTransaccionEnReadCommitted() throws NoSuchMethodException {
+        Transactional t = TallerReparaciones.class.getMethod("usarBateriaRecordada", MovilNsys.class).getAnnotation(Transactional.class);
+        assertNotNull(t, "el cambio de grado y dar por usadas van juntos, con el candado");
+        assertEquals(Isolation.READ_COMMITTED, t.isolation());
     }
 }

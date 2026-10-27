@@ -21,7 +21,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
@@ -46,22 +45,26 @@ public class PorPasarNsys {
     private final HechoDAO hechoDao;
     private final DescarteDAO descarteDao;
     private final LogDAO logDao;
+    /** Las baterías recordadas de cada móvil tras la importación, cada una en su transacción: otro bean, para que pase por el
+     *  proxy de Spring (TallerReparaciones no depende de este: sin ciclo). */
+    private final TallerReparaciones reparaciones;
     private final Clock clock;
 
     @Autowired
     public PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao,
-                        LogDAO logDao) {
-        this(taller, tallerDao, nsysDao, hechoDao, descarteDao, logDao, Clock.system(ImportadorNsys.MADRID));
+                        LogDAO logDao, TallerReparaciones reparaciones) {
+        this(taller, tallerDao, nsysDao, hechoDao, descarteDao, logDao, reparaciones, Clock.system(ImportadorNsys.MADRID));
     }
 
     PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao, LogDAO logDao,
-                 Clock clock) {
+                 TallerReparaciones reparaciones, Clock clock) {
         this.taller = taller;
         this.tallerDao = tallerDao;
         this.nsysDao = nsysDao;
         this.hechoDao = hechoDao;
         this.descarteDao = descarteDao;
         this.logDao = logDao;
+        this.reparaciones = reparaciones;
         this.clock = clock;
     }
 
@@ -238,19 +241,17 @@ public class PorPasarNsys {
     /** Tras cada importación ACTUAL que acaba en OK (pieza 4 §5.2): las baterías recordadas de los móviles cuyo grado (lo que vale)
      *  ya tiene letra se aplican —un cambio de grado a nombre de la R… de la batería, si hace falta— y se dan por usadas; con un
      *  grado ignorado (F, Fd, RMA, ID) se dan por usadas sin cambiar nada; las de un «como n/a» siguen. Sin baterías no lee nada
-     *  más. Un móvil que falla se apunta en el registro del servidor y no para a los demás. */
+     *  más. La lectura de todos aquí solo es el prefiltro (qué móviles tienen baterías y cuáles ya tienen letra): cada uno de esos
+     *  va a {@link TallerReparaciones#usarBateriaRecordada}, en su transacción y con el candado del móvil, que relee lo suyo y
+     *  decide. Un móvil que falla se apunta en el registro del servidor y no para a los demás. */
     public void usarBateriasRecordadas() {
         List<BateriaRecordada> todas = tallerDao.bateriasRecordadas();
         if (todas.isEmpty()) return;
         Map<String, List<BateriaRecordada>> porImei = new LinkedHashMap<>();
         for (BateriaRecordada b : todas) porImei.computeIfAbsent(NsysDAO.claveCruce(b.imeiSn()), k -> new ArrayList<>()).add(b);
-        Map<String, MovilNsys> espejo = new HashMap<>();
-        for (MovilNsys m : nsysDao.porImeis(todas.stream().map(BateriaRecordada::imeiSn).distinct().toList()))
-            espejo.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
+        Map<String, MovilNsys> espejo = espejoDe(todas.stream().map(BateriaRecordada::imeiSn).toList());
         if (espejo.isEmpty()) return;
-        Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(
-                tallerDao.vigentes(espejo.values().stream().map(MovilNsys::imeiSn).toList()));
-        LocalDateTime ahora = ahora();
+        Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(tallerDao.vigentes(imeis(espejo)));
         int usadas = 0;
         int cambios = 0;
         for (Map.Entry<String, List<BateriaRecordada>> e : porImei.entrySet()) {
@@ -258,20 +259,10 @@ public class PorPasarNsys {
                 MovilNsys m = espejo.get(e.getKey());
                 if (m == null) continue;
                 String grado = LoQueVale.valor(vigentes.getOrDefault(e.getKey(), List.of()), DatoTaller.GRADO, m);
-                GradoTaller.Grupo grupo = GradoTaller.grupo(grado);
-                if (grupo == GradoTaller.Grupo.COMO_NA) continue;
-                String queda = grado;
-                if (grupo == GradoTaller.Grupo.CON_FORMA) {
-                    BateriaRecordada b = BateriaRecordada.ultima(e.getValue()).orElseThrow();
-                    Optional<TallerDAO.Nuevo> n = GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, b.nueva())
-                            .flatMap(nuevo -> EfectoTaller.cambio(DatoTaller.GRADO, nuevo, grado, m));
-                    if (n.isPresent()) {
-                        tallerDao.guardar(m.imeiSn(), List.of(n.get()), b.idRep(), b.idUsu(), b.motivo(), ahora);
-                        queda = n.get().valor();
-                        cambios++;
-                    }
-                }
-                usadas += tallerDao.usarBaterias(e.getValue().stream().map(BateriaRecordada::idAviso).toList(), queda, ahora);
+                if (GradoTaller.grupo(grado) == GradoTaller.Grupo.COMO_NA) continue;
+                TallerReparaciones.BateriaUsada hecho = reparaciones.usarBateriaRecordada(m);
+                usadas += hecho.usadas();
+                if (hecho.cambio()) cambios++;
             } catch (RuntimeException ex) {
                 log.warn("NSYS: no se pudo usar la batería recordada de {}", e.getValue().get(0).imeiSn(), ex);
             }
