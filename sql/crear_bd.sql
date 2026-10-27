@@ -12,6 +12,7 @@ SET NAMES utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Taller_descarte;
 DROP TABLE IF EXISTS Taller_hecho;
 DROP TABLE IF EXISTS Taller_aviso;
 DROP TABLE IF EXISTS Taller_cambio;
@@ -608,4 +609,15 @@ CREATE TABLE Taller_hecho (
     VOLVIO   DATETIME    NULL COMMENT 'La importación vio NSYS igual tras marcarlo: la marca deja de valer',
     PRIMARY KEY (IMEI_SN, TARJETA),
     CONSTRAINT fk_taller_hecho_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+
+-- 0.9.22 pieza 3 («descartar» en «No está en NSYS»): un IMEI del taller que no va a NSYS, con quién, cuándo y por qué. Vale
+-- mientras el taller no le haga un trabajo nuevo; el repaso tras cada importación lo borra cuando NSYS ya conoce el IMEI.
+CREATE TABLE Taller_descarte (
+    IMEI_SN  VARCHAR(40)  NOT NULL COMMENT 'El IMEI del taller, como Taller_hecho',
+    ID_USU   INT          NULL,
+    FECHA    DATETIME     NOT NULL COMMENT 'Cuándo se descartó (hora de Madrid)',
+    MOTIVO   VARCHAR(500) NOT NULL,
+    PRIMARY KEY (IMEI_SN),
+    CONSTRAINT fk_taller_descarte_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
