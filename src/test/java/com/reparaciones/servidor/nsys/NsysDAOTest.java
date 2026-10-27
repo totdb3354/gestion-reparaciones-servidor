@@ -445,7 +445,7 @@ class NsysDAOTest {
 
     @SuppressWarnings("unchecked")
     @Test void losTrabajosDesdeUnaHoraVanEnUnaConsultaConLaHoraEnUtc() {
-        assertEquals("SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG FROM Reparacion r WHERE r.FECHA_ASIG >= ?", NsysDAO.SQL_TRABAJOS_DESDE);
+        assertEquals("SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG, r.FECHA_FIN FROM Reparacion r WHERE r.FECHA_ASIG >= ?", NsysDAO.SQL_TRABAJOS_DESDE);
         assertTrue(dao.trabajosDesde(LocalDateTime.of(2026, 10, 22, 12, 49)).isEmpty());
         verify(jdbc).query(eq(NsysDAO.SQL_TRABAJOS_DESDE + NsysDAO.ORDEN_TRABAJOS), any(RowMapper.class),
                 eq(Timestamp.valueOf(LocalDateTime.of(2026, 10, 22, 10, 49))));
@@ -468,7 +468,13 @@ class NsysDAOTest {
         when(rs.getString("IMEI")).thenReturn("350000000000001");
         when(rs.getString("ID_REP")).thenReturn("R20261026_201");
         when(rs.getTimestamp("FECHA_ASIG")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2026, 10, 26, 16, 28)));
-        assertEquals(new NsysDAO.TrabajoFecha("350000000000001", "R20261026_201", LocalDateTime.of(2026, 10, 26, 17, 28)),
-                NsysDAO.trabajoFecha(rs, 0), "UTC → Madrid (invierno, +1)");
+        assertEquals(new NsysDAO.TrabajoFecha("350000000000001", "R20261026_201", LocalDateTime.of(2026, 10, 26, 17, 28), null),
+                NsysDAO.trabajoFecha(rs, 0), "UTC → Madrid (invierno, +1); sin FECHA_FIN, terminado null");
+        when(rs.getTimestamp("FECHA_FIN")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2026, 10, 27, 7, 5)));
+        assertEquals(LocalDateTime.of(2026, 10, 27, 8, 5), NsysDAO.trabajoFecha(rs, 0).terminado(), "FECHA_FIN también a Madrid");
+    }
+
+    @Test void lasConsultasDeTrabajosTraenLaFechaDeFin() {
+        assertTrue(NsysDAO.SQL_FECHAS_DE_IMEIS.startsWith("SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG, r.FECHA_FIN FROM Reparacion r"));
     }
 }

@@ -132,11 +132,11 @@ public class PorPasarNsys {
             else fuera.add(m);
         }
         if (fuera.isEmpty()) return vueltas;
-        Map<String, List<LocalDateTime>> asignaciones = VueltaNsys.asignacionesPorImei(
+        Map<String, List<NsysDAO.TrabajoFecha>> trabajos = VueltaNsys.trabajosPorImei(
                 nsysDao.trabajosDe(fuera.stream().map(MovilNsys::imeiSn).toList()));
         for (MovilNsys m : fuera) {
             String clave = NsysDAO.claveCruce(m.imeiSn());
-            VueltaNsys.de(m, asignaciones.getOrDefault(clave, List.of())).ifPresent(v -> vueltas.put(clave, v));
+            VueltaNsys.de(m, trabajos.getOrDefault(clave, List.of())).ifPresent(v -> vueltas.put(clave, v));
         }
         return vueltas;
     }
