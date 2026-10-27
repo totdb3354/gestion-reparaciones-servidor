@@ -10,7 +10,8 @@ import java.util.Map;
 /** Un IMEI con trabajos del taller que NSYS no conoce (spec 0.9.22 §3.4, «No está en NSYS»): su modelo del taller
  *  (Telefono.MODELO, un código del ERP como «14pro»), el último trabajo ({@code abierto}: una asignación A… sin terminar), su
  *  técnico y su cliente (el del trabajo o, si no tiene, el del teléfono), cuántos trabajos tiene y desde cuándo (su primera
- *  asignación) y cuándo se asignó el último ({@code ultimoEn}, para los descartes de la pieza 3). Horas de Madrid. */
+ *  asignación) y cuándo se asignó su última asignación A… ({@code ultimoEn}, para los descartes de la pieza 3; sin asignaciones,
+ *  su último trabajo): terminar una asignación crea su fila R/G/P con la hora del cierre, que no es un trabajo nuevo. Horas de Madrid. */
 public record AltaTaller(String imei, String modelo, String ultimo, boolean abierto, String tecnico, String cliente,
                          int trabajos, LocalDateTime desde, LocalDateTime ultimoEn) {
 
@@ -36,9 +37,10 @@ public record AltaTaller(String imei, String modelo, String ultimo, boolean abie
         porImei.forEach((imei, delImei) -> {
             Trabajo ultimo = delImei.stream().max(ORDEN).orElseThrow();
             Trabajo primero = delImei.stream().min(ORDEN).orElseThrow();
+            Trabajo ultimaAsignacion = delImei.stream().filter(Trabajo::esAsignacion).max(ORDEN).orElse(ultimo);
             int cuenta = (int) delImei.stream().filter(t -> !t.esAsignacion() || t.terminado() == null).count();
             altas.add(new AltaTaller(imei, ultimo.modelo(), ultimo.idRep(), ultimo.esAsignacion() && ultimo.terminado() == null,
-                    ultimo.tecnico(), ultimo.cliente(), cuenta, primero.asignado(), ultimo.asignado()));
+                    ultimo.tecnico(), ultimo.cliente(), cuenta, primero.asignado(), ultimaAsignacion.asignado()));
         });
         return altas;
     }

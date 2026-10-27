@@ -253,6 +253,26 @@ class TarjetasNsysTest {
         assertTrue(TarjetasNsys.descartadas(List.of(alta("350000000000088", HOY)), Map.of()).isEmpty());
     }
 
+    private static List<AltaTaller.Trabajo> trabajosDeUnaAsignacionTerminada(LocalDateTime asignada, LocalDateTime cierre) {
+        return List.of(
+                new AltaTaller.Trabajo("350000000000088", "A20261006_1", asignada, cierre, "Técnico 2", "14", null),
+                new AltaTaller.Trabajo("350000000000088", "R20261006_57", cierre, cierre, "Técnico 2", "14", null));
+    }
+
+    @Test void terminarLaAsignacionAbiertaAlDescartarNoSacaLaFilaPeroUnaAsignacionNuevaSi() {
+        LocalDateTime asignada = HOY.minusHours(1);
+        Map<String, DescarteTaller> d = TarjetasNsys.descartesPorClave(List.of(descarte("350000000000088", HOY)));
+        AltaTaller terminada = AltaTaller.de(trabajosDeUnaAsignacionTerminada(asignada, HOY.plusHours(1))).get(0);
+        assertTrue(TarjetasNsys.descartada(terminada, d));
+        assertTrue(TarjetasNsys.altas(List.of(terminada), Map.of(), d).isEmpty());
+
+        java.util.ArrayList<AltaTaller.Trabajo> con = new java.util.ArrayList<>(trabajosDeUnaAsignacionTerminada(asignada, HOY.plusHours(1)));
+        con.add(new AltaTaller.Trabajo("350000000000088", "A20261006_2", HOY.plusHours(2), null, "Técnico 2", "14", null));
+        AltaTaller nueva = AltaTaller.de(con).get(0);
+        assertFalse(TarjetasNsys.descartada(nueva, d));
+        assertEquals("Supertécnico 1", TarjetasNsys.altas(List.of(nueva), Map.of(), d).get(0).descartadoAntesPor());
+    }
+
     @Test void losDescartadosVanDelMasRecienteAlMasAntiguo() {
         AltaTaller uno = alta("350000000000088", HOY.minusDays(3));
         AltaTaller dos = alta("350000000000099", HOY.minusDays(3));
