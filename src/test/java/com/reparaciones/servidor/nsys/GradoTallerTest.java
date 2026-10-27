@@ -30,6 +30,14 @@ class GradoTallerTest {
             "B100,    BATERIA, false, B",
             "A,       BATERIA, false, A",
             "MsB100,  BATERIA, false, MsB",
+            // 0.9.22 pieza 4: A+ cuenta como A (y se escribe A); «Ms» sin mirar mayúsculas (MSA- es MsA-)
+            "A+,      CHASIS,  true,  A",
+            "A+,      BATERIA, true,  A100",
+            "A+100,   BATERIA, false, A",
+            "MsA+,    BATERIA, true,  MsA100",
+            "MSA-,    BATERIA, true,  MsA-100",
+            "msB,     CHASIS,  false, MsA",
+            "A+,      TAPA,    true,  A+",
             // sin espacios a los lados
             "' B ',   CHASIS,  true,  A"
     })
@@ -37,13 +45,36 @@ class GradoTallerTest {
         assertEquals(Optional.of(esperado), GradoTaller.conPieza(grado, tipo, nueva));
     }
 
-    @ParameterizedTest(name = "«{0}» no se puede calcular")
-    @CsvSource({"ID", "F", "FD", "A+", "G", "P", "P+", "100", "a", "MsMsA"})
-    void sinLaFormaNoCambiaConNingunaPieza(String grado) {
+    @ParameterizedTest(name = "«{0}» se ignora: ninguna pieza lo cambia")
+    @CsvSource({"ID", "F", "Fd", "FD", "RMA", "rma", "' id '"})
+    void losIgnoradosNoCambianConNingunaPieza(String grado) {
         for (PiezaTaller.Tipo tipo : PiezaTaller.Tipo.values()) {
-            assertEquals(Optional.empty(), GradoTaller.conPieza(grado, tipo, true), grado + " " + tipo);
-            assertEquals(Optional.empty(), GradoTaller.conPieza(grado, tipo, false), grado + " " + tipo);
+            assertEquals(Optional.of(grado.strip()), GradoTaller.conPieza(grado, tipo, true), grado + " " + tipo);
+            assertEquals(Optional.of(grado.strip()), GradoTaller.conPieza(grado, tipo, false), grado + " " + tipo);
         }
+    }
+
+    @ParameterizedTest(name = "«{0}» cuenta como n/a: el chasis pone A; la tapa y la batería no pueden")
+    @CsvSource({"G", "P", "P+", "AG", "A-P+", "CG", "100", "a", "MsMsA", "—"})
+    void loQueNoSeUsaCuentaComoNa(String grado) {
+        assertEquals(Optional.of("A"), GradoTaller.conPieza(grado, PiezaTaller.Tipo.CHASIS, true));
+        assertEquals(Optional.empty(), GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, true));
+        assertEquals(Optional.empty(), GradoTaller.conPieza(grado, PiezaTaller.Tipo.BATERIA, false));
+        assertEquals(Optional.empty(), GradoTaller.conPieza(grado, PiezaTaller.Tipo.TAPA, true));
+    }
+
+    @ParameterizedTest(name = "grupo de «{0}»: {1}")
+    @CsvSource({
+            "A,      CON_FORMA", "MsC100, CON_FORMA", "A+100,  CON_FORMA", "MSA-,   CON_FORMA", "' B ',  CON_FORMA",
+            "ID,     IGNORADO",  "Fd,     IGNORADO",  "rma,    IGNORADO",
+            "n/a,    COMO_NA",   "N/A,    COMO_NA",   "'',     COMO_NA",   "AG,     COMO_NA", "A-P+,   COMO_NA", "—, COMO_NA"
+    })
+    void elGrupoDeCadaGrado(String grado, GradoTaller.Grupo grupo) {
+        assertEquals(grupo, GradoTaller.grupo(grado));
+    }
+
+    @Test void sinGradoNingunoEsComoNa() {
+        assertEquals(GradoTaller.Grupo.COMO_NA, GradoTaller.grupo(null));
     }
 
     @Test void sinGradoTampoco() {

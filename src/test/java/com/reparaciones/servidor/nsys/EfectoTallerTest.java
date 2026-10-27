@@ -89,16 +89,16 @@ class EfectoTallerTest {
         assertTrue(r.colorSinDeducir());
     }
 
-    @Test void unGradoSinLaFormaDeNsysNoCambiaConNingunaPiezaYSeAvisa() {
+    @Test void unGradoIgnoradoNoCambiaConNingunaPiezaYNoAvisa() {
         MovilNsys id = movil(IMEI, "Azul", "ID");
         EfectoTaller.Resultado r = EfectoTaller.calcular(id, "Azul", "ID",
                 List.of(pieza("R1", "chai13red", CHASIS, true), pieza("R2", "bati13", BATERIA, true)), COLORES);
         assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE)), r.pasos().get(0).nuevos(), "el color sí");
-        assertEquals("ID", r.pasos().get(0).gradoSinCalcular());
+        assertNull(r.pasos().get(0).gradoSinCalcular());
         assertTrue(r.pasos().get(1).nuevos().isEmpty());
-        assertEquals("ID", r.pasos().get(1).gradoSinCalcular());
+        assertNull(r.pasos().get(1).gradoSinCalcular());
         assertEquals("ID", r.gradoDespues());
-        assertTrue(r.gradoSinCalcular());
+        assertFalse(r.gradoSinCalcular());
     }
 
     @Test void sinGradoSeAvisaConUnaRaya() {
@@ -187,22 +187,32 @@ class EfectoTallerTest {
         assertEquals("n/a", r.pasos().get(0).gradoSinCalcular());
     }
 
-    @Test void unChasisSobreIdGOPCambiaElColorPeroNoElGradoYAvisa() {
-        for (String grado : List.of("ID", "F", "A+", "G", "P")) {
+    @Test void unChasisSobreUnIgnoradoCambiaElColorPeroNoElGradoYNoAvisa() {
+        for (String grado : List.of("ID", "F", "Fd", "RMA")) {
             MovilNsys m = movil(IMEI, "Azul", grado);
             EfectoTaller.Resultado r = EfectoTaller.calcular(m, "Azul", grado,
                     List.of(pieza("R1", "chai13red", CHASIS, true), pieza("R2", "bati13", BATERIA, true)), COLORES);
             assertEquals(List.of(new TallerDAO.Nuevo(COLOR, "Rojo", "Azul", VIGENTE)), paso(r, "R1").nuevos(), grado);
             assertEquals(grado, r.gradoDespues());
-            assertEquals(grado, paso(r, "R1").gradoSinCalcular());
-            assertEquals(grado, paso(r, "R2").gradoSinCalcular());
+            assertNull(paso(r, "R1").gradoSinCalcular(), grado);
+            assertNull(paso(r, "R2").gradoSinCalcular(), grado);
         }
     }
 
-    @Test void laBateriaReutilizadaSobreGradoIdAvisaDelGrado() {
+    @Test void unChasisSobreLoQueNoSeUsaOSobreAMasPoneLaAYLaBateriaEl100() {
+        for (String grado : List.of("G", "P", "AG", "A+")) {
+            MovilNsys m = movil(IMEI, "Azul", grado);
+            EfectoTaller.Resultado r = EfectoTaller.calcular(m, "Azul", grado,
+                    List.of(pieza("R1", "chai13red", CHASIS, true), pieza("R2", "bati13", BATERIA, true)), COLORES);
+            assertEquals("A100", r.gradoDespues(), grado);
+            assertFalse(r.gradoSinCalcular(), grado);
+        }
+    }
+
+    @Test void laBateriaSobreUnIgnoradoNoAvisa() {
         MovilNsys id = movil(IMEI, "Azul", "ID");
         EfectoTaller.Resultado r = EfectoTaller.calcular(id, "Azul", "ID", List.of(pieza("R1", "bati13", BATERIA, false)), COLORES);
         assertTrue(r.pasos().get(0).nuevos().isEmpty());
-        assertEquals("ID", r.pasos().get(0).gradoSinCalcular());
+        assertNull(r.pasos().get(0).gradoSinCalcular());
     }
 }

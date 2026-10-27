@@ -90,12 +90,19 @@ class TallerReparacionesTest {
         verify(taller, never()).avisar(any(), anyInt(), any());
     }
 
-    @Test void unGradoQueNoSePuedeCalcularSeAvisaYNoCambia() {
+    @Test void unaBateriaEnUnComoNaSeAvisaYNoCambia() {
+        when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        servicio.aplicar(IMEI, List.of(fila(R1, 101, false)), 8);
+        verify(taller, never()).guardar(any(), any(), any(), anyInt(), any(), any());
+        verify(taller).avisar(new AvisoTaller.Nuevo(IMEI, R1, AvisoTaller.Tipo.SIN_GRADO, null, GRADO, "n/a", null,
+                "batería bati13 nueva"), 8, AHORA);
+    }
+
+    @Test void unaBateriaEnUnGradoIgnoradoNiCambiaNiAvisa() {
         when(nsys.porImei(IMEI)).thenReturn(List.of(movil(IMEI, "Azul", "ID")));
         servicio.aplicar(IMEI, List.of(fila(R1, 101, false)), 8);
         verify(taller, never()).guardar(any(), any(), any(), anyInt(), any(), any());
-        verify(taller).avisar(new AvisoTaller.Nuevo(IMEI, R1, AvisoTaller.Tipo.SIN_GRADO, null, GRADO, "ID", null,
-                "batería bati13 nueva"), 8, AHORA);
+        verify(taller, never()).avisar(any(), anyInt(), any());
     }
 
     @Test void unImeiQueNsysNoConoceNoCambiaNada() {
