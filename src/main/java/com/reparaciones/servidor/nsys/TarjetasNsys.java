@@ -182,6 +182,17 @@ final class TarjetasNsys {
     /** El primer momento que cuenta para «Sin grado en NSYS» (pieza 4 §4.1): la 0.9.21 en producción, hora de Madrid. */
     static final LocalDateTime DESDE_SIN_GRADO = LocalDateTime.of(2026, 10, 22, 12, 49);
 
+    /** De las filas del espejo ({@code espejo}, por clave de cruce), las de los móviles cuyo grado que vale (NSYS con lo del taller
+     *  vigente, {@code vigentes}) es «como n/a» (pieza 4 §4.1): las únicas que pueden salir en «Sin grado en NSYS». */
+    static Map<String, MovilNsys> sinLetra(Map<String, MovilNsys> espejo, Map<String, List<CambioTaller>> vigentes) {
+        Map<String, MovilNsys> sinLetra = new HashMap<>();
+        espejo.forEach((clave, m) -> {
+            String grado = LoQueVale.valor(vigentes.getOrDefault(clave, List.of()), DatoTaller.GRADO, m);
+            if (GradoTaller.grupo(grado) == GradoTaller.Grupo.COMO_NA) sinLetra.put(clave, m);
+        });
+        return sinLetra;
+    }
+
     private static final Comparator<NsysDAO.TrabajoFecha> POR_ASIGNACION = Comparator.comparing(NsysDAO.TrabajoFecha::asignado,
             Comparator.nullsFirst(Comparator.naturalOrder())).thenComparing(NsysDAO.TrabajoFecha::idRep);
 

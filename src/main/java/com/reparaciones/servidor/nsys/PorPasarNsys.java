@@ -79,22 +79,27 @@ public class PorPasarNsys {
     }
 
     /** «Sin grado en NSYS» (pieza 4 §4.1): los trabajos desde el 22/10 12:49 (una consulta) y, solo si hay, la fila más reciente
-     *  del espejo de sus IMEI, sus cambios vigentes, sus vueltas y sus baterías recordadas. */
+     *  del espejo de sus IMEI y sus cambios vigentes; las vueltas y las baterías recordadas, solo de los que siguen «como n/a» (casi
+     *  todos los demás acaban con letra y vendidos: sus trabajos no hacen falta). */
     List<FilaSinGradoNsys> sinGrado() {
         List<NsysDAO.TrabajoFecha> trabajos = nsysDao.trabajosDesde(TarjetasNsys.DESDE_SIN_GRADO);
         if (trabajos.isEmpty()) return List.of();
         Map<String, List<NsysDAO.TrabajoFecha>> porImei = new LinkedHashMap<>();
         for (NsysDAO.TrabajoFecha t : trabajos) porImei.computeIfAbsent(NsysDAO.claveCruce(t.imei()), k -> new ArrayList<>()).add(t);
-        Map<String, MovilNsys> espejo = new HashMap<>();
-        for (MovilNsys m : nsysDao.porImeis(trabajos.stream().map(NsysDAO.TrabajoFecha::imei).distinct().toList()))
-            espejo.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
+        Map<String, MovilNsys> espejo = espejoDe(trabajos.stream().map(NsysDAO.TrabajoFecha::imei).toList());
         if (espejo.isEmpty()) return List.of();
-        List<String> imeis = espejo.values().stream().map(MovilNsys::imeiSn).toList();
-        Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(tallerDao.vigentes(imeis));
+        Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(tallerDao.vigentes(imeis(espejo)));
+        Map<String, MovilNsys> sinLetra = TarjetasNsys.sinLetra(espejo, vigentes);
+        if (sinLetra.isEmpty()) return List.of();
         Map<String, List<BateriaRecordada>> baterias = new HashMap<>();
-        for (BateriaRecordada b : tallerDao.bateriasRecordadas(imeis))
+        for (BateriaRecordada b : tallerDao.bateriasRecordadas(imeis(sinLetra)))
             baterias.computeIfAbsent(NsysDAO.claveCruce(b.imeiSn()), k -> new ArrayList<>()).add(b);
-        return TarjetasNsys.sinGrado(porImei, espejo, vigentes, vueltas(espejo.values()), baterias);
+        return TarjetasNsys.sinGrado(porImei, sinLetra, vigentes, vueltas(sinLetra.values()), baterias);
+    }
+
+    /** Los IMEI (como los escribe el espejo) de unas filas del espejo. */
+    private static List<String> imeis(Map<String, MovilNsys> espejo) {
+        return espejo.values().stream().map(MovilNsys::imeiSn).toList();
     }
 
     /** Los descartes por IMEI (pieza 3); sin filas en «No está en NSYS» no los lee. */
@@ -155,10 +160,14 @@ public class PorPasarNsys {
 
     /** La fila más reciente del espejo de los IMEI de estos avisos (para su modelo); sin avisos no pregunta. */
     private Map<String, MovilNsys> espejo(List<AvisoTaller> avisos) {
-        if (avisos.isEmpty()) return Map.of();
+        return avisos.isEmpty() ? Map.of() : espejoDe(avisos.stream().map(AvisoTaller::imeiSn).toList());
+    }
+
+    /** La fila más reciente del espejo de cada uno de estos IMEI, por {@link NsysDAO#claveCruce} (una consulta; sin repetidos). Un
+     *  IMEI que el espejo no tiene no está. */
+    private Map<String, MovilNsys> espejoDe(Collection<String> imeis) {
         Map<String, MovilNsys> mapa = new HashMap<>();
-        for (MovilNsys m : nsysDao.porImeis(avisos.stream().map(AvisoTaller::imeiSn).distinct().toList()))
-            mapa.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
+        for (MovilNsys m : nsysDao.porImeis(imeis.stream().distinct().toList())) mapa.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
         return mapa;
     }
 

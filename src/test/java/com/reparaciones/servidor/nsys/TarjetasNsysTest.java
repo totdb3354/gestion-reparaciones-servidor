@@ -315,12 +315,25 @@ class TarjetasNsysTest {
     }
 
     @Test void sinGradoMarcaElQueHaVuelto() {
-        Map<String, List<NsysDAO.TrabajoFecha>> trabajos = Map.of(IMEI, List.of(trabajo(IMEI, "R20261022_136", HOY)));
-        VueltaNsys v = new VueltaNsys(LocalDate.of(2026, 9, 18), null, HOY);
+        LocalDateTime trasElCorte = LocalDateTime.of(2026, 10, 22, 14, 6);
+        Map<String, List<NsysDAO.TrabajoFecha>> trabajos = Map.of(IMEI, List.of(trabajo(IMEI, "R20261022_136", trasElCorte)));
+        VueltaNsys v = new VueltaNsys(LocalDate.of(2026, 9, 18), null, trasElCorte);
         FilaSinGradoNsys f = TarjetasNsys.sinGrado(trabajos, Map.of(IMEI, movil(IMEI, "Azul", "n/a")), Map.of(), Map.of(IMEI, v),
                 Map.of()).get(0);
         assertEquals(LocalDate.of(2026, 9, 18), f.vendidoEn());
-        assertEquals(HOY, f.vueltoDesde());
+        assertEquals(trasElCorte, f.vueltoDesde());
+    }
+
+    @Test void sinLetraSeQuedaConLosQueValenComoNa() {
+        String conLetra = "350000000000003", conLetraDelTaller = "350000000000004", ignorado = "350000000000005",
+                desuso = "350000000000006";
+        Map<String, MovilNsys> espejo = Map.of(IMEI, movil(IMEI, "Azul", "n/a"), conLetra, movil(conLetra, "Azul", "B"),
+                conLetraDelTaller, movil(conLetraDelTaller, "Azul", "n/a"), ignorado, movil(ignorado, "Azul", "ID"),
+                desuso, movil(desuso, "Azul", "AG"));
+        Map<String, List<CambioTaller>> vigentes = Map.of(conLetraDelTaller, List.of(vigente(9, conLetraDelTaller, GRADO, "A", "n/a")));
+        Map<String, MovilNsys> sinLetra = TarjetasNsys.sinLetra(espejo, vigentes);
+        assertEquals(Set.of(IMEI, desuso), sinLetra.keySet());
+        assertSame(espejo.get(IMEI), sinLetra.get(IMEI));
     }
 
     @Test void laFechaDeCorteEsLaSubidaDeLa0921() {

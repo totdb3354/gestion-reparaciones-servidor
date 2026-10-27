@@ -481,6 +481,26 @@ class PorPasarNsysTest {
         when(nsys.trabajosDesde(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(IMEI, "A20261025_9", AHORA.minusHours(2))));
         when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "B")));
         assertTrue(servicio.tarjetas().sinGrado().isEmpty());
+        verify(tallerDao, never()).bateriasRecordadas(anyCollection());
+    }
+
+    /** Casi todos los móviles con trabajo desde el corte acaban con letra y vendidos: el grado se mira antes que sus vueltas y sus
+     *  baterías. Los dos vendidos, si llegaran a vueltas(), pedirían sus trabajos. */
+    @Test void sinGradoFiltraPorGradoAntesDeMirarVueltasYBaterias() {
+        String vendidoConLetra = "350000000000011", vendidoConLetraDelTaller = "350000000000012", enStock = "350000000000013";
+        LocalDateTime trasElCorte = LocalDateTime.of(2026, 10, 23, 9, 17);
+        when(nsys.trabajosDesde(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(vendidoConLetra, "R20261023_1", trasElCorte),
+                new NsysDAO.TrabajoFecha(vendidoConLetraDelTaller, "R20261023_2", trasElCorte),
+                new NsysDAO.TrabajoFecha(enStock, "R20261023_3", trasElCorte)));
+        when(nsys.porImeis(List.of(vendidoConLetra, vendidoConLetraDelTaller, enStock))).thenReturn(List.of(
+                vendido(vendidoConLetra, "Azul", "B", LocalDate.of(2026, 9, 14)),
+                vendido(vendidoConLetraDelTaller, "Azul", "n/a", LocalDate.of(2026, 9, 14)), movil(enStock, "Azul", "n/a")));
+        when(tallerDao.vigentes(anyCollection())).thenReturn(List.of(vigente(9, vendidoConLetraDelTaller, GRADO, "A", "n/a")));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(enStock), t.sinGrado().stream().map(FilaSinGradoNsys::imeiSn).toList());
+        verify(nsys, never()).trabajosDe(any());
+        verify(tallerDao).bateriasRecordadas(List.of(enStock));
+        verify(tallerDao).bateriasRecordadas(anyCollection());
     }
 
     // ---------------------------------------------------------------- 0.9.22 pieza 4: baterías tras la importación (spec §5.2)
