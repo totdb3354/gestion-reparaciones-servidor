@@ -50,19 +50,31 @@ public class TallerDAO {
     static final String DESDE_AVISO = " FROM Taller_aviso v LEFT JOIN Usuario u ON u.ID_USU = v.ID_USU"
             + " LEFT JOIN Usuario r ON r.ID_USU = v.REVISADO_POR";
     static final String SQL_AVISOS = "SELECT " + COLUMNAS_AVISO + DESDE_AVISO + " WHERE v.IMEI_SN = ? ORDER BY v.FECHA, v.ID_AVISO";
-    /** «Revisar a mano» (spec 0.9.22 §3.5): los SIN_COLOR, SIN_GRADO y SIN_DESHACER sin «Revisado» y sin una corrección a mano del
+    /** «Revisar a mano» (spec 0.9.22 §3.5): los SIN_COLOR y SIN_DESHACER (pieza 4: SIN_GRADO ya no) sin «Revisado» y sin una corrección a mano del
      *  mismo IMEI y dato después del aviso («Corregir…» o «Volver a lo de NSYS»: los dos dejan un cambio de origen MANO). */
     static final String SQL_POR_REVISAR = "SELECT " + COLUMNAS_AVISO + DESDE_AVISO
-            + " WHERE v.TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER') AND v.REVISADO_EN IS NULL"
+            + " WHERE v.TIPO IN ('SIN_COLOR', 'SIN_DESHACER') AND v.REVISADO_EN IS NULL"
             + " AND NOT EXISTS (SELECT 1 FROM Taller_cambio c WHERE c.IMEI_SN = v.IMEI_SN AND c.DATO = v.DATO"
             + " AND c.ORIGEN = 'MANO' AND c.FECHA > v.FECHA) ORDER BY v.FECHA, v.ID_AVISO";
     static final String SQL_AVISO = "SELECT " + COLUMNAS_AVISO + DESDE_AVISO + " WHERE v.ID_AVISO = ?";
     /** «Revisado»: solo una vez y solo los de «Revisar a mano». */
     static final String SQL_REVISAR = "UPDATE Taller_aviso SET REVISADO_POR = ?, REVISADO_EN = ? WHERE ID_AVISO = ?"
-            + " AND REVISADO_EN IS NULL AND TIPO IN ('SIN_COLOR', 'SIN_GRADO', 'SIN_DESHACER')";
+            + " AND REVISADO_EN IS NULL AND TIPO IN ('SIN_COLOR', 'SIN_DESHACER')";
     /** La fila con uso real de una reparación (una R… tiene una). */
     static final String SQL_PIEZA = "SELECT r.IMEI, rc.ID_COM, rc.ES_REUTILIZADO FROM Reparacion r"
             + " JOIN Reparacion_componente rc ON rc.ID_REP = r.ID_REP AND rc.ES_SOLICITUD = 0 WHERE r.ID_REP = ?";
+    /** 0.9.22 pieza 4 (§5.1): los avisos «Grado sin calcular» sin revisar, candidatos a batería recordada. */
+    static final String SQL_BATERIAS = "SELECT v.ID_AVISO, v.IMEI_SN, v.ID_REP, v.DE, v.MOTIVO, v.ID_USU, v.FECHA FROM Taller_aviso v"
+            + " WHERE v.TIPO = 'SIN_GRADO' AND v.REVISADO_EN IS NULL";
+    static final String ORDEN_AVISOS = " ORDER BY v.FECHA, v.ID_AVISO";
+    /** La pieza con uso real de unas reparaciones (Reparacion_componente y Componente: tablas viejas, la misma intercalación;
+     *  Taller_aviso no se junta con ellas). Se completa con las marcas del IN. */
+    static final String SQL_PIEZAS = "SELECT rc.ID_REP, rc.ES_REUTILIZADO, c.TIPO FROM Reparacion_componente rc"
+            + " JOIN Componente c ON c.ID_COM = rc.ID_COM WHERE rc.ES_SOLICITUD = 0 AND rc.ID_REP IN (";
+    /** Dar por usadas unas baterías recordadas (§5.3): revisadas por el ERP (sin quién) con el grado que quedó. Se completa con
+     *  las marcas del IN. */
+    static final String SQL_USAR = "UPDATE Taller_aviso SET REVISADO_EN = ?, A = ? WHERE TIPO = 'SIN_GRADO' AND REVISADO_EN IS NULL"
+            + " AND ID_AVISO IN (";
 
     private final JdbcTemplate jdbc;
 
@@ -100,9 +112,10 @@ public class TallerDAO {
 
     /** Guarda unos cambios de un móvil, todo o nada: el VIGENTE anterior de cada dato, si lo hay, pasa a SUSTITUIDO y el
      *  nuevo apunta a él (ID_CAMBIO_ANTERIOR). Un QUITADO nace cerrado. {@code idRep}: la reparación que los hace (ORIGEN
-     *  REPARACION, pieza 2) o null (a mano). */
+     *  REPARACION, pieza 2) o null (a mano). {@code idUsu}: null si quien guardó ya no existe
+     *  (pieza 4: la batería recordada). */
     @Transactional
-    public void guardar(String imeiSn, List<Nuevo> nuevos, String idRep, int idUsu, String motivo, LocalDateTime ahora) {
+    public void guardar(String imeiSn, List<Nuevo> nuevos, String idRep, Integer idUsu, String motivo, LocalDateTime ahora) {
         jdbc.queryForList(SQL_BLOQUEAR, String.class, imeiSn);
         Timestamp t = Timestamp.valueOf(ahora);
         String origen = idRep == null ? CambioTaller.MANO : CambioTaller.REPARACION;
@@ -194,6 +207,73 @@ public class TallerDAO {
         if (ids.isEmpty()) return Set.of();
         return new HashSet<>(jdbc.queryForList("SELECT ID_REP FROM Reparacion WHERE ID_REP IN (" + NsysDAO.marcas(ids.size())
                 + ")", String.class, ids.toArray()));
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: baterías recordadas (spec §5)
+
+    /** Un aviso «Grado sin calcular» sin revisar, antes de mirar su pieza. */
+    record Candidata(int idAviso, String imeiSn, String idRep, String de, String motivo, Integer idUsu, LocalDateTime fecha) {}
+
+    /** La pieza con uso real de una reparación: su SKU (Componente.TIPO) y si es reutilizada. */
+    record PiezaLeida(String sku, boolean reutilizada) {}
+
+    /** Las baterías recordadas de todo el taller (tras cada importación), de la más antigua a la más reciente. */
+    public List<BateriaRecordada> bateriasRecordadas() {
+        return baterias(jdbc.query(SQL_BATERIAS + ORDEN_AVISOS, TallerDAO::candidata));
+    }
+
+    /** Las de estos IMEI (como Taller_aviso.IMEI_SN, que es el del espejo), en tandas de {@value NsysDAO#TANDA_IN}. */
+    public List<BateriaRecordada> bateriasRecordadas(Collection<String> imeis) {
+        List<String> lista = List.copyOf(new LinkedHashSet<>(imeis));
+        if (lista.isEmpty()) return List.of();
+        List<Candidata> candidatas = new ArrayList<>();
+        for (List<String> tanda : NsysDAO.trozos(lista, NsysDAO.TANDA_IN))
+            candidatas.addAll(jdbc.query(SQL_BATERIAS + " AND v.IMEI_SN IN (" + NsysDAO.marcas(tanda.size()) + ")" + ORDEN_AVISOS,
+                    TallerDAO::candidata, tanda.toArray()));
+        return baterias(candidatas);
+    }
+
+    /** Lee las piezas de las candidatas «como n/a» (solo si hay alguna) y se queda con las baterías. */
+    private List<BateriaRecordada> baterias(List<Candidata> candidatas) {
+        List<String> idReps = candidatas.stream().filter(c -> GradoTaller.grupo(c.de()) == GradoTaller.Grupo.COMO_NA)
+                .map(Candidata::idRep).distinct().toList();
+        if (idReps.isEmpty()) return List.of();
+        Map<String, PiezaLeida> piezas = new HashMap<>();
+        for (List<String> tanda : NsysDAO.trozos(idReps, NsysDAO.TANDA_IN))
+            for (Map.Entry<String, PiezaLeida> e : jdbc.query(SQL_PIEZAS + NsysDAO.marcas(tanda.size()) + ")",
+                    (rs, n) -> Map.entry(rs.getString("ID_REP"), new PiezaLeida(rs.getString("TIPO"), rs.getBoolean("ES_REUTILIZADO"))),
+                    tanda.toArray()))
+                piezas.put(e.getKey(), e.getValue());
+        return baterias(candidatas, piezas);
+    }
+
+    /** De las candidatas, las que son una batería que sigue existiendo (su R… tiene pieza) puesta en un grado «como n/a», en su
+     *  orden. Nueva = la pieza de hoy no es reutilizada. Es puro. */
+    static List<BateriaRecordada> baterias(List<Candidata> candidatas, Map<String, PiezaLeida> piezas) {
+        List<BateriaRecordada> baterias = new ArrayList<>();
+        for (Candidata c : candidatas) {
+            PiezaLeida p = piezas.get(c.idRep());
+            if (p == null || GradoTaller.grupo(c.de()) != GradoTaller.Grupo.COMO_NA) continue;
+            if (PiezaTaller.Tipo.deSku(p.sku()).orElse(null) != PiezaTaller.Tipo.BATERIA) continue;
+            baterias.add(new BateriaRecordada(c.idAviso(), c.imeiSn(), c.idRep(), !p.reutilizada(), c.motivo(), c.idUsu(), c.fecha()));
+        }
+        return baterias;
+    }
+
+    /** Da por usadas estas baterías recordadas con el grado que quedó (§5.3). 0 si ya lo estaban o no hay ninguna. */
+    public int usarBaterias(Collection<Integer> idAvisos, String gradoQueQueda, LocalDateTime ahora) {
+        List<Integer> ids = List.copyOf(new LinkedHashSet<>(idAvisos));
+        if (ids.isEmpty()) return 0;
+        Object[] args = new Object[ids.size() + 2];
+        args[0] = Timestamp.valueOf(ahora);
+        args[1] = gradoQueQueda;
+        for (int i = 0; i < ids.size(); i++) args[i + 2] = ids.get(i);
+        return jdbc.update(SQL_USAR + NsysDAO.marcas(ids.size()) + ")", args);
+    }
+
+    static Candidata candidata(ResultSet rs, int n) throws SQLException {
+        return new Candidata(rs.getInt("ID_AVISO"), rs.getString("IMEI_SN"), rs.getString("ID_REP"), rs.getString("DE"),
+                rs.getString("MOTIVO"), entero(rs, "ID_USU"), rs.getTimestamp("FECHA").toLocalDateTime());
     }
 
     static AvisoTaller aviso(ResultSet rs, int n) throws SQLException {

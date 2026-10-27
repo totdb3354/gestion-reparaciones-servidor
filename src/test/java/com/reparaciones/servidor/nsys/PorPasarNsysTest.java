@@ -54,9 +54,9 @@ class PorPasarNsysTest {
                 List.of(vigente(2, imei, GRADO, "A100", "B", AHORA.minusDays(1))), null);
     }
 
-    private static AvisoTaller sinGrado() {
-        return new AvisoTaller(5, IMEI, "R20261024_19", AvisoTaller.Tipo.SIN_GRADO, null, GRADO, "ID", null,
-                "chasis chai13blue nuevo", 8, "Técnico 2", AHORA.minusDays(1));
+    private static AvisoTaller sinColor() {
+        return new AvisoTaller(5, IMEI, "R20261024_19", AvisoTaller.Tipo.SIN_COLOR, null, COLOR, "chai13yellow", null,
+                "chasis chai13yellow nuevo", 8, "Técnico 2", AHORA.minusDays(1));
     }
 
     @Test void lasTarjetasJuntanLoDelTallerLasAltasYLosAvisos() {
@@ -65,7 +65,7 @@ class PorPasarNsysTest {
         when(nsys.imeisDelTaller()).thenReturn(List.of(IMEI, "f2lxabc123", "350000000000088"));
         when(nsys.altas(List.of("350000000000088"))).thenReturn(List.of(new AltaTaller("350000000000088", "14", "R20261006_57",
                 false, "Técnico 2", null, 1, AHORA.minusDays(19), AHORA.minusDays(19))));
-        when(tallerDao.avisosPorRevisar()).thenReturn(List.of(sinGrado()));
+        when(tallerDao.avisosPorRevisar()).thenReturn(List.of(sinColor()));
         when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "B")));
         TarjetasPorPasar t = servicio.tarjetas();
         assertTrue(t.color().isEmpty());
@@ -128,10 +128,10 @@ class PorPasarNsysTest {
     }
 
     @Test void revisadoApuntaQuienYCuandoYLoDejaEnElRegistro() {
-        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(sinGrado()));
+        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(sinColor()));
         when(tallerDao.revisar(5, 7, AHORA)).thenReturn(1);
         servicio.revisado(5, 7);
-        verify(registro).insertar(7, "REVISAR_AVISO_TALLER", "IMEI: 350000000000001, SIN_GRADO de R20261024_19", null);
+        verify(registro).insertar(7, "REVISAR_AVISO_TALLER", "IMEI: 350000000000001, SIN_COLOR de R20261024_19", null);
     }
 
     @Test void revisadoDeUnAvisoQueNoExiste() {
@@ -139,7 +139,7 @@ class PorPasarNsysTest {
     }
 
     @Test void revisadoDeUnAvisoYaRevisadoNoHaceNada() {
-        AvisoTaller a = sinGrado();
+        AvisoTaller a = sinColor();
         when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(new AvisoTaller(a.id(), a.imeiSn(), a.idRep(), a.tipo(), a.causa(),
                 a.dato(), a.de(), a.a(), a.motivo(), a.idUsu(), a.usuario(), a.fecha(), "Supertécnico 1", AHORA.minusMinutes(1))));
         assertDoesNotThrow(() -> servicio.revisado(5, 7));
@@ -148,7 +148,7 @@ class PorPasarNsysTest {
     }
 
     @Test void revisadoDeUnAvisoQueNoEsDeRevisarAManoDa400() {
-        AvisoTaller a = sinGrado();
+        AvisoTaller a = sinColor();
         when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(new AvisoTaller(a.id(), a.imeiSn(), a.idRep(),
                 AvisoTaller.Tipo.DESHECHO, AvisoTaller.Causa.BORRADA, a.dato(), a.de(), a.a(), a.motivo(), a.idUsu(), a.usuario(),
                 a.fecha())));
@@ -157,8 +157,16 @@ class PorPasarNsysTest {
         verifyNoInteractions(registro);
     }
 
+    @Test void revisadoDeUnGradoSinCalcularDa400PorqueYaNoEsDeRevisarAMano() {
+        when(tallerDao.avisoPorId(6)).thenReturn(Optional.of(new AvisoTaller(6, IMEI, "R20261024_20", AvisoTaller.Tipo.SIN_GRADO,
+                null, GRADO, "n/a", null, "batería bati13 nueva", 8, "Técnico 2", AHORA.minusDays(1))));
+        when(tallerDao.revisar(6, 7, AHORA)).thenReturn(0);
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.revisado(6, 7)));
+        verifyNoInteractions(registro);
+    }
+
     @Test void revisadoSiLoAcabaDeRevisarOtroEntreMediasNoHaceNada() {
-        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(sinGrado()));
+        when(tallerDao.avisoPorId(5)).thenReturn(Optional.of(sinColor()));
         when(tallerDao.revisar(5, 7, AHORA)).thenReturn(0);
         assertDoesNotThrow(() -> servicio.revisado(5, 7));
         verifyNoInteractions(registro);
