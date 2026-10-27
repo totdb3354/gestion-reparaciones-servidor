@@ -455,4 +455,31 @@ class PorPasarNsysTest {
         servicio.tarjetas();
         verify(nsys, never()).trabajosDe(any());
     }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: «Sin grado en NSYS» (spec §4.1)
+
+    @Test void sinGradoLeeLosTrabajosDesdeEl22YSoloSiHayAlgunoLoDemas() {
+        assertTrue(servicio.tarjetas().sinGrado().isEmpty());
+        verify(nsys).trabajosDesde(LocalDateTime.of(2026, 10, 22, 12, 49));
+        verify(nsys, never()).porImeis(any());
+        verify(tallerDao, never()).bateriasRecordadas(any());
+    }
+
+    @Test void sinGradoConUnTrabajoDeUnMovilNaYSuBateriaRecordada() {
+        when(nsys.trabajosDesde(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(IMEI, "A20261025_9", AHORA.minusHours(2))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "n/a")));
+        when(tallerDao.bateriasRecordadas(List.of(IMEI))).thenReturn(List.of(new BateriaRecordada(40, IMEI, "R20261025_8", false,
+                "batería bati13 reutilizada", 8, AHORA.minusHours(3))));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(IMEI), t.sinGrado().stream().map(FilaSinGradoNsys::imeiSn).toList());
+        assertEquals("A20261025_9", t.sinGrado().get(0).ultimoTrabajo());
+        assertEquals(Boolean.FALSE, t.sinGrado().get(0).bateriaNueva());
+        verify(tallerDao).vigentes(List.of(IMEI));
+    }
+
+    @Test void unMovilConGradoNoSaleEnSinGrado() {
+        when(nsys.trabajosDesde(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(IMEI, "A20261025_9", AHORA.minusHours(2))));
+        when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "B")));
+        assertTrue(servicio.tarjetas().sinGrado().isEmpty());
+    }
 }

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -272,5 +273,57 @@ class TarjetasNsysTest {
         assertNull(f.bajaEn());
         assertEquals(HOY, f.vueltoDesde());
         assertNull(TarjetasNsys.revisar(List.of(a), Map.of(IMEI, movil(IMEI, "Azul", "B"))).get(0).vueltoDesde(), "sin vuelta: en la empresa");
+    }
+
+    // ---------------------------------------------------------------- 0.9.22 pieza 4: «Sin grado en NSYS» (spec §4.1)
+
+    private static NsysDAO.TrabajoFecha trabajo(String imei, String idRep, LocalDateTime asignado) {
+        return new NsysDAO.TrabajoFecha(imei, idRep, asignado);
+    }
+
+    @Test void sinGradoLlevaLosComoNaQueSalenConSuUltimoTrabajoYSuBateria() {
+        String conLetra = "350000000000003", ignorado = "350000000000004", desuso = "350000000000005", vendido = "350000000000006";
+        LocalDateTime t1 = LocalDateTime.of(2026, 10, 23, 9, 0), t2 = LocalDateTime.of(2026, 10, 26, 17, 28);
+        Map<String, List<NsysDAO.TrabajoFecha>> trabajos = new LinkedHashMap<>();
+        trabajos.put(IMEI, List.of(trabajo(IMEI, "A20261026_71", t1), trabajo(IMEI, "R20261026_205", t2)));
+        trabajos.put(conLetra, List.of(trabajo(conLetra, "R20261023_1", t1)));
+        trabajos.put(ignorado, List.of(trabajo(ignorado, "R20261023_2", t1)));
+        trabajos.put(desuso, List.of(trabajo(desuso, "G20261023_40", t1)));
+        trabajos.put(vendido, List.of(trabajo(vendido, "R20261023_3", t1)));
+        Map<String, MovilNsys> espejo = Map.of(IMEI, movil(IMEI, "Azul", "n/a"), conLetra, movil(conLetra, "Azul", "n/a"),
+                ignorado, movil(ignorado, "Azul", "ID"), desuso, movil(desuso, "Azul", "AG"), vendido, movil(vendido, "Azul", "n/a"));
+        Map<String, List<CambioTaller>> vigentes = Map.of(conLetra, List.of(vigente(9, conLetra, GRADO, "A", "n/a")));
+        Map<String, VueltaNsys> vueltas = Map.of(IMEI, VueltaNsys.EN_EMPRESA, conLetra, VueltaNsys.EN_EMPRESA,
+                ignorado, VueltaNsys.EN_EMPRESA, desuso, VueltaNsys.EN_EMPRESA);   // el vendido no ha vuelto: no está
+        BateriaRecordada b = new BateriaRecordada(40, IMEI, "R20261026_205", true, "batería bati13 nueva", 8, t2);
+        List<FilaSinGradoNsys> filas = TarjetasNsys.sinGrado(trabajos, espejo, vigentes, vueltas, Map.of(IMEI, List.of(b)));
+        assertEquals(List.of(desuso, IMEI), filas.stream().map(FilaSinGradoNsys::imeiSn).toList(), "del trabajo más antiguo al más reciente");
+        FilaSinGradoNsys f = filas.get(1);
+        assertEquals("n/a", f.gradoNsys());
+        assertEquals("13", f.modelo());
+        assertEquals("R20261026_205", f.ultimoTrabajo());
+        assertEquals(t2, f.ultimoTrabajoEn());
+        assertEquals("REPARACION", f.categoria());
+        assertEquals("R20261026_205", f.bateriaIdRep());
+        assertEquals(Boolean.TRUE, f.bateriaNueva());
+        assertEquals(t2, f.bateriaEn());
+        assertNull(f.vueltoDesde());
+        assertEquals("GLASS", filas.get(0).categoria());
+        assertEquals("AG", filas.get(0).gradoNsys());
+        assertNull(filas.get(0).bateriaIdRep());
+        assertNull(filas.get(0).bateriaNueva());
+    }
+
+    @Test void sinGradoMarcaElQueHaVuelto() {
+        Map<String, List<NsysDAO.TrabajoFecha>> trabajos = Map.of(IMEI, List.of(trabajo(IMEI, "R20261022_136", HOY)));
+        VueltaNsys v = new VueltaNsys(LocalDate.of(2026, 9, 18), null, HOY);
+        FilaSinGradoNsys f = TarjetasNsys.sinGrado(trabajos, Map.of(IMEI, movil(IMEI, "Azul", "n/a")), Map.of(), Map.of(IMEI, v),
+                Map.of()).get(0);
+        assertEquals(LocalDate.of(2026, 9, 18), f.vendidoEn());
+        assertEquals(HOY, f.vueltoDesde());
+    }
+
+    @Test void laFechaDeCorteEsLaSubidaDeLa0921() {
+        assertEquals(LocalDateTime.of(2026, 10, 22, 12, 49), TarjetasNsys.DESDE_SIN_GRADO);
     }
 }

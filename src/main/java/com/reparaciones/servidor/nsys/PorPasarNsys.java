@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,7 +64,8 @@ public class PorPasarNsys {
         this.clock = clock;
     }
 
-    /** Las cuatro tarjetas (§3) y los descartados de «No está en NSYS» (pieza 3), con una lectura de cada cosa. */
+    /** Las cuatro tarjetas (§3), los descartados de «No está en NSYS» (pieza 3) y las filas «Sin grado en NSYS» (pieza 4), con una
+     *  lectura de cada cosa. */
     public TarjetasPorPasar tarjetas() {
         Salen salen = movilesQueSalen();
         Map<String, HechoTaller> marcas = TarjetasNsys.porClave(hechoDao.todas());
@@ -72,7 +74,26 @@ public class PorPasarNsys {
         Map<String, DescarteTaller> descartes = descartes(altas);
         return new TarjetasPorPasar(TarjetasNsys.color(salen.moviles(), marcas, salen.vueltas()),
                 TarjetasNsys.grado(salen.moviles(), marcas, salen.vueltas()), TarjetasNsys.altas(altas, marcas, descartes),
-                revisar(avisos), TarjetasNsys.descartadas(altas, descartes));
+                revisar(avisos), TarjetasNsys.descartadas(altas, descartes), sinGrado());
+    }
+
+    /** «Sin grado en NSYS» (pieza 4 §4.1): los trabajos desde el 22/10 12:49 (una consulta) y, solo si hay, la fila más reciente
+     *  del espejo de sus IMEI, sus cambios vigentes, sus vueltas y sus baterías recordadas. */
+    List<FilaSinGradoNsys> sinGrado() {
+        List<NsysDAO.TrabajoFecha> trabajos = nsysDao.trabajosDesde(TarjetasNsys.DESDE_SIN_GRADO);
+        if (trabajos.isEmpty()) return List.of();
+        Map<String, List<NsysDAO.TrabajoFecha>> porImei = new LinkedHashMap<>();
+        for (NsysDAO.TrabajoFecha t : trabajos) porImei.computeIfAbsent(NsysDAO.claveCruce(t.imei()), k -> new ArrayList<>()).add(t);
+        Map<String, MovilNsys> espejo = new HashMap<>();
+        for (MovilNsys m : nsysDao.porImeis(trabajos.stream().map(NsysDAO.TrabajoFecha::imei).distinct().toList()))
+            espejo.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
+        if (espejo.isEmpty()) return List.of();
+        List<String> imeis = espejo.values().stream().map(MovilNsys::imeiSn).toList();
+        Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(tallerDao.vigentes(imeis));
+        Map<String, List<BateriaRecordada>> baterias = new HashMap<>();
+        for (BateriaRecordada b : tallerDao.bateriasRecordadas(imeis))
+            baterias.computeIfAbsent(NsysDAO.claveCruce(b.imeiSn()), k -> new ArrayList<>()).add(b);
+        return TarjetasNsys.sinGrado(porImei, espejo, vigentes, vueltas(espejo.values()), baterias);
     }
 
     /** Los descartes por IMEI (pieza 3); sin filas en «No está en NSYS» no los lee. */

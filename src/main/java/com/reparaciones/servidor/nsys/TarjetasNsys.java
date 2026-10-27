@@ -179,6 +179,38 @@ final class TarjetasNsys {
         return revisar(avisos, espejo, Map.of());
     }
 
+    /** El primer momento que cuenta para «Sin grado en NSYS» (pieza 4 §4.1): la 0.9.21 en producción, hora de Madrid. */
+    static final LocalDateTime DESDE_SIN_GRADO = LocalDateTime.of(2026, 10, 22, 12, 49);
+
+    private static final Comparator<NsysDAO.TrabajoFecha> POR_ASIGNACION = Comparator.comparing(NsysDAO.TrabajoFecha::asignado,
+            Comparator.nullsFirst(Comparator.naturalOrder())).thenComparing(NsysDAO.TrabajoFecha::idRep);
+
+    /** «Sin grado en NSYS» (pieza 4 §4.1): por cada IMEI con trabajos desde {@link #DESDE_SIN_GRADO} ({@code trabajos}, por clave de
+     *  cruce), su fila más reciente del espejo ({@code espejo}), lo que vale de su grado ({@code vigentes}), si sale ({@code
+     *  vueltas}: en la empresa o que ha vuelto; si no está, no sale) y su batería recordada ({@code baterias}), todo por clave de
+     *  cruce. Sale si lo que vale de su grado es «como n/a». Del trabajo más antiguo al más reciente, y por IMEI. */
+    static List<FilaSinGradoNsys> sinGrado(Map<String, List<NsysDAO.TrabajoFecha>> trabajos, Map<String, MovilNsys> espejo,
+                                           Map<String, List<CambioTaller>> vigentes, Map<String, VueltaNsys> vueltas,
+                                           Map<String, List<BateriaRecordada>> baterias) {
+        List<FilaSinGradoNsys> filas = new ArrayList<>();
+        trabajos.forEach((clave, delImei) -> {
+            MovilNsys m = espejo.get(clave);
+            VueltaNsys v = vueltas.get(clave);
+            if (m == null || v == null || delImei.isEmpty()) return;
+            String grado = LoQueVale.valor(vigentes.getOrDefault(clave, List.of()), DatoTaller.GRADO, m);
+            if (GradoTaller.grupo(grado) != GradoTaller.Grupo.COMO_NA) return;
+            NsysDAO.TrabajoFecha ultimo = delImei.stream().max(POR_ASIGNACION).orElseThrow();
+            Optional<BateriaRecordada> b = BateriaRecordada.ultima(baterias.getOrDefault(clave, List.of()));
+            filas.add(new FilaSinGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), ultimo.idRep(),
+                    ultimo.asignado(), Rastro.categoria(ultimo.idRep()), b.map(BateriaRecordada::idRep).orElse(null),
+                    b.map(BateriaRecordada::nueva).orElse(null), b.map(BateriaRecordada::fecha).orElse(null), v.vendidoEn(),
+                    v.bajaEn(), v.desde()));
+        });
+        filas.sort(Comparator.comparing(FilaSinGradoNsys::ultimoTrabajoEn, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(FilaSinGradoNsys::imeiSn));
+        return filas;
+    }
+
     /** Las filas de Color, Grado y No está en NSYS que hay ahora, por clave de marca, con su «desde» (para el repaso). */
     static Map<String, LocalDateTime> filas(List<TallerNsys.MovilPorPasar> moviles, List<AltaTaller> altas) {
         Map<String, LocalDateTime> filas = new HashMap<>();
