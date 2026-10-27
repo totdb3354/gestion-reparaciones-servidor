@@ -22,7 +22,8 @@ class AltaTallerTest {
                 trabajo("350000000000088", "A20261006_1", 0, true, "Técnico 2", null),
                 trabajo("350000000000088", "R20261006_57", 0, true, "Técnico 2", "AMAZON"),
                 trabajo("350000000000088", "A20261010_4", 4, false, "Técnico 1", null)));
-        assertEquals(List.of(new AltaTaller("350000000000088", "14", "A20261010_4", true, "Técnico 1", null, 2, DIA)), altas);
+        assertEquals(List.of(new AltaTaller("350000000000088", "14", "A20261010_4", true, "Técnico 1", null, 2, DIA,
+                DIA.plusDays(4))), altas);
     }
 
     @Test void unoPorImeiEnElOrdenEnQueLlegan() {

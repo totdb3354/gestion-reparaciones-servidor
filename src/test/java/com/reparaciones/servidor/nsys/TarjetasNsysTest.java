@@ -131,9 +131,9 @@ class TarjetasNsysTest {
 
     @Test void lasAltasLlevanSuCategoriaYSuMarca() {
         AltaTaller a = new AltaTaller("350000000000088", "14", "R20261006_57", false, "Técnico 2", "AMAZON", 2,
-                LocalDateTime.of(2026, 10, 6, 9, 0));
+                LocalDateTime.of(2026, 10, 6, 9, 0), LocalDateTime.of(2026, 10, 6, 9, 0));
         FilaAltaNsys f = TarjetasNsys.altas(List.of(a),
-                TarjetasNsys.porClave(List.of(marca("350000000000088", TarjetaHecho.ALTA, HOY, null)))).get(0);
+                TarjetasNsys.porClave(List.of(marca("350000000000088", TarjetaHecho.ALTA, HOY, null))), Map.of()).get(0);
         assertEquals("REPARACION", f.categoria());
         assertEquals("R20261006_57", f.ultimoTrabajo());
         assertEquals("14", f.modelo());
@@ -161,7 +161,7 @@ class TarjetasNsysTest {
     @Test void lasFilasDelRepasoSonLasDeColorGradoYAltas() {
         TallerNsys.MovilPorPasar p = porPasar(movil(IMEI, "Azul", "B"), vale("Rojo", "A", "Azul", "B"), null,
                 vigente(1, IMEI, COLOR, "Rojo", "Azul"), vigente(2, IMEI, GRADO, "A", "B"));
-        AltaTaller a = new AltaTaller("350000000000088", "14", "R20261006_57", false, "Técnico 2", null, 1, HOY.minusDays(19));
+        AltaTaller a = new AltaTaller("350000000000088", "14", "R20261006_57", false, "Técnico 2", null, 1, HOY.minusDays(19), HOY.minusDays(19));
         Map<String, LocalDateTime> filas = TarjetasNsys.filas(List.of(p), List.of(a));
         assertEquals(Set.of(TarjetasNsys.clave(TarjetaHecho.COLOR, IMEI), TarjetasNsys.clave(TarjetaHecho.GRADO, IMEI),
                 TarjetasNsys.clave(TarjetaHecho.ALTA, "350000000000088")), filas.keySet());
@@ -195,5 +195,69 @@ class TarjetasNsysTest {
         assertTrue(r.borrar().isEmpty());
         assertTrue(r.vuelven().isEmpty(), "el fichero es anterior a la marca");
         assertEquals(List.of(alta), TarjetasNsys.repasar(List.of(alta), filas, fichero).vuelven());
+    }
+
+    private static DescarteTaller descarte(String imei, LocalDateTime fecha) {
+        return new DescarteTaller(imei, 7, "Supertécnico 1", fecha, "no es un móvil");
+    }
+
+    private static AltaTaller alta(String imei, LocalDateTime ultimoEn) {
+        return new AltaTaller(imei, "14", "R20261006_57", false, "Técnico 2", null, 1, HOY.minusDays(19), ultimoEn);
+    }
+
+    @Test void unDescarteNoAnteriorALaUltimaAsignacionQuitaLaFilaYVaADescartadas() {
+        AltaTaller a = alta("350000000000088", HOY.minusDays(1));
+        Map<String, DescarteTaller> d = TarjetasNsys.descartesPorClave(List.of(descarte("350000000000088", HOY)));
+        assertTrue(TarjetasNsys.altas(List.of(a), Map.of(), d).isEmpty());
+        FilaDescartadaNsys f = TarjetasNsys.descartadas(List.of(a), d).get(0);
+        assertEquals("350000000000088", f.imeiSn());
+        assertEquals("14", f.modelo());
+        assertEquals("R20261006_57", f.ultimoTrabajo());
+        assertEquals("REPARACION", f.categoria());
+        assertEquals("Supertécnico 1", f.descartadoPor());
+        assertEquals(HOY, f.descartadoEn());
+        assertEquals("no es un móvil", f.motivo());
+    }
+
+    @Test void conLaMismaHoraQueLaUltimaAsignacionTambienVale() {
+        assertTrue(TarjetasNsys.descartada(alta("350000000000088", HOY),
+                TarjetasNsys.descartesPorClave(List.of(descarte("350000000000088", HOY)))));
+    }
+
+    @Test void sinFechaDeAsignacionElDescarteVale() {
+        assertTrue(TarjetasNsys.descartada(alta("350000000000088", null),
+                TarjetasNsys.descartesPorClave(List.of(descarte("350000000000088", HOY)))));
+    }
+
+    @Test void unTrabajoNuevoDespuesDelDescarteLaSacaOtraVezConQuienLaDescarto() {
+        AltaTaller a = alta("350000000000088", HOY.plusHours(1));
+        Map<String, DescarteTaller> d = TarjetasNsys.descartesPorClave(List.of(descarte("350000000000088", HOY)));
+        FilaAltaNsys f = TarjetasNsys.altas(List.of(a), Map.of(), d).get(0);
+        assertEquals("Supertécnico 1", f.descartadoAntesPor());
+        assertEquals(HOY, f.descartadoAntesEn());
+        assertEquals("no es un móvil", f.descartadoAntesMotivo());
+        assertTrue(TarjetasNsys.descartadas(List.of(a), d).isEmpty());
+    }
+
+    @Test void elDescarteCruzaElImeiSinMirarMayusculasNiEspacios() {
+        assertTrue(TarjetasNsys.descartada(alta("f2lxabc123", HOY.minusDays(1)),
+                TarjetasNsys.descartesPorClave(List.of(descarte(" F2LXABC123 ", HOY)))));
+    }
+
+    @Test void sinDescarteLaFilaNoLlevaNadaDelDescarte() {
+        FilaAltaNsys f = TarjetasNsys.altas(List.of(alta("350000000000088", HOY)), Map.of(), Map.of()).get(0);
+        assertNull(f.descartadoAntesPor());
+        assertNull(f.descartadoAntesEn());
+        assertNull(f.descartadoAntesMotivo());
+        assertTrue(TarjetasNsys.descartadas(List.of(alta("350000000000088", HOY)), Map.of()).isEmpty());
+    }
+
+    @Test void losDescartadosVanDelMasRecienteAlMasAntiguo() {
+        AltaTaller uno = alta("350000000000088", HOY.minusDays(3));
+        AltaTaller dos = alta("350000000000099", HOY.minusDays(3));
+        Map<String, DescarteTaller> d = TarjetasNsys.descartesPorClave(List.of(descarte("350000000000088", HOY.minusDays(1)),
+                descarte("350000000000099", HOY)));
+        assertEquals(List.of("350000000000099", "350000000000088"),
+                TarjetasNsys.descartadas(List.of(uno, dos), d).stream().map(FilaDescartadaNsys::imeiSn).toList());
     }
 }

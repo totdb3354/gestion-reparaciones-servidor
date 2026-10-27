@@ -95,16 +95,53 @@ final class TarjetasNsys {
         return filas;
     }
 
-    /** «No está en NSYS» (§3.4). */
-    static List<FilaAltaNsys> altas(List<AltaTaller> altas, Map<String, HechoTaller> marcas) {
+    /** Los descartes por {@link NsysDAO#claveCruce} de su IMEI. */
+    static Map<String, DescarteTaller> descartesPorClave(List<DescarteTaller> descartes) {
+        Map<String, DescarteTaller> mapa = new HashMap<>();
+        for (DescarteTaller d : descartes) mapa.put(NsysDAO.claveCruce(d.imeiSn()), d);
+        return mapa;
+    }
+
+    /** El descarte de una fila de «No está en NSYS», valga o no; null si no tiene. */
+    private static DescarteTaller descarte(AltaTaller a, Map<String, DescarteTaller> descartes) {
+        return descartes.get(NsysDAO.claveCruce(a.imei()));
+    }
+
+    /** Descartada (spec pieza 3 §4.1): con un descarte no anterior a su última asignación; sin fecha de asignación, vale. */
+    static boolean descartada(AltaTaller a, Map<String, DescarteTaller> descartes) {
+        DescarteTaller d = descarte(a, descartes);
+        return d != null && (a.ultimoEn() == null || !d.fecha().isBefore(a.ultimoEn()));
+    }
+
+    /** «No está en NSYS» (§3.4), sin las descartadas; la que tiene un descarte superado por un trabajo nuevo lleva quién, cuándo y
+     *  por qué la descartaron (pieza 3 §5.4). */
+    static List<FilaAltaNsys> altas(List<AltaTaller> altas, Map<String, HechoTaller> marcas, Map<String, DescarteTaller> descartes) {
         List<FilaAltaNsys> filas = new ArrayList<>();
         for (AltaTaller a : altas) {
+            if (descartada(a, descartes)) continue;
             Marca h = marca(marcas, TarjetaHecho.ALTA, a.imei(), a.desde());
+            DescarteTaller antes = descarte(a, descartes);
             filas.add(new FilaAltaNsys(a.imei(), a.modelo(), a.ultimo(), Rastro.categoria(a.ultimo()), a.abierto(), a.tecnico(),
-                    a.cliente(), a.trabajos(), a.desde(), h.por(), h.en(), h.volvio()));
+                    a.cliente(), a.trabajos(), a.desde(), h.por(), h.en(), h.volvio(),
+                    antes == null ? null : antes.usuario(), antes == null ? null : antes.fecha(),
+                    antes == null ? null : antes.motivo()));
         }
         filas.sort(Comparator.comparing(FilaAltaNsys::desde, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(FilaAltaNsys::imeiSn));
+        return filas;
+    }
+
+    /** «Ver descartados» (pieza 3 §4.2): las filas descartadas, del descarte más reciente al más antiguo. */
+    static List<FilaDescartadaNsys> descartadas(List<AltaTaller> altas, Map<String, DescarteTaller> descartes) {
+        List<FilaDescartadaNsys> filas = new ArrayList<>();
+        for (AltaTaller a : altas) {
+            if (!descartada(a, descartes)) continue;
+            DescarteTaller d = descarte(a, descartes);
+            filas.add(new FilaDescartadaNsys(a.imei(), a.modelo(), a.ultimo(), Rastro.categoria(a.ultimo()), d.usuario(),
+                    d.fecha(), d.motivo()));
+        }
+        filas.sort(Comparator.comparing(FilaDescartadaNsys::descartadoEn, Comparator.reverseOrder())
+                .thenComparing(FilaDescartadaNsys::imeiSn));
         return filas;
     }
 

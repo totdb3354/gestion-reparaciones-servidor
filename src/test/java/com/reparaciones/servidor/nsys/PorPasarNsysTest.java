@@ -63,7 +63,7 @@ class PorPasarNsysTest {
         when(nsys.clavesDelEspejo()).thenReturn(Set.of(IMEI, "F2LXABC123"));
         when(nsys.imeisDelTaller()).thenReturn(List.of(IMEI, "f2lxabc123", "350000000000088"));
         when(nsys.altas(List.of("350000000000088"))).thenReturn(List.of(new AltaTaller("350000000000088", "14", "R20261006_57",
-                false, "Técnico 2", null, 1, AHORA.minusDays(19))));
+                false, "Técnico 2", null, 1, AHORA.minusDays(19), AHORA.minusDays(19))));
         when(tallerDao.avisosPorRevisar()).thenReturn(List.of(sinGrado()));
         when(nsys.porImeis(List.of(IMEI))).thenReturn(List.of(movil(IMEI, "Azul", "B")));
         TarjetasPorPasar t = servicio.tarjetas();
@@ -225,7 +225,7 @@ class PorPasarNsysTest {
     @Test void laPlantillaDeAltasLlevaLoPendienteConElModeloDelTaller() throws Exception {
         when(nsys.imeisDelTaller()).thenReturn(List.of("350000000000088"));
         when(nsys.altas(List.of("350000000000088"))).thenReturn(List.of(new AltaTaller("350000000000088", "14pro",
-                "R20261006_57", false, "Técnico 2", null, 1, AHORA.minusDays(19))));
+                "R20261006_57", false, "Técnico 2", null, 1, AHORA.minusDays(19), AHORA.minusDays(19))));
         PorPasarNsys.Plantilla p = servicio.plantillaAltas();
         assertEquals("NSYS_altas_2026-10-25.xlsx", p.nombre());
         assertEquals(1, p.filas());

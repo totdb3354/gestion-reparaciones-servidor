@@ -10,9 +10,9 @@ import java.util.Map;
 /** Un IMEI con trabajos del taller que NSYS no conoce (spec 0.9.22 §3.4, «No está en NSYS»): su modelo del taller
  *  (Telefono.MODELO, un código del ERP como «14pro»), el último trabajo ({@code abierto}: una asignación A… sin terminar), su
  *  técnico y su cliente (el del trabajo o, si no tiene, el del teléfono), cuántos trabajos tiene y desde cuándo (su primera
- *  asignación). Horas de Madrid. */
+ *  asignación) y cuándo se asignó el último ({@code ultimoEn}, para los descartes de la pieza 3). Horas de Madrid. */
 public record AltaTaller(String imei, String modelo, String ultimo, boolean abierto, String tecnico, String cliente,
-                         int trabajos, LocalDateTime desde) {
+                         int trabajos, LocalDateTime desde, LocalDateTime ultimoEn) {
 
     /** Una fila de Reparacion de esos IMEI, ya en hora de Madrid ({@code terminado}: FECHA_FIN). */
     record Trabajo(String imei, String idRep, LocalDateTime asignado, LocalDateTime terminado, String tecnico, String modelo,
@@ -38,7 +38,7 @@ public record AltaTaller(String imei, String modelo, String ultimo, boolean abie
             Trabajo primero = delImei.stream().min(ORDEN).orElseThrow();
             int cuenta = (int) delImei.stream().filter(t -> !t.esAsignacion() || t.terminado() == null).count();
             altas.add(new AltaTaller(imei, ultimo.modelo(), ultimo.idRep(), ultimo.esAsignacion() && ultimo.terminado() == null,
-                    ultimo.tecnico(), ultimo.cliente(), cuenta, primero.asignado()));
+                    ultimo.tecnico(), ultimo.cliente(), cuenta, primero.asignado(), ultimo.asignado()));
         });
         return altas;
     }

@@ -60,7 +60,7 @@ public class PorPasarNsys {
         Map<String, HechoTaller> marcas = TarjetasNsys.porClave(hechoDao.todas());
         List<AvisoTaller> avisos = tallerDao.avisosPorRevisar();
         return new TarjetasPorPasar(TarjetasNsys.color(moviles, marcas), TarjetasNsys.grado(moviles, marcas),
-                TarjetasNsys.altas(altas(), marcas), TarjetasNsys.revisar(avisos, espejo(avisos)));
+                TarjetasNsys.altas(altas(), marcas, Map.of()), TarjetasNsys.revisar(avisos, espejo(avisos)), List.of());
     }
 
     /** Los móviles de «Cambio de color» y «Cambio de grado»: los de «Por pasar a NSYS» que NSYS tiene en la empresa. Un vendido o de
@@ -175,7 +175,7 @@ public class PorPasarNsys {
 
     /** La plantilla de altas (spec §4): los IMEI de «No está en NSYS» sin marca «Hecho» que valga, con el modelo del taller. */
     public Plantilla plantillaAltas() {
-        List<PlantillaNsys.FilaAlta> filas = TarjetasNsys.altas(altas(), TarjetasNsys.porClave(hechoDao.todas())).stream()
+        List<PlantillaNsys.FilaAlta> filas = TarjetasNsys.altas(altas(), TarjetasNsys.porClave(hechoDao.todas()), Map.of()).stream()
                 .filter(f -> !TarjetasNsys.marcada(f.hechoEn(), f.hechoVolvio()))
                 .map(f -> new PlantillaNsys.FilaAlta(f.imeiSn(), PlantillaNsys.nombreModelo(f.modelo()))).toList();
         return new Plantilla("NSYS_altas_" + LocalDate.now(clock) + ".xlsx", PlantillaNsys.altas(filas), filas.size());
