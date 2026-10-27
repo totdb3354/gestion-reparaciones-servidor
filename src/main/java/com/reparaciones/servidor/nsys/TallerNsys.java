@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -101,7 +103,8 @@ public class TallerNsys {
 
     /** «Corregir color, grado o batería…». {@code color} o {@code grado} null: ese dato no cambia. Por cada dato que cambia
      *  respecto a lo que vale: si el nuevo es el de NSYS, se quita lo del taller (QUITADO); si no, queda VIGENTE. Una línea
-     *  del registro de actividad por dato. */
+     *  del registro de actividad por dato. Todo o nada con la batería recordada; READ COMMITTED como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void corregir(String imeiSn, String color, String grado, String motivo, int idUsu) {
         MovilNsys m = delEspejo(imeiSn);
         String porQue = motivo == null ? "" : motivo.strip();
@@ -120,7 +123,9 @@ public class TallerNsys {
         guardar(m, pasos, porQue, idUsu);
     }
 
-    /** «Volver a lo de NSYS»: quita lo del taller de los datos que lo tengan, con el motivo si se ha escrito. */
+    /** «Volver a lo de NSYS»: quita lo del taller de los datos que lo tengan, con el motivo si se ha escrito.
+     *  Todo o nada con la batería recordada; READ COMMITTED como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public void volver(String imeiSn, String motivo, int idUsu) {
         MovilNsys m = delEspejo(imeiSn);
         String porQue = motivo == null || motivo.isBlank() ? null : motivo.strip();

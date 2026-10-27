@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
@@ -353,5 +355,15 @@ class TallerNsysTest {
         assertNull(o.bateriaIdRep());
         assertNull(o.bateriaNueva());
         assertNull(o.bateriaEn());
+    }
+
+    /** Grado y batería recordada, todo o nada; READ COMMITTED como «Revisado» (error 1020 de MariaDB). */
+    @Test void corregirYVolverVanEnUnaTransaccionReadCommitted() throws NoSuchMethodException {
+        for (var m : List.of(TallerNsys.class.getMethod("corregir", String.class, String.class, String.class, String.class, int.class),
+                TallerNsys.class.getMethod("volver", String.class, String.class, int.class))) {
+            Transactional t = m.getAnnotation(Transactional.class);
+            assertNotNull(t, m.getName());
+            assertEquals(Isolation.READ_COMMITTED, t.isolation(), m.getName());
+        }
     }
 }
