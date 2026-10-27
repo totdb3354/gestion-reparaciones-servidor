@@ -141,9 +141,18 @@ public class TallerNsys {
         return EfectoTaller.cambio(dato, nuevo, antes, m).map(n -> new Paso(n, antes));
     }
 
+    /** Guarda los pasos y los apunta. 0.9.22 pieza 4 (§5.2): si la corrección deja el grado con letra (o en un grado ignorado),
+     *  manda lo escrito y las baterías recordadas del móvil quedan usadas con ese grado; si lo deja «como n/a», siguen. */
     private void guardar(MovilNsys m, List<Paso> pasos, String motivo, int idUsu) {
-        tallerDao.guardar(m.imeiSn(), pasos.stream().map(Paso::nuevo).toList(), idUsu, motivo, ahora());
+        LocalDateTime ahora = ahora();
+        tallerDao.guardar(m.imeiSn(), pasos.stream().map(Paso::nuevo).toList(), idUsu, motivo, ahora);
         for (Paso p : pasos) logDao.insertar(idUsu, ACCION, detalle(m.imeiSn(), p), motivo);
+        Optional<String> grado = pasos.stream().map(Paso::nuevo).filter(n -> n.dato() == DatoTaller.GRADO)
+                .map(TallerDAO.Nuevo::valor).findFirst();
+        if (grado.isEmpty() || GradoTaller.grupo(grado.get()) == GradoTaller.Grupo.COMO_NA) return;
+        List<BateriaRecordada> recordadas = tallerDao.bateriasRecordadas(List.of(m.imeiSn()));
+        if (!recordadas.isEmpty())
+            tallerDao.usarBaterias(recordadas.stream().map(BateriaRecordada::idAviso).toList(), grado.get(), ahora);
     }
 
     /** «IMEI: 3500…, COLOR: Azul → Rojo», con « (vuelve a lo de NSYS)» detrás si quita lo del taller. */
@@ -227,7 +236,8 @@ public class TallerNsys {
     }
 
     /** Lo que necesita el diálogo «Corregir…» (spec §2.3): los colores del maestro para el modelo, capacidad y eSIM del móvil,
-     *  cada uno con el producto que habría que poner en NSYS (el de ahora para el color de NSYS), y los SKU por color y grado. */
+     *  cada uno con el producto que habría que poner en NSYS (el de ahora para el color de NSYS), y los SKU por color y grado.
+     *  Y la batería recordada del móvil (0.9.22 pieza 4 §5.5). */
     public OpcionesTaller opciones(String imeiSn) {
         MovilNsys m = delEspejo(imeiSn);
         Maestro maestro = new Maestro(nsysDao.cargarProductos());
@@ -239,7 +249,9 @@ public class TallerNsys {
             ProductoNsys.Poner p = ProductoNsys.paraColor(m, c, goods, () -> maestro, grafias);
             return new OpcionColor(c, p == null ? null : p.producto(), p != null && p.compruebalo());
         }).toList();
-        return new OpcionesTaller(m.goods(), opciones, maestro.skus(m));
+        Optional<BateriaRecordada> b = BateriaRecordada.ultima(tallerDao.bateriasRecordadas(List.of(m.imeiSn())));
+        return new OpcionesTaller(m.goods(), opciones, maestro.skus(m), b.map(BateriaRecordada::idRep).orElse(null),
+                b.map(BateriaRecordada::nueva).orElse(null), b.map(BateriaRecordada::fecha).orElse(null));
     }
 
     // ---------------------------------------------------------------- utilidades
