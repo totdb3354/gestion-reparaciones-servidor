@@ -5,7 +5,6 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.MovimientoDAO;
 import com.reparaciones.servidor.dao.RevisionDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
-import com.reparaciones.servidor.model.Telefono;
 import com.reparaciones.servidor.model.TelefonoInventario;
 import com.reparaciones.servidor.model.ValorTexto;
 import com.reparaciones.servidor.nsys.ModeloNsys;
@@ -41,21 +40,11 @@ public class TelefonoController {
         this.movimientoDao = movimientoDao;
     }
 
-    @GetMapping
-    public List<Telefono> getAll() {
-        return dao.getAll();
-    }
-
     // Inventario y lotes no los usa la tienda: sus lecturas exigen el mismo rol que sus escrituras (spec sp7b §4.2).
     @GetMapping("/inventario")
     @PreAuthorize("hasRole('SUPERTECNICO')")
     public List<TelefonoInventario> getInventario() {
         return dao.getInventario();
-    }
-
-    @GetMapping("/{imei}/exists")
-    public Map<String, Boolean> exists(@PathVariable String imei) {
-        return Map.of("value", dao.exists(imei));
     }
 
     @GetMapping("/{imei}/cliente")

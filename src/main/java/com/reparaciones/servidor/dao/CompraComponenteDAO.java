@@ -81,12 +81,6 @@ public class CompraComponenteDAO {
         return jdbc.query(SELECT_BASE + " ORDER BY cc.FECHA_PEDIDO DESC", MAPPER);
     }
 
-    public List<CompraComponente> getEnCamino() {
-        return jdbc.query(SELECT_BASE +
-                " WHERE cc.ESTADO = 'en_camino'" +
-                " ORDER BY cc.ES_URGENTE DESC, cc.FECHA_PEDIDO ASC", MAPPER);
-    }
-
     /** Cantidad pendiente de llegar del SKU, resuelta al master del grupo compartido: las compras se insertan
      *  siempre en el master, así que preguntar por un slave sin resolver devolvía 0 (sub-proyecto 4a). */
     public int getCantidadEnCaminoPorComponente(int idCom) {

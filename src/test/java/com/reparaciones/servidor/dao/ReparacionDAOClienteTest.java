@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -87,14 +86,6 @@ class ReparacionDAOClienteTest {
         assertEquals(IMEI, pieza.get(pieza.size() - 1));
     }
 
-    @Test void terminarAsignacionGuardaElCliente() {
-        JdbcTemplate jdbc = jdbcQueDejaPasar();
-        dao(jdbc).completar(ASIG);
-        assertEquals(List.of("UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + DE_LA_FILA
-                        + " WHERE ID_REP = ? AND FECHA_FIN IS NULL", ASIG),
-                unico(jdbc, "UPDATE Reparacion SET FECHA_FIN"));
-    }
-
     @Test void pulidoHechoGuardaElClienteEnElPYEnSuAP() {
         JdbcTemplate jdbc = jdbcQueDejaPasar();
         dao(jdbc).completarPulido("AP20260916_1");
@@ -104,15 +95,6 @@ class ReparacionDAOClienteTest {
         assertEquals(List.of("UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + DE_LA_FILA + " WHERE ID_REP = ?",
                         "AP20260916_1"),
                 unico(jdbc, "UPDATE Reparacion SET FECHA_FIN"));
-    }
-
-    @Test void altaAntiguaGuardaElCliente() {
-        JdbcTemplate jdbc = jdbcQueDejaPasar();
-        dao(jdbc).insertar(IMEI, 4, LocalDateTime.of(2026, 9, 16, 8, 0), LocalDateTime.of(2026, 9, 16, 9, 0));
-        List<Object> r = unico(jdbc, "INSERT INTO Reparacion (");
-        assertEquals("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, FECHA_FIN, ID_CLI)"
-                + " VALUES (?,?,?,?,?," + DEL_IMEI + ")", r.get(0));
-        assertEquals(IMEI, r.get(r.size() - 1));
     }
 
     @SuppressWarnings("unchecked")

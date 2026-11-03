@@ -49,7 +49,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 
 ## Regla de las escrituras del formulario (`PropiedadAsignacion`)
 
-`PropiedadAsignacion` vive junto a `FiltroTecnico` y se aplica en `POST /api/reparaciones/completa`, `POST /api/reparaciones/{idAsignacion}/filas`, `POST /api/reparaciones/{idAsignacion}/agotar-componente`, `PATCH /api/reparaciones/{idRep}/completar` y `GET|PUT|DELETE /api/reparaciones/{idRep}/borrador` (la clave del borrador es el id de la asignación):
+`PropiedadAsignacion` vive junto a `FiltroTecnico` y se aplica en `POST /api/reparaciones/completa`, `POST /api/reparaciones/{idAsignacion}/filas`, `POST /api/reparaciones/{idAsignacion}/agotar-componente` y `GET|PUT|DELETE /api/reparaciones/{idRep}/borrador` (la clave del borrador es el id de la asignación):
 
 - **El técnico de cada trabajo es el del token.** `tecnicoEfectivo(principal, idTecDueno)` devuelve siempre el `idTec` del token; el `idTec` que envíe el cliente en el cuerpo no interviene (se acepta, para que los clientes anteriores sigan funcionando, y se ignora).
 - **Solo se trabaja sobre asignaciones propias**, igual para TECNICO y SUPERTECNICO: si la asignación es de otro técnico, o el token no tiene técnico, `403` con el motivo "Solo puedes trabajar sobre tus propias asignaciones". Si la asignación no existe, la regla deja pasar y el DAO responde su `409` de asignación ya eliminada o completada. El borrador, además, solo admite los roles TECNICO y SUPERTECNICO.
@@ -62,7 +62,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 | Regla del `?tecnico=` | `security/FiltroTecnicoTest`, `controller/FiltroTecnicoControllersTest`, `controller/ReparacionControllerContadoresTest` |
 | Regla de propiedad de la asignación | `security/PropiedadAsignacionTest`, `controller/PropiedadAsignacionControllersTest` |
 | Roles de la edición y del borrador (cadena de seguridad real, MockMvc) | `controller/RolesReparacionFormularioTest` |
-| Roles de solicitudes de stock y del ajuste de stock (MockMvc) | `controller/RolesSolicitudesStockTest` |
+| Roles de solicitudes de stock (MockMvc) | `controller/RolesSolicitudesStockTest` |
 | Roles de los bloques de pedidos (cadena de seguridad real, MockMvc) | `controller/RolesBloquesCompraTest` |
 | Roles del GET y el PUT de las piezas de un proveedor (cadena de seguridad real, MockMvc) | `controller/RolesPiezasProveedorTest` |
 | Mínimo y parámetros solo ADMIN | `controller/RolesParametrosPrevisionTest`, `controller/ParametroControllerTest` |

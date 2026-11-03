@@ -42,14 +42,6 @@ public class TecnicoDAO {
                 """, MAPPER);
     }
 
-    public void insertar(String nombre) {
-        jdbc.update("INSERT INTO Tecnico (NOMBRE, ACTIVO) VALUES (?, 1)", nombre);
-    }
-
-    public void eliminar(int idTec) {
-        jdbc.update("DELETE FROM Tecnico WHERE ID_TEC = ?", idTec);
-    }
-
     /** Habilita/deshabilita al técnico para la glass automática del modal de asignación
      *  (spec 2026-09-05-glass-prediccion). Devuelve filas tocadas: 0 = el técnico no existe. */
     public int setGlass(int idTec, boolean habilitado) {
