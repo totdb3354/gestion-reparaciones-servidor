@@ -80,7 +80,7 @@ final class TarjetasNsys {
             filas.add(new FilaColorNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), deNsys != null ? deNsys : m.color(),
                     colorA, m.goods(), m.grade(), poner == null ? null : poner.producto(), poner != null && poner.compruebalo(),
                     cambio(p, DatoTaller.GRADO).isPresent(), porQue(p, DatoTaller.COLOR), desde, h.por(), h.en(), h.volvio(),
-                    v.vendidoEn(), v.bajaEn(), v.desde()));
+                    v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim()));
         }
         filas.sort(Comparator.comparing(FilaColorNsys::desde).thenComparing(FilaColorNsys::imeiSn));
         return filas;
@@ -104,7 +104,7 @@ final class TarjetasNsys {
             VueltaNsys v = vueltas.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
             filas.add(new FilaGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), p.valor().grade(),
                     m.goods(), cambio(p, DatoTaller.COLOR).isPresent(), porQue(p, DatoTaller.GRADO), desde, h.por(), h.en(),
-                    h.volvio(), v.vendidoEn(), v.bajaEn(), v.desde()));
+                    h.volvio(), v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim()));
         }
         filas.sort(Comparator.comparing(FilaGradoNsys::desde).thenComparing(FilaGradoNsys::imeiSn));
         return filas;
@@ -171,7 +171,7 @@ final class TarjetasNsys {
             return new FilaRevisarNsys(a.id(), a.imeiSn(), m == null ? null : m.modelo(), m == null ? null : m.modeloMaestro(),
                     m == null ? null : m.capacidad(), a.tipo().name(), a.causa() == null ? null : a.causa().name(),
                     a.dato().name(), a.de(), a.a(), a.motivo(), a.idRep(), a.usuario(), a.fecha(), v.vendidoEn(), v.bajaEn(),
-                    v.desde());
+                    v.desde(), m != null && m.esEsim());
         }).toList();
     }
 
@@ -215,7 +215,7 @@ final class TarjetasNsys {
             filas.add(new FilaSinGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), ultimo.idRep(),
                     ultimo.asignado(), Rastro.categoria(ultimo.idRep()), b.map(BateriaRecordada::idRep).orElse(null),
                     b.map(BateriaRecordada::nueva).orElse(null), b.map(BateriaRecordada::fecha).orElse(null), v.vendidoEn(),
-                    v.bajaEn(), v.desde()));
+                    v.bajaEn(), v.desde(), m.esEsim()));
         });
         filas.sort(Comparator.comparing(FilaSinGradoNsys::ultimoTrabajoEn, Comparator.nullsFirst(Comparator.naturalOrder()))
                 .thenComparing(FilaSinGradoNsys::imeiSn));

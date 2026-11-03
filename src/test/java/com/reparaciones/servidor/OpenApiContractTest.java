@@ -578,6 +578,10 @@ class OpenApiContractTest {
         assertTrue(esquemas.path("FilaPorPasar").path("properties").has("ponerCompruebalo"));
         assertTrue(esquemas.path("OpcionColor").path("properties").has("compruebalo"));
         assertTrue(esquemas.path("StockTelefonosFichaMovil").path("properties").has("ponerCompruebalo"));
+        // 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): esEsim, no nullable, en lo que lleva la descripción.
+        for (String esquema : List.of("StockTelefonosFichaMovil", "StockTelefonosMovilBuscado", "StockTelefonosMovilComprobado",
+                "FilaColorNsys", "FilaGradoNsys", "FilaRevisarNsys", "FilaSinGradoNsys"))
+            assertNoNullable(esquemas, esquema, "esEsim");
     }
 
     /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */

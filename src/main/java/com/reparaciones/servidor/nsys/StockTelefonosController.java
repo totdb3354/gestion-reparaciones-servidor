@@ -123,7 +123,7 @@ public class StockTelefonosController {
         return encontrados.stream().map(m -> {
             LoQueVale.Valor v = vale.apply(m);
             return new MovilBuscado(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), m.estado().name(),
-                    ubicacionVisible(m), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null, v.colorNsys());
+                    ubicacionVisible(m), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null, v.colorNsys(), m.esEsim());
         }).toList();
     }
 
@@ -168,7 +168,7 @@ public class StockTelefonosController {
                 revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
                 enEmpresa ? Revision.pendienteDesde(m.conRecepcion(recepcion), deLaCadena) : null,
                 v.colorNsys(), v.gradoNsys(), v.skuNsys(), v.porPasar(), poner == null ? null : poner.producto(),
-                v.porPasar() ? v.grade() : null, poner != null && poner.compruebalo());
+                v.porPasar() ? v.grade() : null, poner != null && poner.compruebalo(), m.esEsim());
     }
 
     /** NSYS, los trabajos del taller y, desde la 0.9.21, los cambios del taller por encima de NSYS y sus avisos. */
@@ -224,12 +224,13 @@ public class StockTelefonosController {
         return imeis.stream().map(imei -> {
             MovilNsys m = masReciente.get(NsysDAO.claveCruce(imei));
             if (m == null)
-                return new MovilComprobado(imei, false, null, null, null, null, null, false, null, null, null, List.of(), null, null);
+                return new MovilComprobado(imei, false, null, null, null, null, null, false, null, null, null, List.of(), null, null,
+                        false);
             LoQueVale.Valor v = vale.apply(m);
             return new MovilComprobado(imei, true, m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
                     v.bateriaNueva(), ubicacionVisible(m), m.estado().name(),
                     m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
-                    abiertos.getOrDefault(NsysDAO.claveCruce(imei), List.of()), v.colorNsys(), v.gradoNsys());
+                    abiertos.getOrDefault(NsysDAO.claveCruce(imei), List.of()), v.colorNsys(), v.gradoNsys(), m.esEsim());
         }).toList();
     }
 
@@ -286,15 +287,17 @@ public class StockTelefonosController {
                                      @Schema(nullable = true) LocalDateTime ultimoFallo,
                                      @Schema(nullable = true) String motivoFallo) {}
 
+    /** {@code esEsim} (0.9.24): NSYS escribe «eSIM» en el producto, como en el stock, la ficha y «Pegar varios IMEIs». */
     private record MovilBuscado(String imeiSn, @Schema(nullable = true) String modelo,
                                 @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                                 @Schema(nullable = true) String color, String estado,
                                 @Schema(nullable = true) String ubicacion, @Schema(nullable = true) LocalDate fechaVenta,
-                                @Schema(nullable = true) String colorNsys) {}
+                                @Schema(nullable = true) String colorNsys, boolean esEsim) {}
 
     /** 0.9.21: {@code porPasar}, el móvil tiene algo del taller vigente; {@code ponerProducto} (null: ningún móvil de ese color
      *  en NSYS) y {@code ponerGrado}, lo que hay que poner en NSYS, solo con {@code porPasar}.
-     *  {@code ponerCompruebalo} (0.9.22): el producto sale del nombre del maestro tal cual. */
+     *  {@code ponerCompruebalo} (0.9.22): el producto sale del nombre del maestro tal cual. {@code esEsim} (0.9.24): NSYS
+     *  escribe «eSIM» en el producto. */
     private record FichaMovil(String imeiSn, String lote, @Schema(nullable = true) String modelo,
                               @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                               @Schema(nullable = true) String color, String grado, boolean bateriaNueva,
@@ -307,7 +310,7 @@ public class StockTelefonosController {
                               @Schema(nullable = true) String colorNsys, @Schema(nullable = true) String gradoNsys,
                               @Schema(nullable = true) String skuNsys, boolean porPasar,
                               @Schema(nullable = true) String ponerProducto, @Schema(nullable = true) String ponerGrado,
-                              boolean ponerCompruebalo) {}
+                              boolean ponerCompruebalo, boolean esEsim) {}
 
     /** Del paquete (no privado) para que los tests lo construyan; el esquema se llama StockTelefonosPeticionComprobar. */
     record PeticionComprobar(List<String> imeis) {}
@@ -334,5 +337,5 @@ public class StockTelefonosController {
                                    boolean bateriaNueva, @Schema(nullable = true) String ubicacion,
                                    @Schema(nullable = true) String estado, @Schema(nullable = true) LocalDate fechaVenta,
                                    List<TrabajoAbierto> trabajos, @Schema(nullable = true) String colorNsys,
-                                   @Schema(nullable = true) String gradoNsys) {}
+                                   @Schema(nullable = true) String gradoNsys, boolean esEsim) {}
 }
