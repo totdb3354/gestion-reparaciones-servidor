@@ -135,4 +135,23 @@ class DescripcionMovilTest {
         assertSame(vacia, descripcion.rellenar(vacia));
         verifyNoInteractions(nsys, tallerDao);
     }
+
+    /** 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): la eSIM sale de la misma fila que la capacidad. */
+    @Test void unMovilEsimLlevaLaEsimYLosDemasNo() {
+        when(nsys.porImeis(any())).thenReturn(List.of(esim(IMEI, "Azul", "B"), movil(OTRO, "Negro", "A")));
+        List<ReparacionResumen> filas = List.of(fila("A20261103_1", IMEI), fila("A20261103_2", OTRO),
+                fila("A20261103_3", DE_CLIENTE));
+        descripcion.rellenar(filas);
+        assertTrue(filas.get(0).isEsEsim(), "NSYS escribe eSIM en el producto");
+        assertEquals("128GB", filas.get(0).getCapacidad());
+        assertFalse(filas.get(1).isEsEsim(), "SIM física");
+        assertFalse(filas.get(2).isEsEsim(), "fuera del espejo, como la capacidad");
+    }
+
+    @Test void siFallaElEspejoTampocoLlevaLaEsim() {
+        when(nsys.porImeis(any())).thenThrow(new DataAccessResourceFailureException("sin conexión"));
+        List<ReparacionResumen> filas = List.of(fila("A20261103_1", IMEI));
+        descripcion.rellenar(filas);
+        assertFalse(filas.get(0).isEsEsim());
+    }
 }

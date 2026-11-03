@@ -20,6 +20,7 @@ import java.util.List;
 
 import static com.reparaciones.servidor.nsys.DatoTaller.COLOR;
 import static com.reparaciones.servidor.nsys.TallerDePrueba.movil;
+import static com.reparaciones.servidor.nsys.TallerDePrueba.esim;
 import static com.reparaciones.servidor.nsys.TallerDePrueba.vigente;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -93,6 +94,18 @@ class DescripcionMovilRutasTest {
         }
         verify(nsys, times(6)).porImeis(any());
         verify(tallerDao, times(6)).vigentes();
+    }
+
+    /** 0.9.24: las seis listas dicen si el móvil es eSIM, también para el técnico; un cliente externo, no. */
+    @Test void elTecnicoRecibeLaEsimEnLasSeisListas() throws Exception {
+        when(nsys.porImeis(any())).thenReturn(List.of(esim(IMEI, "Azul", "B")));
+        for (String ruta : RUTAS) {
+            mvc.perform(get(ruta).header("Authorization", tecnico()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].esEsim").value(true))
+                    .andExpect(jsonPath("$[0].capacidad").value("128GB"))
+                    .andExpect(jsonPath("$[1].esEsim").value(false));
+        }
     }
 
     @Test void siElEspejoFallaLaListaSaleIgualSinCapacidadNiColor() throws Exception {
