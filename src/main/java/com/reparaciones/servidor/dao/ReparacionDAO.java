@@ -1093,8 +1093,11 @@ public class ReparacionDAO {
             }
         }
 
+        // Las filas de una asignación (A…, AG…, AP…) son solicitudes y nunca gastaron stock: lo gasta la R…/G…/P… que se guarda
+        // desde ella, y «agotar» lo descuenta como corrección. Borrarla no devuelve nada, como eliminarAsignacion (0.9.22.2).
+        boolean gastoStock = !idRep.startsWith("A");
         for (RcRow rc : rows) {
-            if (!rc.esReutilizado() && rc.idCom() > 0) {
+            if (gastoStock && !rc.esReutilizado() && rc.idCom() > 0) {
                 int masterIdCom = resolveToMasterId(rc.idCom());
                 jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ?",
                         rc.cantidad(), masterIdCom);
