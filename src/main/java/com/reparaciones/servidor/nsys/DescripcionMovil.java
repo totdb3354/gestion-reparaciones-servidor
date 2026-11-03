@@ -43,8 +43,8 @@ public class DescripcionMovil {
         try {
             moviles = leer(filas);
         } catch (RuntimeException e) {
-            log.warn("Listas del taller sin capacidad ni color ({} filas): no se pudo leer el espejo de NSYS o lo del taller: {}",
-                    filas.size(), e.toString());
+            log.warn("Listas del taller sin capacidad, color ni eSIM ({} filas): no se pudo leer el espejo de NSYS o lo del "
+                    + "taller: {}", filas.size(), e.toString());
             return filas;
         }
         for (ReparacionResumen r : filas) {

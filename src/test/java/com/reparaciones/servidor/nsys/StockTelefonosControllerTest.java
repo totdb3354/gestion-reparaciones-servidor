@@ -590,6 +590,8 @@ class StockTelefonosControllerTest {
         String otro = "350000000000002", fuera = "350000000000009";
         when(dao.porImei(IMEI)).thenReturn(List.of(TallerDePrueba.esim(IMEI, "Azul", "A")));
         assertTrue(json(api.ficha(IMEI)).get("esEsim").asBoolean());
+        when(dao.porImei(otro)).thenReturn(List.of(TallerDePrueba.movil(otro, "Azul", "A")));
+        assertFalse(json(api.ficha(otro)).get("esEsim").asBoolean(), "SIM física");
         when(dao.buscar("3500", 10)).thenReturn(List.of(TallerDePrueba.esim(IMEI, "Azul", "A"), TallerDePrueba.movil(otro, "Azul", "A")));
         JsonNode buscados = json(api.buscar("3500"));
         assertTrue(buscados.get(0).get("esEsim").asBoolean());
