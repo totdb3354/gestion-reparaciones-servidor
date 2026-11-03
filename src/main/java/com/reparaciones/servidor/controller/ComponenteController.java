@@ -4,11 +4,9 @@ import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.service.ProveedorPiezasService;
 import com.reparaciones.servidor.model.Componente;
-import com.reparaciones.servidor.model.PuntoStock;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import com.reparaciones.servidor.service.PrevisionPedidoService;
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -40,11 +38,6 @@ public class ComponenteController {
         this.catalogo  = catalogo;
     }
 
-    @GetMapping
-    public List<Componente> getAll() {
-        return dao.getAll();
-    }
-
     /** Listado de Stock. La previsión de pedidos, la marca del pedido automático, lo pendiente y los proveedores de cada
      *  pieza son información de compras: solo para SUPERTECNICO y ADMIN; a un TECNICO le llegan nulos
      *  (spec 0.9.5 §3.3, spec 0.9.6 §4.2, spec 2026-10-11 §4, spec 2026-10-12 §4.2). */
@@ -62,36 +55,9 @@ public class ComponenteController {
         return lista;
     }
 
-    @GetMapping("/stock-bajo")
-    public List<Componente> getStockBajo() {
-        return dao.getStockBajo();
-    }
-
     @GetMapping("/agrupados")
     public Map<String, List<Componente>> getAgrupadosPorTipo() {
         return dao.getAgrupadosPorTipo();
-    }
-
-    @GetMapping("/chasis")
-    public List<Componente> getChasisPorColor(@RequestParam String color) {
-        return dao.getChasisPorColor(color);
-    }
-
-    @GetMapping("/evolucion-stock")
-    public List<PuntoStock> getEvolucionStock(
-            @RequestParam String granularidad,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
-        return dao.getEvolucionStock(granularidad, desde, hasta);
-    }
-
-    @PreAuthorize("hasRole('SUPERTECNICO')")
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody InsertarRequest req,
-                         @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.insertar(req.tipo(), req.stock(), req.stockMinimo());
-        logDao.insertar(principal.getIdUsu(), "CREAR_COMPONENTE", "TIPO: " + req.tipo());
     }
 
     static final String MSG_CANTIDAD = "Cantidad no válida (debe ser ≥ 0).";
@@ -140,14 +106,6 @@ public class ComponenteController {
         if (valor < 0) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mensaje);
     }
 
-    /** Ajuste manual de stock: solo el supertécnico. El stock del día a día se mueve dentro de las
-     *  transacciones del servidor (completar, editar, agotar, recibir pedidos). */
-    @PreAuthorize("hasRole('SUPERTECNICO')")
-    @PatchMapping("/{idCom}/stock")
-    public void actualizarStock(@PathVariable int idCom, @RequestBody DeltaRequest req) {
-        dao.actualizarStock(idCom, req.delta());
-    }
-
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PatchMapping("/{idCom}/activo")
     public void setActivo(@PathVariable int idCom, @RequestBody ActivoRequest req,
@@ -157,26 +115,8 @@ public class ComponenteController {
         logDao.insertar(principal.getIdUsu(), accion, "ID_COM: " + idCom);
     }
 
-    @PreAuthorize("hasRole('SUPERTECNICO')")
-    @DeleteMapping("/{idCom}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable int idCom,
-                         @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String tipo;
-        try {
-            tipo = dao.getTipoById(idCom);
-        } catch (EmptyResultDataAccessException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idCom);
-        }
-        dao.eliminar(idCom);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_COMPONENTE",
-                "ID_COM: " + idCom + ", TIPO: " + tipo);
-    }
-
-    private record InsertarRequest(String tipo, int stock, int stockMinimo) {}
     record ActualizarRequest(String tipo, int stock, int stockMinimo, LocalDateTime updatedAt) {}
     record StockMinimoRequest(int stockMinimo) {}
     record AutoPedidoRequest(boolean autoPedido) {}
-    private record DeltaRequest(int delta) {}
     private record ActivoRequest(boolean activo) {}
 }

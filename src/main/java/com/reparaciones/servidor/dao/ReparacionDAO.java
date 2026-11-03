@@ -195,23 +195,11 @@ public class ReparacionDAO {
 
     // ── Lectura ───────────────────────────────────────────────────────────────
 
-    public List<Reparacion> getAll() {
-        return jdbc.query(
-                "SELECT ID_REP, FECHA_ASIG, FECHA_FIN, IMEI, ID_TEC, UPDATED_AT" +
-                " FROM Reparacion ORDER BY ID_REP",
-                REP_MAPPER);
-    }
-
     public List<Reparacion> getByImei(String imei) {
         return jdbc.query(
                 "SELECT ID_REP, FECHA_ASIG, FECHA_FIN, IMEI, ID_TEC, UPDATED_AT" +
                 " FROM Reparacion WHERE IMEI = ? ORDER BY ID_REP",
                 REP_MAPPER, imei);
-    }
-
-    public int countByImei(String imei) {
-        return jdbc.queryForObject(
-                "SELECT COUNT(*) FROM Reparacion WHERE IMEI = ?", Integer.class, imei);
     }
 
     private static final String ORDER_HISTORIAL =
@@ -223,11 +211,6 @@ public class ReparacionDAO {
                     RESUMEN_MAPPER, idTecFilter);
         }
         return jdbc.query(HISTORIAL_SELECT + ORDER_HISTORIAL, RESUMEN_MAPPER);
-    }
-
-    public List<ReparacionResumen> getHistorialPorImei(String imei) {
-        return jdbc.query(HISTORIAL_SELECT + " AND r.IMEI = ?" + ORDER_HISTORIAL,
-                RESUMEN_MAPPER, imei);
     }
 
     public List<ReparacionResumen> getAsignaciones(Integer idTecFilter) {
@@ -270,13 +253,6 @@ public class ReparacionDAO {
                 " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE";
         List<ReparacionResumen> result = jdbc.query(sql, RESUMEN_MAPPER, idRep);
         return result.isEmpty() ? Optional.empty() : Optional.of(result.get(0));
-    }
-
-    public List<ReparacionResumen> getAsignacionesPorImei(String imei) {
-        String groupBy = " GROUP BY r.ID_REP, r.IMEI, t.NOMBRE, r.FECHA_ASIG, r.FECHA_FIN," +
-                         " r.ID_REP_ANTERIOR, r.ID_TEC, r.UPDATED_AT, tel.MODELO, r.COMENTARIO_ASIGNACION, tel.OBSERVACION, tel.UPDATED_AT, r.URGENTE, r.ES_CHASIS, r.POR_CERRAR, ta.NOMBRE, cli.NOMBRE, cliTel.NOMBRE" +
-                         " ORDER BY r.FECHA_ASIG ASC";
-        return jdbc.query(ASIGNACION_SELECT + " AND r.IMEI = ?" + groupBy, RESUMEN_MAPPER, imei);
     }
 
     /** Trabajos cerrados de un IMEI, de cualquier tipo, con su cliente guardado, del más reciente al más antiguo
@@ -436,12 +412,6 @@ public class ReparacionDAO {
         return count != null && count > 0;
     }
 
-    public List<Integer> getTecnicosConAsignacionActiva(String imei) {
-        return jdbc.queryForList(
-                "SELECT ID_TEC FROM Reparacion WHERE IMEI = ? AND ID_REP LIKE 'A%' AND FECHA_FIN IS NULL",
-                Integer.class, imei);
-    }
-
     /** Asignación activa mínima para el aviso de asignación cruzada. */
     public record AsignacionActiva(String idRep, String nombreTecnico, int idTec) {}
 
@@ -454,32 +424,6 @@ public class ReparacionDAO {
                 " WHERE r.IMEI = ? AND r.ID_REP LIKE 'A%' AND r.FECHA_FIN IS NULL",
                 (rs, row) -> new AsignacionActiva(rs.getString("ID_REP"), rs.getString("NOMBRE"), rs.getInt("ID_TEC")),
                 imei);
-    }
-
-    public List<PuntoEstadistica> getEstadisticasPorTecnico(
-            String granularidad, LocalDate desde, LocalDate hasta) {
-        record Fila(String tecnico, LocalDate fecha) {}
-        List<Fila> filas = jdbc.query(
-                "SELECT t.NOMBRE, DATE(r.FECHA_FIN) AS FD" +
-                " FROM Reparacion r JOIN Tecnico t ON r.ID_TEC = t.ID_TEC" +
-                " WHERE (r.ID_REP LIKE 'R%' OR r.ID_REP LIKE 'G%') AND r.FECHA_FIN IS NOT NULL" +
-                " AND DATE(r.FECHA_FIN) BETWEEN ? AND ?",
-                (rs, row) -> new Fila(rs.getString("NOMBRE"),
-                        rs.getDate("FD").toLocalDate()),
-                desde, hasta);
-
-        Map<String, Map<String, Integer>> mapa = new LinkedHashMap<>();
-        for (Fila f : filas) {
-            String periodo = formatearPeriodo(inicioPeriodo(f.fecha(), granularidad), granularidad);
-            mapa.computeIfAbsent(f.tecnico(), k -> new LinkedHashMap<>())
-                .merge(periodo, 1, Integer::sum);
-        }
-        List<PuntoEstadistica> resultado = new ArrayList<>();
-        mapa.forEach((tec, periodos) ->
-            periodos.forEach((p, c) -> resultado.add(new PuntoEstadistica(tec, p, c))));
-        resultado.sort(Comparator.comparing(PuntoEstadistica::getPeriodo)
-                                  .thenComparing(PuntoEstadistica::getNombreTecnico));
-        return resultado;
     }
 
     /**
@@ -526,16 +470,6 @@ public class ReparacionDAO {
     }
 
     // ── Escritura ─────────────────────────────────────────────────────────────
-
-    @Transactional
-    public String insertar(String imei, int idTec, LocalDateTime fechaAsig, LocalDateTime fechaFin) {
-        ensureTelefono(imei);
-        String idRep = nextId("R");
-        jdbc.update("INSERT INTO Reparacion (ID_REP, IMEI, ID_TEC, FECHA_ASIG, FECHA_FIN, ID_CLI)"
-                        + " VALUES (?,?,?,?,?," + CLIENTE_DEL_IMEI + ")",
-                idRep, imei, idTec, fechaAsig, fechaFin, imei);
-        return idRep;
-    }
 
     @Transactional
     public String insertarAsignacion(String imei, int idTec, String comentario, boolean urgente, boolean esChasis, Integer idTecAsigna, int idUsu) {
@@ -757,15 +691,6 @@ public class ReparacionDAO {
                     idAsignacion);
         }
         return idRepCreado;
-    }
-
-    public void completar(String idRep) {
-        int filas = jdbc.update(
-                "UPDATE Reparacion SET FECHA_FIN = NOW(), ID_CLI = " + CLIENTE_DE_LA_FILA + " WHERE ID_REP = ? AND FECHA_FIN IS NULL", idRep);
-        if (filas == 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "La asignación ya fue eliminada o completada por otro usuario");
-        }
     }
 
     @Transactional

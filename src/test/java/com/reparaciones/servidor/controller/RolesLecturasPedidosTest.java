@@ -49,8 +49,6 @@ class RolesLecturasPedidosTest {
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }
     private String admin()        { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null)); }
 
-    /** `GET /api/compras/en-camino` no va aquí: es una ruta retirada y `RutasRetiradas` la corta con 403 para todos
-     *  (`RutasRetiradasInterceptorTest`); su anotación se cambia solo para que diga lo mismo que las demás. */
     private static final List<String> LECTURAS = List.of("/api/compras", "/api/compras-otros", "/api/proveedores?tipo=COMPONENTES");
 
     @Test void elTecnicoRecibe403SinLlegarAlDao() throws Exception {

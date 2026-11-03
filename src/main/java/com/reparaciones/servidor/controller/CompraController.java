@@ -53,12 +53,6 @@ public class CompraController {
     }
 
     @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
-    @GetMapping("/en-camino")
-    public List<CompraComponente> getEnCamino() {
-        return dao.getEnCamino();
-    }
-
-    @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
     @GetMapping("/cantidad-en-camino/{idCom}")
     public ValorEntero getCantidadEnCamino(@PathVariable int idCom) {
         return new ValorEntero(dao.getCantidadEnCaminoPorComponente(idCom));

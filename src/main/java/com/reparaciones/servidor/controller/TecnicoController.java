@@ -4,7 +4,6 @@ import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TecnicoDAO;
 import com.reparaciones.servidor.model.Tecnico;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
-import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -35,33 +34,6 @@ public class TecnicoController {
         return dao.getAllActivos();
     }
 
-    /** Solo ADMIN (spec 6 §4.3). Sin consumidor en el JavaFX 0.16.x ni en la web. */
-    @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    @ResponseStatus(HttpStatus.CREATED)
-    public void insertar(@RequestBody NombreRequest req,
-                         @AuthenticationPrincipal UsuarioPrincipal principal) {
-        dao.insertar(req.nombre());
-        logDao.insertar(principal.getIdUsu(), "CREAR_TECNICO", "NOMBRE: " + req.nombre());
-    }
-
-    /** Solo ADMIN desde el sub-proyecto 6 (spec §4.3); sin consumidor en el JavaFX 0.16.x ni en la web. */
-    @DeleteMapping("/{idTec}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable int idTec,
-                         @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String nombre;
-        try {
-            nombre = dao.getNombreById(idTec);
-        } catch (EmptyResultDataAccessException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Técnico no encontrado: " + idTec);
-        }
-        dao.eliminar(idTec);
-        logDao.insertar(principal.getIdUsu(), "ELIMINAR_TECNICO",
-                "ID_TEC: " + idTec + ", NOMBRE: " + nombre);
-    }
-
     /** Habilita/deshabilita al técnico para la glass automática del modal de asignación
      *  (spec 2026-09-05-glass-prediccion, §3.2). Solo SuperTécnico: Admin ve el diálogo pero no edita (403 aquí). */
     @PatchMapping("/{idTec}/glass")
@@ -81,6 +53,4 @@ public class TecnicoController {
 
     /** Package-private (no private) para que el test lo construya; Jackson lo deserializa igual. */
     record GlassRequest(boolean habilitado) {}
-
-    private record NombreRequest(String nombre) {}
 }

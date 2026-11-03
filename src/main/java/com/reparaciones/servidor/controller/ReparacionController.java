@@ -77,19 +77,9 @@ public class ReparacionController {
 
     // ── raw ──────────────────────────────────────────────────────────────────
 
-    @GetMapping
-    public List<Reparacion> getAll() {
-        return dao.getAll();
-    }
-
     @GetMapping("/imei/{imei}")
     public List<Reparacion> getByImei(@PathVariable String imei) {
         return dao.getByImei(imei);
-    }
-
-    @GetMapping("/imei/{imei}/count")
-    public Map<String, Object> countByImei(@PathVariable String imei) {
-        return Map.of("value", dao.countByImei(imei));
     }
 
     // ── historial ─────────────────────────────────────────────────────────────
@@ -130,11 +120,6 @@ public class ReparacionController {
             @RequestParam(required = false) Integer tecnico,
             @AuthenticationPrincipal UsuarioPrincipal principal) {
         return descripcion.rellenar(dao.getHistorial(FiltroTecnico.efectivo(principal, tecnico)));
-    }
-
-    @GetMapping("/historial/imei/{imei}")
-    public List<ReparacionResumen> getHistorialPorImei(@PathVariable String imei) {
-        return dao.getHistorialPorImei(imei);
     }
 
     // ── asignaciones ─────────────────────────────────────────────────────────
@@ -218,11 +203,6 @@ public class ReparacionController {
         return dao.getAsignacionesCompletadasHoy(cutoffInicioDeHoyMadrid());
     }
 
-    @GetMapping("/asignaciones/imei/{imei}")
-    public List<ReparacionResumen> getAsignacionesPorImei(@PathVariable String imei) {
-        return dao.getAsignacionesPorImei(imei);
-    }
-
     @GetMapping("/asignaciones/{idRep}")
     public ReparacionResumen getAsignacionById(@PathVariable String idRep) {
         return dao.getAsignacionAnyById(idRep)
@@ -281,22 +261,9 @@ public class ReparacionController {
         return Map.of("value", dao.existeAsignacionParaTecnico(imei, tecnico, tipo));
     }
 
-    @GetMapping("/imei/{imei}/tecnicos-asignados")
-    public List<Integer> getTecnicosConAsignacionActiva(@PathVariable String imei) {
-        return dao.getTecnicosConAsignacionActiva(imei);
-    }
-
     @GetMapping("/imei/{imei}/asignaciones-activas")
     public List<ReparacionDAO.AsignacionActiva> getAsignacionesActivasPorImei(@PathVariable String imei) {
         return dao.getAsignacionesActivasPorImei(imei);
-    }
-
-    @GetMapping("/estadisticas")
-    public List<PuntoEstadistica> getEstadisticasPorTecnico(
-            @RequestParam String granularidad,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
-        return dao.getEstadisticasPorTecnico(granularidad, desde, hasta);
     }
 
     @GetMapping("/estadisticas/puntos")
@@ -308,19 +275,6 @@ public class ReparacionController {
     }
 
     // ── escritura ─────────────────────────────────────────────────────────────
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> insertar(@RequestBody InsertarRequest req,
-                                        @AuthenticationPrincipal UsuarioPrincipal principal) {
-        String idRep = dao.insertar(req.imei(), req.idTec(), req.fechaAsig(), req.fechaFin());
-        String modelo = dao.getModeloByImei(req.imei());
-        String tecnico = dao.getNombreTecnicoById(req.idTec());
-        logDao.insertar(principal.getIdUsu(), "CREAR_REPARACION",
-                "ID_REP: " + idRep + ", IMEI: " + req.imei() + ", MODELO: " + modelo +
-                ", TECNICO: " + tecnico);
-        return Map.of("value", idRep);
-    }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
     @PostMapping("/asignaciones")
@@ -375,22 +329,6 @@ public class ReparacionController {
                             "ID_REP: " + req.idAsignacion() + ", IMEI: " + req.imei() +
                             ", MODELO: " + modelo + ", TECNICO: " + tecnico + componentesDe(req.filas()));
                 });
-    }
-
-    @PreAuthorize("hasAnyRole('SUPERTECNICO','TECNICO')")
-    @PatchMapping("/{idRep}/completar")
-    public void completar(@PathVariable String idRep,
-                          @AuthenticationPrincipal UsuarioPrincipal principal) {
-        PropiedadAsignacion.tecnicoEfectivo(principal, dao.getIdTecDeAsignacion(idRep));
-        ReparacionResumen rep = dao.getAsignacionAnyById(idRep).orElse(null);
-        dao.completar(idRep);
-        String detalle = rep != null
-                ? "ID_REP: " + idRep + ", IMEI: " + rep.getImei() +
-                  ", MODELO: " + (rep.getModelo() != null ? rep.getModelo() : "?") +
-                  ", TECNICO: " + rep.getNombreTecnico()
-                : "ID_REP: " + idRep;
-        logDao.insertar(principal.getIdUsu(),
-                esGlassAsig(idRep) ? "COMPLETAR_GLASS" : "COMPLETAR_REPARACION", detalle);
     }
 
     @PreAuthorize("hasRole('SUPERTECNICO')")
@@ -788,8 +726,6 @@ public class ReparacionController {
 
     record BorradorRequest(String contenido) {}   // package-private: lo construye el test
     record CorregirClienteRequest(String imei, List<String> idReps, @Schema(nullable = true) Integer idCli) {}
-    private record InsertarRequest(String imei, int idTec,
-                                   LocalDateTime fechaAsig, LocalDateTime fechaFin) {}
     private record AsignacionRequest(String imei, int idTec, @Schema(nullable = true) String comentario, boolean urgente, boolean esChasis) {}
     record InsertarCompletaRequest(List<FilaReparacion> filas, String imei, int idTec,
                                    @Schema(nullable = true) String idRepAnterior,

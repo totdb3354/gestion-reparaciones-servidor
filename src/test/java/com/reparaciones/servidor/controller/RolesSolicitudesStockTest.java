@@ -1,6 +1,5 @@
 package com.reparaciones.servidor.controller;
 
-import com.reparaciones.servidor.dao.ComponenteDAO;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.SolicitudStockDAO;
 import com.reparaciones.servidor.security.JwtUtil;
@@ -25,7 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
-/** Roles de /api/solicitudes-stock y del ajuste de stock (spec web-formulario §5.3), con la cadena de seguridad real. */
+/** Roles de /api/solicitudes-stock (spec web-formulario §5.3), con la cadena de seguridad real. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(UsuariosOperativosTestConfig.class)
@@ -43,7 +42,6 @@ class RolesSolicitudesStockTest {
     @Autowired JwtUtil jwtUtil;
 
     @MockBean SolicitudStockDAO dao;
-    @MockBean ComponenteDAO componenteDao;
     @MockBean LogDAO logDao;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico_n", "", "TECNICO", 4)); }
@@ -89,13 +87,5 @@ class RolesSolicitudesStockTest {
         verify(dao).actualizarEstado(701, "RECHAZADA");
         assertEquals(204, status(delete("/api/solicitudes-stock/701"), supertecnico()));
         verify(dao).borrar(701);
-    }
-
-    @Test void ajusteDeStockYaNoEstaDisponible() throws Exception {
-        String cuerpo = "{\"delta\":1}";
-        assertEquals(403, status(json(patch("/api/componentes/101/stock"), cuerpo), tecnico()));
-        assertEquals(403, status(json(patch("/api/componentes/101/stock"), cuerpo), admin()));
-        assertEquals(403, status(json(patch("/api/componentes/101/stock"), cuerpo), supertecnico()));
-        verifyNoInteractions(componenteDao);
     }
 }

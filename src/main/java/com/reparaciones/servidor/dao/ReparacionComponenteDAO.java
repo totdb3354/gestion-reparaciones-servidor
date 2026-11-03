@@ -1,14 +1,11 @@
 package com.reparaciones.servidor.dao;
 
 import com.reparaciones.servidor.model.FilaReparacion;
-import com.reparaciones.servidor.model.ReparacionComponente;
 import com.reparaciones.servidor.model.SolicitudResumen;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -16,20 +13,6 @@ import java.util.List;
 public class ReparacionComponenteDAO {
 
     private final JdbcTemplate jdbc;
-
-    private static final RowMapper<ReparacionComponente> MAPPER = (rs, row) -> new ReparacionComponente(
-            rs.getInt("ID_RC"),
-            rs.getString("ID_REP"),
-            rs.getInt("ID_COM"),
-            rs.getBoolean("ES_REUTILIZADO"),
-            rs.getBoolean("ES_INCIDENCIA"),
-            rs.getBoolean("ES_RESUELTO"),
-            rs.getString("INCIDENCIA"),
-            rs.getString("OBSERVACIONES"),
-            rs.getBoolean("ES_SOLICITUD"),
-            rs.getString("DESCRIPCION_SOLICITUD"),
-            rs.getString("ESTADO_SOLICITUD")
-    );
 
     private static final RowMapper<SolicitudResumen> SOL_MAPPER = (rs, row) -> new SolicitudResumen(
             rs.getInt("ID_RC"),
@@ -55,14 +38,6 @@ public class ReparacionComponenteDAO {
 
     public ReparacionComponenteDAO(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-    }
-
-    public List<ReparacionComponente> getByReparacion(String idRep) {
-        return jdbc.query(
-                "SELECT ID_RC, ID_REP, ID_COM, ES_REUTILIZADO, ES_INCIDENCIA, ES_RESUELTO," +
-                " INCIDENCIA, OBSERVACIONES, ES_SOLICITUD, DESCRIPCION_SOLICITUD, ESTADO_SOLICITUD" +
-                " FROM Reparacion_componente WHERE ID_REP = ?",
-                MAPPER, idRep);
     }
 
     public List<FilaReparacion> getSolicitudesPorAsignacion(String idAsignacion) {
@@ -100,51 +75,6 @@ public class ReparacionComponenteDAO {
                 "SELECT COUNT(*) FROM Reparacion_componente" +
                 " WHERE ES_SOLICITUD = 1 AND ESTADO_SOLICITUD = 'PENDIENTE'",
                 Integer.class);
-    }
-
-    @Transactional
-    public void insertar(String idRep, Integer idCom, boolean esReutilizado,
-                          boolean esIncidencia, boolean esResuelto, String incidencia,
-                          String observaciones, boolean esSolicitud,
-                          String descripcionSolicitud, int cantidad) {
-        jdbc.update(
-                "INSERT INTO Reparacion_componente" +
-                " (ID_REP, ID_COM, ES_REUTILIZADO, ES_INCIDENCIA, ES_RESUELTO," +
-                " INCIDENCIA, OBSERVACIONES, ES_SOLICITUD, DESCRIPCION_SOLICITUD, CANTIDAD)" +
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                idRep, idCom, esReutilizado, esIncidencia, esResuelto,
-                incidencia, observaciones, esSolicitud, descripcionSolicitud, cantidad);
-        if (!esReutilizado && !esSolicitud && idCom != null) {
-            jdbc.update("UPDATE Componente SET STOCK = STOCK - ? WHERE ID_COM = ? AND TIPO NOT LIKE 'otro%'",
-                    cantidad, idCom);
-        }
-    }
-
-    @Transactional
-    public void eliminar(String idRep, int idCom) {
-        record RcRow(boolean esReutilizado, boolean esSolicitud, int cantidad) {}
-        List<RcRow> filas = jdbc.query(
-                "SELECT ES_REUTILIZADO, ES_SOLICITUD, CANTIDAD" +
-                " FROM Reparacion_componente WHERE ID_REP = ? AND ID_COM = ?",
-                (rs, row) -> new RcRow(rs.getBoolean("ES_REUTILIZADO"),
-                        rs.getBoolean("ES_SOLICITUD"), rs.getInt("CANTIDAD")),
-                idRep, idCom);
-        if (filas.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurso no encontrado: " + idRep + "/" + idCom);
-        }
-        RcRow rc = filas.get(0);
-        jdbc.update("DELETE FROM Reparacion_componente WHERE ID_REP = ? AND ID_COM = ?", idRep, idCom);
-        if (!rc.esReutilizado() && !rc.esSolicitud()) {
-            jdbc.update("UPDATE Componente SET STOCK = STOCK + ? WHERE ID_COM = ? AND TIPO NOT LIKE 'otro%'",
-                    rc.cantidad(), idCom);
-        }
-    }
-
-    @Transactional
-    public void marcarIncidencia(String idRep, String comentario) {
-        jdbc.update(
-                "UPDATE Reparacion_componente SET ES_INCIDENCIA = 1, INCIDENCIA = ? WHERE ID_REP = ?",
-                comentario, idRep);
     }
 
     @Transactional

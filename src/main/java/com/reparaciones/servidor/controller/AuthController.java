@@ -84,7 +84,7 @@ public class AuthController {
 
     /** Registrar el intento no puede cambiar el 401 de una autenticación fallida: si la escritura de auditoría
      *  falla (p. ej. un nombre demasiado largo para la columna), la traza va al log de la aplicación y el intento
-     *  sigue respondiendo 401, igual que RutasRetiradasInterceptor.anotar con las rutas retiradas. */
+     *  sigue respondiendo 401. */
     private void anotarIntentoFallido(String usuario, int fallos, jakarta.servlet.http.HttpServletRequest http) {
         try {
             logDao.insertarIntento(usuario, "LOGIN_FALLIDO", "INTENTOS: " + fallos + origenDe(http));

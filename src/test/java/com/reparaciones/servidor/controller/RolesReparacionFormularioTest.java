@@ -38,7 +38,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -169,15 +168,6 @@ class RolesReparacionFormularioTest {
         int status = mvc.perform(post("/api/reparaciones/" + ASIG + "/agotar-componente")
                         .header("Authorization", adminConIdTec(5))
                         .contentType(MediaType.APPLICATION_JSON).content(CUERPO_AGOTAR))
-                .andReturn().getResponse().getStatus();
-        assertEquals(403, status);
-        verifyNoInteractions(dao);
-    }
-
-    @Test void completarSiendoAdminEs403() throws Exception {
-        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(5);
-        int status = mvc.perform(patch("/api/reparaciones/" + ASIG + "/completar")
-                        .header("Authorization", adminConIdTec(5)))
                 .andReturn().getResponse().getStatus();
         assertEquals(403, status);
         verifyNoInteractions(dao);

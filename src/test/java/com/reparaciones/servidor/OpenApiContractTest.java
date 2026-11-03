@@ -597,6 +597,40 @@ class OpenApiContractTest {
         assertNullable(esquemas, "ValoresTaller", "color", "grado");
     }
 
+    /** Las 24 rutas de la primera generación que la 0.9.0 dejó en 403 con aviso (spec sp7b §4.1 y D7; tarea 27). Se borraron el
+     *  03/11 tras más de un mes sin ningún intento en producción. Las que comparten ruta con una viva solo pierden su método. */
+    private static final List<String> RETIRADAS = List.of(
+            "get /api/componentes", "post /api/componentes", "get /api/componentes/stock-bajo", "get /api/componentes/chasis",
+            "get /api/componentes/evolucion-stock", "patch /api/componentes/{idCom}/stock", "delete /api/componentes/{idCom}",
+            "get /api/compras/en-camino",
+            "get /api/reparacion-componentes/{idRep}", "post /api/reparacion-componentes",
+            "delete /api/reparacion-componentes/{idRep}/{idCom}", "patch /api/reparacion-componentes/{idRep}/incidencia",
+            "get /api/reparaciones", "post /api/reparaciones", "get /api/reparaciones/imei/{imei}/count",
+            "get /api/reparaciones/historial/imei/{imei}", "get /api/reparaciones/asignaciones/imei/{imei}",
+            "get /api/reparaciones/imei/{imei}/tecnicos-asignados", "get /api/reparaciones/estadisticas",
+            "patch /api/reparaciones/{idRep}/completar",
+            "post /api/tecnicos", "delete /api/tecnicos/{idTec}",
+            "get /api/telefonos", "get /api/telefonos/{imei}/exists");
+
+    @Test void lasRutasRetiradasYaNoExisten() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode paths = JSON.readTree(res.getContentAsString()).get("paths");
+        assertEquals(24, RETIRADAS.size());
+        List<String> siguen = RETIRADAS.stream().filter(r -> {
+            String[] partes = r.split(" ", 2);
+            return paths.path(partes[1]).has(partes[0]);
+        }).toList();
+        assertEquals(List.of(), siguen, "rutas retiradas que siguen en el contrato");
+        // Las vivas que comparten ruta con una retirada siguen ahí.
+        for (String viva : List.of("put /api/componentes/{idCom}", "delete /api/reparacion-componentes/{idRep}/incidencia",
+                "get /api/tecnicos", "post /api/telefonos")) {
+            String[] partes = viva.split(" ", 2);
+            assertTrue(paths.path(partes[1]).has(partes[0]), () -> "falta la ruta viva " + viva);
+        }
+    }
+
     /** Un parámetro (query o path) de una operación, por nombre. */
     private static JsonNode parametro(JsonNode paths, String ruta, String metodo, String nombre) {
         for (JsonNode p : paths.path(ruta).path(metodo).path("parameters")) {

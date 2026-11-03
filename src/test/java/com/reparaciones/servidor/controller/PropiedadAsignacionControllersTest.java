@@ -144,24 +144,4 @@ class PropiedadAsignacionControllersTest {
         verify(borradorDao).guardar(ASIG, "{\"modelo\":\"13\"}");
         verify(borradorDao).eliminar(ASIG);
     }
-
-    @Test void completarAjenaEs403() {
-        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(9);
-        ResponseStatusException ex = rechazo(() -> ctl.completar(ASIG, tecnico));
-        assertEquals(403, ex.getStatusCode().value());
-        assertEquals(PropiedadAsignacion.MSG_NO_ES_TUYA, ex.getReason());
-        verify(dao, never()).completar(any());
-        verifyNoInteractions(logDao);
-    }
-
-    @Test void completarPropiaLlamaAlDao() {
-        when(dao.getIdTecDeAsignacion(ASIG)).thenReturn(4);
-        ctl.completar(ASIG, tecnico);
-        verify(dao).completar(ASIG);
-
-        // Asignación inexistente: la regla no lanza y el DAO responde su 409 como hasta ahora.
-        when(dao.getIdTecDeAsignacion("A20260916_99")).thenReturn(null);
-        ctl.completar("A20260916_99", tecnico);
-        verify(dao).completar("A20260916_99");
-    }
 }
