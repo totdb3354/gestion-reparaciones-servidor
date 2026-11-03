@@ -359,4 +359,27 @@ class TarjetasNsysTest {
     @Test void laFechaDeCorteEsLaSubidaDeLa0921() {
         assertEquals(LocalDateTime.of(2026, 10, 22, 12, 49), TarjetasNsys.DESDE_SIN_GRADO);
     }
+
+    /** 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): las cuatro tarjetas dicen si NSYS escribe «eSIM» en el
+     *  producto; un aviso sin móvil en el espejo, no. */
+    @Test void lasCuatroTarjetasDicenSiEsEsim() {
+        TallerNsys.MovilPorPasar p = porPasar(esim(IMEI, "Azul", "B"), vale("Rojo", "A", "Azul", "B"),
+                new ProductoNsys.Poner("Apple iPhone 13 eSIM 128GB (PRODUCT)RED", false),
+                vigente(1, IMEI, COLOR, "Rojo", "Azul"), vigente(2, IMEI, GRADO, "A", "B"));
+        assertTrue(TarjetasNsys.color(List.of(p), Map.of()).get(0).esEsim());
+        assertTrue(TarjetasNsys.grado(List.of(p), Map.of()).get(0).esEsim());
+        TallerNsys.MovilPorPasar sim = porPasar(movil(OTRO, "Azul", "B"), vale("Rojo", "B", "Azul", null),
+                new ProductoNsys.Poner("Apple iPhone 13 128GB (PRODUCT)RED", false), vigente(3, OTRO, COLOR, "Rojo", "Azul"));
+        assertFalse(TarjetasNsys.color(List.of(sim), Map.of()).get(0).esEsim());
+        AvisoTaller enEspejo = new AvisoTaller(1, IMEI, "R20261103_1", AvisoTaller.Tipo.SIN_COLOR, null, COLOR,
+                "chai13yellowesim", null, "chasis chai13yellowesim nuevo", 8, "Técnico 2", AYER);
+        AvisoTaller fuera = new AvisoTaller(2, "350000000000009", "R20261103_2", AvisoTaller.Tipo.SIN_COLOR, null, COLOR,
+                "chai13blue", null, "chasis chai13blue nuevo", 8, "Técnico 2", AYER);
+        List<FilaRevisarNsys> revisar = TarjetasNsys.revisar(List.of(enEspejo, fuera), Map.of(IMEI, esim(IMEI, "Azul", "B")));
+        assertEquals(List.of(true, false), revisar.stream().map(FilaRevisarNsys::esEsim).toList());
+        List<FilaSinGradoNsys> sinGrado = TarjetasNsys.sinGrado(
+                Map.of(IMEI, List.of(trabajo(IMEI, "R20261103_3", LocalDateTime.of(2026, 10, 27, 9, 0)))),
+                Map.of(IMEI, esim(IMEI, "Azul", "n/a")), Map.of(), Map.of(IMEI, VueltaNsys.EN_EMPRESA), Map.of());
+        assertTrue(sinGrado.get(0).esEsim());
+    }
 }

@@ -31,8 +31,8 @@ public class DescripcionMovil {
         this.taller = taller;
     }
 
-    /** Lo de NSYS que lleva una fila. */
-    private record DelEspejo(String capacidad, String color) {}
+    /** Lo de NSYS que lleva una fila (la eSIM, desde la 0.9.24). */
+    private record DelEspejo(String capacidad, String color, boolean esEsim) {}
 
     /** Rellena la capacidad y el color de estas filas (las cambia en el sitio) y devuelve la misma lista. Una lectura del espejo
      *  por IMEI distinto, en tandas de {@value NsysDAO#TANDA_IN} ({@link NsysDAO#porImeis}), y una de lo del taller (todos los
@@ -43,8 +43,8 @@ public class DescripcionMovil {
         try {
             moviles = leer(filas);
         } catch (RuntimeException e) {
-            log.warn("Listas del taller sin capacidad ni color ({} filas): no se pudo leer el espejo de NSYS o lo del taller: {}",
-                    filas.size(), e.toString());
+            log.warn("Listas del taller sin capacidad, color ni eSIM ({} filas): no se pudo leer el espejo de NSYS o lo del "
+                    + "taller: {}", filas.size(), e.toString());
             return filas;
         }
         for (ReparacionResumen r : filas) {
@@ -52,6 +52,7 @@ public class DescripcionMovil {
             if (m == null) continue;
             r.setCapacidad(m.capacidad());
             r.setColor(m.color());
+            r.setEsEsim(m.esEsim());
         }
         return filas;
     }
@@ -66,7 +67,7 @@ public class DescripcionMovil {
         if (masReciente.isEmpty()) return Map.of();
         Function<MovilNsys, String> color = taller.colorDeTodos();
         Map<String, DelEspejo> moviles = new HashMap<>();
-        masReciente.forEach((clave, m) -> moviles.put(clave, new DelEspejo(m.capacidad(), color.apply(m))));
+        masReciente.forEach((clave, m) -> moviles.put(clave, new DelEspejo(m.capacidad(), color.apply(m), m.esEsim())));
         return moviles;
     }
 }

@@ -18,6 +18,13 @@ final class TallerDePrueba {
                 "Listos", EstadoMovil.STOCK, HOY.minusDays(20), HOY.minusDays(1));
     }
 
+    /** Como {@link #movil}, solo eSIM (0.9.24): NSYS lo escribe en el producto, «Apple iPhone 13 eSIM 128GB Blue». */
+    static MovilNsys esim(String imei, String color, String grade) {
+        return new MovilNsys(imei, "BT-9001", "Apple iPhone 13 eSIM 128GB Blue", grade, "Available", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 10, 1), null, "i13esim128" + color + grade, "13", "13", "128GB", color, grade, true, "Listos",
+                "Listos", EstadoMovil.STOCK, HOY.minusDays(20), HOY.minusDays(1));
+    }
+
     /** Un móvil cuyo producto no está en el maestro: sin modelo, color ni SKU. */
     static MovilNsys sinMaestro(String imei, String grade) {
         return new MovilNsys(imei, "BT-9001", "Apple iPhone 13 128GB Blue", grade, "Available", "CAJA LISTOS", "Proveedor A",

@@ -583,4 +583,25 @@ class StockTelefonosControllerTest {
         assertEquals("chai13xxx", rastro.get(0).de());
         assertEquals("Técnico 2", rastro.get(0).tecnico());
     }
+
+    /** 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): la ficha, el buscador y «Pegar varios IMEIs» dicen si NSYS
+     *  escribe «eSIM» en el producto; un IMEI que no está, no. */
+    @Test void laFichaElBuscadorYComprobarDicenSiEsEsim() {
+        String otro = "350000000000002", fuera = "350000000000009";
+        when(dao.porImei(IMEI)).thenReturn(List.of(TallerDePrueba.esim(IMEI, "Azul", "A")));
+        assertTrue(json(api.ficha(IMEI)).get("esEsim").asBoolean());
+        when(dao.porImei(otro)).thenReturn(List.of(TallerDePrueba.movil(otro, "Azul", "A")));
+        assertFalse(json(api.ficha(otro)).get("esEsim").asBoolean(), "SIM física");
+        when(dao.buscar("3500", 10)).thenReturn(List.of(TallerDePrueba.esim(IMEI, "Azul", "A"), TallerDePrueba.movil(otro, "Azul", "A")));
+        JsonNode buscados = json(api.buscar("3500"));
+        assertTrue(buscados.get(0).get("esEsim").asBoolean());
+        assertFalse(buscados.get(1).get("esEsim").asBoolean());
+        when(dao.porImeis(List.of(IMEI, otro, fuera)))
+                .thenReturn(List.of(TallerDePrueba.esim(IMEI, "Azul", "A"), TallerDePrueba.movil(otro, "Azul", "A")));
+        JsonNode comprobados = json(api.comprobar(pedir(IMEI, otro, fuera)));
+        assertTrue(comprobados.get(0).get("esEsim").asBoolean());
+        assertFalse(comprobados.get(1).get("esEsim").asBoolean());
+        assertFalse(comprobados.get(2).get("encontrado").asBoolean());
+        assertFalse(comprobados.get(2).get("esEsim").asBoolean(), "fuera del espejo, no");
+    }
 }

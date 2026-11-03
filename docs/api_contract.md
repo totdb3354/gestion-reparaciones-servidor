@@ -28,6 +28,13 @@ de `model/` conservan su nombre.
   (de `Nsys_movil`) y el `color` que vale (lo del taller vigente o el de NSYS) de la fila más reciente del IMEI en el espejo de
   NSYS (0.9.21). Son `null` si el IMEI no está en el espejo, si la lectura falla (la lista sale igual y se apunta en el log) y en
   las demás rutas que devuelven `ReparacionResumen`. `modelo` sigue siendo el código de `Telefono.MODELO`.
+- Desde la 0.9.24, esas seis listas traen también `esEsim` en `ReparacionResumen` (booleano, no nulo, el último campo): si NSYS
+  escribe «eSIM» en el producto (`Nsys_movil.ES_ESIM`), de la misma fila que la `capacidad`; `false` fuera del espejo, si la
+  lectura falla y en las demás rutas que devuelven `ReparacionResumen`. Lo traen igual la ficha
+  (`GET /api/stock-telefonos/{imeiSn}`), el buscador (`GET /api/stock-telefonos/buscar`), «Comprobar»
+  (`POST /api/stock-telefonos/comprobar`; un IMEI no encontrado, `false`) y las filas de «Cambio de color», «Cambio de grado»,
+  «Revisar a mano» y «Sin grado en NSYS» de las tarjetas de «Por pasar a NSYS» (un aviso sin móvil en el espejo, `false`). El
+  stock (`GET /api/stock-telefonos`) ya lo traía.
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
   del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.

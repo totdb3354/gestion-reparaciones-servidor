@@ -56,6 +56,9 @@ public class ReparacionResumen {
     // (nsys.DescripcionMovil); null fuera del espejo, si la lectura falla y en las demás rutas. Van al final del contrato.
     @Schema(nullable = true) private String        capacidad;
     @Schema(nullable = true) private String        color;
+    // 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): si NSYS escribe «eSIM» en el producto (Nsys_movil.ES_ESIM),
+    // de la misma fila que la capacidad. false fuera del espejo, si la lectura falla y en las demás rutas. Al final del contrato.
+    private boolean       esEsim;
 
     public ReparacionResumen() {}
 
@@ -158,4 +161,6 @@ public class ReparacionResumen {
     public void          setCapacidad(String v)                    { this.capacidad = v; }
     public String        getColor()                                { return color; }
     public void          setColor(String v)                        { this.color = v; }
+    public boolean       isEsEsim()                                { return esEsim; }
+    public void          setEsEsim(boolean v)                      { this.esEsim = v; }
 }
