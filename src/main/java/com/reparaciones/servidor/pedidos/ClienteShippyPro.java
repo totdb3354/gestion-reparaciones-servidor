@@ -3,6 +3,8 @@ package com.reparaciones.servidor.pedidos;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reparaciones.servidor.nsys.ImportadorNsys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -32,7 +34,8 @@ import java.util.concurrent.TimeoutException;
 @Component
 public class ClienteShippyPro {
 
-    static final String API = "https://www.shippypro.com/api";
+    private static final Logger log = LoggerFactory.getLogger(ClienteShippyPro.class);
+    static final String API ="https://www.shippypro.com/api";
     static final String AGENTE = "FSGR-ERP/0.9.26 (lectura de pedidos)";
     private static final Duration ESPERA_CABECERAS = Duration.ofSeconds(60);
     static final Duration ESPERA = Duration.ofMinutes(2);
@@ -74,7 +77,15 @@ public class ClienteShippyPro {
         };
     }
 
-    public List<PedidoShippyPro> pendientes() throws IOException, InterruptedException {
+    /** Lo leído: los pedidos válidos y el número de cada pedido saltado por no tener fecha válida. */
+    public record Leidos(List<PedidoShippyPro> pedidos, List<String> descartados) {
+        public Leidos {
+            pedidos = List.copyOf(pedidos);
+            descartados = List.copyOf(descartados);
+        }
+    }
+
+    public Leidos pendientes() throws IOException, InterruptedException {
         String basic = Base64.getEncoder().encodeToString((clave.clave() + ":").getBytes(StandardCharsets.UTF_8));
         HttpRequest peticion = HttpRequest.newBuilder(URI.create(API)).timeout(ESPERA_CABECERAS)
                 .header("Content-Type", "application/json").header("Authorization", "Basic " + basic)
@@ -86,6 +97,9 @@ public class ClienteShippyPro {
         } catch (TimeoutException e) {
             futura.cancel(true);
             throw new IOException("ShippyPro no respondió a tiempo");
+        } catch (InterruptedException e) {
+            futura.cancel(true);
+            throw e;
         } catch (ExecutionException e) {
             if (e.getCause() instanceof IOException io) throw io;
             throw new IOException("Fallo al pedir a ShippyPro", e.getCause());
@@ -96,13 +110,28 @@ public class ClienteShippyPro {
         if (!"OK".equals(resultado))
             throw new IOException(("ShippyPro: " + resultado + " " + cuerpo.path("Error").asText("")).strip());
         List<PedidoShippyPro> pedidos = new ArrayList<>();
-        for (JsonNode o : cuerpo.path("Orders")) pedidos.add(pedido(o));
-        return pedidos;
+        List<String> descartados = new ArrayList<>();
+        for (JsonNode o : cuerpo.path("Orders")) {
+            try {
+                pedidos.add(pedido(o));
+            } catch (IllegalArgumentException e) {
+                String numero = o.path("transaction_id").asText("").strip();
+                if (numero.isEmpty()) numero = "(sin número)";
+                descartados.add(numero);
+                log.warn("Pedidos: el pedido {} de ShippyPro no tiene una fecha válida y se salta", numero);
+            }
+        }
+        return new Leidos(pedidos, descartados);
     }
 
+    /** Un pedido de ShippyPro a nuestro modelo. Lanza IllegalArgumentException si el pedido no trae una fecha válida
+     *  (vacía, ausente, no numérica o no positiva); acepta decimales como «1793629400.0». */
     static PedidoShippyPro pedido(JsonNode o) {
-        LocalDateTime fecha = LocalDateTime.ofInstant(Instant.ofEpochSecond(Long.parseLong(o.path("date").asText("0").strip())),
-                ImportadorNsys.MADRID);
+        String texto = o.path("date").asText("").strip();
+        if (texto.isEmpty()) throw new IllegalArgumentException("sin fecha");
+        long segundos = new BigDecimal(texto).longValue();
+        if (segundos <= 0) throw new IllegalArgumentException("fecha no válida");
+        LocalDateTime fecha = LocalDateTime.ofInstant(Instant.ofEpochSecond(segundos), ImportadorNsys.MADRID);
         List<PedidoShippyPro.Articulo> articulos = new ArrayList<>();
         for (JsonNode i : o.path("items")) {
             String sku = i.path("sku").asText("").strip();
