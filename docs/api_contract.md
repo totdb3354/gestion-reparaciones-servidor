@@ -41,7 +41,7 @@ de `model/` conservan su nombre.
   vendido más reciente, con el `color` que vale (lo del taller por encima de NSYS). `POST /api/stock-telefonos/que-revisar/excel`
   recibe `{hoja, columnas, filas}` (textos) y responde el xlsx para imprimir: cabecera en negrita repetida en cada página,
   apaisado, una página de ancho, bordes finos y anchos según el contenido. No sabe nada de la lista. `400` con el motivo si la
-  hoja está vacía, pasa de 31 caracteres o lleva `[ ] : * ? / \`; si no hay de 1 a 12 columnas o una no tiene nombre; si pasa
+  hoja está vacía, pasa de 31 caracteres, lleva `[ ] : * ? / \` o empieza o acaba con un apóstrofo; si no hay de 1 a 12 columnas o una no tiene nombre (o es solo espacios); si pasa
   de 5000 filas; si una fila no tiene tantas celdas como columnas o lleva una nula, o si un texto pasa de 200 caracteres.
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las

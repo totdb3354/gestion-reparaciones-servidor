@@ -96,6 +96,12 @@ class HojaImprimibleTest {
         assertEquals("La hoja lleva de 1 a 12 columnas", HojaImprimible.error("Hoja", null, List.of()));
         assertEquals("La hoja lleva de 1 a 12 columnas", HojaImprimible.error("Hoja", Collections.nCopies(13, "C"), List.of()));
         assertEquals("Una columna no tiene nombre", HojaImprimible.error("Hoja", Arrays.asList("A", null), List.of()));
+        for (String vacia : List.of("", "  "))
+            assertEquals("Una columna no tiene nombre", HojaImprimible.error("Hoja", List.of("A", vacia), List.of()), "[" + vacia + "]");
+        String apostrofo = "El nombre de la hoja no puede empezar ni acabar con un apóstrofo";
+        assertEquals(apostrofo, HojaImprimible.error("'x", COLUMNAS, FILAS));
+        assertEquals(apostrofo, HojaImprimible.error("x'", COLUMNAS, FILAS));
+        assertNull(HojaImprimible.error("x'y", COLUMNAS, FILAS));
         assertEquals("El nombre de una columna pasa de 200 caracteres", HojaImprimible.error("Hoja", List.of("x".repeat(201)), List.of()));
         assertEquals("Faltan las filas", HojaImprimible.error("Hoja", List.of("A"), null));
         List<List<String>> demasiadas = new ArrayList<>(cincoMil);

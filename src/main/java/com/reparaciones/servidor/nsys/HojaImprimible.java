@@ -38,10 +38,11 @@ final class HojaImprimible {
         if (hoja == null || hoja.isBlank()) return "Falta el nombre de la hoja";
         if (hoja.length() > MAX_HOJA) return "El nombre de la hoja pasa de " + MAX_HOJA + " caracteres";
         if (PROHIBIDOS.matcher(hoja).find()) return "El nombre de la hoja no puede llevar [ ] : * ? / \\";
+        if (hoja.startsWith("'") || hoja.endsWith("'")) return "El nombre de la hoja no puede empezar ni acabar con un apóstrofo";
         if (columnas == null || columnas.isEmpty() || columnas.size() > MAX_COLUMNAS)
             return "La hoja lleva de 1 a " + MAX_COLUMNAS + " columnas";
         for (String c : columnas) {
-            if (c == null) return "Una columna no tiene nombre";
+            if (c == null || c.isBlank()) return "Una columna no tiene nombre";
             if (c.length() > MAX_CELDA) return "El nombre de una columna pasa de " + MAX_CELDA + " caracteres";
         }
         if (filas == null) return "Faltan las filas";

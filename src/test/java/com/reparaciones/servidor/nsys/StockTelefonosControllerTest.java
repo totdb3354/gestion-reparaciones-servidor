@@ -667,4 +667,11 @@ class StockTelefonosControllerTest {
         ResponseStatusException sinCuerpo = assertThrows(ResponseStatusException.class, () -> api.excel(null));
         assertEquals("Falta el nombre de la hoja", sinCuerpo.getReason());
     }
+
+    @Test void unExcelConHojaConApostrofoAlPrincipioOAlFinalEs400() {
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.excel(
+                new StockTelefonosController.PeticionExcel("'x", List.of("A"), List.of(List.of("a")))));
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertEquals("El nombre de la hoja no puede empezar ni acabar con un apóstrofo", e.getReason());
+    }
 }
