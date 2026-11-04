@@ -214,4 +214,53 @@ class CrucePedidosTest {
         assertEquals("ABONO", pedido(r, "6470").unidades().get(0).motivoCierre());
         assertEquals("350000000000019", pedido(r, "402-0000000-0000028").unidades().get(0).imei());
     }
+
+    private static PedidoShippyPro stockroom(String numero, int d, String sku) {
+        return new PedidoShippyPro(numero, "200", dia(d), "Comprador " + numero, "DE", List.of(new PedidoShippyPro.Articulo(sku, 1)));
+    }
+
+    @Test void unaFilaAmzCubreUnPedidoDeAmazon() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000041", 28, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(60, dia(29), "AMZ", "i13128AzulA", "350000000000041")), List.of(), Map.of());
+        PedidoLeido.Unidad u = pedido(r, "402-0000000-0000041").unidades().get(0);
+        assertEquals("350000000000041", u.imei());
+        assertTrue(u.sinPedidoConcreto());
+    }
+
+    @Test void unaFilaFnskCubreStockroomYNoAmazon() {
+        CrucePedidos.Resultado r = cruzar(List.of(stockroom("402-0000000-0000042", 28, "i13128AzulA"),
+                        amazon("402-0000000-0000043", 28, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(61, dia(29), "FNSK", "i13128AzulA", "350000000000042")), List.of(), Map.of());
+        assertEquals("350000000000042", pedido(r, "402-0000000-0000042").unidades().get(0).imei());
+        assertTrue(pedido(r, "402-0000000-0000042").unidades().get(0).sinPedidoConcreto());
+        assertNull(pedido(r, "402-0000000-0000043").unidades().get(0).imei());
+    }
+
+    @Test void unaFilaAmzNoCubreUnPedidoDeStockroom() {
+        CrucePedidos.Resultado r = cruzar(List.of(stockroom("402-0000000-0000044", 28, "i13128AzulA")),
+                List.of(new FilaPedidos2026(62, dia(29), "AMZ", "i13128AzulA", "350000000000044")), List.of(), Map.of());
+        assertNull(pedido(r, "402-0000000-0000044").unidades().get(0).imei());
+    }
+
+    @Test void fsnkEnMinusculasCubreStockroom() {
+        CrucePedidos.Resultado r = cruzar(List.of(stockroom("402-0000000-0000045", 28, "i13128AzulA")),
+                List.of(new FilaPedidos2026(63, dia(29), "fsnk", "i13128AzulA", "350000000000045")), List.of(), Map.of());
+        assertEquals("350000000000045", pedido(r, "402-0000000-0000045").unidades().get(0).imei());
+    }
+
+    @Test void conUnPedidoDeCadaCanalDelMismoSkuCadaUnoSeQuedaLaSuya() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000046", 28, "i13128AzulA", 1),
+                        stockroom("402-0000000-0000047", 28, "i13128AzulA")),
+                List.of(new FilaPedidos2026(64, dia(29), "FSNK", "i13128AzulA", "350000000000047"),
+                        new FilaPedidos2026(65, dia(29), "AMZ", "i13128AzulA", "350000000000046")), List.of(), Map.of());
+        assertEquals("350000000000046", pedido(r, "402-0000000-0000046").unidades().get(0).imei());
+        assertEquals("350000000000047", pedido(r, "402-0000000-0000047").unidades().get(0).imei());
+    }
+
+    @Test void unaFilaAmzNoSeLaLlevaUnClienteDeWebAunqueSeLlameAmz() {
+        CrucePedidos.Resultado r = cruzar(List.of(
+                        new PedidoShippyPro("18850", "300", dia(28), "AMZ", "ES", List.of(new PedidoShippyPro.Articulo("i13128AzulA", 1)))),
+                List.of(new FilaPedidos2026(66, dia(29), "AMZ", "i13128AzulA", "350000000000048")), List.of(), Map.of());
+        assertNull(pedido(r, "18850").unidades().get(0).imei());
+    }
 }

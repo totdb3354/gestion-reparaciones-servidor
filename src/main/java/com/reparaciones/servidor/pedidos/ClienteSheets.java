@@ -26,10 +26,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 /** Lee pestañas de hojas de Google con la API de Sheets, solo lectura (spec pieza 2 §4.2-4.3), con la cuenta de servicio de la
- *  pieza 1 (`nsys.drive.credenciales`). Cada lectura son tres llamadas: la cabecera, la columna clave (para saber cuántas filas
- *  hay) y las últimas N filas (ajuste 3 de la spec). */
+ *  pieza 1 (`nsys.drive.credenciales`). Cada lectura son tres llamadas: la cabecera, la columna clave (para saber hasta qué fila llegan los datos: la última cuyo valor cuenta; en
+ *  PEDIDOS 2026, la última venta, porque debajo hay un bloque de incidencias) y las últimas N filas (ajuste 3 de la spec). */
 @Component
 public class ClienteSheets {
 
@@ -77,8 +78,8 @@ public class ClienteSheets {
         };
     }
 
-    public TablaHoja leer(String hoja, String pestana, List<String> obligatorias, String columnaClave, int filas)
-            throws IOException, InterruptedException {
+    public TablaHoja leer(String hoja, String pestana, List<String> obligatorias, String columnaClave, Predicate<String> cuenta,
+                          int filas) throws IOException, InterruptedException {
         String p = "'" + pestana.replace("'", "''") + "'!";
         List<List<JsonNode>> cabecera = valores(hoja, p + "1:1");
         Map<String, Integer> columnas = new HashMap<>();
@@ -92,7 +93,15 @@ public class ClienteSheets {
         for (String o : obligatorias)
             if (!columnas.containsKey(o)) throw new FormatoHojaException("Falta la columna «" + o + "» en «" + pestana + "»");
         String clave = letra(columnas.get(columnaClave));
-        int ultima = valores(hoja, p + clave + ":" + clave).size();
+        List<List<JsonNode>> valoresClave = valores(hoja, p + clave + ":" + clave);
+        int ultima = 0;
+        for (int i = valoresClave.size(); i >= 2; i--) {
+            List<JsonNode> celdas = valoresClave.get(i - 1);
+            if (cuenta.test(celdas.isEmpty() ? null : TablaHoja.texto(celdas.get(0)))) {
+                ultima = i;
+                break;
+            }
+        }
         if (ultima <= 1) return new TablaHoja(0, columnas, List.of());
         int desde = Math.max(2, ultima - filas + 1);
         int ancho = obligatorias.stream().mapToInt(columnas::get).max().orElse(0);

@@ -97,7 +97,8 @@ public final class CrucePedidos {
                 .filter(f -> !delSimulador.contains(NsysDAO.claveCruce(f.imei())))
                 .filter(f -> !vendido(movil(e.moviles(), f)))
                 .toList();
-        repartirAmazon(huecos, filas, e.moviles());
+        repartirAmazon(huecos, filas, e.moviles(), Canal.AMAZON);
+        repartirAmazon(huecos, filas, e.moviles(), Canal.AMAZON_STOCKROOM);
         repartirWebs(huecos, filas);
         pedidos.addAll(pedidosShippyPro(huecos));
         return new Resultado(pedidos, desconocidosShippyPro, desconocidosSimulador);
@@ -143,14 +144,26 @@ public final class CrucePedidos {
 
     // ---------------------------------------------------------------- PEDIDOS 2026: Amazon
 
-    /** Amazon y Stockroom: las filas con Plataforma «Amazon» no son de un pedido concreto (llevan {@code sinPedidoConcreto}).
+    /** Plataforma de PEDIDOS 2026 → canal de Amazon (ensayo del 04/11, decisión del usuario): «AMZ» (y el «Amazon» de junio)
+     *  son Amazon Fonestore; «FNSK» y «FSNK» son Amazon Stockroom. Cada canal se cubre solo con sus filas. */
+    static final Map<String, Canal> PLATAFORMAS_AMAZON = Map.of("amz", Canal.AMAZON, "amazon", Canal.AMAZON,
+            "fnsk", Canal.AMAZON_STOCKROOM, "fsnk", Canal.AMAZON_STOCKROOM);
+
+    /** El canal de Amazon de una fila por su Plataforma (sin mayúsculas, tildes ni espacios de más), o null si es de una web. */
+    static Canal canalAmazon(String plataforma) {
+        String c = Textos.cliente(plataforma);
+        return c == null ? null : PLATAFORMAS_AMAZON.get(c);
+    }
+
+    /** Un canal de Amazon: las filas de su Plataforma ({@code PLATAFORMAS_AMAZON}) no son de un pedido concreto (llevan {@code sinPedidoConcreto}).
      *  Primero se cubren todos los pedidos que se puede, prefiriendo los más antiguos; después, entre los repartos que cubren
      *  esos mismos, el móvil más avanzado va al pedido más antiguo (decisión del usuario, 04/11). Son decenas de unidades: cada
      *  prueba rehace el emparejamiento entero, que se lee mejor que uno incremental. */
-    private static void repartirAmazon(List<Hueco> huecos, List<FilaPedidos2026> filas, Map<String, MovilNsys> moviles) {
-        List<Hueco> unidades = huecos.stream().filter(h -> h.pedido.canal.esAmazon()).toList();
+    private static void repartirAmazon(List<Hueco> huecos, List<FilaPedidos2026> filas, Map<String, MovilNsys> moviles,
+                                         Canal canal) {
+        List<Hueco> unidades = huecos.stream().filter(h -> h.pedido.canal == canal).toList();
         List<FilaPedidos2026> candidatas = filas.stream()
-                .filter(f -> "amazon".equals(Textos.cliente(f.plataforma())))
+                .filter(f -> canalAmazon(f.plataforma()) == canal)
                 .filter(f -> unidades.stream().anyMatch(h -> cubre(f, h)))
                 .sorted(porAvance(moviles))
                 .toList();
@@ -237,7 +250,7 @@ public final class CrucePedidos {
      *  fila libre que las cubre (por número de fila). */
     private static void repartirWebs(List<Hueco> huecos, List<FilaPedidos2026> filas) {
         List<FilaPedidos2026> libres = new ArrayList<>(filas.stream()
-                .filter(f -> !"amazon".equals(Textos.cliente(f.plataforma())))
+                .filter(f -> canalAmazon(f.plataforma()) == null)
                 .sorted(Comparator.comparingInt(FilaPedidos2026::fila)).toList());
         for (Hueco h : huecos) {
             if (!h.pedido.canal.esWeb()) continue;

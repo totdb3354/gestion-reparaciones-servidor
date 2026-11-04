@@ -4,13 +4,15 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 
 /** Las ventas con IMEI de PEDIDOS 2026 (spec pieza 2 §4.2 y ajuste 4). Una fila es venta con la regla de Deduccion_IMEIs.gs:
  *  Plataforma no vacía, ni NP, ni con INCIDENCIA o CANCEL. Sin IMEI de 15 cifras, sin SKU o sin fecha, no cuenta. */
 public final class LectorPedidos2026 {
 
     public static final List<String> OBLIGATORIAS = List.of("Fecha", "Plataforma", "SKU", "IMEI");
-    public static final String CLAVE = "SKU";
+    public static final String CLAVE = "Plataforma";
+    public static final Predicate<String> CUENTA = LectorPedidos2026::esVenta;
 
     private LectorPedidos2026() {}
 
