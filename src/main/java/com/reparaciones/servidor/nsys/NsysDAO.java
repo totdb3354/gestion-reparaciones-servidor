@@ -59,9 +59,12 @@ public class NsysDAO {
     /** El maestro guardado no tiene ningún SKU de los canales nuevos (se cargó antes de la 0.9.26). */
     static final String SQL_PRODUCTOS_SIN_SKU_DE_CANALES = "SELECT COUNT(*) > 0 AND COALESCE(SUM(SKU_AMAZON_ESIM IS NOT NULL"
             + " OR SKU_PARTICULARES IS NOT NULL OR SKU_BACKIPHONE IS NOT NULL), 0) = 0 FROM Nsys_producto";
-    /** Los productos cuyo SKU de algún canal es uno de estos (la intercalación de la tabla no distingue mayúsculas). */
+    /** Los productos cuyo SKU de algún canal es uno de estos (la intercalación de la tabla no distingue mayúsculas). Amazon es
+     *  solo «SKU (Amazon) con eSIM» (SKU_AMAZON_ESIM): SKU_AMAZON no cuenta como SKU de canal. */
+    /** SKU_WEB, SKU_AMAZON_ESIM, SKU_PARTICULARES y SKU_BACKIPHONE: las veces que {@code SQL_PRODUCTOS_POR_SKU} usa la lista. */
+    static final int COLUMNAS_DE_CANAL = 4;
     static final String SQL_PRODUCTOS_POR_SKU = "SELECT " + COLUMNAS_PRODUCTO + " FROM Nsys_producto WHERE SKU_WEB IN (%1$s)"
-            + " OR SKU_AMAZON IN (%1$s) OR SKU_AMAZON_ESIM IN (%1$s) OR SKU_PARTICULARES IN (%1$s) OR SKU_BACKIPHONE IN (%1$s)";
+            + " OR SKU_AMAZON_ESIM IN (%1$s) OR SKU_PARTICULARES IN (%1$s) OR SKU_BACKIPHONE IN (%1$s)";
     static final String SQL_EMPEZAR = "INSERT INTO Nsys_importacion (FICHERO, FECHA_EXPORTACION, ORIGEN, EMPEZADA)"
             + " VALUES (?, ?, ?, ?)";
     static final String SQL_TERMINAR = "UPDATE Nsys_importacion SET RESULTADO = ?, FILAS = ?, CAMBIOS = ?, MENSAJE = ?,"
@@ -140,8 +143,8 @@ public class NsysDAO {
     public List<ProductoMaestro> productosPorSkuDeCanal(Collection<String> skus) {
         List<ProductoMaestro> productos = new ArrayList<>();
         for (List<String> tanda : trozos(List.copyOf(skus), TANDA_IN)) {
-            Object[] args = new Object[tanda.size() * 5];
-            for (int i = 0; i < 5; i++) System.arraycopy(tanda.toArray(), 0, args, i * tanda.size(), tanda.size());
+            Object[] args = new Object[tanda.size() * COLUMNAS_DE_CANAL];
+            for (int i = 0; i < COLUMNAS_DE_CANAL; i++) System.arraycopy(tanda.toArray(), 0, args, i * tanda.size(), tanda.size());
             productos.addAll(jdbc.query(String.format(SQL_PRODUCTOS_POR_SKU, marcas(tanda.size())), NsysDAO::producto, args));
         }
         return productos;

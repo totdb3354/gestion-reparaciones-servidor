@@ -98,7 +98,7 @@ class NsysDAOTest {
     }
 
     @SuppressWarnings("unchecked")
-    @Test void productosPorSkuDeCanalBuscaEnLasCincoColumnasEnTandas() {
+    @Test void productosPorSkuDeCanalBuscaEnLasCuatroColumnasEnTandas() {
         List<Object[]> llamadas = new ArrayList<>();
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
             llamadas.add(inv.getRawArguments());   // [sql, mapeo, Object[] con los argumentos]
@@ -113,8 +113,10 @@ class NsysDAOTest {
         String sql = (String) llamadas.get(0)[0];
         assertTrue(sql.contains("WHERE SKU_WEB IN (?"), sql);
         assertTrue(sql.contains("OR SKU_BACKIPHONE IN (?"), sql);
-        assertEquals(500 * 5, ((Object[]) llamadas.get(0)[2]).length);
-        assertEquals(100 * 5, ((Object[]) llamadas.get(1)[2]).length);
+        assertTrue(sql.contains("OR SKU_AMAZON_ESIM IN (?"), sql);
+        assertFalse(sql.contains(" SKU_AMAZON IN"), "Amazon es solo SKU_AMAZON_ESIM: " + sql);
+        assertEquals(500 * 4, ((Object[]) llamadas.get(0)[2]).length);
+        assertEquals(100 * 4, ((Object[]) llamadas.get(1)[2]).length);
         assertTrue(dao.productosPorSkuDeCanal(List.of()).isEmpty());
     }
 

@@ -10,8 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Qué productos del maestro acepta el SKU de un pedido de cada canal (spec pieza 2 §6.4.1): Amazon, por «SKU (Amazon)» y
- *  «SKU (Amazon) con eSIM»; Particulares, por «SKU (stock fonestore.es) Conjunto»; BackiPhone, por «SKU BackiPhone»;
+/** Qué productos del maestro acepta el SKU de un pedido de cada canal (spec pieza 2 §6.4.1): Amazon, solo por «SKU (Amazon) con eSIM»
+ *  (decisión del 04/11: Amazon distingue la eSIM del físico, y en el maestro «SKU (Amazon)» de una fila eSIM trae el SKU sin
+ *  eSIM, así que mezclarlas haría que lo que pide el pedido saliera al azar); Particulares, por «SKU (stock fonestore.es) Conjunto»; BackiPhone, por «SKU BackiPhone»;
  *  Distribuidores y el Simulador, por el nuestro («SKU (stock web)»). Es puro: se construye con los productos que hagan falta
  *  ({@link com.reparaciones.servidor.nsys.NsysDAO#productosPorSkuDeCanal}). */
 public final class AceptaSku {
@@ -24,7 +25,6 @@ public final class AceptaSku {
     public AceptaSku(Collection<ProductoMaestro> productos) {
         for (ProductoMaestro p : productos) {
             poner(nuestro, p.skuWeb(), p);
-            poner(amazon, p.skuAmazon(), p);
             poner(amazon, p.skuAmazonEsim(), p);
             poner(particulares, p.skuParticulares(), p);
             poner(backiphone, p.skuBackiphone(), p);

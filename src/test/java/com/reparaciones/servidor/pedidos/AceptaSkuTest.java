@@ -14,7 +14,13 @@ class AceptaSkuTest {
     static ProductoMaestro producto(String color, String grado, String web, String amazon, String particulares,
                                     String backiphone) {
         return new ProductoMaestro("clave-" + color + grado + web, "13", "13", "128GB", color, grado, web, amazon,
-                "i13128" + color, false, "Apple iPhone 13 128GB " + color, null, particulares, backiphone);
+                "i13128" + color, false, "Apple iPhone 13 128GB " + color, amazon, particulares, backiphone);
+    }
+
+    /** Un iPhone 14 con y sin eSIM: como en el maestro, «SKU (Amazon)» es el mismo en las dos filas y «con eSIM» está en las dos. */
+    private static ProductoMaestro iphone14(boolean esim) {
+        return new ProductoMaestro("clave-14-" + esim, "14", "14", "256GB", "Azul", "A", "i14256AzulA" + (esim ? "E" : ""),
+                "i14256AzulA", "i14256Azul", esim, "Apple iPhone 14 256GB Azul", esim ? "i14256AzulAesim" : "i14256AzulA", null, null);
     }
 
     private static final List<ProductoMaestro> MAESTRO = List.of(
@@ -61,5 +67,28 @@ class AceptaSkuTest {
 
     @Test void lasVariantesBSeAnadenParaCargarElMaestro() {
         assertEquals(Set.of("i13128AzulA", "i13128AzulB", "GLS24"), AceptaSku.conVariantes(List.of("i13128AzulA", "GLS24")));
+    }
+
+    @Test void amazonDiferenciaLaEsimDelFisicoPorSuColumna() {
+        AceptaSku a = new AceptaSku(List.of(iphone14(false), iphone14(true)));
+
+        Aceptacion normal = a.para(Canal.AMAZON, "i14256AzulA");
+        assertEquals(1, normal.productos().size());
+        assertTrue(normal.acepta("i14256AzulA"));
+        assertFalse(normal.acepta("i14256AzulAE"));
+        assertFalse(normal.pide().esEsim());
+
+        Aceptacion esim = a.para(Canal.AMAZON_STOCKROOM, "i14256AzulAesim");
+        assertEquals(1, esim.productos().size());
+        assertTrue(esim.acepta("i14256AzulAE"));
+        assertFalse(esim.acepta("i14256AzulA"));
+        assertTrue(esim.pide().esEsim());
+    }
+
+    @Test void unaFilaDelMaestroSoloConSkuAmazonYaNoSirveParaAmazon() {
+        ProductoMaestro soloAmazon = new ProductoMaestro("c", "14", "14", "256GB", "Azul", "A", "i14256AzulA", "i14256AzulA",
+                "i14256Azul", false, "Apple iPhone 14 256GB Azul", null, null, null);
+
+        assertNull(new AceptaSku(List.of(soloAmazon)).para(Canal.AMAZON, "i14256AzulA"));
     }
 }
