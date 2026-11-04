@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 /** Lee pestañas de hojas de Google con la API de Sheets, solo lectura (spec pieza 2 §4.2-4.3), con la cuenta de servicio de la
  *  pieza 1 (`nsys.drive.credenciales`). Cada lectura son tres llamadas: la cabecera, la columna clave (para saber hasta qué fila llegan los datos: la última cuyo valor cuenta; en
@@ -78,8 +78,7 @@ public class ClienteSheets {
         };
     }
 
-    public TablaHoja leer(String hoja, String pestana, List<String> obligatorias, String columnaClave, Predicate<String> cuenta,
-                          int filas) throws IOException, InterruptedException {
+    public TablaHoja leer(String hoja, String pestana, FormatoHoja formato, int filas) throws IOException, InterruptedException {
         String p = "'" + pestana.replace("'", "''") + "'!";
         List<List<JsonNode>> cabecera = valores(hoja, p + "1:1");
         Map<String, Integer> columnas = new HashMap<>();
@@ -90,21 +89,22 @@ public class ClienteSheets {
                 if (nombre != null) columnas.putIfAbsent(nombre, i);
             }
         }
-        for (String o : obligatorias)
+        for (String o : formato.obligatorias())
             if (!columnas.containsKey(o)) throw new FormatoHojaException("Falta la columna «" + o + "» en «" + pestana + "»");
-        String clave = letra(columnas.get(columnaClave));
+        String clave = letra(columnas.get(formato.clave()));
         List<List<JsonNode>> valoresClave = valores(hoja, p + clave + ":" + clave);
         int ultima = 0;
         for (int i = valoresClave.size(); i >= 2; i--) {
             List<JsonNode> celdas = valoresClave.get(i - 1);
-            if (cuenta.test(celdas.isEmpty() ? null : TablaHoja.texto(celdas.get(0)))) {
+            if (formato.cuenta().test(celdas.isEmpty() ? null : TablaHoja.texto(celdas.get(0)))) {
                 ultima = i;
                 break;
             }
         }
         if (ultima <= 1) return new TablaHoja(0, columnas, List.of());
         int desde = Math.max(2, ultima - filas + 1);
-        int ancho = obligatorias.stream().mapToInt(columnas::get).max().orElse(0);
+        int ancho = Stream.concat(formato.obligatorias().stream(), formato.opcionales().stream())
+                .filter(columnas::containsKey).mapToInt(columnas::get).max().orElse(0);
         List<List<JsonNode>> cola = valores(hoja, p + "A" + desde + ":" + letra(ancho) + ultima);
         List<TablaHoja.Fila> lista = new ArrayList<>();
         for (int i = 0; i < cola.size(); i++) lista.add(new TablaHoja.Fila(desde + i, cola.get(i)));

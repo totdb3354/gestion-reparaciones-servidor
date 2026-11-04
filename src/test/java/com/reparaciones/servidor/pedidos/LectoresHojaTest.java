@@ -67,4 +67,17 @@ class LectoresHojaTest {
         assertNull(TablaHoja.fecha(JSON.readTree("\"\"")));
         assertNull(TablaHoja.fecha(null));
     }
+
+    @Test void pedidoAmazonSeLeeSiEstaYEsNullSiLaColumnaNoExiste() throws Exception {
+        TablaHoja con = tabla(List.of("Fecha", "Plataforma", "SKU", "IMEI", "Pedido Amazon"),
+                "[46329, \"AMZ\", \"i13128AzulA\", \"350000000000001\", \" 402-0000000-0000001 \"]",
+                "[46329, \"AMZ\", \"i13128AzulA\", \"350000000000002\", \"\"]");
+        List<FilaPedidos2026> filas = LectorPedidos2026.filas(con);
+        assertEquals("402-0000000-0000001", filas.get(0).pedidoAmazon());
+        assertNull(filas.get(1).pedidoAmazon());
+
+        TablaHoja sin = tabla(List.of("Fecha", "Plataforma", "SKU", "IMEI"),
+                "[46329, \"AMZ\", \"i13128AzulA\", \"350000000000001\"]");
+        assertNull(LectorPedidos2026.filas(sin).get(0).pedidoAmazon());
+    }
 }

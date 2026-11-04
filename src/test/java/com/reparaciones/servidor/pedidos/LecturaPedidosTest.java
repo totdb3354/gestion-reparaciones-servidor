@@ -34,8 +34,8 @@ class LecturaPedidosTest {
     }
 
     private void hojasBien(int filasPedidos, int filasSimulador) throws Exception {
-        when(sheets.leer(eq("hoja-p"), any(), any(), any(), any(), anyInt())).thenReturn(vacia(filasPedidos));
-        when(sheets.leer(eq("hoja-s"), any(), any(), any(), any(), anyInt())).thenReturn(vacia(filasSimulador));
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenReturn(vacia(filasPedidos));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(filasSimulador));
     }
 
     @Test void conLasTresFuentesBienAplicaYApuntaCadaLectura() throws Exception {
@@ -83,9 +83,9 @@ class LecturaPedidosTest {
     @Test void unaColumnaQueFaltaEsRechazada() throws Exception {
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         when(shippy.pendientes()).thenReturn(NINGUNO);
-        when(sheets.leer(eq("hoja-p"), any(), any(), any(), any(), anyInt()))
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt()))
                 .thenThrow(new FormatoHojaException("Falta la columna «IMEI» en «PEDIDOS 2026»"));
-        when(sheets.leer(eq("hoja-s"), any(), any(), any(), any(), anyInt())).thenReturn(vacia(10));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
 
         lectura.pasada();
 
@@ -98,12 +98,12 @@ class LecturaPedidosTest {
                 4000, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         when(shippy.pendientes()).thenReturn(NINGUNO);
-        when(sheets.leer(eq("hoja-s"), any(), any(), any(), any(), anyInt())).thenReturn(vacia(10));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
 
         sinHoja.pasada();
 
         verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.RECHAZADA), eq(0), eq("Falta el ajuste pedidos.pedidos2026.hoja"), any());
-        verify(sheets, never()).leer(eq(""), any(), any(), any(), any(), anyInt());
+        verify(sheets, never()).leer(eq(""), any(), any(), anyInt());
         verify(dao, never()).aplicar(anyList(), any());
     }
 
@@ -178,15 +178,15 @@ class LecturaPedidosTest {
             Thread.interrupted();
         }
 
-        verify(sheets, never()).leer(any(), any(), any(), any(), any(), anyInt());
+        verify(sheets, never()).leer(any(), any(), any(), anyInt());
         verify(dao, never()).aplicar(anyList(), any());
     }
 
     @Test void elMensajeDeFormatoSeCorta() throws Exception {
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         when(shippy.pendientes()).thenReturn(NINGUNO);
-        when(sheets.leer(eq("hoja-p"), any(), any(), any(), any(), anyInt())).thenThrow(new FormatoHojaException("x".repeat(2000)));
-        when(sheets.leer(eq("hoja-s"), any(), any(), any(), any(), anyInt())).thenReturn(vacia(10));
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenThrow(new FormatoHojaException("x".repeat(2000)));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
 
         lectura.pasada();
 

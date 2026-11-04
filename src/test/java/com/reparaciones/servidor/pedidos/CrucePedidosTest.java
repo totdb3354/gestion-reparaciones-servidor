@@ -263,4 +263,57 @@ class CrucePedidosTest {
                 List.of(new FilaPedidos2026(66, dia(29), "AMZ", "i13128AzulA", "350000000000048")), List.of(), Map.of());
         assertNull(pedido(r, "18850").unidades().get(0).imei());
     }
+
+    private static FilaPedidos2026 conNumero(int fila, int d, String plataforma, String sku, String imei, String pedidoAmazon) {
+        return new FilaPedidos2026(fila, dia(d), plataforma, sku, imei, pedidoAmazon);
+    }
+
+    @Test void unaFilaConElNumeroDeUnPedidoPendienteLoCubreAEseYNoAlMasAntiguo() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000051", 27, "i13128AzulA", 1),
+                        amazon("402-0000000-0000052", 28, "i13128AzulA", 1)),
+                List.of(conNumero(70, 29, "AMZ", "i13128AzulA", "350000000000051", "402-0000000-0000052")), List.of(), Map.of());
+        PedidoLeido.Unidad u = pedido(r, "402-0000000-0000052").unidades().get(0);
+        assertEquals("350000000000051", u.imei());
+        assertFalse(u.sinPedidoConcreto());
+        assertNull(pedido(r, "402-0000000-0000051").unidades().get(0).imei());
+    }
+
+    @Test void unaFilaConUnNumeroQueNoEstaPendienteNoCubreNingunPedido() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000053", 28, "i13128AzulA", 1)),
+                List.of(conNumero(71, 29, "AMZ", "i13128AzulA", "350000000000053", "402-0000000-0000099")), List.of(), Map.of());
+        assertNull(pedido(r, "402-0000000-0000053").unidades().get(0).imei());
+    }
+
+    @Test void unaFilaTecleadaAntesDeSuPedidoConSuNumeroLoCubreIgual() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000054", 28, "i13128AzulA", 1)),
+                List.of(conNumero(72, 20, "AMZ", "i13128AzulA", "350000000000054", " 402-0000000-0000054 ")), List.of(), Map.of());
+        PedidoLeido.Unidad u = pedido(r, "402-0000000-0000054").unidades().get(0);
+        assertEquals("350000000000054", u.imei());
+        assertFalse(u.sinPedidoConcreto());
+    }
+
+    @Test void unaFilaFnskConElNumeroDeUnPedidoDeAmazonNoCubreNada() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000055", 28, "i13128AzulA", 1)),
+                List.of(conNumero(73, 29, "FNSK", "i13128AzulA", "350000000000055", "402-0000000-0000055")), List.of(), Map.of());
+        assertNull(pedido(r, "402-0000000-0000055").unidades().get(0).imei());
+    }
+
+    @Test void conDosUnidadesLaFilaConNumeroSeQuedaLaPrimeraYLaOtraPuedeLlevarseLaSinNumero() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000056", 28, "i13128AzulA", 2)),
+                List.of(conNumero(74, 29, "AMZ", "i13128AzulA", "350000000000056", "402-0000000-0000056"),
+                        new FilaPedidos2026(75, dia(29), "AMZ", "i13128AzulA", "350000000000057")), List.of(), Map.of());
+        List<PedidoLeido.Unidad> us = pedido(r, "402-0000000-0000056").unidades();
+        assertEquals("350000000000056", us.get(0).imei());
+        assertFalse(us.get(0).sinPedidoConcreto());
+        assertEquals("350000000000057", us.get(1).imei());
+        assertTrue(us.get(1).sinPedidoConcreto());
+    }
+
+    @Test void unaFilaConSuNumeroYUnSkuQueNoEncajaVaALaPrimeraUnidadLibreDeSuPedido() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000058", 28, "i13128AzulA", 1)),
+                List.of(conNumero(76, 29, "AMZ", "i13128NegroA", "350000000000058", "402-0000000-0000058")), List.of(), Map.of());
+        PedidoLeido.Unidad u = pedido(r, "402-0000000-0000058").unidades().get(0);
+        assertEquals("350000000000058", u.imei());
+        assertFalse(u.sinPedidoConcreto());
+    }
 }

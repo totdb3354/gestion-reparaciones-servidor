@@ -155,15 +155,19 @@ public final class CrucePedidos {
         return c == null ? null : PLATAFORMAS_AMAZON.get(c);
     }
 
-    /** Un canal de Amazon: las filas de su Plataforma ({@code PLATAFORMAS_AMAZON}) no son de un pedido concreto (llevan {@code sinPedidoConcreto}).
+    /** Un canal de Amazon. Una fila con «Pedido Amazon» es de su pedido o de ninguno ({@link #repartirPorNumero}); las demás filas
+     *  de su Plataforma ({@code PLATAFORMAS_AMAZON}) no son de un pedido concreto (llevan {@code sinPedidoConcreto}).
      *  Primero se cubren todos los pedidos que se puede, prefiriendo los más antiguos; después, entre los repartos que cubren
      *  esos mismos, el móvil más avanzado va al pedido más antiguo (decisión del usuario, 04/11). Son decenas de unidades: cada
      *  prueba rehace el emparejamiento entero, que se lee mejor que uno incremental. */
     private static void repartirAmazon(List<Hueco> huecos, List<FilaPedidos2026> filas, Map<String, MovilNsys> moviles,
                                          Canal canal) {
-        List<Hueco> unidades = huecos.stream().filter(h -> h.pedido.canal == canal).toList();
-        List<FilaPedidos2026> candidatas = filas.stream()
-                .filter(f -> canalAmazon(f.plataforma()) == canal)
+        List<Hueco> delCanal = huecos.stream().filter(h -> h.pedido.canal == canal).toList();
+        List<FilaPedidos2026> delCanalFilas = filas.stream().filter(f -> canalAmazon(f.plataforma()) == canal).toList();
+        repartirPorNumero(delCanal, delCanalFilas);
+        List<Hueco> unidades = delCanal.stream().filter(h -> h.fila == null).toList();
+        List<FilaPedidos2026> candidatas = delCanalFilas.stream()
+                .filter(f -> f.pedidoAmazon() == null)
                 .filter(f -> unidades.stream().anyMatch(h -> cubre(f, h)))
                 .sorted(porAvance(moviles))
                 .toList();
@@ -183,6 +187,28 @@ public final class CrucePedidos {
             Hueco h = unidades.get(u);
             h.fila = candidatas.get(f);
             h.sinPedidoConcreto = true;
+        }
+    }
+
+    /** Decisión del usuario, 04/11: una fila de Amazon o Stockroom con «Pedido Amazon» (que se rellena al enviar) es de su pedido
+     *  o de ninguno. Si el número es un pedido pendiente de su canal, la fila lo cubre, sea cual sea su fecha, y es un pedido
+     *  concreto ({@code sinPedidoConcreto} false); si no, es de un pedido ya enviado o de otro canal y no cubre nada. Va a la
+     *  primera unidad libre del pedido cuyo SKU encaja y, si ninguna encaja, a la primera libre (el estado dirá «No cuadra»). Las
+     *  filas sin número y las unidades que quedan libres siguen al reparto por SKU. */
+    private static void repartirPorNumero(List<Hueco> unidades, List<FilaPedidos2026> filas) {
+        Map<String, List<Hueco>> porPedido = new HashMap<>();
+        for (Hueco h : unidades) porPedido.computeIfAbsent(h.pedido.leido.numero().strip(), k -> new ArrayList<>()).add(h);
+        for (FilaPedidos2026 f : filas.stream().sorted(Comparator.comparingInt(FilaPedidos2026::fila)).toList()) {
+            if (f.pedidoAmazon() == null) continue;
+            List<Hueco> suyas = porPedido.get(f.pedidoAmazon().strip());
+            if (suyas == null) continue;
+            List<Hueco> libres = suyas.stream().filter(h -> h.fila == null).toList();
+            Hueco destino = libres.stream()
+                    .filter(h -> Objects.equals(Textos.sku(f.sku()), Textos.sku(h.sku)) || h.aceptacion.acepta(f.sku()))
+                    .findFirst().orElse(libres.isEmpty() ? null : libres.get(0));
+            if (destino == null) continue;
+            destino.fila = f;
+            destino.sinPedidoConcreto = false;
         }
     }
 

@@ -23,10 +23,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
-import java.util.function.Predicate;
 
 /** Ensayo del cruce con copias reales (spec pieza 2 §10), sin red ni base de datos: solo con ENSAYO_PEDIDOS. Escribe el
  *  resumen en ENSAYO_PEDIDOS_SALIDA; nada de esto va al repo. */
@@ -44,8 +45,8 @@ class EnsayoPedidosTest {
                 sinFecha.add(o.path("transaction_id").asText("(sin número)"));
             }
         }
-        List<FilaPedidos2026> p2026 = LectorPedidos2026.filas(tabla(dir.resolve("pedidos2026.xlsx"), "PEDIDOS 2026", LectorPedidos2026.CLAVE, LectorPedidos2026.CUENTA, 4000));
-        List<FilaSimulador> sim = LectorSimulador.filas(tabla(dir.resolve("simulador.xlsx"), "Registro actividad", LectorSimulador.CLAVE, LectorSimulador.CUENTA, 4000));
+        List<FilaPedidos2026> p2026 = LectorPedidos2026.filas(tabla(dir.resolve("pedidos2026.xlsx"), "PEDIDOS 2026", LectorPedidos2026.FORMATO, 4000));
+        List<FilaSimulador> sim = LectorSimulador.filas(tabla(dir.resolve("simulador.xlsx"), "Registro actividad", LectorSimulador.FORMATO, 4000));
         Map<String, MovilNsys> moviles = new HashMap<>();
         try (InputStream in = Files.newInputStream(dir.resolve("items.xlsx"))) {
             for (FilaItems f : LectorItems.leer(in)) {
@@ -73,6 +74,13 @@ class EnsayoPedidosTest {
                 if (u.sinPedidoConcreto()) c[3]++;
             }
         }
+        List<FilaPedidos2026> conNumero = p2026.stream()
+                .filter(f -> CrucePedidos.canalAmazon(f.plataforma()) != null && f.pedidoAmazon() != null).toList();
+        Set<String> pendientes = new HashSet<>();
+        for (PedidoShippyPro p : shippy) {
+            Canal canal = Canal.deAjuste(canales).get(p.marketplace());
+            if (canal == Canal.AMAZON || canal == Canal.AMAZON_STOCKROOM) pendientes.add(canal + "|" + p.numero().strip());
+        }
         StringBuilder s = new StringBuilder("Ensayo de pedidos\n\nCanal · pedidos · unidades abiertas · con IMEI · sin pedido concreto\n");
         porCanal.forEach((k, c) -> s.append(String.format("%s · %d · %d · %d · %d%n", k, c[0], c[1], c[2], c[3])));
         s.append("\nPedidos de ShippyPro sin fecha válida (saltados): ").append(sinFecha)
@@ -81,23 +89,28 @@ class EnsayoPedidosTest {
                 .append("\nFilas de PEDIDOS 2026 leídas: ").append(p2026.size())
                 .append("\nFilas de Amazon / Stockroom: ").append(p2026.stream().filter(f -> CrucePedidos.canalAmazon(f.plataforma()) == Canal.AMAZON).count())
                 .append(" / ").append(p2026.stream().filter(f -> CrucePedidos.canalAmazon(f.plataforma()) == Canal.AMAZON_STOCKROOM).count())
+                .append("\nFilas de Amazon/Stockroom con «Pedido Amazon»: ").append(conNumero.size())
+                .append(" (de un pedido pendiente: ").append(conNumero.stream().filter(f -> pendientes.contains(clave(f))).count()).append(')')
                 .append("\nLíneas del Simulador leídas: ").append(sim.size()).append('\n');
         Files.writeString(Path.of(System.getenv("ENSAYO_PEDIDOS_SALIDA")), s.toString());
     }
 
+    private static String clave(FilaPedidos2026 f) {
+        return CrucePedidos.canalAmazon(f.plataforma()) + "|" + f.pedidoAmazon().strip();
+    }
+
     /** Las últimas {@code filas} filas de una pestaña, como las daría Sheets: números (las fechas, como número de serie) y textos. */
-    private static TablaHoja tabla(Path xlsx, String pestana, String clave,
-                                Predicate<String> cuenta, int filas) throws Exception {
+    private static TablaHoja tabla(Path xlsx, String pestana, FormatoHoja formato, int filas) throws Exception {
         try (XSSFWorkbook libro = new XSSFWorkbook(Files.newInputStream(xlsx))) {
             Sheet hoja = libro.getSheet(pestana);
             Map<String, Integer> columnas = new HashMap<>();
             Row cab = hoja.getRow(0);
             for (Cell c : cab) if (c.getCellType() == CellType.STRING) columnas.putIfAbsent(c.getStringCellValue().strip(), c.getColumnIndex());
-            int colClave = columnas.get(clave);
+            int colClave = columnas.get(formato.clave());
             int ultima = 0;
             for (int i = hoja.getLastRowNum(); i >= 1; i--) {
                 Row row = hoja.getRow(i);
-                if (cuenta.test(row == null ? null : TablaHoja.texto(valor(row.getCell(colClave))))) {
+                if (formato.cuenta().test(row == null ? null : TablaHoja.texto(valor(row.getCell(colClave))))) {
                     ultima = i;
                     break;
                 }

@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.function.Predicate;
 
 /** Las líneas del Simulador (spec pieza 2 §4.3). Sin Order id, sin SKU o sin fecha, no cuentan. No lee precios, IVA, forma de
  *  pago ni nada de facturación. */
@@ -14,8 +13,7 @@ public final class LectorSimulador {
 
     public static final List<String> OBLIGATORIAS = List.of("Order id", "Linea facturación", "Fecha", "Cliente", "SKU",
             "Cantidad", "IMEI");
-    public static final String CLAVE = "Order id";
-    public static final Predicate<String> CUENTA = Objects::nonNull;
+    public static final FormatoHoja FORMATO = new FormatoHoja(OBLIGATORIAS, List.of(), "Order id", Objects::nonNull);
 
     private LectorSimulador() {}
 

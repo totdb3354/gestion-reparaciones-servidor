@@ -37,7 +37,7 @@ class ClienteSheetsTest {
                 respuesta("{\"values\":[[46000.5,\"\",\"Amazon\",\"c\",\"\",\"350000000000001\"],[46001,\"\",\"Amazon\",\"d\"]]}"))
                 .when(http).sendAsync(any(HttpRequest.class), any());
 
-        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", List.of("Fecha", "Plataforma", "SKU", "IMEI"), "SKU", Objects::nonNull, 2);
+        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", formato("SKU", Objects::nonNull), 2);
 
         assertEquals(4, t.total());
         assertEquals(Map.of("Fecha", 0, "Fecha_Traspaso", 1, "Plataforma", 2, "SKU", 3, "Pendiente", 4, "IMEI", 5), t.columnas());
@@ -58,7 +58,7 @@ class ClienteSheetsTest {
     @Test void unaColumnaQueFaltaRechazaLaHoja() {
         doReturn(respuesta("{\"values\":[[\"Fecha\",\"SKU\"]]}")).when(http).sendAsync(any(HttpRequest.class), any());
         FormatoHojaException e = assertThrows(FormatoHojaException.class,
-                () -> sheets.leer("h", "PEDIDOS 2026", List.of("Fecha", "Plataforma", "SKU", "IMEI"), "SKU", Objects::nonNull, 10));
+                () -> sheets.leer("h", "PEDIDOS 2026", formato("SKU", Objects::nonNull), 10));
         assertEquals("Falta la columna «Plataforma» en «PEDIDOS 2026»", e.getMessage());
     }
 
@@ -74,8 +74,7 @@ class ClienteSheetsTest {
                 respuesta("{\"values\":[[1,\"AMZ\"],[2,\"AMZ\"]]}"))
                 .when(http).sendAsync(any(HttpRequest.class), any());
 
-        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", List.of("Fecha", "Plataforma", "SKU", "IMEI"), "Plataforma",
-                LectorPedidos2026::esVenta, 2);
+        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", formato("Plataforma", LectorPedidos2026::esVenta), 2);
 
         assertEquals(5, t.total());
         assertEquals(List.of(5, 6), t.filas().stream().map(TablaHoja.Fila::numero).toList());
@@ -89,11 +88,44 @@ class ClienteSheetsTest {
                 respuesta("{\"values\":[[\"Plataforma\"],[\"NP\"],[],[\"INCIDENCIA AMZ\"]]}"))
                 .when(http).sendAsync(any(HttpRequest.class), any());
 
-        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", List.of("Fecha", "Plataforma", "SKU", "IMEI"), "Plataforma",
-                LectorPedidos2026::esVenta, 10);
+        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", formato("Plataforma", LectorPedidos2026::esVenta), 10);
 
         assertEquals(0, t.total());
         assertTrue(t.filas().isEmpty());
         verify(http, times(2)).sendAsync(any(HttpRequest.class), any());
+    }
+
+    private static FormatoHoja formato(String clave, java.util.function.Predicate<String> cuenta) {
+        return new FormatoHoja(List.of("Fecha", "Plataforma", "SKU", "IMEI"), List.of(), clave, cuenta);
+    }
+
+    @Test void unaColumnaOpcionalMasALaDerechaAmpliaLaTerceraLlamada() throws Exception {
+        doReturn(respuesta("{\"values\":[[\"Fecha\",\"Plataforma\",\"SKU\",\"IMEI\",\"Pendiente\",\"Pedido Amazon\"]]}"),
+                respuesta("{\"values\":[[\"Plataforma\"],[\"AMZ\"],[\"AMZ\"]]}"),
+                respuesta("{\"values\":[[1,\"AMZ\"],[2,\"AMZ\"]]}"))
+                .when(http).sendAsync(any(HttpRequest.class), any());
+
+        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", new FormatoHoja(List.of("Fecha", "Plataforma", "SKU", "IMEI"),
+                List.of("Pedido Amazon"), "Plataforma", LectorPedidos2026::esVenta), 10);
+
+        assertEquals(2, t.total());
+        ArgumentCaptor<HttpRequest> c = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http, times(3)).sendAsync(c.capture(), any());
+        assertTrue(URLDecoder.decode(c.getAllValues().get(2).uri().getRawPath(), StandardCharsets.UTF_8).endsWith("!A2:F3"));
+    }
+
+    @Test void sinLaColumnaOpcionalEnLaCabeceraSeLeeIgualHastaLaUltimaObligatoria() throws Exception {
+        doReturn(respuesta("{\"values\":[[\"Fecha\",\"Plataforma\",\"SKU\",\"IMEI\"]]}"),
+                respuesta("{\"values\":[[\"Plataforma\"],[\"AMZ\"],[\"AMZ\"]]}"),
+                respuesta("{\"values\":[[1,\"AMZ\"],[2,\"AMZ\"]]}"))
+                .when(http).sendAsync(any(HttpRequest.class), any());
+
+        TablaHoja t = sheets.leer("hoja-1", "PEDIDOS 2026", new FormatoHoja(List.of("Fecha", "Plataforma", "SKU", "IMEI"),
+                List.of("Pedido Amazon"), "Plataforma", LectorPedidos2026::esVenta), 10);
+
+        assertEquals(2, t.total());
+        ArgumentCaptor<HttpRequest> c = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http, times(3)).sendAsync(c.capture(), any());
+        assertTrue(URLDecoder.decode(c.getAllValues().get(2).uri().getRawPath(), StandardCharsets.UTF_8).endsWith("!A2:D3"));
     }
 }

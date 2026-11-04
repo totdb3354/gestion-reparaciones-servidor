@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Predicate;
 
 /** Una vuelta de lectura de pedidos (spec pieza 2 §4.4): las tres fuentes por separado, con su registro; si las tres tienen datos
  *  (de esta vuelta o de una anterior desde el arranque: ajuste 6), el cruce y su guardado. */
@@ -91,10 +90,10 @@ public class LecturaPedidos {
         Leida<List<PedidoShippyPro>> s = leerShippyPro();
         if (Thread.currentThread().isInterrupted()) return;
         Leida<List<FilaPedidos2026>> p = leerHoja(FuentePedidos.PEDIDOS_2026, hojaPedidos, "pedidos.pedidos2026.hoja",
-                pestanaPedidos, LectorPedidos2026.OBLIGATORIAS, LectorPedidos2026.CLAVE, LectorPedidos2026.CUENTA, LectorPedidos2026::filas);
+                pestanaPedidos, LectorPedidos2026.FORMATO, LectorPedidos2026::filas);
         if (Thread.currentThread().isInterrupted()) return;
         Leida<List<FilaSimulador>> m = leerHoja(FuentePedidos.SIMULADOR, hojaSimulador, "pedidos.simulador.hoja",
-                pestanaSimulador, LectorSimulador.OBLIGATORIAS, LectorSimulador.CLAVE, LectorSimulador.CUENTA, LectorSimulador::filas);
+                pestanaSimulador, LectorSimulador.FORMATO, LectorSimulador::filas);
         if (Thread.currentThread().isInterrupted()) return;
         if (s.datos() != null) ultimosShippyPro = s.datos();
         if (p.datos() != null) ultimasPedidos2026 = p.datos();
@@ -156,15 +155,15 @@ public class LecturaPedidos {
         return new Leida<>(id, null);
     }
 
-    private <T> Leida<List<T>> leerHoja(FuentePedidos fuente, String hoja, String ajuste, String pestana, List<String> obligatorias,
-                                        String clave, Predicate<String> cuenta, Function<TablaHoja, List<T>> traducir) {
+    private <T> Leida<List<T>> leerHoja(FuentePedidos fuente, String hoja, String ajuste, String pestana, FormatoHoja formato,
+                                        Function<TablaHoja, List<T>> traducir) {
         int id = dao.empezarLectura(fuente, ahora());
         if (hoja.isBlank()) {
             dao.terminarLectura(id, RECHAZADA, 0, "Falta el ajuste " + ajuste, ahora());
             return new Leida<>(id, null);
         }
         try {
-            TablaHoja t = sheets.leer(hoja, pestana, obligatorias, clave, cuenta, filas);
+            TablaHoja t = sheets.leer(hoja, pestana, formato, filas);
             Optional<LecturaGuardada> previa = dao.ultimaLecturaConFilas(fuente, Set.of(OK, INCOMPLETA));
             if (previa.isPresent() && t.total() < previa.get().filas() * MINIMO_FILAS) {
                 dao.terminarLectura(id, INCOMPLETA, t.total(), String.format(
