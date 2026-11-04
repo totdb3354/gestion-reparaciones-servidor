@@ -132,4 +132,38 @@ class PedidosDAOTest {
         verify(jdbc, times(1)).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
         verify(jdbc, times(1)).update(eq(PedidosDAO.SQL_ACTUALIZAR_PEDIDO), any(), any(), any(), any(), any(), any(), any(), eq(12));
     }
+
+    @SuppressWarnings("unchecked")
+    @Test void losTextosDeLasFuentesSeGuardanCortadosAlAnchoDeSuColumna() {
+        when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
+            ((KeyHolder) inv.getArgument(1)).getKeyList().add(Map.of("insert_id", 12));
+            return 1;
+        });
+        PedidoLeido.Unidad larga = new PedidoLeido.Unidad(1, "s".repeat(100), "3".repeat(80), FuentePedidos.SIMULADOR, 7, AHORA, false,
+                "o".repeat(100), null);
+        PedidoLeido p = new PedidoLeido(Canal.SIMULADOR, "6".repeat(100), "c".repeat(200), "ES-" + "x".repeat(20), AHORA,
+                FuentePedidos.SIMULADOR, List.of(larga));
+
+        dao.aplicar(List.of(p), AHORA);
+
+        ArgumentCaptor<PreparedStatementCreator> creador = ArgumentCaptor.forClass(PreparedStatementCreator.class);
+        verify(jdbc).update(creador.capture(), any(KeyHolder.class));
+        java.sql.Connection con = mock(java.sql.Connection.class);
+        java.sql.PreparedStatement ps = mock(java.sql.PreparedStatement.class);
+        try {
+            when(con.prepareStatement(anyString(), anyInt())).thenReturn(ps);
+            creador.getValue().createPreparedStatement(con);
+            verify(ps).setString(2, "6".repeat(60));
+            verify(ps).setString(3, "c".repeat(150));
+            verify(ps).setString(4, ("ES-" + "x".repeat(20)).substring(0, 10));
+        } catch (java.sql.SQLException e) {
+            fail(e);
+        }
+        ArgumentCaptor<List<Object[]>> unidades = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq(PedidosDAO.SQL_GUARDAR_UNIDAD), unidades.capture());
+        Object[] u = unidades.getValue().get(0);
+        assertEquals("s".repeat(60), u[2]);
+        assertEquals("3".repeat(40), u[3]);
+        assertEquals("o".repeat(60), u[8]);
+    }
 }

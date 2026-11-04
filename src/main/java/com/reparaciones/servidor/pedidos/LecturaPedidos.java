@@ -41,7 +41,6 @@ public class LecturaPedidos {
     static final int MINIMO_PARA_DENSIDAD = 200;
     static final double DENSIDAD_MINIMA = 0.5;
     static final int DIAS_REGISTRO = 30;
-    static final int MAX_MENSAJE = 1000;
 
     private final ClienteShippyPro shippyPro;
     private final ClienteSheets sheets;
@@ -226,6 +225,6 @@ public class LecturaPedidos {
     }
 
     private static String corta(String s) {
-        return s.length() > MAX_MENSAJE ? s.substring(0, MAX_MENSAJE) : s;
+        return AnchosPedidos.corta(s, AnchosPedidos.MENSAJE);
     }
 }

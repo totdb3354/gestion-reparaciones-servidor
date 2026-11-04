@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
 public class PedidosDAO {
 
     static final int TANDA = 500;
-    static final int MAX_DESCONOCIDOS = 500;
 
     static final String SQL_IDS = "SELECT ID_PEDIDO, CANAL, NUMERO FROM Pedido WHERE NUMERO IN (%s)";
     static final String SQL_INSERTAR_PEDIDO = "INSERT INTO Pedido (CANAL, NUMERO, CLIENTE, PAIS, FECHA, FUENTE, VISTO_PRIMERO,"
@@ -90,18 +89,19 @@ public class PedidosDAO {
     }
 
     public void terminarLectura(int id, String resultado, int filas, String mensaje, LocalDateTime fin) {
-        jdbc.update(SQL_TERMINAR_LECTURA, Timestamp.valueOf(fin), resultado, filas, mensaje, id);
+        jdbc.update(SQL_TERMINAR_LECTURA, Timestamp.valueOf(fin), resultado, filas,
+                AnchosPedidos.corta(mensaje, AnchosPedidos.MENSAJE), id);
     }
 
     public void anotarDesconocidos(int id, Collection<String> skus) {
         jdbc.update(SQL_DESCONOCIDOS, skus.isEmpty() ? null : resumen(List.copyOf(skus), 20), id);
     }
 
-    /** «a, b, … y N más», cortado a {@value #MAX_DESCONOCIDOS} caracteres. */
+    /** «a, b, … y N más», cortado a {@value AnchosPedidos#SKU_DESCONOCIDOS} caracteres. */
     static String resumen(List<String> skus, int como) {
         String texto = skus.stream().limit(como).collect(Collectors.joining(", "));
         if (skus.size() > como) texto += ", … y " + (skus.size() - como) + " más";
-        return texto.length() > MAX_DESCONOCIDOS ? texto.substring(0, MAX_DESCONOCIDOS) : texto;
+        return AnchosPedidos.corta(texto, AnchosPedidos.SKU_DESCONOCIDOS);
     }
 
     public Optional<LecturaGuardada> ultimaLectura(FuentePedidos fuente, Set<String> resultados) {
@@ -125,7 +125,7 @@ public class PedidosDAO {
     public void marcarError(Collection<Integer> idsLectura, String mensaje) {
         if (idsLectura.isEmpty()) return;
         List<Object> args = new ArrayList<>();
-        args.add(mensaje);
+        args.add(AnchosPedidos.corta(mensaje, AnchosPedidos.MENSAJE));
         args.addAll(idsLectura);
         jdbc.update(String.format(SQL_MARCAR_ERROR, marcas(idsLectura.size())), args.toArray());
     }
@@ -154,7 +154,7 @@ public class PedidosDAO {
                 id = insertar(p, t, cierre, motivo);
                 ids.put(clave(p.canal(), p.numero()), id);
             } else {
-                jdbc.update(SQL_ACTUALIZAR_PEDIDO, p.cliente(), p.pais(), Timestamp.valueOf(p.fecha()), t, motivo, cierre, motivo, id);
+                jdbc.update(SQL_ACTUALIZAR_PEDIDO, cliente(p), pais(p), Timestamp.valueOf(p.fecha()), t, motivo, cierre, motivo, id);
             }
             vistos.add(id);
             for (PedidoLeido.Unidad u : p.unidades()) unidades.add(argumentos(id, u, t));
@@ -184,9 +184,10 @@ public class PedidosDAO {
     }
 
     static Object[] argumentos(int idPedido, PedidoLeido.Unidad u, Timestamp ahora) {
-        return new Object[]{idPedido, u.posicion(), u.sku(), u.imei(), u.imeiFuente() == null ? null : u.imeiFuente().name(),
+        return new Object[]{idPedido, u.posicion(), AnchosPedidos.corta(u.sku(), AnchosPedidos.SKU),
+                AnchosPedidos.corta(u.imei(), AnchosPedidos.IMEI), u.imeiFuente() == null ? null : u.imeiFuente().name(),
                 u.imeiRef(), u.imeiTecleadoEn() == null ? null : Timestamp.valueOf(u.imeiTecleadoEn()), u.sinPedidoConcreto(),
-                u.otroOrderId(), u.motivoCierre() == null ? null : ahora, u.motivoCierre()};
+                AnchosPedidos.corta(u.otroOrderId(), AnchosPedidos.OTRO_ORDER_ID), u.motivoCierre() == null ? null : ahora, u.motivoCierre()};
     }
 
     /** TODO_VENDIDO o ABONADO si es del Simulador y todas sus unidades están cerradas (ABONADO si todas por abono). */
@@ -201,9 +202,9 @@ public class PedidosDAO {
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(SQL_INSERTAR_PEDIDO, Statement.RETURN_GENERATED_KEYS);
             ps.setString(1, p.canal().name());
-            ps.setString(2, p.numero());
-            ps.setString(3, p.cliente());
-            ps.setString(4, p.pais());
+            ps.setString(2, numero(p.numero()));
+            ps.setString(3, cliente(p));
+            ps.setString(4, pais(p));
             ps.setTimestamp(5, Timestamp.valueOf(p.fecha()));
             ps.setString(6, p.fuente().name());
             ps.setTimestamp(7, ahora);
@@ -217,7 +218,7 @@ public class PedidosDAO {
 
     private Map<String, Integer> ids(List<PedidoLeido> pedidos) {
         Map<String, Integer> ids = new HashMap<>();
-        List<String> numeros = pedidos.stream().map(PedidoLeido::numero).distinct().toList();
+        List<String> numeros = pedidos.stream().map(p -> numero(p.numero())).distinct().toList();
         for (List<String> tanda : trozos(numeros))
             jdbc.query(String.format(SQL_IDS, marcas(tanda.size())),
                     rs -> { ids.put(rs.getString("CANAL") + "|" + rs.getString("NUMERO"), rs.getInt("ID_PEDIDO")); }, tanda.toArray());
@@ -261,7 +262,19 @@ public class PedidosDAO {
     }
 
     private static String clave(Canal canal, String numero) {
-        return canal.name() + "|" + numero;
+        return canal.name() + "|" + numero(numero);
+    }
+
+    private static String numero(String numero) {
+        return AnchosPedidos.corta(numero, AnchosPedidos.NUMERO);
+    }
+
+    private static String cliente(PedidoLeido p) {
+        return AnchosPedidos.corta(p.cliente(), AnchosPedidos.CLIENTE);
+    }
+
+    private static String pais(PedidoLeido p) {
+        return AnchosPedidos.corta(p.pais(), AnchosPedidos.PAIS);
     }
 
     private static int clave(KeyHolder claves) {
