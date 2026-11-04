@@ -82,7 +82,7 @@ class RolesStockTelefonosTest {
             "/api/stock-telefonos/350000000000001/rastro", "/api/stock-telefonos/importaciones",
             "/api/stock-telefonos/por-pasar", "/api/stock-telefonos/350000000000001/colores",
             "/api/stock-telefonos/por-pasar/tarjetas", "/api/stock-telefonos/por-pasar/plantilla-color",
-            "/api/stock-telefonos/por-pasar/plantilla-altas");
+            "/api/stock-telefonos/por-pasar/plantilla-altas", "/api/stock-telefonos/vendidos");
 
     @Test void elTecnicoRecibe403SinLlegarAlDao() throws Exception {
         for (String ruta : RUTAS) mvc.perform(get(ruta).header("Authorization", tecnico())).andExpect(status().isForbidden());
@@ -240,6 +240,29 @@ class RolesStockTelefonosTest {
         mvc.perform(put("/api/stock-telefonos/por-pasar/descarte").header("Authorization", admin())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"imeiSn\":\"SIN-IMEI-CAM\",\"motivo\":\" \"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    /** 0.9.25: «Qué revisar» lee los vendidos y baja un Excel; misma guarda que el resto. */
+    @Test void elExcelDeQueRevisarSoloParaSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"hoja\":\"Revisar sin grado\",\"columnas\":[\"Modelo\"],\"filas\":[[\"iPhone 13\"]]}";
+        mvc.perform(post("/api/stock-telefonos/que-revisar/excel").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        for (String token : List.of(supertecnico(), admin())) {
+            mvc.perform(post("/api/stock-telefonos/que-revisar/excel").header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        }
+    }
+
+    @Test void losVendidosPidenQuinceDiasPorDefecto() throws Exception {
+        mvc.perform(get("/api/stock-telefonos/vendidos").header("Authorization", admin())).andExpect(status().isOk());
+        org.mockito.ArgumentCaptor<LocalDate> desde = org.mockito.ArgumentCaptor.forClass(LocalDate.class);
+        verify(dao).vendidosDesde(desde.capture());
+        LocalDate hoy = LocalDate.now(java.time.ZoneId.of("Europe/Madrid"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                desde.getValue().equals(hoy.minusDays(14)) || desde.getValue().equals(hoy.minusDays(15)),
+                "desde = hoy - 14 días, era " + desde.getValue());
     }
 
     @Test void laPlantillaSeDescargaConSuNombreYSuNumeroDeMoviles() throws Exception {
