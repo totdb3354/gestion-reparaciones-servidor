@@ -46,6 +46,7 @@ class VistaPedidosTest {
                 AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
 
         List<PedidoVista> sinViejos = vista.pedidos(false);
+        verify(dao).unidades(java.util.Set.of(1));
         assertEquals(List.of("402-0000000-0000001"), sinViejos.stream().map(PedidoVista::numero).toList());
         UnidadVista con = sinViejos.get(0).unidades().get(0);
         assertEquals("CUADRA", con.estado());

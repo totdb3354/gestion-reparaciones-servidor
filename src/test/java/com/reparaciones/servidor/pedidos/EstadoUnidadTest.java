@@ -43,7 +43,8 @@ class EstadoUnidadTest {
         assertEquals(new EstadoUnidad.Resultado("NO_CUADRA", "MODELO"), de(AMAZON_A, movil("13 mini", "A"), vale("Azul", "A", "x", null), NINGUNO, Canal.AMAZON));
         assertEquals(new EstadoUnidad.Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE"), de(AMAZON_A, movil("13", "Fd"), vale("Azul", "Fd", null, null), NINGUNO, Canal.AMAZON));
         assertEquals(new EstadoUnidad.Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE"), de(AMAZON_A, movil("13", "ID"), vale("Azul", "ID", null, null), NINGUNO, Canal.AMAZON));
-        assertEquals("NECESITA_TALLER", de(WEB_A, movil("13", "ID"), vale("Azul", "ID", null, null), NINGUNO, Canal.DISTRIBUIDORES).estado(),
+        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "COLOR_O_GRADO"),
+                de(WEB_A, movil("13", "ID"), vale("Azul", "ID", null, null), NINGUNO, Canal.DISTRIBUIDORES),
                 "un ID no está prohibido fuera de Amazon: no cuadra por grado");
         TrabajoAbierto glass = new TrabajoAbierto("GLASS", "Técnico 1", LocalDateTime.of(2026, 11, 1, 9, 0), null);
         assertEquals(new EstadoUnidad.Resultado("EN_TALLER", null), de(AMAZON_A, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), List.of(glass), Canal.AMAZON));
@@ -57,5 +58,28 @@ class EstadoUnidadTest {
         assertEquals(new EstadoUnidad.Resultado("CON_AVISO", "B_POR_A"), de(AMAZON_A, movil("13", "B"), vale("Azul", "B", "i13128AzulB", null), NINGUNO, Canal.AMAZON));
         assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "COLOR_O_GRADO"), de(WEB_A, movil("13", "B"), vale("Azul", "B", "i13128AzulB", null), NINGUNO, Canal.DISTRIBUIDORES));
         assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "COLOR_O_GRADO"), de(AMAZON_A, a, vale("Rojo", "A", "i13128RojoA", null), NINGUNO, Canal.AMAZON));
+    }
+
+    @Test void unCConBateriaNuevaSigueSinReparar() {
+        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "C_SIN_REPARAR"),
+                de(AMAZON_A, movil("13", "C"), vale("Azul", "C100", "i13128AzulA", "C"), NINGUNO, Canal.AMAZON),
+                "solo la bateria no lo hace A");
+        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "C_SIN_REPARAR"),
+                de(AMAZON_A, movil("13", "C100"), vale("Azul", "C", "i13128AzulA", "C100"), NINGUNO, Canal.AMAZON));
+        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "C_SIN_REPARAR"),
+                de(AMAZON_A, movil("13", "MsC"), vale("Azul", "MsC", "i13128AzulA", null), NINGUNO, Canal.AMAZON));
+        assertTrue(EstadoUnidad.cSinReparar(vale("Azul", "C100", null, "C")));
+        assertFalse(EstadoUnidad.cSinReparar(vale("Azul", "A", null, "C")));
+    }
+
+    @Test void otrasCapacidadYGradosNoVendibles() {
+        MovilNsys m256 = new MovilNsys("350000000000001", "BT-9001", "Apple iPhone 13 256GB Blue", "A", "Available", "CAJA LISTOS",
+                "Proveedor A", LocalDate.of(2026, 9, 1), null, "i13256AzulA", "13", "13", "256GB", "Azul", "A", false,
+                "Listos", "Listos", EstadoMovil.STOCK, null, null);
+        assertEquals(new EstadoUnidad.Resultado("NO_CUADRA", "MODELO"),
+                de(AMAZON_A, m256, vale("Azul", "A", "i13256AzulA", null), NINGUNO, Canal.AMAZON));
+        Aceptacion stockroom = ACEPTA.para(Canal.AMAZON_STOCKROOM, "i13128AzulA");
+        assertEquals(new EstadoUnidad.Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE"),
+                de(stockroom, movil("13", "ID"), vale("Azul", "ID", null, null), NINGUNO, Canal.AMAZON_STOCKROOM));
     }
 }

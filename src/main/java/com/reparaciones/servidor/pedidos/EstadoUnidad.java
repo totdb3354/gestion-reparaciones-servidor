@@ -29,7 +29,7 @@ public final class EstadoUnidad {
         if (NO_VENDIBLES.contains(grado) || (canal.esAmazon() && grado.equals("ID")))
             return new Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE");
         if (trabajos != null && !trabajos.isEmpty()) return new Resultado("EN_TALLER", null);
-        if (m.grade() != null && C_DE_NSYS.matcher(m.grade().strip()).matches() && v.gradoNsys() == null)
+        if (cSinReparar(v))
             return new Resultado("NECESITA_TALLER", "C_SIN_REPARAR");
         boolean ms = grado.startsWith("MS");
         boolean aceptado = v.sku() != null ? ac.acepta(v.sku()) : ac.aceptaColorYGrado(v.color(), v.grade());
@@ -37,6 +37,11 @@ public final class EstadoUnidad {
         if (ms && ac.aceptaColorYGrado(v.color(), v.grade().strip().substring(2))) return new Resultado("CON_AVISO", "MS");
         if (v.sku() != null && ac.aceptaBporA(v.sku())) return new Resultado("CON_AVISO", "B_POR_A");
         return new Resultado("NECESITA_TALLER", "COLOR_O_GRADO");
+    }
+
+    /** Un C (con o sin Ms, con o sin «100») que el taller no ha convertido en A: solo el chasis lo hace A, la bateria nueva solo añade «100». Mira el grado que cuenta ahora. */
+    static boolean cSinReparar(LoQueVale.Valor v) {
+        return v.grade() != null && C_DE_NSYS.matcher(v.grade().strip()).matches();
     }
 
     private static boolean igual(String a, String b) {
