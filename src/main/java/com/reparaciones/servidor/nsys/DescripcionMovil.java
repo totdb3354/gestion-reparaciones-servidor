@@ -1,8 +1,10 @@
 package com.reparaciones.servidor.nsys;
 
 import com.reparaciones.servidor.model.ReparacionResumen;
+import com.reparaciones.servidor.pedidos.UnidadesDeImei;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -26,9 +28,18 @@ public class DescripcionMovil {
     private final NsysDAO nsysDao;
     private final TallerNsys taller;
 
-    public DescripcionMovil(NsysDAO nsysDao, TallerNsys taller) {
+    private final UnidadesDeImei pedidos;
+
+    @Autowired
+    public DescripcionMovil(NsysDAO nsysDao, TallerNsys taller, UnidadesDeImei pedidos) {
         this.nsysDao = nsysDao;
         this.taller = taller;
+        this.pedidos = pedidos;
+    }
+
+    /** Sin pedidos: las pruebas de la 0.9.21 y la 0.9.24. */
+    DescripcionMovil(NsysDAO nsysDao, TallerNsys taller) {
+        this(nsysDao, taller, null);
     }
 
     /** Lo de NSYS que lleva una fila (la eSIM, desde la 0.9.24). */
@@ -39,13 +50,20 @@ public class DescripcionMovil {
      *  vigentes); nunca una consulta por fila. Todo o nada: si falla una lectura, ninguna fila cambia. */
     public List<ReparacionResumen> rellenar(List<ReparacionResumen> filas) {
         if (filas == null || filas.isEmpty()) return filas;
+        rellenarDelEspejo(filas);
+        rellenarPedidos(filas);
+        return filas;
+    }
+
+    /** Lo de antes (0.9.21 y 0.9.24): capacidad, color y eSIM; si falla una lectura, ninguna fila cambia. */
+    private void rellenarDelEspejo(List<ReparacionResumen> filas) {
         Map<String, DelEspejo> moviles;
         try {
             moviles = leer(filas);
         } catch (RuntimeException e) {
             log.warn("Listas del taller sin capacidad, color ni eSIM ({} filas): no se pudo leer el espejo de NSYS o lo del "
                     + "taller: {}", filas.size(), e.toString());
-            return filas;
+            return;
         }
         for (ReparacionResumen r : filas) {
             DelEspejo m = moviles.get(NsysDAO.claveCruce(r.getImei()));
@@ -54,7 +72,31 @@ public class DescripcionMovil {
             r.setColor(m.color());
             r.setEsEsim(m.esEsim());
         }
-        return filas;
+    }
+
+    /** 0.9.26 (spec pieza 2 §9.3): el pedido de los IMEI de las filas de trabajos abiertos; si falla, las filas salen sin él. */
+    private void rellenarPedidos(List<ReparacionResumen> filas) {
+        if (pedidos == null) return;
+        Set<String> imeis = new LinkedHashSet<>();
+        for (ReparacionResumen r : filas)
+            if (r.getFechaFin() == null && r.getImei() != null && !r.getImei().isBlank()) imeis.add(r.getImei());
+        if (imeis.isEmpty()) return;
+        Map<String, UnidadesDeImei.PedidoDeImei> porImei;
+        try {
+            porImei = pedidos.abiertasPorImei(imeis);
+        } catch (RuntimeException e) {
+            log.warn("Listas del taller sin pedidos ({} IMEIs): {}", imeis.size(), e.toString());
+            return;
+        }
+        for (ReparacionResumen r : filas) {
+            if (r.getFechaFin() != null || r.getImei() == null) continue;
+            UnidadesDeImei.PedidoDeImei p = porImei.get(NsysDAO.claveCruce(r.getImei()));
+            if (p == null) continue;
+            r.setPedidoNumero(p.numero());
+            r.setPedidoCanal(p.canal());
+            r.setPedidoSku(p.sku());
+            r.setPedidoRepetido(p.repetido());
+        }
     }
 
     private Map<String, DelEspejo> leer(List<ReparacionResumen> filas) {

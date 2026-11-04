@@ -59,6 +59,13 @@ public class ReparacionResumen {
     // 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): si NSYS escribe «eSIM» en el producto (Nsys_movil.ES_ESIM),
     // de la misma fila que la capacidad. false fuera del espejo, si la lectura falla y en las demás rutas. Al final del contrato.
     private boolean       esEsim;
+    // 0.9.26 (spec pieza 2 §9.3): el pedido abierto del IMEI (el más antiguo si está en varios), el SKU en el que tiene que acabar
+    // y si el IMEI está en dos pedidos. Solo en las filas de trabajos abiertos de las listas del taller (nsys.DescripcionMovil);
+    // null/false fuera de un pedido, con la lectura de pedidos apagada o si falla. Al final del contrato.
+    @Schema(nullable = true) private String        pedidoNumero;
+    @Schema(nullable = true) private String        pedidoCanal;
+    @Schema(nullable = true) private String        pedidoSku;
+    private boolean       pedidoRepetido;
 
     public ReparacionResumen() {}
 
@@ -163,4 +170,12 @@ public class ReparacionResumen {
     public void          setColor(String v)                        { this.color = v; }
     public boolean       isEsEsim()                                { return esEsim; }
     public void          setEsEsim(boolean v)                      { this.esEsim = v; }
+    public String        getPedidoNumero()                         { return pedidoNumero; }
+    public void          setPedidoNumero(String v)                 { this.pedidoNumero = v; }
+    public String        getPedidoCanal()                          { return pedidoCanal; }
+    public void          setPedidoCanal(String v)                  { this.pedidoCanal = v; }
+    public String        getPedidoSku()                            { return pedidoSku; }
+    public void          setPedidoSku(String v)                    { this.pedidoSku = v; }
+    public boolean       isPedidoRepetido()                        { return pedidoRepetido; }
+    public void          setPedidoRepetido(boolean v)              { this.pedidoRepetido = v; }
 }

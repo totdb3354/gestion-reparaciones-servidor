@@ -156,8 +156,13 @@ class OpenApiContractTest {
         assertNullable(esquemas, "ReparacionResumen", "capacidad", "color");
         // 0.9.24 (spec «La descripción del móvil dice si es eSIM» §2.3): detrás, esEsim, no nullable.
         assertNoNullable(esquemas, "ReparacionResumen", "esEsim");
-        assertEquals(List.of("capacidad", "color", "esEsim"), propiedades.subList(propiedades.size() - 3, propiedades.size()),
-                "capacidad, color y esEsim van al final de ReparacionResumen");
+        assertEquals(List.of("capacidad", "color", "esEsim"), propiedades.subList(propiedades.size() - 7, propiedades.size() - 4),
+                "capacidad, color y esEsim van antes de los campos de pedido de ReparacionResumen");
+        // 0.9.26 (spec pieza 2 §9.3): el pedido abierto del IMEI, nullable salvo pedidoRepetido, al final.
+        assertNullable(esquemas, "ReparacionResumen", "pedidoNumero", "pedidoCanal", "pedidoSku");
+        assertNoNullable(esquemas, "ReparacionResumen", "pedidoRepetido");
+        assertEquals(List.of("pedidoNumero", "pedidoCanal", "pedidoSku", "pedidoRepetido"),
+                propiedades.subList(propiedades.size() - 4, propiedades.size()), "los campos de pedido van al final");
         assertTrue(esquemas.path("LoginResponse").path("properties").path("idTec").path("nullable").asBoolean(false), "idTec nullable");
         assertTrue(esquemas.path("LoginResponse").path("required").toString().contains("\"token\""));
         assertTrue(esquemas.path("ReparacionMotivoRequest").path("properties").path("motivo").path("nullable").asBoolean(false));

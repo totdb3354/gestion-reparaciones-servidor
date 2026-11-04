@@ -2,6 +2,7 @@ package com.reparaciones.servidor.nsys;
 
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.model.ReparacionResumen;
+import com.reparaciones.servidor.pedidos.UnidadesDeImei;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -10,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import static com.reparaciones.servidor.nsys.DatoTaller.COLOR;
 import static com.reparaciones.servidor.nsys.TallerDePrueba.*;
@@ -153,5 +155,38 @@ class DescripcionMovilTest {
         List<ReparacionResumen> filas = List.of(fila("A20261103_1", IMEI));
         descripcion.rellenar(filas);
         assertFalse(filas.get(0).isEsEsim());
+    }
+
+    /** Una fila de un trabajo cerrado (con fechaFin). */
+    private static ReparacionResumen filaCerrada(String idRep, String imei) {
+        return new ReparacionResumen(idRep, imei, "Técnico 2", null, java.time.LocalDateTime.of(2026, 11, 1, 10, 0), null, null,
+                false, false, null, null, 4, 0, null, null, null, 0, false, null, null, "13");
+    }
+
+    @Test void lasFilasDeTrabajosAbiertosLlevanSuPedidoYLasCerradasNo() {
+        UnidadesDeImei pedidos = mock(UnidadesDeImei.class);
+        when(pedidos.abiertasPorImei(any())).thenReturn(Map.of(IMEI,
+                new UnidadesDeImei.PedidoDeImei("402-0000000-0000001", "AMAZON", "i13128AzulA", true)));
+        DescripcionMovil d = new DescripcionMovil(nsys, new TallerNsys(nsys, tallerDao, mock(LogDAO.class)), pedidos);
+        ReparacionResumen abierta = fila("A20261104_1", IMEI);
+        ReparacionResumen cerrada = filaCerrada("R20261101_1", IMEI);
+
+        d.rellenar(List.of(abierta, cerrada));
+
+        assertEquals("402-0000000-0000001", abierta.getPedidoNumero());
+        assertEquals("AMAZON", abierta.getPedidoCanal());
+        assertEquals("i13128AzulA", abierta.getPedidoSku());
+        assertTrue(abierta.isPedidoRepetido());
+        assertNull(cerrada.getPedidoNumero());
+        verify(pedidos).abiertasPorImei(java.util.Set.of(IMEI));
+    }
+
+    @Test void siLosPedidosFallanLaListaSaleIgual() {
+        UnidadesDeImei pedidos = mock(UnidadesDeImei.class);
+        when(pedidos.abiertasPorImei(any())).thenThrow(new RuntimeException("sin base de datos"));
+        ReparacionResumen r = fila("A20261104_1", IMEI);
+        assertEquals(List.of(r), new DescripcionMovil(nsys, new TallerNsys(nsys, tallerDao, mock(LogDAO.class)), pedidos)
+                .rellenar(List.of(r)));
+        assertNull(r.getPedidoNumero());
     }
 }
