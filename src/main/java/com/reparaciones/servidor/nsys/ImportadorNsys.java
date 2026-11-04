@@ -226,8 +226,10 @@ public class ImportadorNsys {
             dao.reemplazarProductos(m.productos());
             dao.terminarImportacion(id, OK, m.productos().size(), 0, resumen(m), ahora());
             nombresMirados = true;
-            if (sinNombres) log.info("NSYS: maestro recargado para los nombres de producto: {} de {} con nombre",
-                    m.productos().stream().filter(p -> p.nombre() != null).count(), m.productos().size());
+            if (sinNombres) log.info("NSYS: maestro recargado para los nombres de producto y los SKU de los canales: {} de {} con"
+                            + " nombre, {} con SKU de particulares",
+                    m.productos().stream().filter(p -> p.nombre() != null).count(), m.productos().size(),
+                    m.productos().stream().filter(p -> p.skuParticulares() != null).count());
             return true;
         } catch (FormatoItemsException e) {
             if (id != null) dao.terminarImportacion(id, RECHAZADO, 0, 0, e.getMessage(), ahora());
@@ -251,13 +253,13 @@ public class ImportadorNsys {
         }
     }
 
-    /** Al maestro guardado le faltan los nombres de producto (0.9.22: la columna es nueva): se recarga una vez aunque no haya
+    /** Al maestro guardado le faltan los nombres de producto (0.9.22) o los SKU de los canales (0.9.26): las columnas son nuevas: se recarga una vez aunque no haya
      *  cambiado en Drive. Una vez recargado (o si ya los tiene) no se vuelve a mirar en este arranque, para no descargarlo en cada
      *  pasada si el Excel no trae la columna; si la mirada falla, se vuelve a mirar en la siguiente pasada. */
     private boolean faltanNombres() {
         if (nombresMirados) return false;
         try {
-            if (dao.productosSinNombre()) return true;
+            if (dao.productosSinNombre() || dao.productosSinSkuDeCanales()) return true;
             nombresMirados = true;
             return false;
         } catch (RuntimeException e) {

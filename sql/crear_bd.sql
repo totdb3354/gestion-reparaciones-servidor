@@ -512,6 +512,9 @@ CREATE TABLE Nsys_producto (
     SKU_AMAZON      VARCHAR(60)  NULL,
     SKU_SIN_GRADO   VARCHAR(60)  NULL,
     ES_ESIM         BOOLEAN      NOT NULL DEFAULT FALSE,
+    SKU_AMAZON_ESIM  VARCHAR(60) NULL COMMENT '«SKU (Amazon) con eSIM» del maestro (0.9.26)',
+    SKU_PARTICULARES VARCHAR(60) NULL COMMENT '«SKU (stock fonestore.es) Conjunto» (0.9.26)',
+    SKU_BACKIPHONE   VARCHAR(60) NULL COMMENT '«SKU BackiPhone» (0.9.26)',
     PRIMARY KEY (CLAVE)
 );
 
@@ -620,4 +623,58 @@ CREATE TABLE Taller_descarte (
     MOTIVO   VARCHAR(500) NOT NULL,
     PRIMARY KEY (IMEI_SN),
     CONSTRAINT fk_taller_descarte_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+
+-- 0.9.26: pedidos (spec pieza 2 §5)
+-- Un pedido de un cliente (spec §5.1): de ShippyPro (Amazon y webs) o del Simulador. Los cerrados no se borran.
+CREATE TABLE Pedido (
+    ID_PEDIDO     INT          NOT NULL AUTO_INCREMENT,
+    CANAL         VARCHAR(20)  NOT NULL COMMENT 'AMAZON, AMAZON_STOCKROOM, DISTRIBUIDORES, PARTICULARES, BACKIPHONE o SIMULADOR',
+    NUMERO        VARCHAR(60)  NOT NULL COMMENT 'Nº de pedido de ShippyPro u Order id del Simulador',
+    CLIENTE       VARCHAR(150) NULL,
+    PAIS          VARCHAR(10)  NULL,
+    FECHA         DATETIME     NOT NULL COMMENT 'Hora de Madrid',
+    FUENTE        VARCHAR(12)  NOT NULL COMMENT 'SHIPPYPRO o SIMULADOR',
+    VISTO_PRIMERO DATETIME     NOT NULL,
+    VISTO_ULTIMO  DATETIME     NOT NULL,
+    CERRADO_EN    DATETIME     NULL COMMENT 'NULL = abierto',
+    MOTIVO_CIERRE VARCHAR(20)  NULL COMMENT 'YA_NO_PENDIENTE, TODO_VENDIDO, ABONADO o FUERA_DE_VENTANA',
+    PRIMARY KEY (ID_PEDIDO),
+    UNIQUE KEY uq_pedido_canal_numero (CANAL, NUMERO),
+    KEY idx_pedido_cerrado (CERRADO_EN)
+);
+
+-- Una unidad de un pedido (spec §5.2): (pedido, posición) no cambia entre lecturas.
+CREATE TABLE Pedido_unidad (
+    ID_UNIDAD           INT         NOT NULL AUTO_INCREMENT,
+    ID_PEDIDO           INT         NOT NULL,
+    POSICION            INT         NOT NULL,
+    SKU                 VARCHAR(60) NOT NULL COMMENT 'El SKU tal como lo da la fuente',
+    IMEI                VARCHAR(40) NULL,
+    IMEI_FUENTE         VARCHAR(14) NULL COMMENT 'PEDIDOS_2026 o SIMULADOR',
+    IMEI_REF            INT         NULL COMMENT 'Fila de la hoja',
+    IMEI_TECLEADO_EN    DATETIME    NULL,
+    SIN_PEDIDO_CONCRETO BOOLEAN     NOT NULL DEFAULT FALSE COMMENT 'Amazon: fila «Amazon» + SKU de PEDIDOS 2026',
+    OTRO_ORDER_ID       VARCHAR(30) NULL COMMENT 'Simulador: otro Order id del mismo IMEI',
+    CERRADA_EN          DATETIME    NULL,
+    MOTIVO_CIERRE       VARCHAR(12) NULL COMMENT 'RELEASED o ABONO',
+    PRIMARY KEY (ID_UNIDAD),
+    UNIQUE KEY uq_unidad_posicion (ID_PEDIDO, POSICION),
+    KEY idx_unidad_imei (IMEI),
+    CONSTRAINT fk_unidad_pedido FOREIGN KEY (ID_PEDIDO) REFERENCES Pedido (ID_PEDIDO) ON DELETE CASCADE
+);
+
+-- Una lectura de una fuente (spec §5.3), para la píldora. Se borran a los 30 días.
+CREATE TABLE Pedido_lectura (
+    ID_LECTURA       INT           NOT NULL AUTO_INCREMENT,
+    FUENTE           VARCHAR(14)   NOT NULL COMMENT 'SHIPPYPRO, PEDIDOS_2026 o SIMULADOR',
+    INICIO           DATETIME      NOT NULL,
+    FIN              DATETIME      NULL,
+    RESULTADO        VARCHAR(12)   NOT NULL DEFAULT 'EN_CURSO' COMMENT 'EN_CURSO, OK, ERROR, RECHAZADA o INCOMPLETA',
+    FILAS            INT           NOT NULL DEFAULT 0,
+    SKU_DESCONOCIDOS VARCHAR(500)  NULL,
+    MENSAJE          VARCHAR(1000) NULL,
+    PRIMARY KEY (ID_LECTURA),
+    KEY idx_lectura_fuente (FUENTE, ID_LECTURA),
+    KEY idx_lectura_inicio (INICIO)
 );

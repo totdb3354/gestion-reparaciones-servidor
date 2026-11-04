@@ -22,6 +22,11 @@ public final class LectorMaestro {
             "Calidad Detalle", "SKU (stock web)", "SKU (Amazon)", "SKU sin grado");
     /** La columna con el nombre del producto sin el grado (0.9.22). Opcional: un maestro sin ella se carga como antes. */
     static final String NOMBRE = "Product Name";
+    /** Los SKU de los canales que no son el nuestro ni el de Amazon (0.9.26). Opcionales: sin ellas, esos pedidos no se
+     *  reconocen y el maestro se carga igual. */
+    static final String SKU_AMAZON_ESIM = "SKU (Amazon) con eSIM";
+    static final String SKU_PARTICULARES = "SKU (stock fonestore.es) Conjunto";
+    static final String SKU_BACKIPHONE = "SKU BackiPhone";
     private static final Logger log = LoggerFactory.getLogger(LectorMaestro.class);
 
     private LectorMaestro() {}
@@ -44,6 +49,8 @@ public final class LectorMaestro {
                 columnas = HojaXlsx.columnas(celdas, COLUMNAS, "el maestro");
                 if (!columnas.containsKey(NOMBRE))
                     log.warn("NSYS: el maestro no trae la columna «{}»: se carga sin nombres de producto", NOMBRE);
+                for (String c : List.of(SKU_AMAZON_ESIM, SKU_PARTICULARES, SKU_BACKIPHONE))
+                    if (!columnas.containsKey(c)) log.warn("NSYS: el maestro no trae la columna «{}»: esos pedidos no se reconocerán", c);
                 return;
             }
             String nombre = valor(celdas, "Product Name Calidad");
@@ -57,7 +64,8 @@ public final class LectorMaestro {
                     valor(celdas, "Calidad Detalle", AnchosNsys.CALIDAD_DETALLE),
                     valor(celdas, "SKU (stock web)", AnchosNsys.SKU), valor(celdas, "SKU (Amazon)", AnchosNsys.SKU),
                     valor(celdas, "SKU sin grado", AnchosNsys.SKU), Normalizacion.esEsim(nombre),
-                    valor(celdas, NOMBRE, AnchosNsys.NOMBRE));
+                    valor(celdas, NOMBRE, AnchosNsys.NOMBRE), valor(celdas, SKU_AMAZON_ESIM, AnchosNsys.SKU),
+                    valor(celdas, SKU_PARTICULARES, AnchosNsys.SKU), valor(celdas, SKU_BACKIPHONE, AnchosNsys.SKU));
             ProductoMaestro previo = productos.get(p.clave());
             if (previo == null) {
                 productos.put(p.clave(), p);
