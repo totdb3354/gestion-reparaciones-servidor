@@ -2,7 +2,6 @@ package com.reparaciones.servidor.pedidos;
 
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.MovilNsys;
-import com.reparaciones.servidor.nsys.ProductoMaestro;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -126,5 +125,93 @@ class CrucePedidosTest {
         assertEquals("RELEASED", pedido(r, "6482").unidades().get(0).motivoCierre());
         assertNull(pedido(r, "18850").unidades().get(0).imei(), "el IMEI del Simulador no se usa otra vez en PEDIDOS 2026");
         assertTrue(r.desconocidosSimulador().isEmpty(), "GLS24 no parece un teléfono");
+    }
+
+    @Test void amazonCubreTodosLosPedidosQuePuedeAntesDeDarElMasAvanzadoAlMasAntiguo() {
+        Map<String, MovilNsys> moviles = new HashMap<>();
+        moviles.put("350000000000011", movil("350000000000011", "Taller · Glass", EstadoMovil.STOCK, LocalDate.of(2026, 9, 1)));
+        moviles.put("350000000000012", movil("350000000000012", "Listos", EstadoMovil.STOCK, LocalDate.of(2026, 9, 1)));
+        CrucePedidos.Resultado r = cruzar(
+                List.of(amazon("402-0000000-0000021", 28, "i13128AzulA", 1), amazon("402-0000000-0000022", 30, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(10, dia(29), "Amazon", "i13128AzulA", "350000000000011"),
+                        new FilaPedidos2026(11, dia(30), "Amazon", "i13128AzulA", "350000000000012")),
+                List.of(), moviles);
+        assertEquals("350000000000011", pedido(r, "402-0000000-0000021").unidades().get(0).imei(),
+                "el de Listos solo puede ir al del día 30: el antiguo se queda el del taller");
+        assertEquals("350000000000012", pedido(r, "402-0000000-0000022").unidades().get(0).imei());
+        assertTrue(pedido(r, "402-0000000-0000022").unidades().get(0).sinPedidoConcreto());
+    }
+
+    @Test void unaFilaTecleadaAntesElMismoDiaDelPedidoLoCubre() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000023", 28, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(12, LocalDate.of(2026, 10, 28).atTime(8, 0), "Amazon", "i13128AzulA", "350000000000013")),
+                List.of(), Map.of());
+        assertEquals("350000000000013", pedido(r, "402-0000000-0000023").unidades().get(0).imei());
+    }
+
+    @Test void elTallerCuentaComoTallerEnMayusculasOMinusculas() {
+        Map<String, MovilNsys> moviles = new HashMap<>();
+        moviles.put("350000000000014", movil("350000000000014", "Sin revisar", EstadoMovil.STOCK, LocalDate.of(2026, 9, 1)));
+        moviles.put("350000000000015", movil("350000000000015", "TALLER · Glass", EstadoMovil.STOCK, LocalDate.of(2026, 9, 20)));
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000024", 28, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(13, dia(29), "Amazon", "i13128AzulA", "350000000000014"),
+                        new FilaPedidos2026(14, dia(29), "Amazon", "i13128AzulA", "350000000000015")),
+                List.of(), moviles);
+        assertEquals("350000000000015", pedido(r, "402-0000000-0000024").unidades().get(0).imei());
+    }
+
+    @Test void laPosicionCuentaTambienLosArticulosQueNoConoceElMaestro() {
+        CrucePedidos.Resultado r = cruzar(List.of(new PedidoShippyPro("402-0000000-0000025", "100", dia(28), "C", "DE",
+                        List.of(new PedidoShippyPro.Articulo("i99999RaroA", 1), new PedidoShippyPro.Articulo("i13128NegroA", 1)))),
+                List.of(), List.of(), Map.of());
+        assertEquals(List.of(2), pedido(r, "402-0000000-0000025").unidades().stream().map(PedidoLeido.Unidad::posicion).toList());
+    }
+
+    @Test void unPedidoRepetidoEnLaListaDeShippyProCuentaUnaVez() {
+        PedidoShippyPro p = amazon("402-0000000-0000026", 28, "i13128NegroA", 1);
+        CrucePedidos.Resultado r = cruzar(List.of(p, p), List.of(), List.of(), Map.of());
+        List<PedidoLeido> leidos = r.pedidos().stream().filter(x -> x.numero().equals("402-0000000-0000026")).toList();
+        assertEquals(1, leidos.size());
+        assertEquals(List.of(1), leidos.get(0).unidades().stream().map(PedidoLeido.Unidad::posicion).toList());
+    }
+
+    @Test void simuladorNumeraTodasLasLineasDelPedidoAunqueNoSeanUnidades() {
+        CrucePedidos.Resultado r = cruzar(List.of(), List.of(),
+                List.of(new FilaSimulador(2, "6460", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i13128AzulA", 1, "350000000000016"),
+                        new FilaSimulador(3, "6460", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "GLS24", 1, null),
+                        new FilaSimulador(4, "6460", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i99999RaroA", 1, "350000000000017"),
+                        new FilaSimulador(5, "6460", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i13128AzulA", 1, "350000000000016"),
+                        new FilaSimulador(6, "6460", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i13128NegroA", 1, null)),
+                Map.of());
+        assertEquals(List.of(1, 5), pedido(r, "6460").unidades().stream().map(PedidoLeido.Unidad::posicion).toList());
+        assertEquals(Set.of("i99999RaroA"), r.desconocidosSimulador());
+    }
+
+    @Test void simuladorUnMovilAbonadoQueSeVuelveAVenderEsOtraUnidadAbierta() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000027", 28, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(40, dia(29), "Amazon", "i13128AzulA", "350000000000018")),
+                List.of(new FilaSimulador(10, "6470", "X", LocalDate.of(2026, 10, 20), "Móviles Levante SL", "i13128AzulA", 1, "350000000000018"),
+                        new FilaSimulador(50, "6475", "BB", LocalDate.of(2026, 10, 22), "Móviles Levante SL", "i13128AzulA", -1, "350000000000018"),
+                        new FilaSimulador(90, "6490", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i13128AzulA", 1, "350000000000018")),
+                Map.of());
+        PedidoLeido.Unidad abonada = pedido(r, "6470").unidades().get(0);
+        assertEquals("ABONO", abonada.motivoCierre());
+        assertNull(abonada.otroOrderId(), "la reventa no es una repetición de la misma venta");
+        PedidoLeido.Unidad reventa = pedido(r, "6490").unidades().get(0);
+        assertEquals("350000000000018", reventa.imei());
+        assertEquals(90, reventa.imeiRef());
+        assertNull(reventa.motivoCierre());
+        assertTrue(r.pedidos().stream().noneMatch(p -> p.numero().equals("6475")), "una BB no es un pedido");
+        assertNull(pedido(r, "402-0000000-0000027").unidades().get(0).imei(), "el móvil está en una unidad abierta del Simulador");
+    }
+
+    @Test void unMovilDelSimuladorCerradoPorAbonoPuedeCubrirUnPedidoDeAmazon() {
+        CrucePedidos.Resultado r = cruzar(List.of(amazon("402-0000000-0000028", 28, "i13128AzulA", 1)),
+                List.of(new FilaPedidos2026(41, dia(29), "Amazon", "i13128AzulA", "350000000000019")),
+                List.of(new FilaSimulador(10, "6470", "X", LocalDate.of(2026, 10, 20), "Móviles Levante SL", "i13128AzulA", 1, "350000000000019"),
+                        new FilaSimulador(50, "6475", "BB", LocalDate.of(2026, 10, 22), "Móviles Levante SL", "i13128AzulA", -1, "350000000000019")),
+                Map.of());
+        assertEquals("ABONO", pedido(r, "6470").unidades().get(0).motivoCierre());
+        assertEquals("350000000000019", pedido(r, "402-0000000-0000028").unidades().get(0).imei());
     }
 }
