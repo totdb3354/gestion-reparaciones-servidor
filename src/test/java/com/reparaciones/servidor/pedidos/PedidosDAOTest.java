@@ -100,4 +100,36 @@ class PedidosDAOTest {
         verify(jdbc).query(contains("WHERE FUENTE = ? AND RESULTADO IN (?) ORDER BY ID_LECTURA DESC LIMIT 1"),
                 any(RowMapper.class), eq("PEDIDOS_2026"), eq("OK"));
     }
+
+    @SuppressWarnings("unchecked")
+    @Test void laUltimaLecturaConFilasExigeFilasMayorQueCero() {
+        dao.ultimaLecturaConFilas(FuentePedidos.PEDIDOS_2026, java.util.Set.of("OK"));
+        verify(jdbc).query(contains("RESULTADO IN (?) AND FILAS > 0 ORDER BY ID_LECTURA DESC LIMIT 1"),
+                any(RowMapper.class), eq("PEDIDOS_2026"), eq("OK"));
+    }
+
+    @Test void marcarErrorPonePorIdLasLecturasIndicadas() {
+        dao.marcarError(List.of(4, 5, 6), "No se pudo");
+        verify(jdbc).update("UPDATE Pedido_lectura SET RESULTADO = 'ERROR', MENSAJE = ? WHERE ID_LECTURA IN (?, ?, ?)",
+                "No se pudo", 4, 5, 6);
+    }
+
+    @Test void marcarErrorSinLecturasNoHaceNada() {
+        dao.marcarError(List.of(), "x");
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void dosPedidosConLaMismaClaveEnUnaVueltaInsertanUnoYActualizanElOtro() {
+        when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
+            ((KeyHolder) inv.getArgument(1)).getKeyList().add(Map.of("insert_id", 12));
+            return 1;
+        });
+        PedidoLeido a = new PedidoLeido(Canal.AMAZON, "402-1", "A", "DE", AHORA, FuentePedidos.SHIPPYPRO, List.of(unidad(1, null, null)));
+        PedidoLeido b = new PedidoLeido(Canal.AMAZON, "402-1", "A2", "DE", AHORA, FuentePedidos.PEDIDOS_2026, List.of(unidad(1, null, null)));
+
+        dao.aplicar(List.of(a, b), AHORA);
+
+        verify(jdbc, times(1)).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+        verify(jdbc, times(1)).update(eq(PedidosDAO.SQL_ACTUALIZAR_PEDIDO), any(), any(), any(), any(), any(), any(), any(), eq(12));
+    }
 }

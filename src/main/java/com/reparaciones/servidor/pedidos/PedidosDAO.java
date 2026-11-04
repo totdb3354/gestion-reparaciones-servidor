@@ -62,6 +62,9 @@ public class PedidosDAO {
     static final String SQL_DESCONOCIDOS = "UPDATE Pedido_lectura SET SKU_DESCONOCIDOS = ? WHERE ID_LECTURA = ?";
     static final String SQL_ULTIMA_LECTURA = "SELECT ID_LECTURA, FUENTE, INICIO, FIN, RESULTADO, FILAS, SKU_DESCONOCIDOS, MENSAJE"
             + " FROM Pedido_lectura WHERE FUENTE = ? AND RESULTADO IN (%s) ORDER BY ID_LECTURA DESC LIMIT 1";
+    static final String SQL_ULTIMA_LECTURA_CON_FILAS = "SELECT ID_LECTURA, FUENTE, INICIO, FIN, RESULTADO, FILAS, SKU_DESCONOCIDOS, MENSAJE"
+            + " FROM Pedido_lectura WHERE FUENTE = ? AND RESULTADO IN (%s) AND FILAS > 0 ORDER BY ID_LECTURA DESC LIMIT 1";
+    static final String SQL_MARCAR_ERROR = "UPDATE Pedido_lectura SET RESULTADO = 'ERROR', MENSAJE = ? WHERE ID_LECTURA IN (%s)";
     static final String SQL_PODAR = "DELETE FROM Pedido_lectura WHERE INICIO < ?";
 
     /** Una unidad abierta con IMEI, para la línea de Asignaciones. */
@@ -109,6 +112,24 @@ public class PedidosDAO {
                 .stream().findFirst();
     }
 
+    /** Como {@link #ultimaLectura} pero solo entre las que trajeron filas (referencia del freno del 90 %). */
+    public Optional<LecturaGuardada> ultimaLecturaConFilas(FuentePedidos fuente, Set<String> resultados) {
+        List<Object> args = new ArrayList<>();
+        args.add(fuente.name());
+        args.addAll(resultados);
+        return jdbc.query(String.format(SQL_ULTIMA_LECTURA_CON_FILAS, marcas(resultados.size())), PedidosDAO::lectura, args.toArray())
+                .stream().findFirst();
+    }
+
+    /** Pasa a ERROR (con mensaje) las lecturas indicadas; nada si no hay ninguna. */
+    public void marcarError(Collection<Integer> idsLectura, String mensaje) {
+        if (idsLectura.isEmpty()) return;
+        List<Object> args = new ArrayList<>();
+        args.add(mensaje);
+        args.addAll(idsLectura);
+        jdbc.update(String.format(SQL_MARCAR_ERROR, marcas(idsLectura.size())), args.toArray());
+    }
+
     public void podarLecturas(LocalDateTime antesDe) {
         jdbc.update(SQL_PODAR, Timestamp.valueOf(antesDe));
     }
@@ -131,6 +152,7 @@ public class PedidosDAO {
             Integer id = ids.get(clave(p.canal(), p.numero()));
             if (id == null) {
                 id = insertar(p, t, cierre, motivo);
+                ids.put(clave(p.canal(), p.numero()), id);
             } else {
                 jdbc.update(SQL_ACTUALIZAR_PEDIDO, p.cliente(), p.pais(), Timestamp.valueOf(p.fecha()), t, motivo, cierre, motivo, id);
             }

@@ -70,7 +70,7 @@ class LecturaPedidosTest {
     @Test void unaHojaConMenosDelNoventaPorCientoEsIncompletaYNoSeUsa() throws Exception {
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         when(shippy.pendientes()).thenReturn(NINGUNO);
-        when(dao.ultimaLectura(eq(FuentePedidos.PEDIDOS_2026), any()))
+        when(dao.ultimaLecturaConFilas(eq(FuentePedidos.PEDIDOS_2026), any()))
                 .thenReturn(Optional.of(new LecturaGuardada(7, FuentePedidos.PEDIDOS_2026, AHORA, AHORA, "OK", 1000, null, null)));
         hojasBien(899, 200);
 
@@ -98,11 +98,13 @@ class LecturaPedidosTest {
                 4000, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-s"), any(), any(), any(), anyInt())).thenReturn(vacia(10));
 
         sinHoja.pasada();
 
         verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.RECHAZADA), eq(0), eq("Falta el ajuste pedidos.pedidos2026.hoja"), any());
         verify(sheets, never()).leer(eq(""), any(), any(), any(), anyInt());
+        verify(dao, never()).aplicar(anyList(), any());
     }
 
     @Test void losPedidosSinFechaValidaSeApuntanEnUnaLecturaBuena() throws Exception {
@@ -115,5 +117,79 @@ class LecturaPedidosTest {
         verify(dao).terminarLectura(eq(1), eq(LecturaPedidos.OK), eq(0),
                 eq("Pedidos sin fecha válida, saltados: 402-0000000-0000008, (sin número)"), any());
         verify(dao).aplicar(anyList(), eq(AHORA));
+    }
+
+    @Test void unFalloAlCruzarOGuardarMarcaERRORLasTresLecturasDeLaVuelta() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        hojasBien(100, 200);
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("x")).when(dao).aplicar(anyList(), any());
+
+        lectura.pasada();
+
+        verify(dao).marcarError(argThat(ids -> java.util.Set.copyOf(ids).equals(Set.of(1, 2, 3))),
+                startsWith("No se pudo cruzar o guardar: "));
+    }
+
+    @Test void laPodaSeHaceTambienEnUnaVueltaQueSaleTemprano() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenThrow(new IOException("500"));
+        hojasBien(100, 200);
+
+        lectura.pasada();
+
+        verify(dao, never()).aplicar(anyList(), any());
+        verify(dao).podarLecturas(AHORA.minusDays(30));
+    }
+
+    @Test void sinCanalesMapeadosShippyProSeRechazaSinLlamar() throws Exception {
+        LecturaPedidos sinCanales = new LecturaPedidos(shippy, sheets, dao, nsys, "", "hoja-p", "PEDIDOS 2026", "hoja-s",
+                "Registro actividad", 4000, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        hojasBien(100, 200);
+
+        sinCanales.pasada();
+
+        verify(dao).terminarLectura(eq(1), eq(LecturaPedidos.RECHAZADA), eq(0), eq("Falta el ajuste pedidos.shippypro.canales"), any());
+        verify(shippy, never()).pendientes();
+        verify(dao, never()).aplicar(anyList(), any());
+    }
+
+    @Test void unaSegundaLecturaSinFilasNoSeAceptaSiLaUltimaBuenaTeniaFilas() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(dao.ultimaLecturaConFilas(eq(FuentePedidos.PEDIDOS_2026), any()))
+                .thenReturn(Optional.of(new LecturaGuardada(7, FuentePedidos.PEDIDOS_2026, AHORA, AHORA, "OK", 1000, null, null)));
+        hojasBien(0, 200);
+
+        lectura.pasada();
+
+        verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.INCOMPLETA), eq(0), contains("1000"), any());
+    }
+
+    @Test void unaInterrupcionCortaLaVueltaSinLeerLoDemasNiAplicar() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenThrow(new InterruptedException());
+
+        try {
+            lectura.pasada();
+            org.junit.jupiter.api.Assertions.assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+
+        verify(sheets, never()).leer(any(), any(), any(), any(), anyInt());
+        verify(dao, never()).aplicar(anyList(), any());
+    }
+
+    @Test void elMensajeDeFormatoSeCorta() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-p"), any(), any(), any(), anyInt())).thenThrow(new FormatoHojaException("x".repeat(2000)));
+        when(sheets.leer(eq("hoja-s"), any(), any(), any(), anyInt())).thenReturn(vacia(10));
+
+        lectura.pasada();
+
+        verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.RECHAZADA), eq(0), argThat(m -> m.length() == 1000), any());
     }
 }

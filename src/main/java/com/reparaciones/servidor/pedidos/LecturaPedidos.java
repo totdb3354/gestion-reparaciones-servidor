@@ -82,11 +82,19 @@ public class LecturaPedidos {
 
     public void pasada() {
         LocalDateTime ahora = ahora();
+        try {
+            dao.podarLecturas(ahora.minusDays(DIAS_REGISTRO));
+        } catch (RuntimeException e) {
+            log.warn("Pedidos: no se pudo podar el registro de lecturas", e);
+        }
         Leida<List<PedidoShippyPro>> s = leerShippyPro();
+        if (Thread.currentThread().isInterrupted()) return;
         Leida<List<FilaPedidos2026>> p = leerHoja(FuentePedidos.PEDIDOS_2026, hojaPedidos, "pedidos.pedidos2026.hoja",
                 pestanaPedidos, LectorPedidos2026.OBLIGATORIAS, LectorPedidos2026.CLAVE, LectorPedidos2026::filas);
+        if (Thread.currentThread().isInterrupted()) return;
         Leida<List<FilaSimulador>> m = leerHoja(FuentePedidos.SIMULADOR, hojaSimulador, "pedidos.simulador.hoja",
                 pestanaSimulador, LectorSimulador.OBLIGATORIAS, LectorSimulador.CLAVE, LectorSimulador::filas);
+        if (Thread.currentThread().isInterrupted()) return;
         if (s.datos() != null) ultimosShippyPro = s.datos();
         if (p.datos() != null) ultimasPedidos2026 = p.datos();
         if (m.datos() != null) ultimasSimulador = m.datos();
@@ -112,14 +120,24 @@ public class LecturaPedidos {
             dao.aplicar(r.pedidos(), ahora);
             if (s.id() != null && s.datos() != null) dao.anotarDesconocidos(s.id(), r.desconocidosShippyPro());
             if (m.id() != null && m.datos() != null) dao.anotarDesconocidos(m.id(), r.desconocidosSimulador());
-            dao.podarLecturas(ahora.minusDays(DIAS_REGISTRO));
         } catch (RuntimeException e) {
-            log.warn("Pedidos: no se pudo cruzar o guardar la vuelta: {}", e.toString());
+            log.error("Pedidos: no se pudo cruzar o guardar la vuelta", e);
+            List<Integer> buenas = new ArrayList<>();
+            for (Leida<?> l : List.of(s, p, m)) if (l.datos() != null && l.id() != null) buenas.add(l.id());
+            try {
+                dao.marcarError(buenas, corta("No se pudo cruzar o guardar: " + e));
+            } catch (RuntimeException e2) {
+                log.error("Pedidos: no se pudieron marcar las lecturas como ERROR", e2);
+            }
         }
     }
 
     private Leida<List<PedidoShippyPro>> leerShippyPro() {
         int id = dao.empezarLectura(FuentePedidos.SHIPPYPRO, ahora());
+        if (canales.isEmpty()) {
+            dao.terminarLectura(id, RECHAZADA, 0, "Falta el ajuste pedidos.shippypro.canales", ahora());
+            return new Leida<>(id, null);
+        }
         try {
             ClienteShippyPro.Leidos leidos = shippyPro.pendientes();
             // Un pedido sin fecha válida se salta (decisión del usuario, 04/11): la lectura es buena y lo dice.
@@ -146,7 +164,7 @@ public class LecturaPedidos {
         }
         try {
             TablaHoja t = sheets.leer(hoja, pestana, obligatorias, clave, filas);
-            Optional<LecturaGuardada> previa = dao.ultimaLectura(fuente, Set.of(OK, INCOMPLETA)).filter(l -> l.filas() > 0);
+            Optional<LecturaGuardada> previa = dao.ultimaLecturaConFilas(fuente, Set.of(OK, INCOMPLETA));
             if (previa.isPresent() && t.total() < previa.get().filas() * MINIMO_FILAS) {
                 dao.terminarLectura(id, INCOMPLETA, t.total(), String.format(
                         "Trae %d filas frente a las %d de la lectura anterior: se trata como incompleta", t.total(),
@@ -157,7 +175,7 @@ public class LecturaPedidos {
             dao.terminarLectura(id, OK, t.total(), null, ahora());
             return new Leida<>(id, datos);
         } catch (FormatoHojaException e) {
-            dao.terminarLectura(id, RECHAZADA, 0, e.getMessage(), ahora());
+            dao.terminarLectura(id, RECHAZADA, 0, corta(e.getMessage()), ahora());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             dao.terminarLectura(id, ERROR, 0, "Interrumpida", ahora());
