@@ -589,6 +589,11 @@ class OpenApiContractTest {
                 .contains("/StockTelefonosMovilVendido"), "los vendidos devuelven StockTelefonosMovilVendido");
         assertNullable(esquemas, "StockTelefonosMovilVendido", "modelo", "modeloMaestro", "capacidad", "color");
         assertNoNullable(esquemas, "StockTelefonosMovilVendido", "imeiSn", "esEsim", "fechaVenta");
+        // 0.9.25 (spec «Qué revisar» §10.3): el Excel para imprimir.
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/que-revisar/excel", "post").endsWith("/StockTelefonosPeticionExcel"));
+        assertNoNullable(esquemas, "StockTelefonosPeticionExcel", "hoja", "columnas", "filas");
+        assertTrue(paths.path("/api/stock-telefonos/que-revisar/excel").path("post").path("responses").path("200").path("content")
+                .has("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), "el Excel responde un xlsx");
     }
 
     /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */

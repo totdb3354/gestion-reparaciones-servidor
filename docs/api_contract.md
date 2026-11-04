@@ -35,6 +35,14 @@ de `model/` conservan su nombre.
   (`POST /api/stock-telefonos/comprobar`; un IMEI no encontrado, `false`) y las filas de «Cambio de color», «Cambio de grado»,
   «Revisar a mano» y «Sin grado en NSYS» de las tarjetas de «Por pasar a NSYS» (un aviso sin móvil en el espejo, `false`). El
   stock (`GET /api/stock-telefonos`) ya lo traía.
+- Desde la 0.9.25 («Qué revisar» en Stock de teléfonos, SUPERTECNICO y ADMIN): `GET /api/stock-telefonos/vendidos?dias=15`
+  (`dias` de 1 a 90, 15 por defecto; fuera, `400` «Los días van de 1 a 90») devuelve un `StockTelefonosMovilVendido` por IMEI
+  vendido (`Nsys_movil.ESTADO = 'VENDIDO'`) con `SOLD_DATE` desde hoy − (dias − 1), día de Madrid, hoy incluido: el de su lote
+  vendido más reciente, con el `color` que vale (lo del taller por encima de NSYS). `POST /api/stock-telefonos/que-revisar/excel`
+  recibe `{hoja, columnas, filas}` (textos) y responde el xlsx para imprimir: cabecera en negrita repetida en cada página,
+  apaisado, una página de ancho, bordes finos y anchos según el contenido. No sabe nada de la lista. `400` con el motivo si la
+  hoja está vacía, pasa de 31 caracteres o lleva `[ ] : * ? / \`; si no hay de 1 a 12 columnas o una no tiene nombre; si pasa
+  de 5000 filas; si una fila no tiene tantas celdas como columnas o lleva una nula, o si un texto pasa de 200 caracteres.
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
   del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.
