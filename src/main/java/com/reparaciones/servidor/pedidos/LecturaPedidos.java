@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /** Una vuelta de lectura de pedidos (spec pieza 2 §4.4): las tres fuentes por separado, con su registro; si las tres tienen datos
@@ -33,6 +35,11 @@ public class LecturaPedidos {
     public static final String RECHAZADA = "RECHAZADA";
     public static final String INCOMPLETA = "INCOMPLETA";
     static final double MINIMO_FILAS = 0.9;
+    /** Densidad de la cola (ajuste de la revisión final): con al menos {@code MINIMO_PARA_DENSIDAD} filas leídas, si valen menos
+     *  de {@code DENSIDAD_MINIMA} de ellas, hay algo suelto por debajo de los datos en la columna clave. Con los datos reales del
+     *  04/11 valen el 98 % (3935 de 4000). */
+    static final int MINIMO_PARA_DENSIDAD = 200;
+    static final double DENSIDAD_MINIMA = 0.5;
     static final int DIAS_REGISTRO = 30;
     static final int MAX_MENSAJE = 1000;
 
@@ -46,6 +53,7 @@ public class LecturaPedidos {
     private final String hojaSimulador;
     private final String pestanaSimulador;
     private final int filas;
+    private final int diasSimulador;
     private final Clock clock;
     private List<PedidoShippyPro> ultimosShippyPro;
     private List<FilaPedidos2026> ultimasPedidos2026;
@@ -58,13 +66,15 @@ public class LecturaPedidos {
                           @Value("${pedidos.pedidos2026.pestana:PEDIDOS 2026}") String pestanaPedidos,
                           @Value("${pedidos.simulador.hoja:}") String hojaSimulador,
                           @Value("${pedidos.simulador.pestana:Registro actividad}") String pestanaSimulador,
-                          @Value("${pedidos.filas:4000}") int filas) {
+                          @Value("${pedidos.filas:4000}") int filas,
+                          @Value("${pedidos.simulador.dias:14}") int diasSimulador) {
         this(shippyPro, sheets, dao, nsysDao, canales, hojaPedidos, pestanaPedidos, hojaSimulador, pestanaSimulador, filas,
-                Clock.system(ImportadorNsys.MADRID));
+                diasSimulador, Clock.system(ImportadorNsys.MADRID));
     }
 
     LecturaPedidos(ClienteShippyPro shippyPro, ClienteSheets sheets, PedidosDAO dao, NsysDAO nsysDao, String canales,
-                   String hojaPedidos, String pestanaPedidos, String hojaSimulador, String pestanaSimulador, int filas, Clock clock) {
+                   String hojaPedidos, String pestanaPedidos, String hojaSimulador, String pestanaSimulador, int filas,
+                   int diasSimulador, Clock clock) {
         this.shippyPro = shippyPro;
         this.sheets = sheets;
         this.dao = dao;
@@ -75,6 +85,7 @@ public class LecturaPedidos {
         this.hojaSimulador = hojaSimulador == null ? "" : hojaSimulador;
         this.pestanaSimulador = pestanaSimulador;
         this.filas = filas;
+        this.diasSimulador = diasSimulador;
         this.clock = clock;
     }
 
@@ -90,10 +101,10 @@ public class LecturaPedidos {
         Leida<List<PedidoShippyPro>> s = leerShippyPro();
         if (Thread.currentThread().isInterrupted()) return;
         Leida<List<FilaPedidos2026>> p = leerHoja(FuentePedidos.PEDIDOS_2026, hojaPedidos, "pedidos.pedidos2026.hoja",
-                pestanaPedidos, LectorPedidos2026.FORMATO, LectorPedidos2026::filas);
+                pestanaPedidos, LectorPedidos2026.FORMATO, LectorPedidos2026::filas, (t, d) -> null);
         if (Thread.currentThread().isInterrupted()) return;
         Leida<List<FilaSimulador>> m = leerHoja(FuentePedidos.SIMULADOR, hojaSimulador, "pedidos.simulador.hoja",
-                pestanaSimulador, LectorSimulador.FORMATO, LectorSimulador::filas);
+                pestanaSimulador, LectorSimulador.FORMATO, LectorSimulador::filas, this::noLlegaALaVentana);
         if (Thread.currentThread().isInterrupted()) return;
         if (s.datos() != null) ultimosShippyPro = s.datos();
         if (p.datos() != null) ultimasPedidos2026 = p.datos();
@@ -156,7 +167,8 @@ public class LecturaPedidos {
     }
 
     private <T> Leida<List<T>> leerHoja(FuentePedidos fuente, String hoja, String ajuste, String pestana, FormatoHoja formato,
-                                        Function<TablaHoja, List<T>> traducir) {
+                                        Function<TablaHoja, List<T>> traducir,
+                                        BiFunction<TablaHoja, List<T>, String> incompleta) {
         int id = dao.empezarLectura(fuente, ahora());
         if (hoja.isBlank()) {
             dao.terminarLectura(id, RECHAZADA, 0, "Falta el ajuste " + ajuste, ahora());
@@ -172,6 +184,18 @@ public class LecturaPedidos {
                 return new Leida<>(id, null);
             }
             List<T> datos = traducir.apply(t);
+            int leidas = t.filas().size();
+            if (leidas >= MINIMO_PARA_DENSIDAD && datos.size() < leidas * DENSIDAD_MINIMA) {
+                dao.terminarLectura(id, INCOMPLETA, t.total(), corta(String.format(
+                        "Solo %d de las %d filas leídas valen: puede haber algo escrito por debajo de los datos en «%s»",
+                        datos.size(), leidas, formato.clave())), ahora());
+                return new Leida<>(id, null);
+            }
+            String mensaje = incompleta.apply(t, datos);
+            if (mensaje != null) {
+                dao.terminarLectura(id, INCOMPLETA, t.total(), corta(mensaje), ahora());
+                return new Leida<>(id, null);
+            }
             dao.terminarLectura(id, OK, t.total(), null, ahora());
             return new Leida<>(id, datos);
         } catch (FormatoHojaException e) {
@@ -184,6 +208,17 @@ public class LecturaPedidos {
             dao.terminarLectura(id, ERROR, 0, corta(e.toString()), ahora());
         }
         return new Leida<>(id, null);
+    }
+
+    /** Spec §4.3: si la cola del Simulador no empieza en la primera fila de datos y su línea más antigua tiene menos de
+     *  {@code pedidos.simulador.dias} días, las líneas leídas no llegan a la ventana y cerrarían pedidos por haber leído poco. */
+    private String noLlegaALaVentana(TablaHoja t, List<FilaSimulador> lineas) {
+        if (t.filas().isEmpty() || t.filas().get(0).numero() <= 2 || lineas.isEmpty()) return null;
+        LocalDate masAntigua = lineas.stream().map(FilaSimulador::fecha).min(LocalDate::compareTo).orElseThrow();
+        if (masAntigua.isAfter(ahora().toLocalDate().minusDays(diasSimulador)))
+            return String.format("Las %d líneas leídas no llegan a %d días: hay que subir pedidos.filas", t.filas().size(),
+                    diasSimulador);
+        return null;
     }
 
     private LocalDateTime ahora() {

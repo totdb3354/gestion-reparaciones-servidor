@@ -24,7 +24,7 @@ class LecturaPedidosTest {
     private final PedidosDAO dao = mock(PedidosDAO.class);
     private final NsysDAO nsys = mock(NsysDAO.class);
     private final LecturaPedidos lectura = new LecturaPedidos(shippy, sheets, dao, nsys, "100:AMAZON", "hoja-p", "PEDIDOS 2026",
-            "hoja-s", "Registro actividad", 4000, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
+            "hoja-s", "Registro actividad", 4000, 14, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     /** ShippyPro sin pendientes y sin pedidos saltados. */
     private static final ClienteShippyPro.Leidos NINGUNO = new ClienteShippyPro.Leidos(List.of(), List.of());
@@ -95,7 +95,7 @@ class LecturaPedidosTest {
 
     @Test void sinElAjusteDeUnaHojaSeApuntaRechazadaSinLlamarAGoogle() throws Exception {
         LecturaPedidos sinHoja = new LecturaPedidos(shippy, sheets, dao, nsys, "", "", "PEDIDOS 2026", "hoja-s", "Registro actividad",
-                4000, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
+                4000, 14, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         when(shippy.pendientes()).thenReturn(NINGUNO);
         when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
@@ -144,7 +144,7 @@ class LecturaPedidosTest {
 
     @Test void sinCanalesMapeadosShippyProSeRechazaSinLlamar() throws Exception {
         LecturaPedidos sinCanales = new LecturaPedidos(shippy, sheets, dao, nsys, "", "hoja-p", "PEDIDOS 2026", "hoja-s",
-                "Registro actividad", 4000, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
+                "Registro actividad", 4000, 14, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
         when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
         hojasBien(100, 200);
 
@@ -191,5 +191,94 @@ class LecturaPedidosTest {
         lectura.pasada();
 
         verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.RECHAZADA), eq(0), argThat(m -> m.length() == 1000), any());
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Una cola de PEDIDOS 2026 con {@code total} filas desde la {@code desde}, de las que solo las primeras {@code validas} valen. */
+    private static TablaHoja colaPedidos(int total, int validas) {
+        List<TablaHoja.Fila> filas = new java.util.ArrayList<>();
+        for (int i = 0; i < total; i++) {
+            String plataforma = i < validas ? "Amazon" : "";
+            filas.add(new TablaHoja.Fila(2 + i, List.of(JSON.getNodeFactory().numberNode(46329), JSON.getNodeFactory().textNode(plataforma),
+                    JSON.getNodeFactory().textNode("i13128AzulA"), JSON.getNodeFactory().textNode("35000000000" + String.format("%04d", i)))));
+        }
+        return new TablaHoja(total, Map.of("Fecha", 0, "Plataforma", 1, "SKU", 2, "IMEI", 3), filas);
+    }
+
+    @Test void unaColaConLaMitadDeFilasInvalidasEsIncompletaYNoAplicaNada() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenReturn(colaPedidos(400, 100));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
+
+        lectura.pasada();
+
+        verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.INCOMPLETA), eq(400),
+                eq("Solo 100 de las 400 filas leídas valen: puede haber algo escrito por debajo de los datos en «Plataforma»"), any());
+        verify(dao, never()).aplicar(anyList(), any());
+    }
+
+    @Test void unaColaDeCuatrocientasConTrescientasNoventaValidasEsOK() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenReturn(colaPedidos(400, 390));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
+
+        lectura.pasada();
+
+        verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.OK), eq(400), isNull(), any());
+        verify(dao).aplicar(anyList(), eq(AHORA));
+    }
+
+    @Test void unaColaPorDebajoDelMinimoNoMideLaDensidad() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenReturn(colaPedidos(50, 10));
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(vacia(10));
+
+        lectura.pasada();
+
+        verify(dao).terminarLectura(eq(2), eq(LecturaPedidos.OK), eq(50), isNull(), any());
+    }
+
+    /** Una cola del Simulador de una línea por fila, desde la fila {@code desde}, la primera con esa fecha (número de serie). */
+    private static TablaHoja colaSimulador(int desde, int serieDeLaPrimera, int lineas) {
+        var f = JSON.getNodeFactory();
+        List<TablaHoja.Fila> filas = new java.util.ArrayList<>();
+        for (int i = 0; i < lineas; i++)
+            filas.add(new TablaHoja.Fila(desde + i, List.of(f.textNode("640" + i), f.textNode("X"), f.numberNode(serieDeLaPrimera + i),
+                    f.textNode("Cliente A"), f.textNode("i13128AzulA"), f.numberNode(1), f.textNode(""))));
+        return new TablaHoja(desde - 2 + lineas, Map.of("Order id", 0, "Linea facturación", 1, "Fecha", 2, "Cliente", 3, "SKU", 4,
+                "Cantidad", 5, "IMEI", 6), filas);
+    }
+
+    @Test void siElSimuladorNoLlegaALaVentanaYNoEmpiezaEnLaPrimeraFilaEsIncompleta() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenReturn(vacia(10));
+        // 4/11/2026 = serie 46330; la línea más antigua es del 1/11, a 3 días
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(colaSimulador(500, 46327, 3));
+
+        lectura.pasada();
+
+        verify(dao).terminarLectura(eq(3), eq(LecturaPedidos.INCOMPLETA), eq(501),
+                eq("Las 3 líneas leídas no llegan a 14 días: hay que subir pedidos.filas"), any());
+        verify(dao, never()).aplicar(anyList(), any());
+    }
+
+    @Test void elSimuladorQueLlegaALaVentanaOQueEmpiezaEnLaPrimeraFilaEsOK() throws Exception {
+        when(dao.empezarLectura(any(), any())).thenReturn(1, 2, 3, 4, 5, 6);
+        when(shippy.pendientes()).thenReturn(NINGUNO);
+        when(sheets.leer(eq("hoja-p"), any(), any(), anyInt())).thenReturn(vacia(10));
+        // más antigua a 20 días
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(colaSimulador(500, 46310, 3));
+        lectura.pasada();
+        verify(dao).terminarLectura(eq(3), eq(LecturaPedidos.OK), anyInt(), isNull(), any());
+
+        // toda la hoja leída (empieza en la fila 2): no hay nada más antiguo
+        when(sheets.leer(eq("hoja-s"), any(), any(), anyInt())).thenReturn(colaSimulador(2, 46327, 3));
+        lectura.pasada();
+        verify(dao).terminarLectura(eq(6), eq(LecturaPedidos.OK), anyInt(), isNull(), any());
     }
 }
