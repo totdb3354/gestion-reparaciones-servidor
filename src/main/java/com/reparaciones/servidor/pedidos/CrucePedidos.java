@@ -108,7 +108,7 @@ public final class CrucePedidos {
 
     /** Las unidades de los pedidos de ShippyPro de los marketplaces del ajuste, de la más antigua a la más nueva. La posición
      *  cuenta todas las unidades de todos los artículos en orden, también las de un SKU que no conoce el maestro, para que no
-     *  cambie entre lecturas (ajuste 7): esas no son unidades y dejan un hueco en la numeración. Un pedido que sale dos veces
+     *  cambie entre lecturas (ajuste 16): esas no son unidades y dejan un hueco en la numeración. Un pedido que sale dos veces
      *  en la lista (mismo marketplace y número) cuenta una vez. */
     private static List<Hueco> huecos(Entrada e, Set<String> desconocidos) {
         List<Hueco> huecos = new ArrayList<>();
@@ -192,24 +192,40 @@ public final class CrucePedidos {
 
     /** Decisión del usuario, 04/11: una fila de Amazon o Stockroom con «Pedido Amazon» (que se rellena al enviar) es de su pedido
      *  o de ninguno. Si el número es un pedido pendiente de su canal, la fila lo cubre, sea cual sea su fecha, y es un pedido
-     *  concreto ({@code sinPedidoConcreto} false); si no, es de un pedido ya enviado o de otro canal y no cubre nada. Va a la
-     *  primera unidad libre del pedido cuyo SKU encaja y, si ninguna encaja, a la primera libre (el estado dirá «No cuadra»). Las
+     *  concreto ({@code sinPedidoConcreto} false); si no, es de un pedido ya enviado o de otro canal y no cubre nada. En dos
+     *  pasadas: primero las filas cuyo SKU encaja con una unidad libre de su pedido (a la primera que encaja) y después las demás, a
+     *  la primera libre (el estado dirá «No cuadra»). Las
      *  filas sin número y las unidades que quedan libres siguen al reparto por SKU. */
     private static void repartirPorNumero(List<Hueco> unidades, List<FilaPedidos2026> filas) {
         Map<String, List<Hueco>> porPedido = new HashMap<>();
         for (Hueco h : unidades) porPedido.computeIfAbsent(h.pedido.leido.numero().strip(), k -> new ArrayList<>()).add(h);
-        for (FilaPedidos2026 f : filas.stream().sorted(Comparator.comparingInt(FilaPedidos2026::fila)).toList()) {
-            if (f.pedidoAmazon() == null) continue;
+        List<FilaPedidos2026> conNumero = filas.stream().filter(f -> f.pedidoAmazon() != null)
+                .sorted(Comparator.comparingInt(FilaPedidos2026::fila)).toList();
+        // Dos pasadas: primero las filas cuyo SKU encaja con una unidad libre de su pedido, y después las demás, a la primera
+        // libre. Así una fila con un SKU que no encaja no le quita la unidad a otra posterior que sí encaja.
+        Set<FilaPedidos2026> colocadas = new HashSet<>();
+        for (FilaPedidos2026 f : conNumero) {
             List<Hueco> suyas = porPedido.get(f.pedidoAmazon().strip());
             if (suyas == null) continue;
-            List<Hueco> libres = suyas.stream().filter(h -> h.fila == null).toList();
-            Hueco destino = libres.stream()
-                    .filter(h -> Objects.equals(Textos.sku(f.sku()), Textos.sku(h.sku)) || h.aceptacion.acepta(f.sku()))
-                    .findFirst().orElse(libres.isEmpty() ? null : libres.get(0));
-            if (destino == null) continue;
-            destino.fila = f;
-            destino.sinPedidoConcreto = false;
+            suyas.stream().filter(h -> h.fila == null && encaja(f, h)).findFirst().ifPresent(h -> {
+                h.fila = f;
+                h.sinPedidoConcreto = false;
+                colocadas.add(f);
+            });
         }
+        for (FilaPedidos2026 f : conNumero) {
+            if (colocadas.contains(f)) continue;
+            List<Hueco> suyas = porPedido.get(f.pedidoAmazon().strip());
+            if (suyas == null) continue;
+            suyas.stream().filter(h -> h.fila == null).findFirst().ifPresent(h -> {
+                h.fila = f;
+                h.sinPedidoConcreto = false;
+            });
+        }
+    }
+
+    private static boolean encaja(FilaPedidos2026 f, Hueco h) {
+        return Objects.equals(Textos.sku(f.sku()), Textos.sku(h.sku)) || h.aceptacion.acepta(f.sku());
     }
 
     /** Fase 1: qué unidades quedan cubiertas en un emparejamiento máximo (Kuhn). Cada unidad, de la más antigua a la más nueva,
@@ -306,7 +322,7 @@ public final class CrucePedidos {
      *  {@code otroOrderId} (el primero). Una BB cierra por abono la unidad abierta de su IMEI, sea cual sea su SKU; si ese
      *  móvil se vuelve a vender, es otra unidad. Al final, la unidad que sigue abierta de un móvil en Released se cierra. Las
      *  líneas sin IMEI son unidades sin móvil. Una línea con un SKU que no conoce el maestro no cuenta para nada (si parece de
-     *  teléfono, se apunta). La posición es la de la línea entre las del pedido que no son BB, sea unidad o no (ajuste 7). Un
+     *  teléfono, se apunta). La posición es la de la línea entre las del pedido que no son BB, sea unidad o no (ajuste 16). Un
      *  pedido sin unidades no sale; su fecha es la de su línea más antigua. */
     private static List<PedidoLeido> simulador(Entrada e, Set<String> desconocidos) {
         List<FilaSimulador> filas = e.simulador().stream().sorted(Comparator.comparingInt(FilaSimulador::fila)).toList();

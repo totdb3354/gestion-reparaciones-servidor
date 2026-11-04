@@ -316,4 +316,17 @@ class CrucePedidosTest {
         assertEquals("350000000000058", u.imei());
         assertFalse(u.sinPedidoConcreto());
     }
+
+    @Test void conNumeroPrimeroLasFilasCuyoSkuEncajaAunqueVayanDespuesDeUnaQueNoEncaja() {
+        PedidoShippyPro dos = new PedidoShippyPro("402-0000000-0000060", "100", dia(28), "Comprador A", "DE",
+                List.of(new PedidoShippyPro.Articulo("i13128AzulA", 1), new PedidoShippyPro.Articulo("i13128NegroA", 1)));
+        CrucePedidos.Resultado r = cruzar(List.of(dos),
+                List.of(conNumero(80, 29, "AMZ", "i13128VerdeA", "350000000000061", "402-0000000-0000060"),
+                        conNumero(81, 29, "AMZ", "i13128AzulA", "350000000000062", "402-0000000-0000060")), List.of(), Map.of());
+        List<PedidoLeido.Unidad> us = pedido(r, "402-0000000-0000060").unidades();
+        assertEquals("350000000000062", us.get(0).imei(), "la unidad AzulA se queda la fila de su SKU");
+        assertEquals("350000000000061", us.get(1).imei(), "la otra va a la fila que no encajaba");
+        assertFalse(us.get(0).sinPedidoConcreto());
+        assertFalse(us.get(1).sinPedidoConcreto());
+    }
 }
