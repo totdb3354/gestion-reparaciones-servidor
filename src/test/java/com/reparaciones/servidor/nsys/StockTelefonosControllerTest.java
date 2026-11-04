@@ -604,4 +604,46 @@ class StockTelefonosControllerTest {
         assertFalse(comprobados.get(2).get("encontrado").asBoolean());
         assertFalse(comprobados.get(2).get("esEsim").asBoolean(), "fuera del espejo, no");
     }
+
+    /** Un lote vendido (Released) el día {@code venta}: un iPhone 13 128GB Azul, eSIM si se pide. */
+    private static MovilNsys vendido(String imei, String batch, LocalDate venta, boolean esEsim) {
+        return new MovilNsys(imei, batch, "Apple iPhone 13 128GB Blue", "A", "Released", "x", "Proveedor A",
+                LocalDate.of(2026, 9, 1), venta, "i13128AzulA", "13", "13", "128GB", "Azul", "A", esEsim, null, null,
+                EstadoMovil.VENDIDO, AHORA.minusDays(40), AHORA.minusDays(2));
+    }
+
+    /** 0.9.25 («Qué revisar» §10.2): con 15 días, desde el 2/10 (hoy, 16/10, incluido); un elemento por IMEI, el de su lote más
+     *  reciente, con el color que vale. */
+    @Test void losVendidosDeLosUltimosQuinceDiasUnoPorImeiConElColorQueVale() {
+        when(dao.vendidosDesde(LocalDate.of(2026, 10, 2))).thenReturn(List.of(
+                vendido(IMEI, "BT-9002", LocalDate.of(2026, 10, 15), true),
+                vendido(IMEI, "BT-9001", LocalDate.of(2026, 10, 3), false),
+                vendido("350000000000002", "BT-9001", LocalDate.of(2026, 10, 2), false)));
+        when(tallerDao.vigentes()).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.COLOR, "Rojo", "Azul")));
+        JsonNode vendidos = json(api.vendidos(15));
+        assertEquals(2, vendidos.size(), "el IMEI vendido dos veces cuenta una");
+        assertEquals(IMEI, vendidos.get(0).get("imeiSn").asText());
+        assertEquals("13", vendidos.get(0).get("modelo").asText());
+        assertEquals("13", vendidos.get(0).get("modeloMaestro").asText());
+        assertTrue(vendidos.get(0).get("esEsim").asBoolean(), "el del lote más reciente");
+        assertEquals("128GB", vendidos.get(0).get("capacidad").asText());
+        assertEquals("Rojo", vendidos.get(0).get("color").asText(), "lo del taller manda");
+        assertEquals("2026-10-15", vendidos.get(0).get("fechaVenta").asText());
+        assertEquals("Azul", vendidos.get(1).get("color").asText());
+        assertEquals("2026-10-02", vendidos.get(1).get("fechaVenta").asText());
+    }
+
+    @Test void conUnDiaSoloLosDeHoyYFueraDeUnoANoventaEs400SinConsultar() {
+        api.vendidos(1);
+        verify(dao).vendidosDesde(LocalDate.of(2026, 10, 16));
+        api.vendidos(90);
+        verify(dao).vendidosDesde(LocalDate.of(2026, 7, 19));
+        clearInvocations(dao, tallerDao);
+        for (int dias : new int[]{0, 91, -3}) {
+            ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.vendidos(dias), String.valueOf(dias));
+            assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+            assertEquals("Los días van de 1 a 90", e.getReason());
+        }
+        verifyNoInteractions(dao, tallerDao);
+    }
 }

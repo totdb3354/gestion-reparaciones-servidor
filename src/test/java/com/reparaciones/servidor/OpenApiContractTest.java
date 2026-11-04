@@ -582,6 +582,13 @@ class OpenApiContractTest {
         for (String esquema : List.of("StockTelefonosFichaMovil", "StockTelefonosMovilBuscado", "StockTelefonosMovilComprobado",
                 "FilaColorNsys", "FilaGradoNsys", "FilaRevisarNsys", "FilaSinGradoNsys"))
             assertNoNullable(esquemas, esquema, "esEsim");
+        // 0.9.25 (spec «Qué revisar» §10.2): los vendidos de «Pedidos 15 d».
+        assertTrue(paths.has("/api/stock-telefonos/vendidos"), "falta la ruta de los vendidos");
+        assertEquals("query", parametro(paths, "/api/stock-telefonos/vendidos", "get", "dias").path("in").asText());
+        assertTrue(paths.path("/api/stock-telefonos/vendidos").path("get").path("responses").path("200").toString()
+                .contains("/StockTelefonosMovilVendido"), "los vendidos devuelven StockTelefonosMovilVendido");
+        assertNullable(esquemas, "StockTelefonosMovilVendido", "modelo", "modeloMaestro", "capacidad", "color");
+        assertNoNullable(esquemas, "StockTelefonosMovilVendido", "imeiSn", "esEsim", "fechaVenta");
     }
 
     /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */
