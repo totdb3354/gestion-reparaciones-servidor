@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -109,9 +110,15 @@ public class ClienteShippyPro {
         String resultado = cuerpo.path("Result").asText("");
         if (!"OK".equals(resultado))
             throw new IOException(("ShippyPro: " + resultado + " " + cuerpo.path("Error").asText("")).strip());
+        // Sin la lista no hay «cero pendientes»: sería cerrar todos los pedidos de ShippyPro en silencio.
+        JsonNode lista = cuerpo.path("Orders");
+        if (!lista.isArray()) throw new IOException("ShippyPro: la respuesta no trae la lista de pedidos");
+        JsonNode total = cuerpo.path("Total");
+        if (total.isNumber() && total.asLong() != lista.size() || total.isNumber() && !total.canConvertToLong())
+            throw new IOException("ShippyPro dice Total=" + total.asText() + " pero trae " + lista.size() + " pedidos");
         List<PedidoShippyPro> pedidos = new ArrayList<>();
         List<String> descartados = new ArrayList<>();
-        for (JsonNode o : cuerpo.path("Orders")) {
+        for (JsonNode o : lista) {
             try {
                 pedidos.add(pedido(o));
             } catch (IllegalArgumentException e) {
@@ -129,9 +136,14 @@ public class ClienteShippyPro {
     static PedidoShippyPro pedido(JsonNode o) {
         String texto = o.path("date").asText("").strip();
         if (texto.isEmpty()) throw new IllegalArgumentException("sin fecha");
-        long segundos = new BigDecimal(texto).longValue();
-        if (segundos <= 0) throw new IllegalArgumentException("fecha no válida");
-        LocalDateTime fecha = LocalDateTime.ofInstant(Instant.ofEpochSecond(segundos), ImportadorNsys.MADRID);
+        LocalDateTime fecha;
+        try {
+            long segundos = new BigDecimal(texto).longValue();
+            if (segundos <= 0) throw new IllegalArgumentException("fecha no válida");
+            fecha = LocalDateTime.ofInstant(Instant.ofEpochSecond(segundos), ImportadorNsys.MADRID);
+        } catch (DateTimeException | ArithmeticException e) {
+            throw new IllegalArgumentException("fecha no válida", e);
+        }
         List<PedidoShippyPro.Articulo> articulos = new ArrayList<>();
         for (JsonNode i : o.path("items")) {
             String sku = i.path("sku").asText("").strip();

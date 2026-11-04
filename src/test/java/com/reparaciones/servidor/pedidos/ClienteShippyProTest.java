@@ -77,6 +77,38 @@ class ClienteShippyProTest {
         assertEquals(List.of("402-0000000-0000008", "(sin número)"), leidos.descartados());
     }
 
+    @Test void unaRespuestaSinListaDePedidosEsUnFalloNoCeroPendientes() {
+        responde(200, "{\"Result\":\"OK\",\"Total\":0}");
+        assertEquals("ShippyPro: la respuesta no trae la lista de pedidos", assertThrows(IOException.class, cliente::pendientes).getMessage());
+        responde(200, "{\"Result\":\"OK\",\"Total\":0,\"Orders\":\"nada\"}");
+        assertEquals("ShippyPro: la respuesta no trae la lista de pedidos", assertThrows(IOException.class, cliente::pendientes).getMessage());
+        responde(200, "{\"Result\":\"OK\",\"Total\":0,\"Orders\":{}}");
+        assertEquals("ShippyPro: la respuesta no trae la lista de pedidos", assertThrows(IOException.class, cliente::pendientes).getMessage());
+    }
+
+    @Test void siElTotalNoCuadraConLosPedidosQueTraeEsUnFallo() throws Exception {
+        responde(200, """
+                {"Result":"OK","Total":3,"Orders":[
+                 {"transaction_id":"402-0000000-0000001","date":"1793629400","items":[{"sku":"i13128AzulA","quantity":"1"}]}]}""");
+        assertEquals("ShippyPro dice Total=3 pero trae 1 pedidos", assertThrows(IOException.class, cliente::pendientes).getMessage());
+        responde(200, """
+                {"Result":"OK","Total":1,"Orders":[
+                 {"transaction_id":"402-0000000-0000001","date":"1793629400","items":[{"sku":"i13128AzulA","quantity":"1"}]}]}""");
+        assertEquals(1, cliente.pendientes().pedidos().size());
+    }
+
+    @Test void unaFechaImposibleSaltaSoloEsePedido() throws Exception {
+        responde(200, """
+                {"Result":"OK","Total":2,"Orders":[
+                 {"transaction_id":"402-0000000-0000008","date":"1e18","items":[{"sku":"i13128AzulA","quantity":"1"}]},
+                 {"transaction_id":"402-0000000-0000009","date":"1793629400","items":[{"sku":"i13128AzulA","quantity":"1"}]}]}""");
+
+        ClienteShippyPro.Leidos leidos = cliente.pendientes();
+
+        assertEquals(1, leidos.pedidos().size());
+        assertEquals(List.of("402-0000000-0000008"), leidos.descartados());
+    }
+
     @Test void sinRutaDeLaClaveFallaAlPedirNoAlCrearse() {
         ClienteShippyPro sinClave = new ClienteShippyPro("");
         assertEquals("Falta el ajuste pedidos.shippypro.clave",
