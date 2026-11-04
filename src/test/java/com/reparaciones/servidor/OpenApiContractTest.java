@@ -342,6 +342,19 @@ class OpenApiContractTest {
         // destino es una $ref (OpenAPI 3.0 ignora "nullable" junto a un $ref), como CompraEditarRequest.destino.
         assertTrue(esquemas.path("CompraOtroEditarRequest").path("properties").path("destino").path("$ref").asText()
                 .endsWith("/DestinoPedido"), "CompraOtroEditarRequest.destino referencia DestinoPedido");
+
+        // 0.9.26 (spec pieza 2 §9.2): «Pedidos». pide y movil nunca son nulos (ajuste 12).
+        for (String ruta : List.of("/api/pedidos", "/api/pedidos/fuentes"))
+            assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
+        for (String esquema : List.of("PedidoVista", "UnidadVista", "MovilUnidad", "Atributos", "FuentePedidosVista"))
+            assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
+        assertNullable(esquemas, "UnidadVista", "imei", "imeiFuente", "imeiTecleadoEn", "otroOrderId", "motivo");
+        assertNoNullable(esquemas, "UnidadVista", "repetido", "sinPedidoConcreto", "estado", "pide", "movil");
+        assertNullable(esquemas, "MovilUnidad", "modelo", "modeloMaestro", "capacidad", "color", "grado", "sku", "ubicacion", "estadoNsys");
+        assertNoNullable(esquemas, "MovilUnidad", "enNsys");
+        assertNullable(esquemas, "Atributos", "modelo", "capacidad", "color", "grado");
+        assertNullable(esquemas, "PedidoVista", "cliente", "pais");
+        assertNullable(esquemas, "FuentePedidosVista", "ultimaBuena", "ultimaLectura", "resultado", "skuDesconocidos", "motivo");
     }
 
     /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4 y 2026-10-12 §4.3). */

@@ -108,6 +108,18 @@ de `model/` conservan su nombre.
   `ID_PROV: <id>, PIEZAS: bat (todos), g (sin 12mini, 13mini)` («ninguna» sin tipos). En `Componente`
   (`GET /api/componentes/gestionados`), `pendiente` (unidades en pedidos pendientes) y `proveedores` (ids de los
   proveedores que venden alguna pieza de su grupo) son nulos para TECNICO.
+- **0.9.26 · Pedidos** (solo lectura; `SUPERTECNICO` y `ADMIN`, el `TECNICO` recibe `403`). `GET /api/pedidos?viejos=false` →
+  `PedidoVista[]` (`idPedido`, `canal`, `numero`, `cliente?`, `pais?`, `fecha`, `fuente`, `viejo`, `unidades`), del más antiguo
+  al más nuevo; `viejos=true` añade los del Simulador con más días que `pedidos.simulador.dias` (`viejo = true`).
+  `UnidadVista`: `idUnidad`, `posicion`, `sku`, `pide` (`Atributos`), `imei?`, `imeiFuente?`, `imeiTecleadoEn?`,
+  `sinPedidoConcreto`, `otroOrderId?`, `repetido`, `estado`, `motivo?`, `movil` (`MovilUnidad`). `pide` y `movil` nunca son
+  nulos: sin SKU conocido `pide` va vacío y sin IMEI o sin el móvil en NSYS `movil` lleva `enNsys = false` y todo vacío.
+  `GET /api/pedidos/fuentes` → `FuentePedidosVista[]` (`fuente`, `ultimaBuena?`, `ultimaLectura?`, `resultado?`, `filas`,
+  `skuDesconocidos?`, `motivo?`, `nivel`); un `ERROR` no saca su texto (`motivo` fijo). Valores: `canal` AMAZON,
+  AMAZON_STOCKROOM, DISTRIBUIDORES, PARTICULARES, BACKIPHONE, SIMULADOR; `fuente` SHIPPYPRO, PEDIDOS_2026, SIMULADOR;
+  `estado` SIN_MOVIL, NO_EN_NSYS, NO_CUADRA, EN_TALLER, NECESITA_TALLER, CUADRA, CON_AVISO; `motivo` MODELO,
+  GRADO_NO_VENDIBLE, SKU_DESCONOCIDO, C_SIN_REPARAR, COLOR_O_GRADO, MS, B_POR_A; `resultado` OK, ERROR, RECHAZADA,
+  INCOMPLETA; `nivel` OK, RETRASO, SIN_DATOS; `MovilUnidad.estadoNsys` STOCK, DE_PEDIDO, NO_CUENTA, VENDIDO, BAJA.
 - Sin sesión: una petición sin cabecera `Authorization` recibe `403` (Spring Security sin entry point);
   con token inválido o caducado, `401` (filtro JWT). Los clientes tratan ambos como "sin sesión" cuando
   no hay token, y `401` como sesión caducada.
