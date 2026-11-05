@@ -582,13 +582,9 @@ class OpenApiContractTest {
         for (String esquema : List.of("StockTelefonosFichaMovil", "StockTelefonosMovilBuscado", "StockTelefonosMovilComprobado",
                 "FilaColorNsys", "FilaGradoNsys", "FilaRevisarNsys", "FilaSinGradoNsys"))
             assertNoNullable(esquemas, esquema, "esEsim");
-        // 0.9.25 (spec «Qué revisar» §10.2): los vendidos de «Pedidos 15 d».
-        assertTrue(paths.has("/api/stock-telefonos/vendidos"), "falta la ruta de los vendidos");
-        assertEquals("query", parametro(paths, "/api/stock-telefonos/vendidos", "get", "dias").path("in").asText());
-        assertTrue(paths.path("/api/stock-telefonos/vendidos").path("get").path("responses").path("200").toString()
-                .contains("/StockTelefonosMovilVendido"), "los vendidos devuelven StockTelefonosMovilVendido");
-        assertNullable(esquemas, "StockTelefonosMovilVendido", "modelo", "modeloMaestro", "capacidad", "color");
-        assertNoNullable(esquemas, "StockTelefonosMovilVendido", "imeiSn", "esEsim", "fechaVenta");
+        // 0.9.25 (spec «Qué revisar» §10.10): la ruta de los vendidos se retiró y no debe volver.
+        assertFalse(paths.has("/api/stock-telefonos/vendidos"), "los vendidos ya no existen");
+        assertFalse(esquemas.has("StockTelefonosMovilVendido"), "los vendidos ya no existen");
         // 0.9.25 (spec «Qué revisar» §10.3): el Excel para imprimir.
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/que-revisar/excel", "post").endsWith("/StockTelefonosPeticionExcel"));
         assertNoNullable(esquemas, "StockTelefonosPeticionExcel", "hoja", "columnas", "filas");

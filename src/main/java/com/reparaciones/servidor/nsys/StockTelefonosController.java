@@ -28,7 +28,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,9 +53,6 @@ public class StockTelefonosController {
     /** Tope de filas de la lista de importaciones (spec 0.9.18 §6.5); por defecto, 20. */
     static final int LIMITE_IMPORTACIONES = 50;
     private static final String EN_CURSO = "EN_CURSO";
-
-    /** Los días de ventas que se pueden pedir en «Pedidos 15 d» de «Qué revisar» (spec 0.9.25 §10.2). */
-    static final int MAX_DIAS_VENDIDOS = 90;
 
     private final NsysDAO dao;
     private final TallerNsys taller;
@@ -131,21 +127,6 @@ public class StockTelefonosController {
             return new MovilBuscado(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), m.estado().name(),
                     ubicacionVisible(m), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null, v.colorNsys(), m.esEsim());
         }).toList();
-    }
-
-    /** «Pedidos 15 d» de «Qué revisar» (0.9.25, spec §10.2): un elemento por IMEI vendido (ESTADO VENDIDO) con fecha de venta
-     *  desde hoy − (dias − 1), hora de Madrid, hoy incluido. De cada IMEI, su lote vendido más reciente, con el color que vale
-     *  (lo del taller por encima de NSYS). La web los agrupa por modelo-color. {@code dias} de 1 a {@value #MAX_DIAS_VENDIDOS}. */
-    @GetMapping("/vendidos")
-    public List<MovilVendido> vendidos(@RequestParam(defaultValue = "15") int dias) {
-        if (dias < 1 || dias > MAX_DIAS_VENDIDOS)
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Los días van de 1 a " + MAX_DIAS_VENDIDOS);
-        LocalDate desde = LocalDate.now(clock).minusDays(dias - 1L);
-        Map<String, MovilNsys> masReciente = new LinkedHashMap<>();
-        for (MovilNsys m : dao.vendidosDesde(desde)) masReciente.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
-        Function<MovilNsys, String> color = taller.colorDeTodos();
-        return masReciente.values().stream().map(m -> new MovilVendido(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.esEsim(),
-                m.capacidad(), color.apply(m), m.soldDate())).toList();
     }
 
     @GetMapping("/{imeiSn}")
@@ -352,12 +333,6 @@ public class StockTelefonosController {
 
     /** Esquema StockTelefonosPeticionVolver. */
     record PeticionVolver(@Schema(nullable = true) String motivo) {}
-
-    /** 0.9.25 («Qué revisar» §10.2): un vendido para «Pedidos 15 d». Esquema StockTelefonosMovilVendido. */
-    private record MovilVendido(String imeiSn, @Schema(nullable = true) String modelo,
-                                @Schema(nullable = true) String modeloMaestro, boolean esEsim,
-                                @Schema(nullable = true) String capacidad, @Schema(nullable = true) String color,
-                                LocalDate fechaVenta) {}
 
     /** 0.9.25 («Qué revisar» §10.3): la hoja que se imprime, todo textos. Del paquete para que los tests lo construyan; esquema
      *  StockTelefonosPeticionExcel. */

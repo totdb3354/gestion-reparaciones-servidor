@@ -322,13 +322,6 @@ public class NsysDAO {
                 NsysDAO::movil);
     }
 
-    /** 0.9.25 («Qué revisar» §10.2): los lotes vendidos (ESTADO VENDIDO, por idx_nsys_movil_estado) con fecha de venta desde
-     *  {@code desde}, incluido; de cada IMEI, el más reciente primero. */
-    public List<MovilNsys> vendidosDesde(LocalDate desde) {
-        return jdbc.query("SELECT " + COLUMNAS_MOVIL + " FROM Nsys_movil WHERE ESTADO = 'VENDIDO' AND SOLD_DATE >= ?"
-                + LOTE_MAS_RECIENTE_PRIMERO, NsysDAO::movil, Date.valueOf(desde));
-    }
-
     /** Móviles cuyo IMEI/SN contiene {@code texto} (solo letras y cifras), de cualquier estado, los más recientes primero. */
     public List<MovilNsys> buscar(String texto, int limite) {
         String limpio = texto == null ? "" : texto.replaceAll("[^A-Za-z0-9]", "");

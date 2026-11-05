@@ -477,12 +477,4 @@ class NsysDAOTest {
     @Test void lasConsultasDeTrabajosTraenLaFechaDeFin() {
         assertTrue(NsysDAO.SQL_FECHAS_DE_IMEIS.startsWith("SELECT r.IMEI, r.ID_REP, r.FECHA_ASIG, r.FECHA_FIN FROM Reparacion r"));
     }
-
-    /** 0.9.25 («Qué revisar» §10.2): los vendidos desde un día, en una consulta y del lote más reciente al más antiguo. */
-    @SuppressWarnings("unchecked")
-    @Test void losVendidosDesdeUnDiaVanEnUnaConsultaDelLoteMasRecienteAlMasAntiguo() {
-        dao.vendidosDesde(LocalDate.of(2026, 10, 2));
-        verify(jdbc).query(eq("SELECT " + NsysDAO.COLUMNAS_MOVIL + " FROM Nsys_movil WHERE ESTADO = 'VENDIDO' AND SOLD_DATE >= ?"
-                + MAS_RECIENTE_PRIMERO), any(RowMapper.class), eq(java.sql.Date.valueOf(LocalDate.of(2026, 10, 2))));
-    }
 }
