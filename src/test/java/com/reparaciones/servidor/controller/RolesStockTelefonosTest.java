@@ -242,6 +242,19 @@ class RolesStockTelefonosTest {
                 .andExpect(status().isBadRequest());
     }
 
+    /** 0.9.25: «Qué revisar» baja un Excel; misma guarda que el resto. */
+    @Test void elExcelDeQueRevisarSoloParaSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"hoja\":\"Revisar sin grado\",\"columnas\":[\"Modelo\"],\"filas\":[[\"iPhone 13\"]]}";
+        mvc.perform(post("/api/stock-telefonos/que-revisar/excel").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        for (String token : List.of(supertecnico(), admin())) {
+            mvc.perform(post("/api/stock-telefonos/que-revisar/excel").header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        }
+    }
+
     @Test void laPlantillaSeDescargaConSuNombreYSuNumeroDeMoviles() throws Exception {
         mvc.perform(get("/api/stock-telefonos/por-pasar/plantilla-altas").header("Authorization", admin()))
                 .andExpect(status().isOk())

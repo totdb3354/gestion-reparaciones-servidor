@@ -604,4 +604,32 @@ class StockTelefonosControllerTest {
         assertFalse(comprobados.get(2).get("encontrado").asBoolean());
         assertFalse(comprobados.get(2).get("esEsim").asBoolean(), "fuera del espejo, no");
     }
+
+    /** 0.9.25 («Qué revisar» §10.3): el Excel lo escribe HojaImprimible con lo que manda la web, sin mirar el espejo. */
+    @Test void elExcelDeQueRevisarEsElXlsxDeLaHojaQueMandaLaWeb() throws Exception {
+        var respuesta = api.excel(new StockTelefonosController.PeticionExcel("Revisar sin grado", List.of("Modelo", "IMEI", "Revisado"),
+                List.of(List.of("iPhone 13", "350000000000001", ""))));
+        assertEquals(PorPasarController.XLSX, String.valueOf(respuesta.getHeaders().getContentType()));
+        try (var libro = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(respuesta.getBody()))) {
+            assertEquals("Revisar sin grado", libro.getSheetName(0));
+            assertEquals("350000000000001", libro.getSheetAt(0).getRow(1).getCell(1).getStringCellValue());
+        }
+        verifyNoInteractions(dao, tallerDao);
+    }
+
+    @Test void unExcelFueraDeLosLimitesEs400ConElMotivo() {
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.excel(
+                new StockTelefonosController.PeticionExcel("Hoja", List.of("A", "B"), List.of(List.of("a")))));
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertEquals("La fila 1 no tiene 2 celdas", e.getReason());
+        ResponseStatusException sinCuerpo = assertThrows(ResponseStatusException.class, () -> api.excel(null));
+        assertEquals("Falta el nombre de la hoja", sinCuerpo.getReason());
+    }
+
+    @Test void unExcelConHojaConApostrofoAlPrincipioOAlFinalEs400() {
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> api.excel(
+                new StockTelefonosController.PeticionExcel("'x", List.of("A"), List.of(List.of("a")))));
+        assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
+        assertEquals("El nombre de la hoja no puede empezar ni acabar con un apóstrofo", e.getReason());
+    }
 }

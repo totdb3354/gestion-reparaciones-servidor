@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -234,6 +236,17 @@ public class StockTelefonosController {
         }).toList();
     }
 
+    /** «⬇ Descargar Excel» de «Qué revisar» (0.9.25, spec §10.3): el xlsx de las filas que manda la web, listo para imprimir
+     *  ({@link HojaImprimible}). No sabe las reglas de la lista. Fuera de los límites, 400 con el motivo. */
+    @PostMapping(value = "/que-revisar/excel", produces = PorPasarController.XLSX)
+    public ResponseEntity<byte[]> excel(@RequestBody PeticionExcel peticion) {
+        String error = peticion == null ? "Falta el nombre de la hoja"
+                : HojaImprimible.error(peticion.hoja(), peticion.columnas(), peticion.filas());
+        if (error != null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, error);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(PorPasarController.XLSX))
+                .body(HojaImprimible.escribir(peticion.hoja(), peticion.columnas(), peticion.filas()));
+    }
+
     /** Las últimas importaciones del Items actual, de la más reciente a la más antigua, y el progreso del histórico (spec
      *  0.9.18 §4.11 y §6.5): para ver desde la web que llega un Items cada media hora. Los huecos los calcula la web. */
     @GetMapping("/importaciones")
@@ -320,6 +333,10 @@ public class StockTelefonosController {
 
     /** Esquema StockTelefonosPeticionVolver. */
     record PeticionVolver(@Schema(nullable = true) String motivo) {}
+
+    /** 0.9.25 («Qué revisar» §10.3): la hoja que se imprime, todo textos. Del paquete para que los tests lo construyan; esquema
+     *  StockTelefonosPeticionExcel. */
+    record PeticionExcel(String hoja, List<String> columnas, List<List<String>> filas) {}
 
     private record ListaImportaciones(List<FilaImportacion> importaciones, ProgresoHistorico historico) {}
 
