@@ -17,8 +17,9 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Una hoja de Excel para imprimir (0.9.25, spec «Qué revisar» §10.3): una cabecera y filas de textos, tal cual las manda la web.
- *  No sabe nada de la lista que imprime. Cabecera en negrita y repetida en cada página, apaisado, ajustado a una página de ancho,
+/** Una hoja de Excel para imprimir (0.9.25, spec «Qué revisar» §10.3): una cabecera y filas de textos, tal cual las manda la web
+ *  (§10.15: un entero de 1 a 9 cifras sin ceros a la izquierda va como número). No sabe nada de la lista que imprime.
+ *  Cabecera en negrita y repetida en cada página, en vertical si la suma de anchos cabe en {@link #ANCHO_VERTICAL_MAXIMO} y apaisada si no, ajustado a una página de ancho,
  *  bordes finos en todas las celdas (también las vacías, para escribir a boli) y cada columna tan ancha como su texto más largo. */
 final class HojaImprimible {
 
@@ -28,6 +29,10 @@ final class HojaImprimible {
     static final int MAX_HOJA = 31;
     /** Una columna no pasa de tantos caracteres de ancho: un texto más largo se corta al imprimir, no ensancha la hoja. */
     static final int ANCHO_MAXIMO = 60;
+    /** Spec «Qué revisar» §10.15: con la suma de los anchos (en caracteres) en este valor o menos, la hoja sale en vertical; si pasa, apaisada. */
+    static final int ANCHO_VERTICAL_MAXIMO = 90;
+    /** Un entero de 1 a 9 cifras, sin ceros a la izquierda, signo ni espacios: lo único que se escribe como número (un IMEI o «007» siguen siendo texto). */
+    private static final Pattern NUMERO = Pattern.compile("^(0|[1-9]\\d{0,8})$");
     /** Lo que Excel no admite en el nombre de una hoja. */
     private static final Pattern PROHIBIDOS = Pattern.compile("[\\[\\]:*?/\\\\]");
 
@@ -66,13 +71,18 @@ final class HojaImprimible {
             XSSFCellStyle cabecera = estilo(libro, true);
             XSSFCellStyle normal = estilo(libro, false);
             int[] anchos = new int[columnas.size()];
-            escribirFila(hoja.createRow(0), columnas, cabecera, anchos);
-            for (int i = 0; i < filas.size(); i++) escribirFila(hoja.createRow(i + 1), filas.get(i), normal, anchos);
-            for (int c = 0; c < anchos.length; c++) hoja.setColumnWidth(c, (Math.min(anchos[c], ANCHO_MAXIMO) + 2) * 256);
+            escribirFila(hoja.createRow(0), columnas, cabecera, anchos, false);
+            for (int i = 0; i < filas.size(); i++) escribirFila(hoja.createRow(i + 1), filas.get(i), normal, anchos, true);
+            int suma = 0;
+            for (int c = 0; c < anchos.length; c++) {
+                int ancho = Math.min(anchos[c], ANCHO_MAXIMO) + 2;
+                hoja.setColumnWidth(c, ancho * 256);
+                suma += ancho;
+            }
             hoja.setRepeatingRows(CellRangeAddress.valueOf("1:1"));
             hoja.setFitToPage(true);
             XSSFPrintSetup impresion = hoja.getPrintSetup();
-            impresion.setLandscape(true);
+            impresion.setLandscape(suma > ANCHO_VERTICAL_MAXIMO);
             impresion.setPaperSize(PrintSetup.A4_PAPERSIZE);
             impresion.setFitWidth((short) 1);
             impresion.setFitHeight((short) 0);
@@ -83,13 +93,14 @@ final class HojaImprimible {
         }
     }
 
-    /** Cada celda como texto (un IMEI no pasa a número) y con borde; vacía, en blanco pero con su borde. */
-    private static void escribirFila(XSSFRow fila, List<String> valores, XSSFCellStyle estilo, int[] anchos) {
+    /** Cada celda como texto (un IMEI no pasa a número) salvo, en las filas de datos, un entero corto, que va como número; con borde; vacía, en blanco pero con su borde. */
+    private static void escribirFila(XSSFRow fila, List<String> valores, XSSFCellStyle estilo, int[] anchos, boolean datos) {
         for (int c = 0; c < valores.size(); c++) {
             String valor = valores.get(c);
             XSSFCell celda = fila.createCell(c);
             celda.setCellStyle(estilo);
             if (valor.isEmpty()) celda.setBlank();
+            else if (datos && NUMERO.matcher(valor).matches()) celda.setCellValue(Long.parseLong(valor));
             else celda.setCellValue(valor);
             anchos[c] = Math.max(anchos[c], valor.length());
         }

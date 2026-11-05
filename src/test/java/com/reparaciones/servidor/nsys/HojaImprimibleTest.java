@@ -50,9 +50,9 @@ class HojaImprimibleTest {
         }
     }
 
-    @Test void preparadaParaImprimirApaisadaAUnaPaginaDeAnchoYConLaCabeceraEnCadaPagina() throws IOException {
+    @Test void preparadaParaImprimirAUnaPaginaDeAnchoYConLaCabeceraEnCadaPagina() throws IOException {
         XSSFSheet hoja = hoja(HojaImprimible.escribir("Revisar sin grado", COLUMNAS, FILAS));
-        assertTrue(hoja.getPrintSetup().getLandscape());
+        assertFalse(hoja.getPrintSetup().getLandscape(), "5 columnas que suman 68 caracteres: vertical");
         assertTrue(hoja.getFitToPage());
         assertEquals(1, hoja.getPrintSetup().getFitWidth());
         assertEquals(0, hoja.getPrintSetup().getFitHeight(), "tantas páginas de alto como haga falta");
@@ -113,5 +113,79 @@ class HojaImprimibleTest {
         assertEquals("La fila 1 lleva una celda nula", HojaImprimible.error("Hoja", List.of("A"), List.of(Arrays.asList((String) null))));
         assertEquals("Una celda de la fila 1 pasa de 200 caracteres", HojaImprimible.error("Hoja", List.of("A"), List.of(List.of("x".repeat(201)))));
         assertNull(HojaImprimible.error("Hoja", List.of("A"), List.of(List.of("x".repeat(200)))));
+    }
+
+    // ---- 0.9.25 spec §10.15: numeros y orientacion ----
+
+    private static XSSFCell celda(List<String> columnas, String valor) throws IOException {
+        return hoja(HojaImprimible.escribir("Hoja", columnas, List.of(Collections.nCopies(columnas.size(), valor)))).getRow(1).getCell(0);
+    }
+
+    @Test void unEnteroDeUnoANueveCifrasSeEscribeComoNumeroConSuBorde() throws IOException {
+        for (String t : List.of("0", "5", "20", "123456789")) {
+            XSSFCell c = celda(List.of("Sin grado"), t);
+            assertEquals(CellType.NUMERIC, c.getCellType(), t);
+            assertEquals(Double.parseDouble(t), c.getNumericCellValue(), t);
+            assertEquals(BorderStyle.THIN, c.getCellStyle().getBorderTop());
+            assertEquals(BorderStyle.THIN, c.getCellStyle().getBorderBottom());
+            assertEquals(BorderStyle.THIN, c.getCellStyle().getBorderLeft());
+            assertEquals(BorderStyle.THIN, c.getCellStyle().getBorderRight());
+            assertFalse(c.getCellStyle().getFont().getBold());
+        }
+    }
+
+    @Test void loQueNoEsUnEnteroLimpioSigueSiendoTexto() throws IOException {
+        for (String t : List.of("007", "350000000000101", "128 GB", "-3", "1 2", "1234567890", "+3", "1,5", "3.0", " 3")) {
+            assertEquals(CellType.STRING, celda(List.of("A"), t).getCellType(), "[" + t + "]");
+            assertEquals(t, celda(List.of("A"), t).getStringCellValue());
+        }
+        assertEquals(CellType.BLANK, celda(List.of("A"), "").getCellType());
+    }
+
+    @Test void laCabeceraSiempreEsTextoAunqueParezcaNumero() throws IOException {
+        XSSFSheet h = hoja(HojaImprimible.escribir("Hoja", List.of("2026", "B"), List.of(List.of("1", "2"))));
+        assertEquals(CellType.STRING, h.getRow(0).getCell(0).getCellType());
+        assertEquals("2026", h.getRow(0).getCell(0).getStringCellValue());
+        assertEquals(CellType.NUMERIC, h.getRow(1).getCell(0).getCellType());
+    }
+
+    @Test void revisarSinGradoDeCincoColumnasSaleEnVertical() throws IOException {
+        XSSFSheet h = hoja(HojaImprimible.escribir("Revisar sin grado",
+                List.of("Modelo", "Capacidad", "Color", "Sin grado", "Revisado"),
+                List.of(List.of("iPhone 15 Pro Max eSIM", "128 GB", "Titanio Desierto", "20", ""))));
+        assertFalse(h.getPrintSetup().getLandscape());
+        assertTrue(h.getFitToPage());
+        assertEquals(1, h.getPrintSetup().getFitWidth());
+        assertEquals(CellType.NUMERIC, h.getRow(1).getCell(3).getCellType());
+    }
+
+    @Test void laHojaAntiguaPorMovilDeSieteColumnasSaleApaisada() throws IOException {
+        XSSFSheet h = hoja(HojaImprimible.escribir("Por movil",
+                List.of("Modelo", "Capacidad", "Color", "IMEI", "Taller · Reparación", "Días en stock", "Revisado"),
+                List.of(List.of("iPhone 15 Pro Max eSIM", "128 GB", "Titanio Desierto", "350000000000101", "Taller · Reparación", "12", ""))));
+        assertTrue(h.getPrintSetup().getLandscape());
+    }
+
+    /** Columnas "x" repetidas para que la suma de anchos (texto + 2 por columna, tope 60 de texto) sea la pedida. */
+    private static boolean apaisada(int sumaCaracteres, int columnas) throws IOException {
+        int texto = sumaCaracteres - 2 * columnas;
+        List<String> cab = new ArrayList<>();
+        for (int i = 0; i < columnas; i++) {
+            int n = Math.min(texto, HojaImprimible.ANCHO_MAXIMO);
+            if (i == columnas - 1) n = texto;
+            cab.add("x".repeat(n));
+            texto -= n;
+        }
+        XSSFSheet h = hoja(HojaImprimible.escribir("Hoja", cab, List.of()));
+        int suma = 0;
+        for (int c = 0; c < columnas; c++) suma += h.getColumnWidth(c) / 256;
+        assertEquals(sumaCaracteres, suma);
+        return h.getPrintSetup().getLandscape();
+    }
+
+    @Test void conNoventaDeAnchoSigueVerticalYConNoventaYUnoSeApaisa() throws IOException {
+        assertEquals(90, HojaImprimible.ANCHO_VERTICAL_MAXIMO);
+        assertFalse(apaisada(90, 3));
+        assertTrue(apaisada(91, 3));
     }
 }
