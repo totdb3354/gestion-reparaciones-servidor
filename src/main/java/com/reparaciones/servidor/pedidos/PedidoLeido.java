@@ -11,7 +11,7 @@ public record PedidoLeido(Canal canal, String numero, String cliente, String pai
         unidades = List.copyOf(unidades);
     }
 
-    /** {@code motivoCierre}: RELEASED o ABONO (solo el Simulador); null si sigue abierta. */
+    /** {@code motivoCierre}: RELEASED, ABONO o REVENDIDO (los dos últimos, solo el Simulador); null si sigue abierta. */
     public record Unidad(int posicion, String sku, String imei, FuentePedidos imeiFuente, Integer imeiRef,
                          LocalDateTime imeiTecleadoEn, boolean sinPedidoConcreto, String otroOrderId, String motivoCierre) {}
 }

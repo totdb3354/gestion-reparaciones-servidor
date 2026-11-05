@@ -318,8 +318,9 @@ public final class CrucePedidos {
 
     /** El Simulador (spec §6.1; reventa tras un abono, decisión del usuario del 04/11). Se recorren las líneas por número de
      *  fila y cada IMEI tiene como mucho una unidad abierta: una venta (cualquier línea que no es un abono: X, E, NO, R1…) con
-     *  un IMEI sin unidad abierta crea una en su pedido; con unidad abierta, repite ese móvil (X → E): no es unidad y, si es de
-     *  otro pedido, su Order id va a {@code otroOrderId} (el primero). Un abono (una BB o una línea con cantidad negativa,
+     *  un IMEI sin unidad abierta crea una en su pedido; con unidad abierta, una E o una línea del mismo pedido repite ese
+     *  móvil (X → E): no es unidad y, si es de otro pedido, su Order id va a {@code otroOrderId} (el primero); cualquier otra
+     *  venta de otro pedido es una reventa ({@link #esReventa}): cierra la vieja (REVENDIDO) y crea otra. Un abono (una BB o una línea con cantidad negativa,
      *  {@link #esAbono}) cierra la unidad abierta de su IMEI, sea cual sea su SKU; si ese móvil se vuelve a vender, es otra
      *  unidad. Al final, la unidad que sigue abierta de un móvil en Released se cierra. Las líneas sin IMEI son unidades sin
      *  móvil. Una línea con un SKU que no conoce el maestro no cuenta para nada (si parece de teléfono, se apunta). La posición
@@ -345,8 +346,11 @@ public final class CrucePedidos {
             }
             UnidadSimulador previa = clave == null ? null : abierta.get(clave);
             if (previa != null) {
-                if (previa.otroOrderId == null && !Objects.equals(previa.linea.orderId(), f.orderId())) previa.otroOrderId = f.orderId();
-                continue;
+                if (!esReventa(previa, f)) {
+                    if (previa.otroOrderId == null && !Objects.equals(previa.linea.orderId(), f.orderId())) previa.otroOrderId = f.orderId();
+                    continue;
+                }
+                previa.motivoCierre = "REVENDIDO";
             }
             UnidadSimulador u = new UnidadSimulador(f, lineas.size());
             unidadesDe.computeIfAbsent(f.orderId(), k -> new ArrayList<>()).add(u);
@@ -372,6 +376,12 @@ public final class CrucePedidos {
      *  (medido el 05/11). */
     private static boolean esAbono(FilaSimulador f) {
         return "BB".equals(f.linea()) || f.cantidad() < 0;
+    }
+
+    /** X y NO son la venta y la E es otro apunte de esa venta (usuario, 05/11): una venta de otro pedido que no es E, con el
+     *  móvil aún abierto, es una venta nueva aunque no haya abono entre medias (el móvil volvió y ha vuelto a salir). */
+    private static boolean esReventa(UnidadSimulador previa, FilaSimulador f) {
+        return !"E".equals(f.linea()) && !Objects.equals(previa.linea.orderId(), f.orderId());
     }
 
     /** Los IMEI de las unidades abiertas del Simulador: esos móviles ya tienen pedido y sus filas de PEDIDOS 2026 no cuentan. Los

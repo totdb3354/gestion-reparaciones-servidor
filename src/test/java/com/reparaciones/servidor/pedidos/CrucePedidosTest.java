@@ -232,6 +232,28 @@ class CrucePedidosTest {
                 "una devolución no es un pedido, aunque su venta quede antes de lo leído");
     }
 
+    /** X y NO son la venta; la E es otro apunte de esa venta (usuario, 05/11). Una venta de otro pedido que no es E con el móvil
+     *  aún abierto es una venta nueva aunque no haya abono entre medias (26 casos en 4 meses, de 13 a 113 días después): la
+     *  vieja se cierra y la nueva es la pendiente. */
+    @Test void simuladorOtraVentaQueNoEsEDelMismoMovilEsUnaVentaNuevaAunqueNoHayaAbono() {
+        CrucePedidos.Resultado r = cruzar(List.of(), List.of(),
+                List.of(new FilaSimulador(10, "6470", "NO", LocalDate.of(2026, 9, 1), "TecnoSur", "i13128AzulA", 1, "350000000000022"),
+                        new FilaSimulador(20, "6471", "E", LocalDate.of(2026, 9, 20), "Móviles Levante SL", "i13128AzulA", 1, "350000000000022"),
+                        new FilaSimulador(30, "6472", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i13128AzulA", 1, "350000000000022"),
+                        new FilaSimulador(31, "6472", "X", LocalDate.of(2026, 10, 27), "TecnoSur", "i13128AzulA", 1, "350000000000022"),
+                        new FilaSimulador(40, "6473", "E", LocalDate.of(2026, 11, 3), "Móviles Levante SL", "i13128AzulA", 1, "350000000000022")),
+                Map.of());
+        PedidoLeido.Unidad vieja = pedido(r, "6470").unidades().get(0);
+        assertEquals("REVENDIDO", vieja.motivoCierre());
+        assertEquals("6471", vieja.otroOrderId(), "su E sigue siendo otro apunte de la misma venta");
+        List<PedidoLeido.Unidad> nuevas = pedido(r, "6472").unidades();
+        assertEquals(1, nuevas.size(), "la misma línea repetida en el mismo pedido no es otra venta");
+        assertNull(nuevas.get(0).motivoCierre());
+        assertEquals(30, nuevas.get(0).imeiRef());
+        assertEquals("6473", nuevas.get(0).otroOrderId(), "la E de después va con la venta nueva");
+        assertTrue(r.pedidos().stream().noneMatch(p -> p.numero().equals("6471") || p.numero().equals("6473")));
+    }
+
     private static PedidoShippyPro stockroom(String numero, int d, String sku) {
         return new PedidoShippyPro(numero, "200", dia(d), "Comprador " + numero, "DE", List.of(new PedidoShippyPro.Articulo(sku, 1)));
     }
