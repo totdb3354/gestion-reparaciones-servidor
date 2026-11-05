@@ -215,6 +215,23 @@ class CrucePedidosTest {
         assertEquals("350000000000019", pedido(r, "402-0000000-0000028").unidades().get(0).imei());
     }
 
+    /** Una venta NO se devuelve con otra línea NO de cantidad -1, no con una BB (medido el 05/11: 18 en un año): una cantidad
+     *  negativa es un abono, sea cual sea la línea. */
+    @Test void simuladorUnaLineaConCantidadNegativaEsUnAbonoAunqueNoSeaBb() {
+        CrucePedidos.Resultado r = cruzar(List.of(), List.of(),
+                List.of(new FilaSimulador(10, "6470", "NO", LocalDate.of(2026, 10, 20), "TecnoSur", "i13128AzulA", 1, "350000000000020"),
+                        new FilaSimulador(50, "6476", "NO", LocalDate.of(2026, 10, 22), "TecnoSur", "i13128AzulA", -1, "350000000000020"),
+                        new FilaSimulador(90, "6491", "R1", LocalDate.of(2026, 10, 27), "Móviles Levante SL", "i13128AzulA", 1, "350000000000020"),
+                        new FilaSimulador(95, "6492", "NO", LocalDate.of(2026, 10, 28), "TecnoSur", "i13128NegroA", -1, "350000000000021")),
+                Map.of());
+        PedidoLeido.Unidad devuelta = pedido(r, "6470").unidades().get(0);
+        assertEquals("ABONO", devuelta.motivoCierre());
+        assertNull(devuelta.otroOrderId(), "la devolución no es otra línea de la misma venta");
+        assertNull(pedido(r, "6491").unidades().get(0).motivoCierre(), "revendido: otra unidad abierta");
+        assertTrue(r.pedidos().stream().noneMatch(p -> p.numero().equals("6476") || p.numero().equals("6492")),
+                "una devolución no es un pedido, aunque su venta quede antes de lo leído");
+    }
+
     private static PedidoShippyPro stockroom(String numero, int d, String sku) {
         return new PedidoShippyPro(numero, "200", dia(d), "Comprador " + numero, "DE", List.of(new PedidoShippyPro.Articulo(sku, 1)));
     }

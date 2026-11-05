@@ -317,13 +317,14 @@ public final class CrucePedidos {
     // ---------------------------------------------------------------- Simulador
 
     /** El Simulador (spec §6.1; reventa tras un abono, decisión del usuario del 04/11). Se recorren las líneas por número de
-     *  fila y cada IMEI tiene como mucho una unidad abierta: una línea que no es BB con un IMEI sin unidad abierta crea una en
-     *  su pedido; con unidad abierta, repite ese móvil (X → E): no es unidad y, si es de otro pedido, su Order id va a
-     *  {@code otroOrderId} (el primero). Una BB cierra por abono la unidad abierta de su IMEI, sea cual sea su SKU; si ese
-     *  móvil se vuelve a vender, es otra unidad. Al final, la unidad que sigue abierta de un móvil en Released se cierra. Las
-     *  líneas sin IMEI son unidades sin móvil. Una línea con un SKU que no conoce el maestro no cuenta para nada (si parece de
-     *  teléfono, se apunta). La posición es la de la línea entre las del pedido que no son BB, sea unidad o no (ajuste 16). Un
-     *  pedido sin unidades no sale; su fecha es la de su línea más antigua. */
+     *  fila y cada IMEI tiene como mucho una unidad abierta: una venta (cualquier línea que no es un abono: X, E, NO, R1…) con
+     *  un IMEI sin unidad abierta crea una en su pedido; con unidad abierta, repite ese móvil (X → E): no es unidad y, si es de
+     *  otro pedido, su Order id va a {@code otroOrderId} (el primero). Un abono (una BB o una línea con cantidad negativa,
+     *  {@link #esAbono}) cierra la unidad abierta de su IMEI, sea cual sea su SKU; si ese móvil se vuelve a vender, es otra
+     *  unidad. Al final, la unidad que sigue abierta de un móvil en Released se cierra. Las líneas sin IMEI son unidades sin
+     *  móvil. Una línea con un SKU que no conoce el maestro no cuenta para nada (si parece de teléfono, se apunta). La posición
+     *  es la de la línea entre las del pedido que no son abonos, sea unidad o no (ajuste 16). Un pedido sin unidades no sale;
+     *  su fecha es la de su línea más antigua. */
     private static List<PedidoLeido> simulador(Entrada e, Set<String> desconocidos) {
         List<FilaSimulador> filas = e.simulador().stream().sorted(Comparator.comparingInt(FilaSimulador::fila)).toList();
         Map<String, List<FilaSimulador>> lineasDe = new LinkedHashMap<>();
@@ -331,7 +332,7 @@ public final class CrucePedidos {
         Map<String, UnidadSimulador> abierta = new HashMap<>();
         for (FilaSimulador f : filas) {
             String clave = f.imei() == null ? null : NsysDAO.claveCruce(f.imei());
-            if ("BB".equals(f.linea())) {
+            if (esAbono(f)) {
                 UnidadSimulador abonada = clave == null ? null : abierta.remove(clave);
                 if (abonada != null) abonada.motivoCierre = "ABONO";
                 continue;
@@ -365,6 +366,12 @@ public final class CrucePedidos {
                     unidades.stream().map(UnidadSimulador::unidad).toList()));
         });
         return pedidos;
+    }
+
+    /** Una BB, o cualquier línea con cantidad negativa: una venta NO se devuelve con otra línea NO de cantidad -1, no con una BB
+     *  (medido el 05/11). */
+    private static boolean esAbono(FilaSimulador f) {
+        return "BB".equals(f.linea()) || f.cantidad() < 0;
     }
 
     /** Los IMEI de las unidades abiertas del Simulador: esos móviles ya tienen pedido y sus filas de PEDIDOS 2026 no cuentan. Los
