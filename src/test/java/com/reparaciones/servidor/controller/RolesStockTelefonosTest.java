@@ -4,6 +4,7 @@ import com.reparaciones.servidor.UsuariosOperativosTestConfig;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.nsys.DescarteDAO;
+import com.reparaciones.servidor.nsys.VueltaIgnoradaDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.HechoDAO;
 import com.reparaciones.servidor.nsys.MovilNsys;
@@ -69,6 +70,7 @@ class RolesStockTelefonosTest {
     @MockBean TallerDAO tallerDao;
     @MockBean HechoDAO hechoDao;
     @MockBean DescarteDAO descarteDao;
+    @MockBean VueltaIgnoradaDAO ignoradoDao;
     @MockBean LogDAO logDao;
     /** «Revisado» es @Transactional y este test no tiene base de datos: sin esto no abre conexión. */
     @MockBean PlatformTransactionManager transactionManager;
