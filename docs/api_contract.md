@@ -41,6 +41,10 @@ de `model/` conservan su nombre.
   la izquierda va como número (lo demás, texto) y la hoja sale en vertical si la suma de anchos es 90 caracteres o menos, apaisada si pasa. No sabe nada de la lista. `400` con el motivo si la
   hoja está vacía, pasa de 31 caracteres, lleva `[ ] : * ? / \` o empieza o acaba con un apóstrofo; si no hay de 1 a 12 columnas o una no tiene nombre (o es solo espacios); si pasa
   de 5000 filas; si una fila no tiene tantas celdas como columnas o lleva una nula, o si un texto pasa de 200 caracteres.
+- Desde la 0.9.26, cada fila de «Cambio de color» (`FilaColorNsys` en `GET /api/stock-telefonos/por-pasar/tarjetas`) trae
+  `caja` (nullable, el último campo): la caja de NSYS del lote del móvil tal cual (`Nsys_movil.LOCATION`); `null` si no tiene.
+  La web la enseña en la columna «Caja» y la escribe en «⬇ Descargar cajas», cuyo Excel hace `POST
+  /api/stock-telefonos/que-revisar/excel`. La plantilla de color no cambia.
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
   del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.
