@@ -382,4 +382,22 @@ class TarjetasNsysTest {
                 Map.of(IMEI, esim(IMEI, "Azul", "n/a")), Map.of(), Map.of(IMEI, VueltaNsys.EN_EMPRESA), Map.of());
         assertTrue(sinGrado.get(0).esEsim());
     }
+
+    /** 0.9.26 (spec «cajas del cambio de color» §5.1): la fila lleva la caja de NSYS de su lote, tal cual; un lote sin caja (el
+     *  que deja la plantilla al subirla), null. */
+    @Test void laFilaDeColorLlevaLaCajaDeNsysDeSuLoteYSinCajaNull() {
+        TallerNsys.MovilPorPasar enCaja = porPasar(movil(IMEI, "Azul", "B"), vale("Rojo", "B", "Azul", null),
+                new ProductoNsys.Poner("Apple iPhone 13 128GB (PRODUCT)RED", false), vigente(1, IMEI, COLOR, "Rojo", "Azul"));
+        MovilNsys loteSinCaja = new MovilNsys(OTRO, "COLOR", "Apple iPhone 13 128GB Blue", "B", "InProcess", "", "Proveedor A",
+                LocalDate.of(2026, 10, 1), null, "i13128AzulB", "13", "13", "128GB", "Azul", "B", false, "En revisión", "Listos",
+                EstadoMovil.STOCK, HOY.minusDays(1), HOY.minusDays(1));
+        TallerNsys.MovilPorPasar sinCaja = porPasar(loteSinCaja, vale("Rojo", "B", "Azul", null),
+                new ProductoNsys.Poner("Apple iPhone 13 128GB (PRODUCT)RED", false), vigente(2, OTRO, COLOR, "Rojo", "Azul"));
+        List<FilaColorNsys> filas = TarjetasNsys.color(List.of(enCaja, sinCaja), Map.of());
+        assertEquals(List.of(IMEI, OTRO), filas.stream().map(FilaColorNsys::imeiSn).toList());
+        assertEquals("CAJA LISTOS", filas.get(0).caja());
+        assertNull(filas.get(1).caja());
+        assertNull(TarjetasNsys.caja(new MovilNsys(OTRO, "COLOR", null, null, "InProcess", null, null, null, null, null, null, null,
+                null, null, null, false, null, null, EstadoMovil.STOCK, HOY, HOY)), "sin LOCATION, null");
+    }
 }

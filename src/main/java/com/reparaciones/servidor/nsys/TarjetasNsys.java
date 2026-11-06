@@ -56,6 +56,12 @@ final class TarjetasNsys {
         return p.cambios().stream().filter(c -> c.dato() == dato).map(TallerNsys::porQue).toList();
     }
 
+    /** La caja de NSYS de un lote (0.9.26, spec «cajas del cambio de color» §5.1): tal cual la guarda el espejo (ya sin espacios a
+     *  los lados); null si no tiene. */
+    static String caja(MovilNsys m) {
+        return m.location() == null || m.location().isBlank() ? null : m.location();
+    }
+
     static List<FilaColorNsys> color(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
         return color(moviles, marcas, Map.of());
     }
@@ -80,7 +86,7 @@ final class TarjetasNsys {
             filas.add(new FilaColorNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), deNsys != null ? deNsys : m.color(),
                     colorA, m.goods(), m.grade(), poner == null ? null : poner.producto(), poner != null && poner.compruebalo(),
                     cambio(p, DatoTaller.GRADO).isPresent(), porQue(p, DatoTaller.COLOR), desde, h.por(), h.en(), h.volvio(),
-                    v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim()));
+                    v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim(), caja(m)));
         }
         filas.sort(Comparator.comparing(FilaColorNsys::desde).thenComparing(FilaColorNsys::imeiSn));
         return filas;

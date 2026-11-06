@@ -590,6 +590,8 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "StockTelefonosPeticionExcel", "hoja", "columnas", "filas");
         assertTrue(paths.path("/api/stock-telefonos/que-revisar/excel").path("post").path("responses").path("200").path("content")
                 .has("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), "el Excel responde un xlsx");
+        // 0.9.26 (spec «cajas del cambio de color» §5.1): la caja de NSYS de cada fila de «Cambio de color».
+        assertNullable(esquemas, "FilaColorNsys", "caja");
     }
 
     /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */
