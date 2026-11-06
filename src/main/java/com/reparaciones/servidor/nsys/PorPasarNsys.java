@@ -25,7 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
- *  importación y los descartes de «No está en NSYS» (pieza 3). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
+ *  importación y los descartes de «No está en NSYS» (pieza 3) y los ignorados de las filas ámbar (0.9.27). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
 @Service
 public class PorPasarNsys {
 
@@ -37,6 +37,8 @@ public class PorPasarNsys {
     static final int MAX_IMEI = 40;
     static final String ACCION_DESCARTAR = "DESCARTAR_ALTA_NSYS";
     static final String ACCION_DESHACER_DESCARTE = "DESHACER_DESCARTE_NSYS";
+    static final String ACCION_IGNORAR = "IGNORAR_VUELTA_NSYS";
+    static final String ACCION_DESHACER_IGNORADO = "DESHACER_IGNORAR_VUELTA_NSYS";
     /** El largo de Taller_descarte.MOTIVO. */
     static final int MAX_MOTIVO = 500;
 
@@ -294,6 +296,39 @@ public class PorPasarNsys {
         if (enNsys.isEmpty()) return;
         descarteDao.quitar(enNsys);
         log.info("NSYS: descartes de «No está en NSYS» quitados: {} (ya en NSYS)", enNsys.size());
+    }
+
+    /** «ignorar» de una fila ámbar (spec 0.9.27 §4.3): guarda el ignorado (o sustituye el que hubiera) y lo apunta en el registro de
+     *  actividad. No mira si el móvil está en ámbar, como «descartar»: en uno de la empresa no hace nada y lo quita el repaso.
+     *  READ COMMITTED, como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void ignorar(String imeiSn, int idUsu) {
+        String imei = imei(imeiSn);
+        ignoradoDao.ignorar(imei, idUsu, ahora());
+        logDao.insertar(idUsu, ACCION_IGNORAR, "IMEI: " + imei, null);
+    }
+
+    /** «deshacer» de «Ver ignorados»: quita el ignorado y, si había uno, lo apunta. READ COMMITTED, como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void deshacerIgnorado(String imeiSn, int idUsu) {
+        String imei = imei(imeiSn);
+        if (ignoradoDao.deshacer(imei) > 0) logDao.insertar(idUsu, ACCION_DESHACER_IGNORADO, "IMEI: " + imei, null);
+    }
+
+    /** Tras cada importación ACTUAL que acaba en OK (spec 0.9.27 §4.4): fuera los ignorados de los IMEI que NSYS vuelve a tener en
+     *  la empresa (su fila más reciente del espejo). Los superados por un trabajo nuevo se quedan (dan «Salió otra vez…»). Sin
+     *  ignorados no lee el espejo. */
+    public void repasarIgnorados() {
+        List<VueltaIgnorada> ignorados = ignoradoDao.todos();
+        if (ignorados.isEmpty()) return;
+        Map<String, MovilNsys> espejo = espejoDe(ignorados.stream().map(VueltaIgnorada::imeiSn).toList());
+        List<String> enEmpresa = ignorados.stream().map(VueltaIgnorada::imeiSn).filter(i -> {
+            MovilNsys m = espejo.get(NsysDAO.claveCruce(i));
+            return m != null && m.estado().enEmpresa();
+        }).toList();
+        if (enEmpresa.isEmpty()) return;
+        ignoradoDao.quitar(enEmpresa);
+        log.info("NSYS: ignorados de las listas quitados: {} (otra vez en la empresa)", enEmpresa.size());
     }
 
     /** Tras cada importación ACTUAL que acaba en OK (pieza 4 §5.2): las baterías recordadas de los móviles cuyo grado (lo que vale)

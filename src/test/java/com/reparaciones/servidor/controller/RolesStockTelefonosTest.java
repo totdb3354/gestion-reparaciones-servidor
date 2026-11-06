@@ -244,6 +244,27 @@ class RolesStockTelefonosTest {
                 .andExpect(status().isBadRequest());
     }
 
+    /** 0.9.27: «ignorar» y su «deshacer», con la misma guarda que el resto. */
+    @Test void elIgnoradoSoloParaSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"imeiSn\":\"350000000000002\"}";
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado")
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        verifyNoInteractions(ignoradoDao);
+
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", supertecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isNoContent());
+        verify(ignoradoDao).ignorar(eq("350000000000002"), eq(7), any());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isNoContent());
+        verify(ignoradoDao).deshacer("350000000000002");
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"imeiSn\":\" \"}")).andExpect(status().isBadRequest());
+    }
+
     /** 0.9.25: «Qué revisar» baja un Excel; misma guarda que el resto. */
     @Test void elExcelDeQueRevisarSoloParaSupertecnicoYAdmin() throws Exception {
         String cuerpo = "{\"hoja\":\"Revisar sin grado\",\"columnas\":[\"Modelo\"],\"filas\":[[\"iPhone 13\"]]}";

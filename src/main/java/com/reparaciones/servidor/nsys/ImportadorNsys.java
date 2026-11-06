@@ -189,6 +189,7 @@ public class ImportadorNsys {
             if (cerrarTaller()) {
                 repasarHechos(f.fecha());
                 repasarDescartes();
+                repasarIgnorados();
                 usarBaterias();
             }
             return true;
@@ -333,6 +334,17 @@ public class ImportadorNsys {
             porPasar.repasarDescartes();
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudieron repasar los descartes tras la importación", e);
+        }
+    }
+
+    /** Tras el repaso de los descartes, el de los ignorados (spec 0.9.27 §4.4): fuera los de IMEI que NSYS vuelve a tener en la
+     *  empresa. Con la misma condición (cierre bueno); si falla, se avisa en el registro del servidor y se repite con el siguiente
+     *  fichero. */
+    private void repasarIgnorados() {
+        try {
+            porPasar.repasarIgnorados();
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron repasar los ignorados tras la importación", e);
         }
     }
 

@@ -671,4 +671,53 @@ class PorPasarNsysTest {
         assertEquals(List.of("WARN NSYS: no se pudo usar la batería recordada de 350000000000001",
                 "INFO NSYS: baterías recordadas usadas: 1 (cambios de grado: 1)"), lineas);
     }
+
+    // ---------------------------------------------------------------- 0.9.27: ignorar, deshacer y repasar
+
+    @Test void ignorarGuardaQuienYCuandoYLoApunta() {
+        servicio.ignorar(" 350000000000002 ", 7);
+        verify(ignorados).ignorar("350000000000002", 7, AHORA);
+        verify(registro).insertar(7, "IGNORAR_VUELTA_NSYS", "IMEI: 350000000000002", null);
+    }
+
+    @Test void deshacerUnIgnoradoSoloSeApuntaSiHabiaUno() {
+        when(ignorados.deshacer("350000000000002")).thenReturn(1);
+        servicio.deshacerIgnorado("350000000000002", 7);
+        verify(registro).insertar(7, "DESHACER_IGNORAR_VUELTA_NSYS", "IMEI: 350000000000002", null);
+        servicio.deshacerIgnorado("350000000000003", 7);
+        verifyNoMoreInteractions(registro);
+    }
+
+    @Test void ignorarSinImeiOLargoEs400() {
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.ignorar(" ", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.deshacerIgnorado("3".repeat(41), 7)));
+        verifyNoInteractions(ignorados);
+    }
+
+    @Test void elRepasoQuitaLosIgnoradosQueNsysVuelveATenerEnLaEmpresa() {
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada("350000000000002", 7, "Supertécnico 1", AHORA),
+                new VueltaIgnorada("350000000000003", 7, "Supertécnico 1", AHORA)));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil("350000000000002", "Azul", "B"),
+                vendido("350000000000003", "Azul", "B", LocalDate.of(2026, 9, 14))));
+        servicio.repasarIgnorados();
+        verify(ignorados).quitar(List.of("350000000000002"));
+    }
+
+    @Test void sinIgnoradosElRepasoNoLeeElEspejo() {
+        servicio.repasarIgnorados();
+        verify(nsys, never()).porImeis(any());
+        verify(ignorados, never()).quitar(any());
+    }
+
+    @Test void unIgnoradoQueValeSaleDeSinGradoYVaEnIgnoradosComoRevisar() {
+        String vuelto = "350000000000002";
+        when(nsys.trabajosDesde(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(vuelto, "A20261025_9", AHORA.minusHours(2))));
+        when(nsys.porImeis(List.of(vuelto))).thenReturn(List.of(vendido(vuelto, "Azul", "n/a", LocalDate.of(2026, 9, 14))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(vuelto, "A20261022_101", TRABAJO, TRABAJO.plusHours(2))));
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", AHORA)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertTrue(t.sinGrado().isEmpty());
+        assertEquals(1, t.ignorados().size());
+        assertEquals(List.of("REVISAR"), t.ignorados().get(0).tarjetas());
+    }
 }
