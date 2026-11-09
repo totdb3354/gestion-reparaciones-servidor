@@ -13,6 +13,7 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS Taller_descarte;
+DROP TABLE IF EXISTS Taller_vuelta_ignorada;
 DROP TABLE IF EXISTS Taller_hecho;
 DROP TABLE IF EXISTS Taller_aviso;
 DROP TABLE IF EXISTS Taller_cambio;
@@ -620,4 +621,14 @@ CREATE TABLE Taller_descarte (
     MOTIVO   VARCHAR(500) NOT NULL,
     PRIMARY KEY (IMEI_SN),
     CONSTRAINT fk_taller_descarte_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+
+-- «ignorar» (0.9.27, spec §3): un vendido o de baja de NSYS que salía en ámbar en «Por pasar a NSYS» y no ha vuelto, con quién
+-- y cuándo. Vale mientras el taller no le haga un trabajo nuevo; se borra sola cuando NSYS lo vuelve a tener en la empresa.
+CREATE TABLE Taller_vuelta_ignorada (
+    IMEI_SN  VARCHAR(40)  NOT NULL COMMENT 'El IMEI del espejo, como Taller_hecho',
+    ID_USU   INT          NULL,
+    FECHA    DATETIME     NOT NULL COMMENT 'Cuándo se ignoró (hora de Madrid)',
+    PRIMARY KEY (IMEI_SN),
+    CONSTRAINT fk_taller_vuelta_ignorada_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );

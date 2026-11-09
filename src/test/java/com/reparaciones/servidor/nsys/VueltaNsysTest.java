@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.reparaciones.servidor.nsys.TallerDePrueba.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 /** Si un móvil sale en «Revisar a mano», Color y Grado (spec 0.9.22 pieza 4 §6): en la empresa, sí; vendido o de baja, solo si
  *  el taller lo ha trabajado un día posterior a la venta o a la baja. */
@@ -114,5 +114,53 @@ class VueltaNsysTest {
         Map<String, List<NsysDAO.TrabajoFecha>> mapa = VueltaNsys.trabajosPorImei(List.of(a1, r2, r3));
         assertEquals(List.of(a1, r3), mapa.get(IMEI));
         assertEquals(List.of(r2), mapa.get("F2LXABC123"));
+    }
+
+    // ---------------------------------------------------------------- 0.9.27: cuándo vale un ignorado (spec §4.1)
+
+    private static VueltaIgnorada ignorado(LocalDateTime en) {
+        return new VueltaIgnorada("350000000000123", 7, "Supertécnico 1", en);
+    }
+
+    private static NsysDAO.TrabajoFecha trabajo(String id, LocalDateTime asignado, LocalDateTime terminado) {
+        return new NsysDAO.TrabajoFecha("350000000000123", id, asignado, terminado);
+    }
+
+    @Test void unIgnoradoValeSiNoEsAnteriorALaUltimaAsignacion() {
+        LocalDateTime asignada = LocalDateTime.of(2026, 10, 28, 9, 10);
+        List<NsysDAO.TrabajoFecha> trabajos = List.of(trabajo("A20261028_5", asignada, LocalDateTime.of(2026, 10, 28, 12, 25)));
+        assertTrue(VueltaNsys.vale(ignorado(LocalDateTime.of(2026, 11, 6, 12, 31)), trabajos));
+        assertTrue(VueltaNsys.vale(ignorado(asignada), trabajos), "a la misma hora vale");
+        assertFalse(VueltaNsys.vale(ignorado(LocalDateTime.of(2026, 10, 28, 9, 0)), trabajos));
+    }
+
+    @Test void laFilaDelCierreDeUnaAsignacionNoSuperaElIgnorado() {
+        LocalDateTime ignoradoEn = LocalDateTime.of(2026, 11, 6, 12, 31);
+        List<NsysDAO.TrabajoFecha> trabajos = List.of(
+                trabajo("A20261106_3", LocalDateTime.of(2026, 11, 6, 11, 0), null),
+                trabajo("R20261106_9", LocalDateTime.of(2026, 11, 6, 13, 40), null));
+        assertTrue(VueltaNsys.vale(ignorado(ignoradoEn), trabajos));
+    }
+
+    @Test void unaAsignacionPosteriorLoSupera() {
+        List<NsysDAO.TrabajoFecha> trabajos = List.of(
+                trabajo("A20261028_5", LocalDateTime.of(2026, 10, 28, 9, 10), LocalDateTime.of(2026, 10, 28, 12, 25)),
+                trabajo("A20261107_2", LocalDateTime.of(2026, 11, 7, 10, 0), null));
+        assertFalse(VueltaNsys.vale(ignorado(LocalDateTime.of(2026, 11, 6, 12, 31)), trabajos));
+    }
+
+    @Test void sinAsignacionesMiraElUltimoTrabajoYSinTrabajosVale() {
+        LocalDateTime ignoradoEn = LocalDateTime.of(2026, 11, 6, 12, 31);
+        assertTrue(VueltaNsys.vale(ignorado(ignoradoEn), List.of()));
+        assertTrue(VueltaNsys.vale(ignorado(ignoradoEn), List.of(trabajo("R20261105_1", LocalDateTime.of(2026, 11, 5, 9, 0), null))));
+        assertFalse(VueltaNsys.vale(ignorado(ignoradoEn), List.of(trabajo("R20261107_1", LocalDateTime.of(2026, 11, 7, 9, 0), null))));
+    }
+
+    @Test void conIgnoradoAntesGuardaQuienYCuandoYLoDemasIgual() {
+        VueltaNsys v = new VueltaNsys(LocalDate.of(2026, 10, 26), null, LocalDateTime.of(2026, 10, 28, 9, 10));
+        VueltaNsys con = v.conIgnoradoAntes(ignorado(LocalDateTime.of(2026, 11, 6, 12, 31)));
+        assertEquals(new VueltaNsys(LocalDate.of(2026, 10, 26), null, LocalDateTime.of(2026, 10, 28, 9, 10), "Supertécnico 1",
+                LocalDateTime.of(2026, 11, 6, 12, 31)), con);
+        assertNull(v.ignoradoAntesEn());
     }
 }

@@ -25,6 +25,7 @@ DELETE FROM Reparacion;
 
 -- Descartes de «No está en NSYS» (0.9.22 pieza 3): van por IMEI, sin clave ajena al resto.
 DELETE FROM Taller_descarte;
+DELETE FROM Taller_vuelta_ignorada;
 
 -- 5a. SKU del taller (0.9.21): va por IMEI, así que cae con el espejo. Romper la auto-referencia antes de borrar.
 DELETE FROM Taller_hecho;

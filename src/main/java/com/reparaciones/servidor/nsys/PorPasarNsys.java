@@ -21,10 +21,11 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
- *  importación y los descartes de «No está en NSYS» (pieza 3). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
+ *  importación y los descartes de «No está en NSYS» (pieza 3) y los ignorados de las filas ámbar (0.9.27). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
 @Service
 public class PorPasarNsys {
 
@@ -36,6 +37,8 @@ public class PorPasarNsys {
     static final int MAX_IMEI = 40;
     static final String ACCION_DESCARTAR = "DESCARTAR_ALTA_NSYS";
     static final String ACCION_DESHACER_DESCARTE = "DESHACER_DESCARTE_NSYS";
+    static final String ACCION_IGNORAR = "IGNORAR_VUELTA_NSYS";
+    static final String ACCION_DESHACER_IGNORADO = "DESHACER_IGNORAR_VUELTA_NSYS";
     /** El largo de Taller_descarte.MOTIVO. */
     static final int MAX_MOTIVO = 500;
 
@@ -44,6 +47,7 @@ public class PorPasarNsys {
     private final NsysDAO nsysDao;
     private final HechoDAO hechoDao;
     private final DescarteDAO descarteDao;
+    private final VueltaIgnoradaDAO ignoradoDao;
     private final LogDAO logDao;
     /** Las baterías recordadas de cada móvil tras la importación, cada una en su transacción: otro bean, para que pase por el
      *  proxy de Spring (TallerReparaciones no depende de este: sin ciclo). */
@@ -52,52 +56,63 @@ public class PorPasarNsys {
 
     @Autowired
     public PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao,
-                        LogDAO logDao, TallerReparaciones reparaciones) {
-        this(taller, tallerDao, nsysDao, hechoDao, descarteDao, logDao, reparaciones, Clock.system(ImportadorNsys.MADRID));
+                        VueltaIgnoradaDAO ignoradoDao, LogDAO logDao, TallerReparaciones reparaciones) {
+        this(taller, tallerDao, nsysDao, hechoDao, descarteDao, ignoradoDao, logDao, reparaciones, Clock.system(ImportadorNsys.MADRID));
     }
 
-    PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao, LogDAO logDao,
-                 TallerReparaciones reparaciones, Clock clock) {
+    PorPasarNsys(TallerNsys taller, TallerDAO tallerDao, NsysDAO nsysDao, HechoDAO hechoDao, DescarteDAO descarteDao,
+                 VueltaIgnoradaDAO ignoradoDao, LogDAO logDao, TallerReparaciones reparaciones, Clock clock) {
         this.taller = taller;
         this.tallerDao = tallerDao;
         this.nsysDao = nsysDao;
         this.hechoDao = hechoDao;
         this.descarteDao = descarteDao;
+        this.ignoradoDao = ignoradoDao;
         this.logDao = logDao;
         this.reparaciones = reparaciones;
         this.clock = clock;
     }
 
-    /** Las cuatro tarjetas (§3), los descartados de «No está en NSYS» (pieza 3) y las filas «Sin grado en NSYS» (pieza 4), con una
-     *  lectura de cada cosa. */
+    /** Las cuatro tarjetas (§3), los descartados de «No está en NSYS» (pieza 3), las filas «Sin grado en NSYS» (pieza 4) y los
+     *  ignorados (0.9.27), con una lectura de cada cosa. */
     public TarjetasPorPasar tarjetas() {
-        Salen salen = movilesQueSalen();
+        Leidos leidos = new Leidos();
+        Salen salen = movilesQueSalen(leidos);
         Map<String, HechoTaller> marcas = TarjetasNsys.porClave(hechoDao.todas());
         List<AvisoTaller> avisos = tallerDao.avisosPorRevisar();
         List<AltaTaller> altas = altas();
         Map<String, DescarteTaller> descartes = descartes(altas);
+        Partido<FilaRevisarNsys> revisar = revisar(avisos, leidos);
+        Partido<FilaSinGradoNsys> sinGrado = sinGrado(leidos);
+        TarjetasNsys.Ignorados ignorados = new TarjetasNsys.Ignorados(leidos::ignorados);
+        ignorados.color(TarjetasNsys.color(salen.ignorados(), marcas, salen.ignoradas()));
+        ignorados.grado(TarjetasNsys.grado(salen.ignorados(), marcas, salen.ignoradas()));
+        ignorados.revisar(revisar.ignoradas());
+        ignorados.sinGrado(sinGrado.ignoradas());
         return new TarjetasPorPasar(TarjetasNsys.color(salen.moviles(), marcas, salen.vueltas()),
                 TarjetasNsys.grado(salen.moviles(), marcas, salen.vueltas()), TarjetasNsys.altas(altas, marcas, descartes),
-                revisar(avisos), TarjetasNsys.descartadas(altas, descartes), sinGrado());
+                revisar.salen(), TarjetasNsys.descartadas(altas, descartes), sinGrado.salen(), ignorados.filas());
     }
 
     /** «Sin grado en NSYS» (pieza 4 §4.1): los trabajos desde el 22/10 12:49 (una consulta) y, solo si hay, la fila más reciente
      *  del espejo de sus IMEI y sus cambios vigentes; las vueltas y las baterías recordadas, solo de los que siguen «como n/a» (casi
      *  todos los demás acaban con letra y vendidos: sus trabajos no hacen falta). */
-    List<FilaSinGradoNsys> sinGrado() {
+    private Partido<FilaSinGradoNsys> sinGrado(Leidos leidos) {
         List<NsysDAO.TrabajoFecha> trabajos = nsysDao.trabajosDesde(TarjetasNsys.DESDE_SIN_GRADO);
-        if (trabajos.isEmpty()) return List.of();
+        if (trabajos.isEmpty()) return Partido.nada();
         Map<String, List<NsysDAO.TrabajoFecha>> porImei = new LinkedHashMap<>();
         for (NsysDAO.TrabajoFecha t : trabajos) porImei.computeIfAbsent(NsysDAO.claveCruce(t.imei()), k -> new ArrayList<>()).add(t);
         Map<String, MovilNsys> espejo = espejoDe(trabajos.stream().map(NsysDAO.TrabajoFecha::imei).toList());
-        if (espejo.isEmpty()) return List.of();
+        if (espejo.isEmpty()) return Partido.nada();
         Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(tallerDao.vigentes(imeis(espejo)));
         Map<String, MovilNsys> sinLetra = TarjetasNsys.sinLetra(espejo, vigentes);
-        if (sinLetra.isEmpty()) return List.of();
+        if (sinLetra.isEmpty()) return Partido.nada();
         Map<String, List<BateriaRecordada>> baterias = new HashMap<>();
         for (BateriaRecordada b : tallerDao.bateriasRecordadas(imeis(sinLetra)))
             baterias.computeIfAbsent(NsysDAO.claveCruce(b.imeiSn()), k -> new ArrayList<>()).add(b);
-        return TarjetasNsys.sinGrado(porImei, sinLetra, vigentes, vueltas(sinLetra.values()), baterias);
+        Vueltas v = vueltas(sinLetra.values(), leidos);
+        return new Partido<>(TarjetasNsys.sinGrado(porImei, sinLetra, vigentes, v.salen(), baterias),
+                TarjetasNsys.sinGrado(porImei, sinLetra, vigentes, v.ignoradas(), baterias));
     }
 
     /** Los IMEI (como los escribe el espejo) de unas filas del espejo. */
@@ -110,47 +125,84 @@ public class PorPasarNsys {
         return altas.isEmpty() ? Map.of() : TarjetasNsys.descartesPorClave(descarteDao.todos());
     }
 
-    /** Los móviles de «Cambio de color» y «Cambio de grado» con su vuelta (pieza 4 §6). */
-    private record Salen(List<TallerNsys.MovilPorPasar> moviles, Map<String, VueltaNsys> vueltas) {}
+    /** Los ignorados de una petición por clave de cruce, leídos una vez y solo si hace falta (spec 0.9.27 §4.1). */
+    private final class Leidos {
+        private Map<String, VueltaIgnorada> ignorados;
 
-    /** Los de «Por pasar a NSYS» que NSYS tiene en la empresa y los vendidos o de baja que han vuelto (pieza 4 §6). Un vendido o
-     *  de baja que no ha vuelto no se vuelve a subir (sería stock que no hay) ni se le cambia el grado; su cambio sigue vigente y,
-     *  si vuelve, sale otra vez solo. */
-    private Salen movilesQueSalen() {
-        List<TallerNsys.MovilPorPasar> todos = taller.movilesPorPasar();
-        Map<String, VueltaNsys> vueltas = vueltas(todos.stream().map(TallerNsys.MovilPorPasar::movil).toList());
-        return new Salen(todos.stream().filter(p -> vueltas.containsKey(NsysDAO.claveCruce(p.movil().imeiSn()))).toList(), vueltas);
+        Map<String, VueltaIgnorada> ignorados() {
+            if (ignorados == null) ignorados = TarjetasNsys.ignoradosPorClave(ignoradoDao.todos());
+            return ignorados;
+        }
     }
 
-    /** La vuelta de cada móvil que sale, por clave de cruce (pieza 4 §6): los de la empresa sin leer nada; los vendidos o de baja,
-     *  con sus trabajos (una consulta, solo si hay alguno). Un vendido o de baja que no ha vuelto no está. */
-    Map<String, VueltaNsys> vueltas(Collection<MovilNsys> moviles) {
-        Map<String, VueltaNsys> vueltas = new HashMap<>();
+    /** Las vueltas de unos móviles (pieza 4 §6), por clave de cruce: {@code salen} (en la empresa, los que han vuelto sin
+     *  ignorado que valga y los de ignorado superado, con quién y cuándo) e {@code ignoradas} (los que han vuelto con un ignorado
+     *  que vale: no salen; 0.9.27 §4.1). */
+    record Vueltas(Map<String, VueltaNsys> salen, Map<String, VueltaNsys> ignoradas) {}
+
+    /** Unas filas partidas en las que salen y las de los ignorados (para «Ver ignorados»). */
+    private record Partido<T>(List<T> salen, List<T> ignoradas) {
+        static <T> Partido<T> nada() {
+            return new Partido<>(List.of(), List.of());
+        }
+    }
+
+    /** Los móviles de «Cambio de color» y «Cambio de grado» que salen, con su vuelta (pieza 4 §6), y los ignorados con la suya. */
+    private record Salen(List<TallerNsys.MovilPorPasar> moviles, Map<String, VueltaNsys> vueltas,
+                         List<TallerNsys.MovilPorPasar> ignorados, Map<String, VueltaNsys> ignoradas) {}
+
+    /** Los de «Por pasar a NSYS» que NSYS tiene en la empresa y los vendidos o de baja que han vuelto (pieza 4 §6) sin un ignorado
+     *  que valga (0.9.27); aparte, los ignorados. Un vendido o de baja que no ha vuelto no se vuelve a subir (sería stock que no
+     *  hay) ni se le cambia el grado; su cambio sigue vigente y, si vuelve, sale otra vez solo. */
+    private Salen movilesQueSalen(Leidos leidos) {
+        List<TallerNsys.MovilPorPasar> todos = taller.movilesPorPasar();
+        Vueltas v = vueltas(todos.stream().map(TallerNsys.MovilPorPasar::movil).toList(), leidos);
+        return new Salen(todos.stream().filter(p -> v.salen().containsKey(NsysDAO.claveCruce(p.movil().imeiSn()))).toList(), v.salen(),
+                todos.stream().filter(p -> v.ignoradas().containsKey(NsysDAO.claveCruce(p.movil().imeiSn()))).toList(), v.ignoradas());
+    }
+
+    private Salen movilesQueSalen() {
+        return movilesQueSalen(new Leidos());
+    }
+
+    /** La vuelta de cada móvil, por clave de cruce (pieza 4 §6): los de la empresa sin leer nada; los vendidos o de baja, con sus
+     *  trabajos (una consulta, solo si hay alguno) y, solo si alguno ha vuelto, los ignorados. Un vendido o de baja que no ha
+     *  vuelto no está. */
+    private Vueltas vueltas(Collection<MovilNsys> moviles, Leidos leidos) {
+        Map<String, VueltaNsys> salen = new HashMap<>();
+        Map<String, VueltaNsys> ignoradas = new HashMap<>();
         List<MovilNsys> fuera = new ArrayList<>();
         for (MovilNsys m : moviles) {
-            if (m.estado().enEmpresa()) vueltas.put(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
+            if (m.estado().enEmpresa()) salen.put(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
             else fuera.add(m);
         }
-        if (fuera.isEmpty()) return vueltas;
+        if (fuera.isEmpty()) return new Vueltas(salen, ignoradas);
         Map<String, List<NsysDAO.TrabajoFecha>> trabajos = VueltaNsys.trabajosPorImei(
                 nsysDao.trabajosDe(fuera.stream().map(MovilNsys::imeiSn).toList()));
         for (MovilNsys m : fuera) {
             String clave = NsysDAO.claveCruce(m.imeiSn());
-            VueltaNsys.de(m, trabajos.getOrDefault(clave, List.of())).ifPresent(v -> vueltas.put(clave, v));
+            List<NsysDAO.TrabajoFecha> delImei = trabajos.getOrDefault(clave, List.of());
+            Optional<VueltaNsys> v = VueltaNsys.de(m, delImei);
+            if (v.isEmpty()) continue;
+            VueltaIgnorada i = leidos.ignorados().get(clave);
+            if (i == null) salen.put(clave, v.get());
+            else if (VueltaNsys.vale(i, delImei)) ignoradas.put(clave, v.get());
+            else salen.put(clave, v.get().conIgnoradoAntes(i));
         }
-        return vueltas;
+        return new Vueltas(salen, ignoradas);
     }
 
-    /** «Revisar a mano»: los avisos de móviles que salen (en la empresa o que han vuelto; uno que ya no está en el espejo, como
-     *  antes), con su vuelta. */
-    private List<FilaRevisarNsys> revisar(List<AvisoTaller> avisos) {
+    /** «Revisar a mano»: los avisos de móviles que salen (en la empresa o que han vuelto sin ignorado que valga; uno que ya no está
+     *  en el espejo, como antes), con su vuelta; aparte, los de los ignorados. */
+    private Partido<FilaRevisarNsys> revisar(List<AvisoTaller> avisos, Leidos leidos) {
         Map<String, MovilNsys> espejo = espejo(avisos);
-        Map<String, VueltaNsys> vueltas = vueltas(espejo.values());
+        Vueltas v = vueltas(espejo.values(), leidos);
         List<AvisoTaller> salen = avisos.stream().filter(a -> {
             String clave = NsysDAO.claveCruce(a.imeiSn());
-            return !espejo.containsKey(clave) || vueltas.containsKey(clave);
+            return !espejo.containsKey(clave) || v.salen().containsKey(clave);
         }).toList();
-        return TarjetasNsys.revisar(salen, espejo, vueltas);
+        List<AvisoTaller> ignoradas = avisos.stream().filter(a -> v.ignoradas().containsKey(NsysDAO.claveCruce(a.imeiSn()))).toList();
+        return new Partido<>(TarjetasNsys.revisar(salen, espejo, v.salen()), TarjetasNsys.revisar(ignoradas, espejo, v.ignoradas()));
     }
 
     /** «No está en NSYS» (§3.4): los IMEI del taller que no están en el espejo, cruzados en Java por claveCruce (las tablas tienen
@@ -236,6 +288,39 @@ public class PorPasarNsys {
         if (enNsys.isEmpty()) return;
         descarteDao.quitar(enNsys);
         log.info("NSYS: descartes de «No está en NSYS» quitados: {} (ya en NSYS)", enNsys.size());
+    }
+
+    /** «ignorar» de una fila ámbar (spec 0.9.27 §4.3): guarda el ignorado (o sustituye el que hubiera) y lo apunta en el registro de
+     *  actividad. No mira si el móvil está en ámbar, como «descartar»: en uno de la empresa no hace nada y lo quita el repaso.
+     *  READ COMMITTED, como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void ignorar(String imeiSn, int idUsu) {
+        String imei = imei(imeiSn);
+        ignoradoDao.ignorar(imei, idUsu, ahora());
+        logDao.insertar(idUsu, ACCION_IGNORAR, "IMEI: " + imei, null);
+    }
+
+    /** «deshacer» de «Ver ignorados»: quita el ignorado y, si había uno, lo apunta. READ COMMITTED, como «Revisado». */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void deshacerIgnorado(String imeiSn, int idUsu) {
+        String imei = imei(imeiSn);
+        if (ignoradoDao.deshacer(imei) > 0) logDao.insertar(idUsu, ACCION_DESHACER_IGNORADO, "IMEI: " + imei, null);
+    }
+
+    /** Tras cada importación ACTUAL que acaba en OK (spec 0.9.27 §4.4): fuera los ignorados de los IMEI que NSYS vuelve a tener en
+     *  la empresa (su fila más reciente del espejo). Los superados por un trabajo nuevo se quedan (dan «Salió otra vez…»). Sin
+     *  ignorados no lee el espejo. */
+    public void repasarIgnorados() {
+        List<VueltaIgnorada> ignorados = ignoradoDao.todos();
+        if (ignorados.isEmpty()) return;
+        Map<String, MovilNsys> espejo = espejoDe(ignorados.stream().map(VueltaIgnorada::imeiSn).toList());
+        List<String> enEmpresa = ignorados.stream().map(VueltaIgnorada::imeiSn).filter(i -> {
+            MovilNsys m = espejo.get(NsysDAO.claveCruce(i));
+            return m != null && m.estado().enEmpresa();
+        }).toList();
+        if (enEmpresa.isEmpty()) return;
+        ignoradoDao.quitar(enEmpresa);
+        log.info("NSYS: ignorados de las listas quitados: {} (otra vez en la empresa)", enEmpresa.size());
     }
 
     /** Tras cada importación ACTUAL que acaba en OK (pieza 4 §5.2): las baterías recordadas de los móviles cuyo grado (lo que vale)

@@ -10,11 +10,24 @@ import java.time.LocalDateTime;
  *  ID, su asignación en hora de Madrid y su {@code categoria}: REPARACION, GLASS o PULIDO), la batería recordada (su R…, si es
  *  nueva y cuándo; null sin ninguna) y, si es un vendido o de baja que ha vuelto, el día de la venta o de la baja y desde cuándo lo
  *  tiene el taller (null en la empresa). Sale hasta que tenga grado (sin «Revisado»). {@code esEsim} (0.9.24): NSYS escribe
- *  «eSIM» en el producto. */
+ *  «eSIM» en el producto. Desde la 0.9.27, {@code ignoradoAntesPor} e {@code ignoradoAntesEn}: quién y cuándo lo ignoraron, si un trabajo nuevo
+ *  lo superó (null si no). */
 public record FilaSinGradoNsys(String imeiSn, @Schema(nullable = true) String modelo,
                                @Schema(nullable = true) String modeloMaestro, @Schema(nullable = true) String capacidad,
                                @Schema(nullable = true) String gradoNsys, String ultimoTrabajo, LocalDateTime ultimoTrabajoEn,
                                String categoria, @Schema(nullable = true) String bateriaIdRep,
                                @Schema(nullable = true) Boolean bateriaNueva, @Schema(nullable = true) LocalDateTime bateriaEn,
                                @Schema(nullable = true) LocalDate vendidoEn, @Schema(nullable = true) LocalDate bajaEn,
-                               @Schema(nullable = true) LocalDateTime vueltoDesde, boolean esEsim) {}
+                               @Schema(nullable = true) LocalDateTime vueltoDesde, boolean esEsim,
+                               @Schema(nullable = true) String ignoradoAntesPor,
+                               @Schema(nullable = true) LocalDateTime ignoradoAntesEn) {
+
+    /** Sin ignorado superado (como hasta la 0.9.26). */
+    public FilaSinGradoNsys(String imeiSn, String modelo, String modeloMaestro, String capacidad, String gradoNsys,
+                            String ultimoTrabajo, LocalDateTime ultimoTrabajoEn, String categoria, String bateriaIdRep,
+                            Boolean bateriaNueva, LocalDateTime bateriaEn, LocalDate vendidoEn, LocalDate bajaEn,
+                            LocalDateTime vueltoDesde, boolean esEsim) {
+        this(imeiSn, modelo, modeloMaestro, capacidad, gradoNsys, ultimoTrabajo, ultimoTrabajoEn, categoria, bateriaIdRep,
+                bateriaNueva, bateriaEn, vendidoEn, bajaEn, vueltoDesde, esEsim, null, null);
+    }
+}

@@ -400,4 +400,38 @@ class TarjetasNsysTest {
         assertNull(TarjetasNsys.caja(new MovilNsys(OTRO, "COLOR", null, null, "InProcess", null, null, null, null, null, null, null,
                 null, null, null, false, null, null, EstadoMovil.STOCK, HOY, HOY)), "sin LOCATION, null");
     }
+
+    // ---------------------------------------------------------------- 0.9.27: «Ver ignorados»
+
+    @Test void losIgnoradosJuntanUnaFilaPorMovilConSusTarjetasEnOrden() {
+        LocalDateTime antes = LocalDateTime.of(2026, 11, 5, 9, 0);
+        LocalDateTime despues = LocalDateTime.of(2026, 11, 6, 12, 31);
+        Map<String, VueltaIgnorada> ignorados = Map.of(
+                "350000000000123", new VueltaIgnorada("350000000000123", 7, "Supertécnico 1", despues),
+                "350000000000149", new VueltaIgnorada("350000000000149", 7, null, antes));
+        int[] lecturas = {0};
+        TarjetasNsys.Ignorados ig = new TarjetasNsys.Ignorados(() -> { lecturas[0]++; return ignorados; });
+        assertTrue(ig.filas().isEmpty());
+        assertEquals(0, lecturas[0], "sin filas no se leen los ignorados");
+        FilaRevisarNsys revisar = new FilaRevisarNsys(1, "350000000000123", "15", "15", "256GB", "SIN_COLOR", null, "COLOR", null,
+                null, null, "R20261028_82", "Técnico 2", despues.minusDays(9), LocalDate.of(2026, 10, 26), null,
+                LocalDateTime.of(2026, 10, 28, 9, 10), true);
+        FilaGradoNsys grado = new FilaGradoNsys("350000000000123", "15", "15", "256GB", "n/a", "A100", "Apple iPhone 15 eSIM 256GB Pink",
+                true, List.of(), despues.minusDays(9), null, null, null, LocalDate.of(2026, 10, 26), null,
+                LocalDateTime.of(2026, 10, 28, 9, 10), true);
+        FilaGradoNsys baja = new FilaGradoNsys("350000000000149", "12", "12", "64GB", "B", "A", "Apple iPhone 12 64GB Black",
+                false, List.of(), antes.minusDays(16), null, null, null, null, LocalDate.of(2026, 10, 15),
+                LocalDateTime.of(2026, 10, 20, 10, 2), false);
+        ig.revisar(List.of(revisar));
+        ig.grado(List.of(grado, baja));
+        List<FilaIgnoradaNsys> filas = ig.filas();
+        assertEquals(List.of("350000000000123", "350000000000149"), filas.stream().map(FilaIgnoradaNsys::imeiSn).toList());
+        assertEquals(List.of("GRADO", "REVISAR"), filas.get(0).tarjetas());
+        assertEquals("Supertécnico 1", filas.get(0).ignoradoPor());
+        assertEquals(LocalDate.of(2026, 10, 26), filas.get(0).vendidoEn());
+        assertTrue(filas.get(0).esEsim());
+        assertEquals(List.of("GRADO"), filas.get(1).tarjetas());
+        assertNull(filas.get(1).ignoradoPor());
+        assertEquals(LocalDate.of(2026, 10, 15), filas.get(1).bajaEn());
+    }
 }
