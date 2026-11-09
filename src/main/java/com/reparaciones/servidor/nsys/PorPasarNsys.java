@@ -97,10 +97,6 @@ public class PorPasarNsys {
     /** «Sin grado en NSYS» (pieza 4 §4.1): los trabajos desde el 22/10 12:49 (una consulta) y, solo si hay, la fila más reciente
      *  del espejo de sus IMEI y sus cambios vigentes; las vueltas y las baterías recordadas, solo de los que siguen «como n/a» (casi
      *  todos los demás acaban con letra y vendidos: sus trabajos no hacen falta). */
-    List<FilaSinGradoNsys> sinGrado() {
-        return sinGrado(new Leidos()).salen();
-    }
-
     private Partido<FilaSinGradoNsys> sinGrado(Leidos leidos) {
         List<NsysDAO.TrabajoFecha> trabajos = nsysDao.trabajosDesde(TarjetasNsys.DESDE_SIN_GRADO);
         if (trabajos.isEmpty()) return Partido.nada();
@@ -167,10 +163,6 @@ public class PorPasarNsys {
 
     private Salen movilesQueSalen() {
         return movilesQueSalen(new Leidos());
-    }
-
-    Vueltas vueltas(Collection<MovilNsys> moviles) {
-        return vueltas(moviles, new Leidos());
     }
 
     /** La vuelta de cada móvil, por clave de cruce (pieza 4 §6): los de la empresa sin leer nada; los vendidos o de baja, con sus
