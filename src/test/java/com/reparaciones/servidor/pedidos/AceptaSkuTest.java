@@ -91,4 +91,11 @@ class AceptaSkuTest {
 
         assertNull(new AceptaSku(List.of(soloAmazon)).para(Canal.AMAZON, "i14256AzulA"));
     }
+
+    @Test void ultramarinoPideLoMismoQueAzulYSeBuscaEnElMaestroComoAzul() {
+        AceptaSku acepta = new AceptaSku(List.of(producto("Azul", "A", "i16128AzulA", null, null, null)));
+        assertNotNull(acepta.para(Canal.SIMULADOR, "i16128UltramarinoA"));
+        assertTrue(acepta.para(Canal.SIMULADOR, "i16128UltramarinoA").acepta("i16128AzulA"));
+        assertTrue(AceptaSku.conVariantes(List.of("i16128UltramarinoA")).containsAll(List.of("i16128AzulA", "i16128AzulB")));
+    }
 }

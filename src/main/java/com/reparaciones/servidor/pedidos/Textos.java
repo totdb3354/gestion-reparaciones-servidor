@@ -13,6 +13,7 @@ public final class Textos {
     private static final Pattern MARCAS = Pattern.compile("\\p{M}+");
     private static final Pattern ESPACIOS = Pattern.compile("\\s+");
     private static final Pattern QUINCE_CIFRAS = Pattern.compile("\\d{15}");
+    private static final Pattern ULTRAMARINO = Pattern.compile("(?i)ultramarino");
     private static final Pattern TELEFONO = Pattern.compile("^[iI]\\d.*");
 
     private Textos() {}
@@ -25,10 +26,18 @@ public final class Textos {
         return s.isEmpty() ? null : s;
     }
 
-    /** Un SKU para comparar: sin espacios a los lados y en minúsculas. null si queda vacío. */
+    /** Un SKU para comparar: sin espacios a los lados, en minúsculas y con el color como lo llama el maestro
+     *  ({@link #equivalente}). null si queda vacío. */
     public static String sku(String sku) {
         if (sku == null || sku.isBlank()) return null;
-        return sku.strip().toLowerCase(Locale.ROOT);
+        return equivalente(sku.strip()).toLowerCase(Locale.ROOT);
+    }
+
+    /** El SKU con el color como lo llama el maestro. El único sinónimo es «Ultramarino», que en las hojas se teclea así y el
+     *  maestro llama «Azul» (el mismo, y el único, del verificador de SKU del bot de stock). Solo se añade otro si sale de
+     *  verdad en las hojas: cada sinónimo de más hace la comparación menos estricta. Lo demás no cambia. */
+    public static String equivalente(String sku) {
+        return sku == null ? null : ULTRAMARINO.matcher(sku).replaceAll("Azul");
     }
 
     /** Un IMEI de 15 cifras, venga como texto, como número o como celda de una hoja (JsonNode); null si no lo es

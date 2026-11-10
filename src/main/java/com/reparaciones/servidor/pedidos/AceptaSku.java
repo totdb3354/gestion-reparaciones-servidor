@@ -47,14 +47,16 @@ public final class AceptaSku {
         return new Aceptacion(productos, b);
     }
 
-    /** Los SKU más sus variantes B (los que acaban en «A»), para cargar del maestro todo lo que puede hacer falta. */
+    /** Los SKU más sus variantes B (los que acaban en «A»), para cargar del maestro todo lo que puede hacer falta. Cada uno va
+     *  también con el color como lo llama el maestro ({@link Textos#equivalente}), que es como está guardado. */
     public static Set<String> conVariantes(Collection<String> skus) {
         Set<String> todos = new LinkedHashSet<>();
         for (String sku : skus) {
             if (sku == null || sku.isBlank()) continue;
-            String s = sku.strip();
-            todos.add(s);
-            if (s.endsWith("A") || s.endsWith("a")) todos.add(s.substring(0, s.length() - 1) + "B");
+            for (String s : List.of(sku.strip(), Textos.equivalente(sku.strip()))) {
+                todos.add(s);
+                if (s.endsWith("A") || s.endsWith("a")) todos.add(s.substring(0, s.length() - 1) + "B");
+            }
         }
         return todos;
     }

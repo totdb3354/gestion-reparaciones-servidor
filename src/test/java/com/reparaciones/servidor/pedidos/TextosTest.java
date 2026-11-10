@@ -38,4 +38,12 @@ class TextosTest {
         assertEquals("i13128azula", Textos.sku(" i13128AzulA "));
         assertNull(Textos.sku(""));
     }
+
+    /** El unico sinonimo de color, como el verificador de SKU del bot: en las hojas se teclea «Ultramarino» y el maestro lo llama «Azul». */
+    @Test void ultramarinoSeComparaComoAzul() {
+        assertEquals("i16esim128azula", Textos.sku("i16eSIM128UltramarinoA"));
+        assertEquals("i16plusesim256azula100", Textos.sku(" i16Plusesim256ULTRAMARINOA100 "));
+        assertEquals("i16eSIM128AzulA", Textos.equivalente("i16eSIM128UltramarinoA"));
+        assertEquals("i13128VerdeA", Textos.equivalente("i13128VerdeA"));
+    }
 }
