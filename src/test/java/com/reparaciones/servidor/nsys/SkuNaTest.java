@@ -58,6 +58,8 @@ class SkuNaTest {
     @Test void unSkuQueNoCabeEnLaColumnaNoSeCalcula() {
         String largo = "i13128" + "A".repeat(AnchosNsys.SKU - 7);            // 59 caracteres: con «NA» son 61
         assertNull(SkuNa.calculado(fila("128GB", null, largo, false), "n/a"));
+        String justo = "i13128" + "A".repeat(AnchosNsys.SKU - 8);            // 58 caracteres: con «NA» son 60, cabe
+        assertEquals(justo + "NA", SkuNa.calculado(fila("128GB", null, justo, false), "n/a"));
     }
 
     @Test void mandaElSkuDelMaestro() {

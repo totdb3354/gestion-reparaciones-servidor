@@ -361,6 +361,20 @@ class ComparadorTest {
         assertEquals("n/a", m.grade());
     }
 
+    @Test void siCambiaElSkuYTambienAlgoDeNsysCambiadoSiSeMueve() {
+        Traductor sinSkuSinGrado = new Traductor(
+                List.of(new ProductoMaestro(Normalizacion.clave(AZUL, "n/a"), "13", "13", "128GB", "Azul", "n/a",
+                        null, null, null, false)),
+                List.of(new UbicacionNsys("CAJA LISTOS", "Listos", true, false)));
+        FilaItems antes = fila("350000000000092", "BT-9001", "n/a", "Available", "CAJA LISTOS");
+        FilaItems ahora = fila("350000000000092", "BT-9001", "n/a", "Available", "CAJA GLASS");
+
+        ResultadoComparacion r = normal(new HashMap<>(Comparador.foto(List.of(antes), sinSkuSinGrado, AYER)), ahora);
+
+        assertEquals("i13128AzulNA", r.aGuardar().get(0).sku());
+        assertEquals(HOY, r.aGuardar().get(0).cambiado(), "NSYS ha cambiado la caja: es un cambio de verdad");
+    }
+
     @Test void unCambioSoloDeSkuSeGuardaSinMoverCambiadoNiApuntarNada() {
         Traductor sinSkuSinGrado = new Traductor(
                 List.of(new ProductoMaestro(Normalizacion.clave(AZUL, "n/a"), "13", "13", "128GB", "Azul", "n/a",
