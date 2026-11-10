@@ -632,4 +632,43 @@ class StockTelefonosControllerTest {
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
         assertEquals("El nombre de la hoja no puede empezar ni acabar con un apóstrofo", e.getReason());
     }
+
+    // ---------------------------------------------------------------- 0.9.30: los grados F, FD y RMA no cuentan como stock
+
+    @Test void unStockConGradoNoVendibleSaleComoQueNoCuentaEnLasCuatroRespuestas() {
+        MovilNsys rma = movil(IMEI, "BT-9001", "RMA", "Devolución", "Devolución", EstadoMovil.STOCK);
+        when(dao.enEmpresa()).thenReturn(List.of(rma,
+                movil("350000000000002", "BT-9001", "Fd", "Listos", "Listos", EstadoMovil.STOCK),
+                movil("350000000000003", "BT-9001", "ID", "Listos", "Listos", EstadoMovil.STOCK),
+                movil("350000000000004", "BT-9001", "F", null, "Listos", EstadoMovil.DE_PEDIDO)));
+        JsonNode stock = json(api.stock());
+        assertEquals("NO_CUENTA", stock.get(0).get("estado").asText(), "RMA en una caja que cuenta");
+        assertEquals("Devolución", stock.get(0).get("ubicacion").asText(), "la caja sigue siendo la suya");
+        assertEquals(15, stock.get(0).get("dias").asInt(), "y sigue en la empresa");
+        assertEquals("NO_CUENTA", stock.get(1).get("estado").asText(), "FD, sin mirar mayúsculas");
+        assertEquals("STOCK", stock.get(2).get("estado").asText(), "ID sí cuenta");
+        assertEquals("DE_PEDIDO", stock.get(3).get("estado").asText(), "uno de pedido no cambia");
+
+        when(dao.buscar("3500", 10)).thenReturn(List.of(rma));
+        assertEquals("NO_CUENTA", json(api.buscar("3500")).get(0).get("estado").asText());
+
+        when(dao.porImei(IMEI)).thenReturn(List.of(rma));
+        JsonNode ficha = json(api.ficha(IMEI));
+        assertEquals("NO_CUENTA", ficha.get("estado").asText());
+        assertEquals(15, ficha.get("dias").asInt());
+
+        when(dao.porImeis(List.of(IMEI))).thenReturn(List.of(rma));
+        assertEquals("NO_CUENTA", json(api.comprobar(pedir(IMEI))).get(0).get("estado").asText());
+    }
+
+    @Test void elGradoQueMandaEsElQueValeConLoDelTaller() {
+        conMaestro();
+        when(dao.enEmpresa()).thenReturn(List.of(movil(IMEI, "BT-9001", "RMA", "Listos", "Listos", EstadoMovil.STOCK),
+                movil("350000000000002", "BT-9001", "A", "Listos", "Listos", EstadoMovil.STOCK)));
+        when(tallerDao.vigentes()).thenReturn(List.of(TallerDePrueba.vigente(1, IMEI, DatoTaller.GRADO, "A", "RMA"),
+                TallerDePrueba.vigente(2, "350000000000002", DatoTaller.GRADO, "F", "A")));
+        JsonNode stock = json(api.stock());
+        assertEquals("STOCK", stock.get(0).get("estado").asText(), "RMA en NSYS y A en el taller: cuenta");
+        assertEquals("NO_CUENTA", stock.get(1).get("estado").asText(), "A en NSYS y F en el taller: no cuenta");
+    }
 }
