@@ -25,7 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /** «Por pasar a NSYS» con cinco tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
- *  importación y los descartes de «No está en NSYS» (pieza 3) y los ignorados de las filas ámbar (0.9.27). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
+ *  importación y los descartes de «No está en NSYS» (pieza 3) y los ignorados de las filas ámbar (0.9.27). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición, salvo lo del taller vigente, que «Fuera de su caja» lee otra vez (movilesPorPasar ya lo lee dentro de TallerNsys). */
 @Service
 public class PorPasarNsys {
 
