@@ -52,8 +52,19 @@ public class NsysDAO {
             + " UBICACION_ULTIMA = VALUES(UBICACION_ULTIMA), ESTADO = VALUES(ESTADO), CAMBIADO = VALUES(CAMBIADO)";
     static final String SQL_EVENTO = "INSERT INTO Nsys_evento (IMEI_SN, BATCH, FECHA, SOLO_DIA, TIPO, DE, A, A_NSYS,"
             + " ID_IMPORTACION) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    static final String SQL_PRODUCTO = "INSERT INTO Nsys_producto (CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR,"
-            + " CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM, NOMBRE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    static final String COLUMNAS_PRODUCTO = "CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR, CALIDAD_DETALLE, SKU_WEB,"
+            + " SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM, NOMBRE, SKU_AMAZON_ESIM, SKU_PARTICULARES, SKU_BACKIPHONE";
+    static final String SQL_PRODUCTO = "INSERT INTO Nsys_producto (" + COLUMNAS_PRODUCTO + ")"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    /** El maestro guardado no tiene ningún SKU de los canales nuevos (se cargó antes de la 0.9.31). */
+    static final String SQL_PRODUCTOS_SIN_SKU_DE_CANALES = "SELECT COUNT(*) > 0 AND COALESCE(SUM(SKU_AMAZON_ESIM IS NOT NULL"
+            + " OR SKU_PARTICULARES IS NOT NULL OR SKU_BACKIPHONE IS NOT NULL), 0) = 0 FROM Nsys_producto";
+    /** Los productos cuyo SKU de algún canal es uno de estos (la intercalación de la tabla no distingue mayúsculas). Amazon es
+     *  solo «SKU (Amazon) con eSIM» (SKU_AMAZON_ESIM): SKU_AMAZON no cuenta como SKU de canal. */
+    /** SKU_WEB, SKU_AMAZON_ESIM, SKU_PARTICULARES y SKU_BACKIPHONE: las veces que {@code SQL_PRODUCTOS_POR_SKU} usa la lista. */
+    static final int COLUMNAS_DE_CANAL = 4;
+    static final String SQL_PRODUCTOS_POR_SKU = "SELECT " + COLUMNAS_PRODUCTO + " FROM Nsys_producto WHERE SKU_WEB IN (%1$s)"
+            + " OR SKU_AMAZON_ESIM IN (%1$s) OR SKU_PARTICULARES IN (%1$s) OR SKU_BACKIPHONE IN (%1$s)";
     static final String SQL_EMPEZAR = "INSERT INTO Nsys_importacion (FICHERO, FECHA_EXPORTACION, ORIGEN, EMPEZADA)"
             + " VALUES (?, ?, ?, ?)";
     static final String SQL_TERMINAR = "UPDATE Nsys_importacion SET RESULTADO = ?, FILAS = ?, CAMBIOS = ?, MENSAJE = ?,"
@@ -125,12 +136,29 @@ public class NsysDAO {
     }
 
     public List<ProductoMaestro> cargarProductos() {
-        return jdbc.query("SELECT CLAVE, MODELO, MODELO_MAESTRO, CAPACIDAD, COLOR, CALIDAD_DETALLE, SKU_WEB, SKU_AMAZON,"
-                        + " SKU_SIN_GRADO, ES_ESIM, NOMBRE FROM Nsys_producto",
-                (rs, n) -> new ProductoMaestro(rs.getString("CLAVE"), rs.getString("MODELO"), rs.getString("MODELO_MAESTRO"),
-                        rs.getString("CAPACIDAD"), rs.getString("COLOR"), rs.getString("CALIDAD_DETALLE"),
-                        rs.getString("SKU_WEB"), rs.getString("SKU_AMAZON"), rs.getString("SKU_SIN_GRADO"),
-                        rs.getBoolean("ES_ESIM"), rs.getString("NOMBRE")));
+        return jdbc.query("SELECT " + COLUMNAS_PRODUCTO + " FROM Nsys_producto", NsysDAO::producto);
+    }
+
+    /** Los productos del maestro que un pedido puede pedir con estos SKU de canal (0.9.31, spec pieza 2 §6.4.1), en tandas. */
+    public List<ProductoMaestro> productosPorSkuDeCanal(Collection<String> skus) {
+        List<ProductoMaestro> productos = new ArrayList<>();
+        for (List<String> tanda : trozos(List.copyOf(skus), TANDA_IN)) {
+            Object[] args = new Object[tanda.size() * COLUMNAS_DE_CANAL];
+            for (int i = 0; i < COLUMNAS_DE_CANAL; i++) System.arraycopy(tanda.toArray(), 0, args, i * tanda.size(), tanda.size());
+            productos.addAll(jdbc.query(String.format(SQL_PRODUCTOS_POR_SKU, marcas(tanda.size())), NsysDAO::producto, args));
+        }
+        return productos;
+    }
+
+    public boolean productosSinSkuDeCanales() {
+        return Boolean.TRUE.equals(jdbc.queryForObject(SQL_PRODUCTOS_SIN_SKU_DE_CANALES, Boolean.class));
+    }
+
+    static ProductoMaestro producto(ResultSet rs, int n) throws SQLException {
+        return new ProductoMaestro(rs.getString("CLAVE"), rs.getString("MODELO"), rs.getString("MODELO_MAESTRO"),
+                rs.getString("CAPACIDAD"), rs.getString("COLOR"), rs.getString("CALIDAD_DETALLE"), rs.getString("SKU_WEB"),
+                rs.getString("SKU_AMAZON"), rs.getString("SKU_SIN_GRADO"), rs.getBoolean("ES_ESIM"), rs.getString("NOMBRE"),
+                rs.getString("SKU_AMAZON_ESIM"), rs.getString("SKU_PARTICULARES"), rs.getString("SKU_BACKIPHONE"));
     }
 
     /** El maestro guardado no tiene ningún nombre de producto (se cargó antes de la 0.9.22). */
@@ -144,7 +172,7 @@ public class NsysDAO {
         for (List<ProductoMaestro> lote : trozos(productos))
             jdbc.batchUpdate(SQL_PRODUCTO, lote.stream().map(p -> new Object[]{p.clave(), p.modelo(), p.modeloMaestro(),
                     p.capacidad(), p.color(), p.calidadDetalle(), p.skuWeb(), p.skuAmazon(), p.skuSinGrado(), p.esEsim(),
-                    p.nombre()}).toList());
+                    p.nombre(), p.skuAmazonEsim(), p.skuParticulares(), p.skuBackiphone()}).toList());
     }
 
     /** Guarda las filas nuevas o cambiadas y los eventos de una comparación, todo o nada. */

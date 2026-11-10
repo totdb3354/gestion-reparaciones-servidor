@@ -12,6 +12,9 @@ SET NAMES utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Pedido_fila_cambio;
+DROP TABLE IF EXISTS Pedido_fila;
+DROP TABLE IF EXISTS Pedido_lectura;
 DROP TABLE IF EXISTS Taller_descarte;
 DROP TABLE IF EXISTS Taller_vuelta_ignorada;
 DROP TABLE IF EXISTS Taller_hecho;
@@ -513,6 +516,9 @@ CREATE TABLE Nsys_producto (
     SKU_AMAZON      VARCHAR(60)  NULL,
     SKU_SIN_GRADO   VARCHAR(60)  NULL,
     ES_ESIM         BOOLEAN      NOT NULL DEFAULT FALSE,
+    SKU_AMAZON_ESIM  VARCHAR(60) NULL COMMENT '«SKU (Amazon) con eSIM» del maestro',
+    SKU_PARTICULARES VARCHAR(60) NULL COMMENT '«SKU (stock fonestore.es) Conjunto»',
+    SKU_BACKIPHONE   VARCHAR(60) NULL COMMENT '«SKU BackiPhone»',
     PRIMARY KEY (CLAVE)
 );
 
@@ -631,4 +637,49 @@ CREATE TABLE Taller_vuelta_ignorada (
     FECHA    DATETIME     NOT NULL COMMENT 'Cuándo se ignoró (hora de Madrid)',
     PRIMARY KEY (IMEI_SN),
     CONSTRAINT fk_taller_vuelta_ignorada_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+
+-- Pedidos como la hoja: una fila por unidad pedida (la lectura de ShippyPro y el historico de la hoja), sus cambios de IMEI
+-- y las lecturas de ShippyPro. Los tres SKU de los canales nuevos van en Nsys_producto.
+CREATE TABLE Pedido_fila (
+    ID_FILA      INT          NOT NULL AUTO_INCREMENT,
+    FECHA        DATE         NOT NULL COMMENT 'El dia en que el ERP ve el pedido (hora de Madrid)',
+    PLATAFORMA   VARCHAR(150) NOT NULL COMMENT 'AMZ, FNSK o el cliente de la web; en el historico, lo de la hoja',
+    SKU          VARCHAR(60)  NULL,
+    IMEI         VARCHAR(60)  NULL COMMENT 'En el historico, el texto de la hoja tal cual',
+    PEDIDO       VARCHAR(60)  NULL,
+    FECHA_COMPRA DATE         NULL,
+    ORIGEN       VARCHAR(10)  NOT NULL COMMENT 'SHIPPYPRO o HISTORICO',
+    CANAL        VARCHAR(20)  NULL COMMENT 'AMAZON, AMAZON_STOCKROOM, DISTRIBUIDORES, PARTICULARES o BACKIPHONE',
+    POSICION     INT          NULL,
+    ENVIADA_EN   DATETIME     NULL COMMENT 'NULL = viva',
+    PRIMARY KEY (ID_FILA),
+    UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
+    KEY idx_fila_fecha (FECHA, ID_FILA),
+    KEY idx_fila_viva (ENVIADA_EN),
+    KEY idx_fila_imei (IMEI),
+    KEY idx_fila_pedido (PEDIDO)
+);
+CREATE TABLE Pedido_fila_cambio (
+    ID_CAMBIO     INT         NOT NULL AUTO_INCREMENT,
+    ID_FILA       INT         NOT NULL,
+    ID_USU        INT         NULL,
+    FECHA         DATETIME    NOT NULL,
+    IMEI_ANTERIOR VARCHAR(60) NULL,
+    IMEI_NUEVO    VARCHAR(60) NULL,
+    PRIMARY KEY (ID_CAMBIO),
+    KEY idx_cambio_fila (ID_FILA),
+    CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
+    CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+CREATE TABLE Pedido_lectura (
+    ID_LECTURA       INT           NOT NULL AUTO_INCREMENT,
+    INICIO           DATETIME      NOT NULL,
+    FIN              DATETIME      NULL,
+    RESULTADO        VARCHAR(12)   NOT NULL DEFAULT 'EN_CURSO' COMMENT 'EN_CURSO, OK, ERROR o RECHAZADA',
+    FILAS            INT           NOT NULL DEFAULT 0,
+    SKU_DESCONOCIDOS VARCHAR(500)  NULL,
+    MENSAJE          VARCHAR(1000) NULL,
+    PRIMARY KEY (ID_LECTURA),
+    KEY idx_lectura_inicio (INICIO)
 );

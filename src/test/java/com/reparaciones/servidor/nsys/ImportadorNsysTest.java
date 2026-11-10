@@ -616,6 +616,28 @@ class ImportadorNsysTest {
         verify(dao, times(1)).productosSinNombre();
     }
 
+    @Test void sinSkuDeCanalesEnElMaestroGuardadoSeRecargaUnaVez() throws Exception {
+        when(dao.productosSinSkuDeCanales()).thenReturn(true);
+        List<List<Object>> hoja = new ArrayList<>();
+        List<Object> cabecera = new ArrayList<>(LectorMaestro.COLUMNAS);
+        cabecera.add(LectorMaestro.NOMBRE);
+        hoja.add(cabecera);
+        hoja.add(List.of("Apple iPhone 13 128GB Blue A", "iPhone", "13", "128GB", "Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128Azul", "Apple iPhone 13 128GB Blue"));
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, hoja);
+        when(drive.descargar("maestro-1")).thenReturn(XlsxDePrueba.libro(hojas));
+        when(drive.listarItems("carpeta-1")).thenReturn(List.of());
+
+        importador.pasada();
+        importador.pasada();
+
+        verify(drive, times(1)).descargar("maestro-1");
+        verify(dao).reemplazarProductos(List.of(new ProductoMaestro(Normalizacion.clave("Apple iPhone 13 128GB Blue A"), "13",
+                "13", "128GB", "Azul", "A", "i13128AzulA", "i13128AzulA", "i13128Azul", false, "Apple iPhone 13 128GB Blue")));
+        verify(dao, times(1)).productosSinSkuDeCanales();
+    }
+
     // ---------------------------------------------------------------- 0.9.22: coste de cada móvil
 
     @SuppressWarnings("unchecked")

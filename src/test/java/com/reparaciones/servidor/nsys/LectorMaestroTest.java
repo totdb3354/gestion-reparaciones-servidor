@@ -111,4 +111,31 @@ class LectorMaestroTest {
         assertEquals("Faltan columnas en el maestro: Modelo",
                 assertThrows(FormatoItemsException.class, () -> leer(XlsxDePrueba.libro(hojas))).getMessage());
     }
+
+    @Test void leeLosSkuDeLosCanalesSiElMaestroLosTrae() throws Exception {
+        List<Object> cabecera = new ArrayList<>(CABECERA);
+        cabecera.addAll(List.of("SKU (Amazon) con eSIM", "SKU (stock fonestore.es) Conjunto", "SKU BackiPhone"));
+        List<List<Object>> todo = new ArrayList<>();
+        todo.add(cabecera);
+        List<Object> f = new ArrayList<>(fila("Apple iPhone 13 128GB Blue A", "iPhone", "13", "Azul", "A", "i13128AzulA",
+                "i13128AzulA"));
+        f.addAll(List.of("i13128AzulAesim", "i13128AzulAP", "BK-i13128AzulA"));
+        todo.add(f);
+        Map<String, List<List<Object>>> hojas = new LinkedHashMap<>();
+        hojas.put(LectorMaestro.HOJA, todo);
+
+        ProductoMaestro p = leer(XlsxDePrueba.libro(hojas)).productos().get(0);
+
+        assertEquals("i13128AzulAesim", p.skuAmazonEsim());
+        assertEquals("i13128AzulAP", p.skuParticulares());
+        assertEquals("BK-i13128AzulA", p.skuBackiphone());
+    }
+
+    @Test void sinLasColumnasDeLosCanalesSeCargaIgualConNulos() throws Exception {
+        ProductoMaestro p = leer(maestro(List.of(fila("Apple iPhone 13 128GB Blue A", "iPhone", "13", "Azul", "A",
+                "i13128AzulA", "i13128AzulA")))).productos().get(0);
+        assertNull(p.skuAmazonEsim());
+        assertNull(p.skuParticulares());
+        assertNull(p.skuBackiphone());
+    }
 }
