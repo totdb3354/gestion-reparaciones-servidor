@@ -21,7 +21,9 @@ class ComparadorTest {
             List.of(new ProductoMaestro(Normalizacion.clave(AZUL, "A"), "13", "13", "128GB", "Azul", "A",
                             "i13128AzulA", "i13128AzulA", "i13128Azul", false),
                     new ProductoMaestro(Normalizacion.clave(AZUL, "C100"), "13", "13", "128GB", "Azul", "C100",
-                            "i13128AzulA100", "i13128AzulA", "i13128Azul", false)),
+                            "i13128AzulA100", "i13128AzulA", "i13128Azul", false),
+                    new ProductoMaestro(Normalizacion.clave(AZUL, "n/a"), "13", "13", "128GB", "Azul", "n/a",
+                            null, null, "i13128Azul", false)),
             List.of(new UbicacionNsys("", "En revisión", true, false),
                     new UbicacionNsys("CAJA GLASS", "Taller · Glass", true, false),
                     new UbicacionNsys("CAJA LISTOS", "Listos", true, false),
@@ -349,5 +351,31 @@ class ComparadorTest {
         EventoNsys entrada = Comparador.comparar(Map.of(), List.of(f), HOY, Comparador.Modo.PRIMERA_CARGA, T).eventos().get(0);
         assertEquals(HOY, entrada.fecha());
         assertFalse(entrada.soloDia());
+    }
+
+    @Test void unNaLlevaElSkuSinGradoConNa() {
+        FilaItems f = fila("350000000000090", "BT-9001", "n/a", "Available", "CAJA LISTOS");
+        MovilNsys m = Comparador.foto(List.of(f), T, HOY).get(f.clave());
+        assertEquals("i13128AzulNA", m.sku());
+        assertEquals("13", m.modelo());
+        assertEquals("n/a", m.grade());
+    }
+
+    @Test void unCambioSoloDeSkuSeGuardaSinMoverCambiadoNiApuntarNada() {
+        Traductor sinSkuSinGrado = new Traductor(
+                List.of(new ProductoMaestro(Normalizacion.clave(AZUL, "n/a"), "13", "13", "128GB", "Azul", "n/a",
+                        null, null, null, false)),
+                List.of(new UbicacionNsys("CAJA LISTOS", "Listos", true, false)));
+        FilaItems f = fila("350000000000091", "BT-9001", "n/a", "Removed", "CAJA LISTOS");
+        Map<ClaveMovil, MovilNsys> antes = new HashMap<>(Comparador.foto(List.of(f), sinSkuSinGrado, AYER));
+        assertNull(antes.get(f.clave()).sku());
+
+        ResultadoComparacion r = normal(antes, f);
+
+        assertEquals(1, r.aGuardar().size());
+        assertEquals("i13128AzulNA", r.aGuardar().get(0).sku());
+        assertEquals(AYER, r.aGuardar().get(0).cambiado(), "CAMBIADO es el día de baja (VueltaNsys): un SKU nuevo no lo mueve");
+        assertEquals(AYER, r.aGuardar().get(0).vistoPrimero());
+        assertTrue(r.eventos().isEmpty());
     }
 }
