@@ -63,6 +63,27 @@ class VistaPedidosTest {
         assertEquals("6401", conViejos.get(1).unidades().get(0).otroOrderId());
     }
 
+    @Test void elEstadoDelMovilEsElDeStockDeTelefonosConElGradoQueVale() {
+        when(dao.abiertos()).thenReturn(List.of(
+                new PedidoGuardado(1, Canal.PARTICULARES, "9001", "Cliente A", "ES", AHORA.minusDays(1), FuentePedidos.SHIPPYPRO)));
+        when(dao.unidades(any())).thenReturn(List.of(
+                new UnidadGuardada(10, 1, 1, "i13128AzulA", "350000000000001", "PEDIDOS_2026", AHORA, false, null)));
+        MovilNsys m = new MovilNsys("350000000000001", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS",
+                "Proveedor A", LocalDate.of(2026, 9, 1), null, "i13128AzulA", "13", "13", "128GB", "Azul", "A", false, "Listos",
+                "Listos", EstadoMovil.STOCK, null, null);
+        when(nsys.porImeis(any())).thenReturn(List.of(m));
+        when(nsys.trabajosAbiertos(anyCollection())).thenReturn(Map.of());
+        when(taller.valedor(any())).thenReturn(x -> new LoQueVale.Valor("Azul", "Rma", null, null, "A", null, true));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(
+                AceptaSkuTest.producto("Azul", "A", "i13128AzulA", null, "i13128AzulA", null)));
+
+        UnidadVista u = vista.pedidos(false).get(0).unidades().get(0);
+
+        assertEquals("NO_CUADRA", u.estado());
+        assertEquals("GRADO_NO_VENDIBLE", u.motivo());
+        assertEquals("NO_CUENTA", u.movil().estadoNsys(), "como en Stock de teléfonos (0.9.30): un RMA en una caja que cuenta no cuenta");
+    }
+
     @Test void lasFuentesConSuUltimaLecturaBuenaYSuNivel() {
         when(dao.ultimaLectura(eq(FuentePedidos.SHIPPYPRO), eq(java.util.Set.of(LecturaPedidos.OK)))).thenReturn(Optional.of(
                 new LecturaGuardada(1, FuentePedidos.SHIPPYPRO, AHORA.minusMinutes(3), AHORA.minusMinutes(3), "OK", 12, "i99RaroA", null)));

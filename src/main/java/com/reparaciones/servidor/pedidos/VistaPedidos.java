@@ -106,7 +106,7 @@ public class VistaPedidos {
         EstadoUnidad.Resultado r = EstadoUnidad.de(ac, m, v, t, canal);
         MovilUnidad movil = m == null ? MovilUnidad.NINGUNO : new MovilUnidad(true, m.modelo(), m.modeloMaestro(), m.capacidad(),
                 v.color(), v.grado(), v.bateriaNueva(), m.esEsim(), v.sku(),
-                m.estado() == EstadoMovil.DE_PEDIDO ? m.ubicacionUltima() : m.ubicacion(), m.estado().name(), t);
+                m.estado() == EstadoMovil.DE_PEDIDO ? m.ubicacionUltima() : m.ubicacion(), m.estado().conGrado(v.grado()).name(), t);
         return new UnidadVista(u.id(), u.posicion(), u.sku(), pide, u.imei(), u.imeiFuente(), u.imeiTecleadoEn(),
                 u.sinPedidoConcreto(), u.otroOrderId(), veces.getOrDefault(clave, 0) > 1, r.estado(), r.motivo(), movil);
     }

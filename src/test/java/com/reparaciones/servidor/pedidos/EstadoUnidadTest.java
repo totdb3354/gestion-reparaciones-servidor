@@ -82,4 +82,25 @@ class EstadoUnidadTest {
         assertEquals(new EstadoUnidad.Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE"),
                 de(stockroom, movil("13", "ID"), vale("Azul", "ID", null, null), NINGUNO, Canal.AMAZON_STOCKROOM));
     }
+
+    /** Desde la 0.9.29 un n/a lleva SKU (el «SKU sin grado» + «NA»), que no es el SKU web de ninguna fila del maestro: el color y el
+     *  grado se siguen mirando aunque el móvil tenga SKU. */
+    @Test void conSkuQueNoEstaEnElPedidoSeMiranElColorYElGrado() {
+        Aceptacion conFilaNa = new AceptaSku(List.of(
+                AceptaSkuTest.producto("Azul", "A", "i13128AzulA", null, "i13128AzulX", null),
+                AceptaSkuTest.producto("Azul", "n/a", null, null, "i13128AzulX", null))).para(Canal.PARTICULARES, "i13128AzulX");
+        assertEquals(new EstadoUnidad.Resultado("CUADRA", null),
+                de(conFilaNa, movil("13", "n/a"), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.PARTICULARES),
+                "la fila n/a sin SKU web del pedido acepta al n/a con su SKU acabado en NA");
+        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "COLOR_O_GRADO"),
+                de(WEB_A, movil("13", "n/a"), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.DISTRIBUIDORES),
+                "sin fila n/a aceptada, un n/a necesita taller como antes");
+        assertEquals(new EstadoUnidad.Resultado("CUADRA", null),
+                de(WEB_A, a(), vale("Azul", "A", "i13128AzulA-2", null), NINGUNO, Canal.DISTRIBUIDORES),
+                "un SKU que no es el del maestro, con el color y el grado del pedido, cuadra");
+    }
+
+    private static MovilNsys a() {
+        return movil("13", "A");
+    }
 }
