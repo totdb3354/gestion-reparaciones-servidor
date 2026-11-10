@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-/** «Por pasar a NSYS» con cuatro tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
+/** «Por pasar a NSYS» con cinco tarjetas (spec 0.9.22 §3): las listas, «Hecho», «Revisado», el repaso de las marcas tras cada
  *  importación y los descartes de «No está en NSYS» (pieza 3) y los ignorados de las filas ámbar (0.9.27). Las reglas están en TarjetasNsys; aquí se lee cada cosa una vez por petición. */
 @Service
 public class PorPasarNsys {
@@ -74,7 +74,8 @@ public class PorPasarNsys {
     }
 
     /** Las cuatro tarjetas (§3), los descartados de «No está en NSYS» (pieza 3), las filas «Sin grado en NSYS» (pieza 4) y los
-     *  ignorados (0.9.27), con una lectura de cada cosa. */
+     *  ignorados (0.9.27), con una lectura de cada cosa, y «Fuera de su caja» (con los móviles en la empresa, lo del taller
+     *  vigente y los trabajos abiertos). */
     public TarjetasPorPasar tarjetas() {
         Leidos leidos = new Leidos();
         Salen salen = movilesQueSalen(leidos);
@@ -89,9 +90,11 @@ public class PorPasarNsys {
         ignorados.grado(TarjetasNsys.grado(salen.ignorados(), marcas, salen.ignoradas()));
         ignorados.revisar(revisar.ignoradas());
         ignorados.sinGrado(sinGrado.ignoradas());
+        List<FilaCajaNsys> cajas = TarjetasNsys.cajas(nsysDao.enEmpresa(), TallerNsys.porImei(tallerDao.vigentes()),
+                nsysDao.trabajosAbiertos());
         return new TarjetasPorPasar(TarjetasNsys.color(salen.moviles(), marcas, salen.vueltas()),
                 TarjetasNsys.grado(salen.moviles(), marcas, salen.vueltas()), TarjetasNsys.altas(altas, marcas, descartes),
-                revisar.salen(), TarjetasNsys.descartadas(altas, descartes), sinGrado.salen(), ignorados.filas());
+                revisar.salen(), TarjetasNsys.descartadas(altas, descartes), sinGrado.salen(), ignorados.filas(), cajas);
     }
 
     /** «Sin grado en NSYS» (pieza 4 §4.1): los trabajos desde el 22/10 12:49 (una consulta) y, solo si hay, la fila más reciente

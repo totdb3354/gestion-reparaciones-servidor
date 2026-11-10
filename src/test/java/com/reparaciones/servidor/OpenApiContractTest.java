@@ -537,6 +537,11 @@ class OpenApiContractTest {
                 "PorPasarPeticionDeshacerDescarte")) {
             assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
         }
+        // «Fuera de su caja»: la quinta tarjeta de «Por pasar a NSYS».
+        assertTrue(esquemas.has("FilaCajaNsys"), () -> "falta el esquema FilaCajaNsys; publicados: " + nombres(esquemas));
+        assertTrue(esquemas.path("TarjetasPorPasar").path("properties").has("cajas"), "TarjetasPorPasar no lleva «cajas»");
+        assertNullable(esquemas, "FilaCajaNsys", "modelo", "modeloMaestro", "capacidad", "color", "gradoNsys", "caja", "ubicacion");
+        assertNoNullable(esquemas, "FilaCajaNsys", "imeiSn", "esEsim", "grado", "cajaQueToca");
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "put").endsWith("/StockTelefonosPeticionTaller"));
         assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/{imeiSn}/taller", "delete").endsWith("/StockTelefonosPeticionVolver"));
         assertTrue(refDeLaRespuesta(paths, "/api/stock-telefonos/{imeiSn}/colores", "get", "200").endsWith("/OpcionesTaller"));
