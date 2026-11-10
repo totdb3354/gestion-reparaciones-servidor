@@ -94,4 +94,37 @@ class SincroShippyProTest {
     @Test void unPedidoSinNumeroSeSalta() {
         assertTrue(plan(List.of(pedido(" ", "100", null, art("i13128AzulA", 1))), List.of()).insertar().isEmpty());
     }
+
+    @Test void unNumeroConEspaciosCoincideConLaFilaVivaYNoInsertaNiCierra() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("  402-0000000-0000011 ", "100", null, art("i13128AzulA", 1))),
+                List.of(viva(7, Canal.AMAZON, "402-0000000-0000011", 1)));
+        assertTrue(p.insertar().isEmpty());
+        assertTrue(p.cerrar().isEmpty());
+    }
+
+    @Test void elNumeroSeGuardaSinEspaciosYCortadoAlAnchoDeLaColumna() {
+        String largo = "4".repeat(AnchosPedidos.PEDIDO + 10);
+        FilaPedido f = plan(List.of(pedido(" " + largo + " ", "100", null, art("i13128AzulA", 1))), List.of()).insertar().get(0);
+        assertEquals("4".repeat(AnchosPedidos.PEDIDO), f.pedido());
+    }
+
+    @Test void elMismoPedidoDosVecesContinuaLasPosiciones() {
+        SincroShippyPro.Plan p = plan(List.of(
+                pedido("402-0000000-0000011", "100", null, art("i13128AzulA", 2)),
+                pedido("402-0000000-0000011", "100", null, art("i13128AzulA", 1))), List.of());
+        assertEquals(List.of(1, 2, 3), p.insertar().stream().map(FilaPedido::posicion).toList());
+    }
+
+    @Test void unPedidoConTodosLosSkuDesconocidosNoCierraSusFilasVivas() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("402-0000000-0000011", "100", null, art("i99999RosaA", 1))),
+                List.of(viva(7, Canal.AMAZON, "402-0000000-0000011", 1)));
+        assertTrue(p.cerrar().isEmpty());
+        assertTrue(p.insertar().isEmpty());
+    }
+
+    @Test void unSkuDesconocidoEntreConocidosNoDesplazaLasPosiciones() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("402-0000000-0000011", "100", null,
+                art("i13128AzulA", 1), art("i99999RosaA", 1), art("i13128AzulA", 1))), List.of());
+        assertEquals(List.of(1, 3), p.insertar().stream().map(FilaPedido::posicion).toList());
+    }
 }

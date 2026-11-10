@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 
 /** Una vuelta de lectura de ShippyPro: crea las filas de los pedidos nuevos y cierra las de los que ya no estan pendientes
  *  ({@link SincroShippyPro}). Si la lectura falla o falta el ajuste de canales no se cierra nada. */
@@ -32,6 +33,7 @@ public class LecturaFilas {
     private final NsysDAO nsysDao;
     private final Map<String, Canal> canales;
     private final Clock clock;
+    private final ReentrantLock enCurso = new ReentrantLock();
 
     @Autowired
     public LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao,
@@ -48,15 +50,33 @@ public class LecturaFilas {
     }
 
     public void pasada() {
+        if (!enCurso.tryLock()) {
+            log.info("Pedidos: ya hay una vuelta en curso; se salta esta");
+            return;
+        }
+        try {
+            vuelta();
+        } finally {
+            enCurso.unlock();
+        }
+    }
+
+    private void vuelta() {
         LocalDateTime ahora = LocalDateTime.now(clock);
         try {
             dao.podarLecturas(ahora.minusDays(DIAS_REGISTRO));
         } catch (RuntimeException e) {
             log.warn("Pedidos: no se pudo podar el registro de lecturas", e);
         }
-        int id = dao.empezarLectura(ahora);
+        int id;
+        try {
+            id = dao.empezarLectura(ahora);
+        } catch (RuntimeException e) {
+            log.warn("Pedidos: no se pudo abrir la lectura: {}", e.getClass().getSimpleName());
+            return;
+        }
         if (canales.isEmpty()) {
-            dao.terminarLectura(id, RECHAZADA, 0, Set.of(), "Falta el ajuste pedidos.shippypro.canales", LocalDateTime.now(clock));
+            terminar(id, RECHAZADA, 0, Set.of(), "Falta el ajuste pedidos.shippypro.canales", LocalDateTime.now(clock));
             return;
         }
         ClienteShippyPro.Leidos leidos;
@@ -64,12 +84,12 @@ public class LecturaFilas {
             leidos = shippyPro.pendientes();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            dao.terminarLectura(id, ERROR, 0, Set.of(), "Interrumpida", LocalDateTime.now(clock));
+            terminar(id, ERROR, 0, Set.of(), "Interrumpida", LocalDateTime.now(clock));
             return;
         } catch (IOException | RuntimeException e) {
             // Solo la clase de la excepcion: su mensaje puede traer la URL o ids.
             log.warn("Pedidos: no se pudo leer ShippyPro: {}", e.getClass().getSimpleName());
-            dao.terminarLectura(id, ERROR, 0, Set.of(), "No se pudo leer ShippyPro (" + e.getClass().getSimpleName() + ")",
+            terminar(id, ERROR, 0, Set.of(), "No se pudo leer ShippyPro (" + e.getClass().getSimpleName() + ")",
                     LocalDateTime.now(clock));
             return;
         }
@@ -88,8 +108,17 @@ public class LecturaFilas {
             dao.terminarLectura(id, OK, leidos.pedidos().size(), plan.desconocidos(), aviso, LocalDateTime.now(clock));
         } catch (RuntimeException e) {
             log.error("Pedidos: no se pudo guardar la vuelta", e);
-            dao.terminarLectura(id, ERROR, 0, Set.of(), "No se pudo guardar la vuelta (" + e.getClass().getSimpleName() + ")",
+            terminar(id, ERROR, 0, Set.of(), "No se pudo guardar la vuelta (" + e.getClass().getSimpleName() + ")",
                     LocalDateTime.now(clock));
+        }
+    }
+
+    /** Cierra la lectura sin dejar escapar un fallo de la base de datos: la tarea programada no debe morir por esto. */
+    private void terminar(int id, String resultado, int filas, Set<String> desconocidos, String mensaje, LocalDateTime fin) {
+        try {
+            dao.terminarLectura(id, resultado, filas, desconocidos, mensaje, fin);
+        } catch (RuntimeException e) {
+            log.warn("Pedidos: no se pudo cerrar la lectura {}: {}", id, e.getClass().getSimpleName());
         }
     }
 }

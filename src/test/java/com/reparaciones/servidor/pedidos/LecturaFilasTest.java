@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import org.mockito.InOrder;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -75,5 +78,64 @@ class LecturaFilasTest {
                 argThat(m -> m.contains("IOException") && !m.contains("secreta") && !m.contains("http")), eq(AHORA));
         verify(dao, never()).cerrar(any(), any());
         verify(dao, never()).vivasDeShippyPro();
+    }
+
+    private void unPedidoBien() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(pedido("402-0000000-0000011")), List.of()));
+        when(dao.vivasDeShippyPro()).thenReturn(List.of(viva(9, "402-0000000-0000099")));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(AceptaSkuTest.producto("Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128AzulAP", "bk-azul-a")));
+    }
+
+    @Test void insertarVaAntesQueCerrar() throws Exception {
+        unPedidoBien();
+        lectura("100:AMAZON").pasada();
+        InOrder orden = inOrder(dao);
+        orden.verify(dao).insertar(any());
+        orden.verify(dao).cerrar(any(), any());
+    }
+
+    @Test void siCerrarFallaLaLecturaTerminaComoErrorNoComoOk() throws Exception {
+        unPedidoBien();
+        doThrow(new IllegalStateException("fallo")).when(dao).cerrar(any(), any());
+        lectura("100:AMAZON").pasada();
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.ERROR), eq(0), eq(Set.of()), contains("IllegalStateException"), eq(AHORA));
+        verify(dao, never()).terminarLectura(anyInt(), eq(LecturaFilas.OK), anyInt(), any(), any(), any());
+    }
+
+    @Test void siTerminarLecturaFallaEnUnCaminoDeErrorNoSePropaga() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(shippy.pendientes()).thenThrow(new IOException("x"));
+        doThrow(new IllegalStateException("bd")).when(dao).terminarLectura(anyInt(), any(), anyInt(), any(), any(), any());
+        lectura("100:AMAZON").pasada();
+    }
+
+    @Test void siEmpezarLecturaFallaNoSePropagaNiLlamaAShippyPro() throws Exception {
+        when(dao.empezarLectura(any())).thenThrow(new IllegalStateException("bd"));
+        lectura("100:AMAZON").pasada();
+        verifyNoInteractions(shippy);
+    }
+
+    @Test void unaSegundaPasadaMientrasLaPrimeraEstaEnCursoNoEmpiezaOtraLectura() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        CountDownLatch dentro = new CountDownLatch(1);
+        CountDownLatch soltar = new CountDownLatch(1);
+        when(shippy.pendientes()).thenAnswer(inv -> {
+            dentro.countDown();
+            soltar.await(10, TimeUnit.SECONDS);
+            return new ClienteShippyPro.Leidos(List.of(), List.of());
+        });
+        LecturaFilas l = lectura("100:AMAZON");
+        Thread primera = new Thread(l::pasada);
+        primera.start();
+        try {
+            org.junit.jupiter.api.Assertions.assertTrue(dentro.await(10, TimeUnit.SECONDS));
+            l.pasada();
+            verify(dao, times(1)).empezarLectura(any());
+        } finally {
+            soltar.countDown();
+            primera.join(10_000);
+        }
     }
 }
