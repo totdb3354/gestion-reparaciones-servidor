@@ -234,15 +234,19 @@ class VistaFilasTest {
         assertEquals("SIN_DATOS", vacias.get(1).nivel());
 
         when(dao.ultimaLectura(argThat(s -> s != null && s.contains(LecturaFilas.RECHAZADA)))).thenReturn(Optional.of(
-                new LecturaGuardada(3, AHORA, AHORA, "RECHAZADA", 0, null, "ShippyPro respondio a medias")));
+                new LecturaGuardada(3, AHORA, AHORA, "RECHAZADA", 0, null, "Falta el ajuste pedidos.shippypro.canales")));
         when(nsys.ultimaImportacion(any(), argThat(s -> s != null && s.contains(ImportadorNsys.ERROR)))).thenReturn(Optional.of(
                 new Importacion(6, "Items.xlsx", AHORA, "ERROR", 0, "java.lang.IllegalStateException: id de fichero")));
 
         List<FuenteVista> f = vista.fuentes();
 
         assertEquals("RECHAZADA", f.get(0).resultado());
-        assertEquals("ShippyPro respondio a medias", f.get(0).motivo());
+        assertEquals(VistaFilas.MOTIVO_RECHAZADA, f.get(0).motivo(), "el mensaje guardado no sale: puede nombrar un ajuste");
         assertEquals("ERROR", f.get(1).resultado());
-        assertEquals(VistaFilas.MOTIVO_ERROR, f.get(1).motivo());
+        assertEquals(VistaFilas.MOTIVO_NSYS_ERROR, f.get(1).motivo());
+
+        when(nsys.ultimaImportacion(any(), argThat(s -> s != null && s.contains(ImportadorNsys.ERROR)))).thenReturn(Optional.of(
+                new Importacion(7, "Items.xlsx", AHORA, "RECHAZADO", 0, "Faltan columnas: IMEI")));
+        assertEquals(VistaFilas.MOTIVO_NSYS_RECHAZADO, vista.fuentes().get(1).motivo());
     }
 }

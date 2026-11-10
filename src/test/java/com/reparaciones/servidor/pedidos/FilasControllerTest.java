@@ -99,10 +99,20 @@ class FilasControllerTest {
         verify(dao, never()).ponerImei(anyInt(), any(), any(), any());
     }
 
+    @Test void siElDaoDiceCerradaTrasLaComprobacionEs409YSiNoExisteEs404() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.CERRADA);
+        assertEquals(409, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null)));
+        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.NO_EXISTE);
+        assertEquals(404, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null)));
+        verify(vista, never()).fila(anyInt());
+    }
+
     @Test void ponerUnImeiLoRegistraConElUsuarioYDevuelveLaFilaReleida() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         FilaVista releida = vistaDe(IMEI);
         when(vista.fila(5)).thenReturn(Optional.of(releida));
+        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
 
         FilaVista r = controller.ponerImei(5, new PeticionImei(" " + IMEI + " "), super_, null);
 
@@ -113,6 +123,7 @@ class FilasControllerTest {
     @Test void nuloOEnBlancoQuitaElImei() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         when(vista.fila(5)).thenReturn(Optional.of(vistaDe(null)));
+        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
 
         controller.ponerImei(5, new PeticionImei(null), super_, null);
         controller.ponerImei(5, new PeticionImei("   "), super_, null);
@@ -123,6 +134,7 @@ class FilasControllerTest {
     @Test void elReintentoConLaMismaClaveNoRepiteLaEscritura() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI)));
+        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
 
         FilaVista primera = controller.ponerImei(5, new PeticionImei(IMEI), super_, "clave-1");
         FilaVista segunda = controller.ponerImei(5, new PeticionImei(IMEI), super_, "clave-1");

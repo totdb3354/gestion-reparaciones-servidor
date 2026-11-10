@@ -42,7 +42,7 @@ public class FilasDAO {
             + " OR IMEI LIKE ? ESCAPE '\\\\' OR PEDIDO LIKE ? ESCAPE '\\\\' ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
     static final String SQL_POR_ID = SQL_FILAS + " WHERE ID_FILA = ?";
     static final String SQL_VIVAS_CON_IMEI = SQL_FILAS + " WHERE ENVIADA_EN IS NULL AND IMEI IN (%s) ORDER BY FECHA, ID_FILA";
-    static final String SQL_IMEI_BLOQUEADO = "SELECT IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ENVIADA_EN, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
     static final String SQL_CAMBIO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)";
     static final String SQL_EMPEZAR_LECTURA = "INSERT INTO Pedido_lectura (INICIO) VALUES (?)";
@@ -112,15 +112,25 @@ public class FilasDAO {
         return filas;
     }
 
-    /** Cambia el IMEI de una fila y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leer el anterior
-     *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020). Si la fila no existe, no hace nada. */
+    /** Resultado de {@link #ponerImei}: PUESTO, NO_EXISTE o CERRADA (ya enviada o del historico: no se toca). */
+    public enum Resultado { PUESTO, NO_EXISTE, CERRADA }
+
+    private record Bloqueada(String imei, boolean cerrada) {}
+
+    /** Cambia el IMEI de una fila viva y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
+     *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
+     *  con el bloqueo puesto, asi una fila que se acaba de enviar no se cambia. Si no existe o esta cerrada, no escribe nada. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void ponerImei(int idFila, String imei, Integer idUsu, LocalDateTime ahora) {
-        List<String> anterior = jdbc.query(SQL_IMEI_BLOQUEADO, (rs, n) -> rs.getString("IMEI"), idFila);
-        if (anterior.isEmpty()) return;
+    public Resultado ponerImei(int idFila, String imei, Integer idUsu, LocalDateTime ahora) {
+        List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
+                (rs, n) -> new Bloqueada(rs.getString("IMEI"), rs.getTimestamp("ENVIADA_EN") != null
+                        || "HISTORICO".equals(rs.getString("ORIGEN"))), idFila);
+        if (filas.isEmpty()) return Resultado.NO_EXISTE;
+        if (filas.get(0).cerrada()) return Resultado.CERRADA;
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
-        jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), anterior.get(0), nuevo);
+        jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
+        return Resultado.PUESTO;
     }
 
     // ---------------------------------------------------------------- lecturas

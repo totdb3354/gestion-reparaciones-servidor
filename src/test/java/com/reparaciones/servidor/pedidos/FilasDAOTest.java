@@ -107,26 +107,47 @@ class FilasDAOTest {
                 any(RowMapper.class), eq("350000000000001"), eq("350000000000002"));
     }
 
-    @Test void ponerImeiBloqueaLeeElAnteriorActualizaYApuntaElCambio() {
-        when(jdbc.query(eq("SELECT IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE"), any(RowMapper.class), eq(5)))
-                .thenReturn(new ArrayList<>(Arrays.asList("350000000000001")));
-        dao.ponerImei(5, "350000000000002", 9, AHORA);
+    private static final String SQL_BLOQUEO = "SELECT IMEI, ENVIADA_EN, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+
+    /** El mapeador del bloqueo recibe un ResultSet: se simula con la fila indicada. */
+    @SuppressWarnings("unchecked")
+    private void filaBloqueada(String imei, Timestamp enviadaEn, String origen) throws Exception {
+        when(jdbc.query(eq(SQL_BLOQUEO), any(RowMapper.class), eq(5))).thenAnswer(inv -> {
+            java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+            when(rs.getString("IMEI")).thenReturn(imei);
+            when(rs.getTimestamp("ENVIADA_EN")).thenReturn(enviadaEn);
+            when(rs.getString("ORIGEN")).thenReturn(origen);
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+    }
+
+    @Test void ponerImeiBloqueaLeeElAnteriorActualizaYApuntaElCambio() throws Exception {
+        filaBloqueada("350000000000001", null, "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", 9, AHORA));
         var orden = inOrder(jdbc);
-        orden.verify(jdbc).query(eq("SELECT IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE"), any(RowMapper.class), eq(5));
+        orden.verify(jdbc).query(eq(SQL_BLOQUEO), any(RowMapper.class), eq(5));
         orden.verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "350000000000002", 5);
         orden.verify(jdbc).update("INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)",
                 5, 9, Timestamp.valueOf(AHORA), "350000000000001", "350000000000002");
     }
 
-    @Test void ponerImeiCortaYAdmiteAnteriorNuloYUsuarioNulo() {
-        when(jdbc.query(startsWith("SELECT IMEI"), any(RowMapper.class), eq(5))).thenReturn(new ArrayList<>(Arrays.asList((String) null)));
+    @Test void ponerImeiCortaYAdmiteAnteriorNuloYUsuarioNulo() throws Exception {
+        filaBloqueada(null, null, "SHIPPYPRO");
         dao.ponerImei(5, "9".repeat(80), null, AHORA);
         verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "9".repeat(60), 5);
         verify(jdbc).update(startsWith("INSERT INTO Pedido_fila_cambio"), eq(5), isNull(), eq(Timestamp.valueOf(AHORA)), isNull(), eq("9".repeat(60)));
     }
 
     @Test void ponerImeiDeUnaFilaQueNoExisteNoEscribeNada() {
-        dao.ponerImei(5, "350000000000002", 9, AHORA);
+        assertEquals(FilasDAO.Resultado.NO_EXISTE, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void ponerImeiDeUnaFilaEnviadaOHistoricaNoEscribeNadaYDiceCerrada() throws Exception {
+        filaBloqueada("350000000000001", Timestamp.valueOf(AHORA.minusHours(1)), "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        filaBloqueada("texto de la hoja", null, "HISTORICO");
+        assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", 9, AHORA));
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 

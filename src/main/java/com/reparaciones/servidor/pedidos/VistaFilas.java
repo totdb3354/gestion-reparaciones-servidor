@@ -31,6 +31,9 @@ public class VistaFilas {
     /** Tope de resultados del buscador. */
     static final int TOPE_BUSQUEDA = 500;
     static final String MOTIVO_ERROR = "Error al leer la fuente; ver el registro del servidor";
+    static final String MOTIVO_RECHAZADA = "La lectura de pedidos no está configurada";
+    static final String MOTIVO_NSYS_RECHAZADO = "La última exportación de NSYS no se pudo aceptar";
+    static final String MOTIVO_NSYS_ERROR = "No se pudo leer la última exportación de NSYS";
     static final String SHIPPYPRO = "SHIPPYPRO";
     static final String NSYS = "NSYS";
     static final String HISTORICO = "HISTORICO";
@@ -146,14 +149,19 @@ public class VistaFilas {
         Optional<LecturaGuardada> buena = dao.ultimaLectura(Set.of(LecturaFilas.OK));
         Optional<LecturaGuardada> ultima = dao.ultimaLectura(Set.of(LecturaFilas.OK, LecturaFilas.ERROR, LecturaFilas.RECHAZADA));
         LocalDateTime cuando = buena.map(LecturaGuardada::fin).orElse(null);
-        String motivo = ultima.map(l -> LecturaFilas.ERROR.equals(l.resultado()) ? MOTIVO_ERROR : l.mensaje()).orElse(null);
+        // Motivos fijos y en lenguaje de usuario: el mensaje guardado puede nombrar ajustes o llevar datos internos.
+        String motivo = ultima.map(l -> switch (l.resultado()) {
+            case LecturaFilas.ERROR -> MOTIVO_ERROR;
+            case LecturaFilas.RECHAZADA -> MOTIVO_RECHAZADA;
+            default -> null;
+        }).orElse(null);
         FuenteVista shippyPro = new FuenteVista(SHIPPYPRO, cuando, ultima.map(LecturaGuardada::resultado).orElse(null),
                 buena.map(LecturaGuardada::filas).orElse(0), buena.map(LecturaGuardada::skuDesconocidos).orElse(null), motivo,
                 AvisoNsys.nivel(cuando, ahora));
         return List.of(shippyPro, nsys(ahora));
     }
 
-    /** NSYS como lo da el estado de la importacion de Stock de telefonos: la ultima buena y el fallo posterior, si lo hay. */
+    /** NSYS con la regla de {@code StockTelefonosController.estado()}: la ultima buena y el fallo posterior, si lo hay; aqui con motivos fijos. */
     private FuenteVista nsys(LocalDateTime ahora) {
         Optional<Importacion> ok = nsysDao.ultimaImportacion(ImportadorNsys.ACTUAL, Set.of(ImportadorNsys.OK));
         Optional<Importacion> fallo = nsysDao.ultimaImportacion(ImportadorNsys.ACTUAL,
@@ -162,7 +170,7 @@ public class VistaFilas {
         boolean falloReciente = fallo.isPresent() && (ultima == null || fallo.get().fechaExportacion().isAfter(ultima));
         String resultado = falloReciente ? fallo.get().resultado() : ok.map(Importacion::resultado).orElse(null);
         String motivo = !falloReciente ? null
-                : ImportadorNsys.ERROR.equals(fallo.get().resultado()) ? MOTIVO_ERROR : fallo.get().mensaje();
+                : ImportadorNsys.ERROR.equals(fallo.get().resultado()) ? MOTIVO_NSYS_ERROR : MOTIVO_NSYS_RECHAZADO;
         return new FuenteVista(NSYS, ultima, resultado, ok.map(Importacion::filas).orElse(0), null, motivo,
                 AvisoNsys.nivel(ultima, ahora));
     }
