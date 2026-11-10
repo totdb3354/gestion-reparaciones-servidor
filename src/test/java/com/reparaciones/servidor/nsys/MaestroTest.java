@@ -85,4 +85,44 @@ class MaestroTest {
         assertNull(maestro.nombreColor(AZUL, "Verde"));
         assertNull(maestro.nombreColor(sinMaestro("350000000000002", "B"), "Rojo"), "sin modelo en el maestro");
     }
+
+    private static final MovilNsys SIN_GRADO = movil("350000000000003", "Azul", "n/a");
+
+    private static ProductoMaestro na(String color, String skuWeb, String skuSinGrado, boolean esEsim) {
+        return new ProductoMaestro("na" + color + skuSinGrado, "13", "13", "128GB", color, "n/a", skuWeb, null, skuSinGrado, esEsim);
+    }
+
+    @Test void unNaSinSkuEnElMaestroLlevaElSkuSinGradoConNa() {
+        Maestro maestro = new Maestro(List.of(na("Azul", null, "i13128Azul", false), na("Rojo", null, "i13128Rojo", false)));
+        assertEquals("i13128AzulNA", maestro.sku(SIN_GRADO, "Azul", "n/a"));
+        assertEquals("i13128RojoNA", maestro.sku(SIN_GRADO, "Rojo", "n/a"), "con el color que le pone el taller");
+    }
+
+    @Test void siElMaestroDaSkuAlNaMandaElMaestro() {
+        Maestro maestro = new Maestro(List.of(na("Azul", "i13128AzulX", "i13128Azul", false), na("Azul", null, "i13128Azul", false)));
+        assertEquals("i13128AzulX", maestro.sku(SIN_GRADO, "Azul", "n/a"));
+    }
+
+    @Test void unGradoDesconocidoSinSkuSigueSinSku() {
+        ProductoMaestro raro = new ProductoMaestro("raro", "13", "13", "128GB", "Azul", "XX", null, null, "i13128Azul", false);
+        assertNull(new Maestro(List.of(raro)).sku(SIN_GRADO, "Azul", "XX"));
+        assertTrue(new Maestro(List.of(raro)).skus(SIN_GRADO).isEmpty());
+    }
+
+    @Test void variasFilasNaConSkuSinGradoDistintoNoDanSku() {
+        Maestro maestro = new Maestro(List.of(na("Azul", null, "i13128Azul", false), na("Azul", null, "i13128Azulado", false)));
+        assertNull(maestro.sku(SIN_GRADO, "Azul", "n/a"));
+        assertTrue(maestro.skus(SIN_GRADO).isEmpty());
+    }
+
+    @Test void unEsimNaLlevaEsimEnElSku() {
+        Maestro maestro = new Maestro(List.of(na("Azul", null, "i13128Azul", true)));
+        assertEquals("i13eSIM128AzulNA", maestro.sku(esim("350000000000004", "Azul", "n/a"), "Azul", "n/a"));
+    }
+
+    @Test void losSkuPorColorYGradoLlevanElDeLosNa() {
+        Maestro maestro = new Maestro(List.of(producto("Blue", "Azul", "B"), na("Azul", null, "i13128Azul", false)));
+        assertEquals(List.of(new SkuMaestro("Azul", "B", "i13128AzulB"), new SkuMaestro("Azul", "n/a", "i13128AzulNA")),
+                maestro.skus(SIN_GRADO));
+    }
 }

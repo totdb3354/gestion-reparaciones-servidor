@@ -1,13 +1,12 @@
 package com.reparaciones.servidor.nsys;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -24,13 +23,13 @@ public final class Maestro {
     }
 
     /** El SKU del maestro para el modelo del móvil con este color y este grado (CALIDAD_DETALLE = el grado de NSYS): si las
-     *  filas que casan tienen un solo SKU_WEB, ese; si no hay ninguna o tienen SKU distintos (los conflictos del maestro ya
-     *  vienen sin SKU), null: «sin SKU en el maestro». */
+     *  filas que casan tienen un solo SKU_WEB, ese; si tienen SKU distintos (los conflictos del maestro ya vienen sin SKU),
+     *  null: «sin SKU en el maestro». Si no traen ninguno y el grado es «n/a» o en blanco, el «SKU sin grado» + «NA»
+     *  ({@link SkuNa}, 0.9.30). */
     public String sku(MovilNsys m, String color, String grado) {
-        List<String> skus = delModelo(m)
+        return unSku(delModelo(m)
                 .filter(p -> Normalizacion.mismoTexto(p.color(), color) && Normalizacion.mismoTexto(p.calidadDetalle(), grado))
-                .map(ProductoMaestro::skuWeb).filter(s -> s != null && !s.isBlank()).distinct().toList();
-        return skus.size() == 1 ? skus.get(0) : null;
+                .toList(), grado);
     }
 
     /** Los colores del maestro para el modelo del móvil, sin repetir y por orden alfabético. */
@@ -51,14 +50,26 @@ public final class Maestro {
 
     /** Los SKU del modelo por color y grado, solo los que tienen uno (las mismas reglas que {@link #sku}). */
     public List<SkuMaestro> skus(MovilNsys m) {
-        Map<List<String>, Set<String>> porCombinacion = new LinkedHashMap<>();
-        delModelo(m).filter(p -> p.color() != null && p.calidadDetalle() != null).forEach(p -> {
-            Set<String> skus = porCombinacion.computeIfAbsent(List.of(p.color().strip(), p.calidadDetalle().strip()),
-                    k -> new LinkedHashSet<>());
-            if (p.skuWeb() != null && !p.skuWeb().isBlank()) skus.add(p.skuWeb());
+        Map<List<String>, List<ProductoMaestro>> porCombinacion = new LinkedHashMap<>();
+        delModelo(m).filter(p -> p.color() != null && p.calidadDetalle() != null).forEach(p ->
+                porCombinacion.computeIfAbsent(List.of(p.color().strip(), p.calidadDetalle().strip()), k -> new ArrayList<>())
+                        .add(p));
+        List<SkuMaestro> skus = new ArrayList<>();
+        porCombinacion.forEach((k, filas) -> {
+            String sku = unSku(filas, k.get(1));
+            if (sku != null) skus.add(new SkuMaestro(k.get(0), k.get(1), sku));
         });
-        return porCombinacion.entrySet().stream().filter(e -> e.getValue().size() == 1)
-                .map(e -> new SkuMaestro(e.getKey().get(0), e.getKey().get(1), e.getValue().iterator().next())).toList();
+        return skus;
+    }
+
+    /** El SKU de las filas de un color y un grado: su único SKU_WEB; con varios distintos, ninguno; sin ninguno, el de los
+     *  «n/a» si las filas coinciden en uno. */
+    private static String unSku(List<ProductoMaestro> filas, String grado) {
+        List<String> web = filas.stream().map(ProductoMaestro::skuWeb).filter(s -> s != null && !s.isBlank()).distinct().toList();
+        if (web.size() == 1) return web.get(0);
+        if (!web.isEmpty()) return null;
+        List<String> na = filas.stream().map(p -> SkuNa.calculado(p, grado)).filter(Objects::nonNull).distinct().toList();
+        return na.size() == 1 ? na.get(0) : null;
     }
 
     private Stream<ProductoMaestro> delModelo(MovilNsys m) {
