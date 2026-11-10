@@ -78,6 +78,20 @@ public class PorPasarController {
         porPasar.deshacerDescarte(peticion.imeiSn(), principal.getIdUsu());
     }
 
+    /** «ignorar» de una fila ámbar de Color, Grado o Revisar (0.9.27 §4.3). */
+    @PutMapping("/ignorado")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void ignorar(@RequestBody PeticionIgnorado peticion, @AuthenticationPrincipal UsuarioPrincipal principal) {
+        porPasar.ignorar(peticion.imeiSn(), principal.getIdUsu());
+    }
+
+    /** «deshacer» de un ignorado («Ver ignorados»). */
+    @DeleteMapping("/ignorado")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deshacerIgnorado(@RequestBody PeticionIgnorado peticion, @AuthenticationPrincipal UsuarioPrincipal principal) {
+        porPasar.deshacerIgnorado(peticion.imeiSn(), principal.getIdUsu());
+    }
+
     @GetMapping(value = "/plantilla-color", produces = XLSX)
     public ResponseEntity<byte[]> plantillaColor() {
         return descarga(porPasar.plantillaColor());
@@ -106,4 +120,7 @@ public class PorPasarController {
 
     /** Esquema PorPasarPeticionDeshacerDescarte. */
     record PeticionDeshacerDescarte(String imeiSn) {}
+
+    /** Esquema PorPasarPeticionIgnorado. */
+    record PeticionIgnorado(String imeiSn) {}
 }

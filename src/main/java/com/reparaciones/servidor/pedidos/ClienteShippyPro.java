@@ -37,7 +37,7 @@ public class ClienteShippyPro {
 
     private static final Logger log = LoggerFactory.getLogger(ClienteShippyPro.class);
     static final String API ="https://www.shippypro.com/api";
-    static final String AGENTE = "FSGR-ERP/0.9.26 (lectura de pedidos)";
+    static final String AGENTE = "FSGR-ERP/0.9.31 (lectura de pedidos)";
     private static final Duration ESPERA_CABECERAS = Duration.ofSeconds(60);
     static final Duration ESPERA = Duration.ofMinutes(2);
     private static final String CUERPO = "{\"Method\":\"GetPendingOrders\",\"Params\":{}}";

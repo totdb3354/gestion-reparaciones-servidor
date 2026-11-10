@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -67,7 +69,8 @@ public class StockTelefonosController {
         this.clock = clock;
     }
 
-    /** Los móviles que están en la empresa (en stock, de pedido o que no cuentan), cada uno con sus trabajos abiertos del
+    /** Los móviles que están en la empresa (en stock, de pedido o que no cuentan; desde la 0.9.30, un grado F, FD o RMA
+     *  tampoco cuenta, aquí y en el buscador, la ficha y «comprobar»), cada uno con sus trabajos abiertos del
      *  taller (0.9.18) y lo que vale (0.9.21, SKU del taller). Los días y la caja de un móvil de pedido cuentan con su cadena
      *  de correcciones de NSYS (0.9.21). La web filtra en local y calcula «Quién lo tiene». */
     @GetMapping
@@ -81,7 +84,7 @@ public class StockTelefonosController {
             MovilNsys primero = Objects.requireNonNullElse(c.lote(c.primerLote(m.batch())), m);
             LoQueVale.Valor v = vale.apply(m);
             return new MovilStock(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
-                    v.bateriaNueva(), m.esEsim(), v.sku(), ubicacionVisible(m, c), m.estado().name(), dias(primero, hoy),
+                    v.bateriaNueva(), m.esEsim(), v.sku(), ubicacionVisible(m, c), m.estado().conGrado(v.grado()).name(), dias(primero, hoy),
                     abiertos.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), List.of()), v.colorNsys(), v.gradoNsys(),
                     v.skuNsys());
         }).toList();
@@ -122,7 +125,7 @@ public class StockTelefonosController {
         Function<MovilNsys, LoQueVale.Valor> vale = taller.valedor(encontrados.stream().map(MovilNsys::imeiSn).toList());
         return encontrados.stream().map(m -> {
             LoQueVale.Valor v = vale.apply(m);
-            return new MovilBuscado(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), m.estado().name(),
+            return new MovilBuscado(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), m.estado().conGrado(v.grado()).name(),
                     ubicacionVisible(m), m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null, v.colorNsys(), m.esEsim());
         }).toList();
     }
@@ -162,7 +165,7 @@ public class StockTelefonosController {
         LocalDate recepcion = primero.receivingDate() != null ? primero.receivingDate() : m.receivingDate();
         ProductoNsys.Poner poner = v.porPasar() ? taller.productoAPoner(m, v) : null;
         return new FichaMovil(m.imeiSn(), m.batch(), m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
-                v.bateriaNueva(), gradoAnterior, v.sku(), ubicacionVisible(m, correcciones), m.estado().name(),
+                v.bateriaNueva(), gradoAnterior, v.sku(), ubicacionVisible(m, correcciones), m.estado().conGrado(v.grado()).name(),
                 enEmpresa ? dias(primero, LocalDate.now(clock)) : null, lotes.size() - correcciones.todas().size(),
                 m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
                 revisado == null ? null : revisado.fecha(), revisado != null && revisado.devolucion(),
@@ -228,10 +231,21 @@ public class StockTelefonosController {
                         false);
             LoQueVale.Valor v = vale.apply(m);
             return new MovilComprobado(imei, true, m.modelo(), m.modeloMaestro(), m.capacidad(), v.color(), v.grado(),
-                    v.bateriaNueva(), ubicacionVisible(m), m.estado().name(),
+                    v.bateriaNueva(), ubicacionVisible(m), m.estado().conGrado(v.grado()).name(),
                     m.estado() == EstadoMovil.VENDIDO ? m.soldDate() : null,
                     abiertos.getOrDefault(NsysDAO.claveCruce(imei), List.of()), v.colorNsys(), v.gradoNsys(), m.esEsim());
         }).toList();
+    }
+
+    /** «⬇ Descargar Excel» de «Qué revisar» (0.9.25, spec §10.3): el xlsx de las filas que manda la web, listo para imprimir
+     *  ({@link HojaImprimible}). No sabe las reglas de la lista. Fuera de los límites, 400 con el motivo. */
+    @PostMapping(value = "/que-revisar/excel", produces = PorPasarController.XLSX)
+    public ResponseEntity<byte[]> excel(@RequestBody PeticionExcel peticion) {
+        String error = peticion == null ? "Falta el nombre de la hoja"
+                : HojaImprimible.error(peticion.hoja(), peticion.columnas(), peticion.filas());
+        if (error != null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, error);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(PorPasarController.XLSX))
+                .body(HojaImprimible.escribir(peticion.hoja(), peticion.columnas(), peticion.filas()));
     }
 
     /** Las últimas importaciones del Items actual, de la más reciente a la más antigua, y el progreso del histórico (spec
@@ -320,6 +334,10 @@ public class StockTelefonosController {
 
     /** Esquema StockTelefonosPeticionVolver. */
     record PeticionVolver(@Schema(nullable = true) String motivo) {}
+
+    /** 0.9.25 («Qué revisar» §10.3): la hoja que se imprime, todo textos. Del paquete para que los tests lo construyan; esquema
+     *  StockTelefonosPeticionExcel. */
+    record PeticionExcel(String hoja, List<String> columnas, List<List<String>> filas) {}
 
     private record ListaImportaciones(List<FilaImportacion> importaciones, ProgresoHistorico historico) {}
 

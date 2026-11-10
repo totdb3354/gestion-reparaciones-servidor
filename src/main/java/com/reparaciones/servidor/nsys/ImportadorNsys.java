@@ -189,6 +189,7 @@ public class ImportadorNsys {
             if (cerrarTaller()) {
                 repasarHechos(f.fecha());
                 repasarDescartes();
+                repasarIgnorados();
                 usarBaterias();
             }
             return true;
@@ -253,7 +254,7 @@ public class ImportadorNsys {
         }
     }
 
-    /** Al maestro guardado le faltan los nombres de producto (0.9.22) o los SKU de los canales (0.9.26): las columnas son nuevas: se recarga una vez aunque no haya
+    /** Al maestro guardado le faltan los nombres de producto (0.9.22) o los SKU de los canales (0.9.31): las columnas son nuevas: se recarga una vez aunque no haya
      *  cambiado en Drive. Una vez recargado (o si ya los tiene) no se vuelve a mirar en este arranque, para no descargarlo en cada
      *  pasada si el Excel no trae la columna; si la mirada falla, se vuelve a mirar en la siguiente pasada. */
     private boolean faltanNombres() {
@@ -335,6 +336,17 @@ public class ImportadorNsys {
             porPasar.repasarDescartes();
         } catch (RuntimeException e) {
             log.warn("NSYS: no se pudieron repasar los descartes tras la importación", e);
+        }
+    }
+
+    /** Tras el repaso de los descartes, el de los ignorados (spec 0.9.27 §4.4): fuera los de IMEI que NSYS vuelve a tener en la
+     *  empresa. Con la misma condición (cierre bueno); si falla, se avisa en el registro del servidor y se repite con el siguiente
+     *  fichero. */
+    private void repasarIgnorados() {
+        try {
+            porPasar.repasarIgnorados();
+        } catch (RuntimeException e) {
+            log.warn("NSYS: no se pudieron repasar los ignorados tras la importación", e);
         }
     }
 

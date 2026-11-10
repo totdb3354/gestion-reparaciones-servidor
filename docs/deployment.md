@@ -27,7 +27,7 @@ La configuración se inyecta por variables de entorno, sin valores por defecto e
 - `NSYS_DRIVE_CARPETA_ITEMS` y `NSYS_DRIVE_MAESTRO`: identificadores en Drive de la carpeta de los ficheros Items y del maestro de productos.
 - `NSYS_DRIVE_CREDENCIALES`: ruta, dentro del contenedor, del JSON de la cuenta de servicio de Google. Es un fichero montado en solo lectura; nunca va al repo.
 - `NSYS_HISTORICO_ACTIVO` (por defecto `false`): carga el histórico de exportaciones de 19:00 a 7:00, un fichero cada 5 s; cuando termina, no hace nada.
-- Lectura de pedidos (0.9.26; la lectura y el cruce de «Pedidos», cada 5 minutos, con las credenciales de Google de `NSYS_DRIVE_CREDENCIALES`). Solo se documentan los nombres; los valores van en el entorno de la VM, nunca en el repo:
+- Lectura de pedidos (0.9.31; la lectura y el cruce de «Pedidos», cada 5 minutos, con las credenciales de Google de `NSYS_DRIVE_CREDENCIALES`). Solo se documentan los nombres; los valores van en el entorno de la VM, nunca en el repo:
   - `PEDIDOS_LECTURA_ACTIVA` (por defecto `false`): enciende la tarea (`TareaLecturaPedidos`); apagada, el servidor no lee nada y la línea de pedido de Asignaciones no consulta.
   - `PEDIDOS_SHIPPYPRO_CLAVE` (por defecto vacío): ruta, dentro del contenedor, del fichero con la clave de ShippyPro. Se lee la primera vez que hace falta, no al arrancar.
   - `PEDIDOS_SHIPPYPRO_CANALES` (por defecto vacío): a qué canal va cada marketplace de ShippyPro, `"<marketplace>:AMAZON,<marketplace>:AMAZON_STOCKROOM,…"`. Vacío, ShippyPro se registra como RECHAZADA y no se aplica nada.

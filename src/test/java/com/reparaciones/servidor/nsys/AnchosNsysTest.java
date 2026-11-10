@@ -92,7 +92,7 @@ class AnchosNsysTest {
         assertEquals(ddl.get("Nsys_movil.LOCATION"), ddl.get("Nsys_evento.A_NSYS"));
     }
 
-    // Las migraciones posteriores al espejo que añaden columnas a las tablas Nsys_ (0.9.22: Nsys_producto.NOMBRE; 0.9.26: los tres SKU de los canales).
+    // Las migraciones posteriores al espejo que añaden columnas a las tablas Nsys_ (0.9.22: Nsys_producto.NOMBRE; 0.9.31: los tres SKU de los canales).
     @Test void crearBdTieneLasMismasTablasDelEspejo() throws Exception {
         Map<String, Integer> migraciones = anchos("migracion-nsys-espejo.sql");
         migraciones.putAll(anadidas("migracion-nombres-y-coste-nsys.sql"));

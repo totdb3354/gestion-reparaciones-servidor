@@ -1,7 +1,7 @@
 -- ══════════════════════════════════════════════════════════════════════════════
--- migracion-pedidos.sql — 0.9.26, pieza 2 del módulo de teléfonos: «Pedidos» (1ª entrega)
+-- migracion-pedidos.sql — 0.9.31, pieza 2 del módulo de teléfonos: «Pedidos» (1ª entrega)
 -- (spec docs/superpowers/specs/2026-11-04-pieza2-pedidos-design.md §5, raíz).
--- La aplica el usuario a mano en la VM, con vista previa, ANTES de desplegar el servidor 0.9.26.
+-- La aplica el usuario a mano en la VM, con vista previa, ANTES de desplegar el servidor 0.9.31.
 -- Aditiva: el servidor anterior no lee las tablas nuevas ni las columnas nuevas de Nsys_producto.
 -- NO idempotente (relanzar = error de tabla o columna existente).
 -- 1) Vista previa: YA_EXISTEN y COLUMNAS_YA deben dar 0.
@@ -74,11 +74,11 @@ CREATE TABLE Pedido_lectura (
 
 -- Los SKU de los canales que faltaban en el maestro (spec §5.4).
 ALTER TABLE Nsys_producto
-    ADD COLUMN SKU_AMAZON_ESIM  VARCHAR(60) NULL COMMENT '«SKU (Amazon) con eSIM» del maestro (0.9.26)',
-    ADD COLUMN SKU_PARTICULARES VARCHAR(60) NULL COMMENT '«SKU (stock fonestore.es) Conjunto» (0.9.26)',
-    ADD COLUMN SKU_BACKIPHONE   VARCHAR(60) NULL COMMENT '«SKU BackiPhone» (0.9.26)';
+    ADD COLUMN SKU_AMAZON_ESIM  VARCHAR(60) NULL COMMENT '«SKU (Amazon) con eSIM» del maestro (0.9.31)',
+    ADD COLUMN SKU_PARTICULARES VARCHAR(60) NULL COMMENT '«SKU (stock fonestore.es) Conjunto» (0.9.31)',
+    ADD COLUMN SKU_BACKIPHONE   VARCHAR(60) NULL COMMENT '«SKU BackiPhone» (0.9.31)';
 
--- Comprobación final (no modifica nada): CREADAS = 3 y COLUMNAS = 3; si no, NO desplegar el servidor 0.9.26.
+-- Comprobación final (no modifica nada): CREADAS = 3 y COLUMNAS = 3; si no, NO desplegar el servidor 0.9.31.
 SELECT COUNT(*) AS CREADAS FROM information_schema.TABLES
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME IN ('Pedido', 'Pedido_unidad', 'Pedido_lectura');
 SELECT COUNT(*) AS COLUMNAS FROM information_schema.COLUMNS

@@ -56,7 +56,7 @@ public class NsysDAO {
             + " SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM, NOMBRE, SKU_AMAZON_ESIM, SKU_PARTICULARES, SKU_BACKIPHONE";
     static final String SQL_PRODUCTO = "INSERT INTO Nsys_producto (" + COLUMNAS_PRODUCTO + ")"
             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    /** El maestro guardado no tiene ningún SKU de los canales nuevos (se cargó antes de la 0.9.26). */
+    /** El maestro guardado no tiene ningún SKU de los canales nuevos (se cargó antes de la 0.9.31). */
     static final String SQL_PRODUCTOS_SIN_SKU_DE_CANALES = "SELECT COUNT(*) > 0 AND COALESCE(SUM(SKU_AMAZON_ESIM IS NOT NULL"
             + " OR SKU_PARTICULARES IS NOT NULL OR SKU_BACKIPHONE IS NOT NULL), 0) = 0 FROM Nsys_producto";
     /** Los productos cuyo SKU de algún canal es uno de estos (la intercalación de la tabla no distingue mayúsculas). Amazon es
@@ -139,7 +139,7 @@ public class NsysDAO {
         return jdbc.query("SELECT " + COLUMNAS_PRODUCTO + " FROM Nsys_producto", NsysDAO::producto);
     }
 
-    /** Los productos del maestro que un pedido puede pedir con estos SKU de canal (0.9.26, spec pieza 2 §6.4.1), en tandas. */
+    /** Los productos del maestro que un pedido puede pedir con estos SKU de canal (0.9.31, spec pieza 2 §6.4.1), en tandas. */
     public List<ProductoMaestro> productosPorSkuDeCanal(Collection<String> skus) {
         List<ProductoMaestro> productos = new ArrayList<>();
         for (List<String> tanda : trozos(List.copyOf(skus), TANDA_IN)) {

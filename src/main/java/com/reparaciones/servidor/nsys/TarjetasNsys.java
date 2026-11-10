@@ -1,12 +1,15 @@
 package com.reparaciones.servidor.nsys;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /** Las reglas de las cuatro tarjetas de «Por pasar a NSYS» (spec 0.9.22 §3): las listas a partir de los móviles con algo del
  *  taller vigente (TallerNsys#movilesPorPasar), los IMEI que NSYS no conoce y los avisos por revisar; la marca «Hecho» de cada fila
@@ -56,6 +59,12 @@ final class TarjetasNsys {
         return p.cambios().stream().filter(c -> c.dato() == dato).map(TallerNsys::porQue).toList();
     }
 
+    /** La caja de NSYS de un lote (0.9.26, spec «cajas del cambio de color» §5.1): tal cual la guarda el espejo (ya sin espacios a
+     *  los lados); null si no tiene. */
+    static String caja(MovilNsys m) {
+        return m.location() == null || m.location().isBlank() ? null : m.location();
+    }
+
     static List<FilaColorNsys> color(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
         return color(moviles, marcas, Map.of());
     }
@@ -80,7 +89,7 @@ final class TarjetasNsys {
             filas.add(new FilaColorNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), deNsys != null ? deNsys : m.color(),
                     colorA, m.goods(), m.grade(), poner == null ? null : poner.producto(), poner != null && poner.compruebalo(),
                     cambio(p, DatoTaller.GRADO).isPresent(), porQue(p, DatoTaller.COLOR), desde, h.por(), h.en(), h.volvio(),
-                    v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim()));
+                    v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim(), caja(m), v.ignoradoAntesPor(), v.ignoradoAntesEn()));
         }
         filas.sort(Comparator.comparing(FilaColorNsys::desde).thenComparing(FilaColorNsys::imeiSn));
         return filas;
@@ -104,7 +113,8 @@ final class TarjetasNsys {
             VueltaNsys v = vueltas.getOrDefault(NsysDAO.claveCruce(m.imeiSn()), VueltaNsys.EN_EMPRESA);
             filas.add(new FilaGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), p.valor().grade(),
                     m.goods(), cambio(p, DatoTaller.COLOR).isPresent(), porQue(p, DatoTaller.GRADO), desde, h.por(), h.en(),
-                    h.volvio(), v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim()));
+                    h.volvio(), v.vendidoEn(), v.bajaEn(), v.desde(), m.esEsim(), v.ignoradoAntesPor(),
+                    v.ignoradoAntesEn()));
         }
         filas.sort(Comparator.comparing(FilaGradoNsys::desde).thenComparing(FilaGradoNsys::imeiSn));
         return filas;
@@ -160,6 +170,70 @@ final class TarjetasNsys {
         return filas;
     }
 
+    // ---------------------------------------------------------------- 0.9.27: los ignorados (spec «ignorar» §4.2)
+
+    /** Las tarjetas que pueden tener ignorados, en el orden de {@link FilaIgnoradaNsys#tarjetas()}. */
+    static final List<String> TARJETAS_IGNORADO = List.of("COLOR", "GRADO", "REVISAR");
+
+    /** Los ignorados por {@link NsysDAO#claveCruce} de su IMEI. */
+    static Map<String, VueltaIgnorada> ignoradosPorClave(List<VueltaIgnorada> ignorados) {
+        Map<String, VueltaIgnorada> mapa = new HashMap<>();
+        for (VueltaIgnorada i : ignorados) mapa.put(NsysDAO.claveCruce(i.imeiSn()), i);
+        return mapa;
+    }
+
+    /** «Ver ignorados» (spec 0.9.27 §4.2): se le dan las filas que saldrían de los móviles ignorados (las mismas reglas de cada
+     *  tarjeta, con su vuelta) y junta una por móvil con las tarjetas donde saldría. {@code ignorados}, por clave de cruce, solo se
+     *  lee si llega alguna fila. */
+    static final class Ignorados {
+        private final Supplier<Map<String, VueltaIgnorada>> ignorados;
+        private final Map<String, FilaIgnoradaNsys> filas = new LinkedHashMap<>();
+
+        Ignorados(Supplier<Map<String, VueltaIgnorada>> ignorados) {
+            this.ignorados = ignorados;
+        }
+
+        void color(List<FilaColorNsys> fs) {
+            for (FilaColorNsys f : fs)
+                anotar("COLOR", f.imeiSn(), f.modelo(), f.modeloMaestro(), f.capacidad(), f.esEsim(), f.vendidoEn(), f.bajaEn(), f.vueltoDesde());
+        }
+
+        void grado(List<FilaGradoNsys> fs) {
+            for (FilaGradoNsys f : fs)
+                anotar("GRADO", f.imeiSn(), f.modelo(), f.modeloMaestro(), f.capacidad(), f.esEsim(), f.vendidoEn(), f.bajaEn(), f.vueltoDesde());
+        }
+
+        void revisar(List<FilaRevisarNsys> fs) {
+            for (FilaRevisarNsys f : fs)
+                anotar("REVISAR", f.imeiSn(), f.modelo(), f.modeloMaestro(), f.capacidad(), f.esEsim(), f.vendidoEn(), f.bajaEn(), f.vueltoDesde());
+        }
+
+        void sinGrado(List<FilaSinGradoNsys> fs) {
+            for (FilaSinGradoNsys f : fs)
+                anotar("REVISAR", f.imeiSn(), f.modelo(), f.modeloMaestro(), f.capacidad(), f.esEsim(), f.vendidoEn(), f.bajaEn(), f.vueltoDesde());
+        }
+
+        private void anotar(String tarjeta, String imeiSn, String modelo, String modeloMaestro, String capacidad, boolean esEsim,
+                            LocalDate vendidoEn, LocalDate bajaEn, LocalDateTime vueltoDesde) {
+            String clave = NsysDAO.claveCruce(imeiSn);
+            VueltaIgnorada i = ignorados.get().get(clave);
+            if (i == null) return;
+            FilaIgnoradaNsys antes = filas.get(clave);
+            List<String> tarjetas = new ArrayList<>(antes == null ? List.of() : antes.tarjetas());
+            if (!tarjetas.contains(tarjeta)) tarjetas.add(tarjeta);
+            tarjetas.sort(Comparator.comparingInt(TARJETAS_IGNORADO::indexOf));
+            filas.put(clave, antes != null ? antes.conTarjetas(tarjetas)
+                    : new FilaIgnoradaNsys(imeiSn, modelo, modeloMaestro, capacidad, esEsim, vendidoEn, bajaEn, vueltoDesde,
+                    i.usuario(), i.fecha(), List.copyOf(tarjetas)));
+        }
+
+        /** Del ignorado más reciente al más antiguo, y por IMEI. */
+        List<FilaIgnoradaNsys> filas() {
+            return filas.values().stream().sorted(Comparator.comparing(FilaIgnoradaNsys::ignoradoEn, Comparator.reverseOrder())
+                    .thenComparing(FilaIgnoradaNsys::imeiSn)).toList();
+        }
+    }
+
     /** «Revisar a mano» (§3.5), en el orden de los avisos, con el modelo de la fila más reciente del espejo de su IMEI
      *  ({@code espejo}, por {@link NsysDAO#claveCruce}) y, desde la pieza 4, su vuelta ({@code vueltas}; sin ella, en la empresa).
      *  Qué avisos salen lo decide quien llama (PorPasarNsys). */
@@ -171,7 +245,7 @@ final class TarjetasNsys {
             return new FilaRevisarNsys(a.id(), a.imeiSn(), m == null ? null : m.modelo(), m == null ? null : m.modeloMaestro(),
                     m == null ? null : m.capacidad(), a.tipo().name(), a.causa() == null ? null : a.causa().name(),
                     a.dato().name(), a.de(), a.a(), a.motivo(), a.idRep(), a.usuario(), a.fecha(), v.vendidoEn(), v.bajaEn(),
-                    v.desde(), m != null && m.esEsim());
+                    v.desde(), m != null && m.esEsim(), v.ignoradoAntesPor(), v.ignoradoAntesEn());
         }).toList();
     }
 
@@ -215,7 +289,7 @@ final class TarjetasNsys {
             filas.add(new FilaSinGradoNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.grade(), ultimo.idRep(),
                     ultimo.asignado(), Rastro.categoria(ultimo.idRep()), b.map(BateriaRecordada::idRep).orElse(null),
                     b.map(BateriaRecordada::nueva).orElse(null), b.map(BateriaRecordada::fecha).orElse(null), v.vendidoEn(),
-                    v.bajaEn(), v.desde(), m.esEsim()));
+                    v.bajaEn(), v.desde(), m.esEsim(), v.ignoradoAntesPor(), v.ignoradoAntesEn()));
         });
         filas.sort(Comparator.comparing(FilaSinGradoNsys::ultimoTrabajoEn, Comparator.nullsFirst(Comparator.naturalOrder()))
                 .thenComparing(FilaSinGradoNsys::imeiSn));

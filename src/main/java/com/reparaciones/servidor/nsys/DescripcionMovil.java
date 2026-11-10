@@ -74,7 +74,7 @@ public class DescripcionMovil {
         }
     }
 
-    /** 0.9.26 (spec pieza 2 §9.3): el pedido de los IMEI de las filas de trabajos abiertos; si falla, las filas salen sin él. */
+    /** 0.9.31 (spec pieza 2 §9.3): el pedido de los IMEI de las filas de trabajos abiertos; si falla, las filas salen sin él. */
     private void rellenarPedidos(List<ReparacionResumen> filas) {
         if (pedidos == null) return;
         Set<String> imeis = new LinkedHashSet<>();

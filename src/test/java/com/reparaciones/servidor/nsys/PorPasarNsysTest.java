@@ -42,9 +42,10 @@ class PorPasarNsysTest {
     private final NsysDAO nsys = mock(NsysDAO.class);
     private final HechoDAO hechos = mock(HechoDAO.class);
     private final DescarteDAO descartes = mock(DescarteDAO.class);
+    private final VueltaIgnoradaDAO ignorados = mock(VueltaIgnoradaDAO.class);
     private final LogDAO registro = mock(LogDAO.class);
     private final TallerReparaciones reparaciones = mock(TallerReparaciones.class);
-    private final PorPasarNsys servicio = new PorPasarNsys(taller, tallerDao, nsys, hechos, descartes, registro, reparaciones,
+    private final PorPasarNsys servicio = new PorPasarNsys(taller, tallerDao, nsys, hechos, descartes, ignorados, registro, reparaciones,
             Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     private static HttpStatusCode estado(Executable accion) {
@@ -504,6 +505,81 @@ class PorPasarNsysTest {
         verify(tallerDao).bateriasRecordadas(anyCollection());
     }
 
+    // ---------------------------------------------------------------- 0.9.27: «ignorar» (spec §4)
+
+    private static final LocalDateTime TRABAJO = LocalDateTime.of(2026, 10, 22, 14, 6);
+
+    private void vueltoConTrabajo(String imei) {
+        when(taller.movilesPorPasar()).thenReturn(List.of(vendidoConAmbosCambios(imei, LocalDate.of(2026, 9, 14))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(imei, "A20261022_101", TRABAJO, TRABAJO.plusHours(2))));
+    }
+
+    @Test void unIgnoradoQueValeSaleDeColorYGradoYEstaEnIgnoradosConSusTarjetas() {
+        String vuelto = "350000000000002";
+        vueltoConTrabajo(vuelto);
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", AHORA)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertTrue(t.color().isEmpty());
+        assertTrue(t.grado().isEmpty());
+        assertEquals(1, t.ignorados().size());
+        FilaIgnoradaNsys f = t.ignorados().get(0);
+        assertEquals(vuelto, f.imeiSn());
+        assertEquals(List.of("COLOR", "GRADO"), f.tarjetas());
+        assertEquals("Supertécnico 1", f.ignoradoPor());
+        assertEquals(AHORA, f.ignoradoEn());
+        assertEquals(LocalDate.of(2026, 9, 14), f.vendidoEn());
+        assertEquals(TRABAJO, f.vueltoDesde());
+    }
+
+    @Test void unIgnoradoSuperadoPorUnaAsignacionSaleEnAmbarConQuienLoIgnoro() {
+        String vuelto = "350000000000002";
+        vueltoConTrabajo(vuelto);
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", TRABAJO.minusDays(1))));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(vuelto), t.color().stream().map(FilaColorNsys::imeiSn).toList());
+        assertEquals("Supertécnico 1", t.color().get(0).ignoradoAntesPor());
+        assertEquals(TRABAJO.minusDays(1), t.grado().get(0).ignoradoAntesEn());
+        assertTrue(t.ignorados().isEmpty());
+    }
+
+    @Test void unIgnoradoDeUnMovilEnLaEmpresaNoHaceNadaYNiSeLee() {
+        when(taller.movilesPorPasar()).thenReturn(List.of(conAmbosCambios(IMEI, EstadoMovil.STOCK)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(IMEI), t.color().stream().map(FilaColorNsys::imeiSn).toList());
+        assertNull(t.color().get(0).ignoradoAntesEn());
+        assertTrue(t.ignorados().isEmpty());
+        verify(ignorados, never()).todos();
+    }
+
+    @Test void revisarSinLosAvisosDeUnIgnoradoQueSaleEnIgnorados() {
+        String vuelto = "350000000000002";
+        when(tallerDao.avisosPorRevisar()).thenReturn(List.of(sinColorDe(1, IMEI), sinColorDe(2, vuelto)));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI, "Azul", "B"), vendido(vuelto, "Azul", "B", LocalDate.of(2026, 9, 14))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(vuelto, "R20261022_101", TRABAJO)));
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", AHORA)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(IMEI), t.revisar().stream().map(FilaRevisarNsys::imeiSn).toList());
+        assertEquals(List.of("REVISAR"), t.ignorados().get(0).tarjetas());
+    }
+
+    @Test void conVariasListasLosIgnoradosSeLeenUnaSolaVez() {
+        String vuelto = "350000000000002";
+        vueltoConTrabajo(vuelto);
+        when(tallerDao.avisosPorRevisar()).thenReturn(List.of(sinColorDe(2, vuelto)));
+        when(nsys.porImeis(any())).thenReturn(List.of(vendido(vuelto, "Azul", "B", LocalDate.of(2026, 9, 14))));
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", AHORA)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of("COLOR", "GRADO", "REVISAR"), t.ignorados().get(0).tarjetas());
+        verify(ignorados, times(1)).todos();
+    }
+
+    @Test void laPlantillaDeColorTampocoLlevaUnIgnorado() {
+        String vuelto = "350000000000002";
+        vueltoConTrabajo(vuelto);
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", AHORA)));
+        assertEquals(0, servicio.plantillaColor().filas());
+    }
+
     // ---------------------------------------------------------------- 0.9.22 pieza 4: baterías tras la importación (spec §5.2)
     // Lo de cada móvil (releer con el candado, el cambio de grado y darlas por usadas) está en TallerReparaciones y sus pruebas;
     // aquí, el prefiltro, una llamada por móvil, el fallo de uno y la línea del registro del servidor.
@@ -594,5 +670,54 @@ class PorPasarNsysTest {
         verify(reparaciones).usarBateriaRecordada(sigue);
         assertEquals(List.of("WARN NSYS: no se pudo usar la batería recordada de 350000000000001",
                 "INFO NSYS: baterías recordadas usadas: 1 (cambios de grado: 1)"), lineas);
+    }
+
+    // ---------------------------------------------------------------- 0.9.27: ignorar, deshacer y repasar
+
+    @Test void ignorarGuardaQuienYCuandoYLoApunta() {
+        servicio.ignorar(" 350000000000002 ", 7);
+        verify(ignorados).ignorar("350000000000002", 7, AHORA);
+        verify(registro).insertar(7, "IGNORAR_VUELTA_NSYS", "IMEI: 350000000000002", null);
+    }
+
+    @Test void deshacerUnIgnoradoSoloSeApuntaSiHabiaUno() {
+        when(ignorados.deshacer("350000000000002")).thenReturn(1);
+        servicio.deshacerIgnorado("350000000000002", 7);
+        verify(registro).insertar(7, "DESHACER_IGNORAR_VUELTA_NSYS", "IMEI: 350000000000002", null);
+        servicio.deshacerIgnorado("350000000000003", 7);
+        verifyNoMoreInteractions(registro);
+    }
+
+    @Test void ignorarSinImeiOLargoEs400() {
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.ignorar(" ", 7)));
+        assertEquals(HttpStatus.BAD_REQUEST, estado(() -> servicio.deshacerIgnorado("3".repeat(41), 7)));
+        verifyNoInteractions(ignorados);
+    }
+
+    @Test void elRepasoQuitaLosIgnoradosQueNsysVuelveATenerEnLaEmpresa() {
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada("350000000000002", 7, "Supertécnico 1", AHORA),
+                new VueltaIgnorada("350000000000003", 7, "Supertécnico 1", AHORA)));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil("350000000000002", "Azul", "B"),
+                vendido("350000000000003", "Azul", "B", LocalDate.of(2026, 9, 14))));
+        servicio.repasarIgnorados();
+        verify(ignorados).quitar(List.of("350000000000002"));
+    }
+
+    @Test void sinIgnoradosElRepasoNoLeeElEspejo() {
+        servicio.repasarIgnorados();
+        verify(nsys, never()).porImeis(any());
+        verify(ignorados, never()).quitar(any());
+    }
+
+    @Test void unIgnoradoQueValeSaleDeSinGradoYVaEnIgnoradosComoRevisar() {
+        String vuelto = "350000000000002";
+        when(nsys.trabajosDesde(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(vuelto, "A20261025_9", AHORA.minusHours(2))));
+        when(nsys.porImeis(List.of(vuelto))).thenReturn(List.of(vendido(vuelto, "Azul", "n/a", LocalDate.of(2026, 9, 14))));
+        when(nsys.trabajosDe(any())).thenReturn(List.of(new NsysDAO.TrabajoFecha(vuelto, "A20261022_101", TRABAJO, TRABAJO.plusHours(2))));
+        when(ignorados.todos()).thenReturn(List.of(new VueltaIgnorada(vuelto, 7, "Supertécnico 1", AHORA)));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertTrue(t.sinGrado().isEmpty());
+        assertEquals(1, t.ignorados().size());
+        assertEquals(List.of("REVISAR"), t.ignorados().get(0).tarjetas());
     }
 }

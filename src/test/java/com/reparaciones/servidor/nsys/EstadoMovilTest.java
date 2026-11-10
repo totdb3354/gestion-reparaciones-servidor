@@ -43,4 +43,22 @@ class EstadoMovilTest {
         assertFalse(EstadoMovil.VENDIDO.enEmpresa());
         assertFalse(EstadoMovil.BAJA.enEmpresa());
     }
+
+    // ---------------------------------------------------------------- 0.9.30: los grados F, FD y RMA no cuentan como stock
+
+    @Test void unStockConGradoNoVendibleNoCuenta() {
+        for (String grado : new String[]{"F", "FD", "RMA", "Fd", "f", " rma "})
+            assertEquals(EstadoMovil.NO_CUENTA, EstadoMovil.STOCK.conGrado(grado), grado);
+    }
+
+    @Test void unStockConCualquierOtroGradoSigueContando() {
+        for (String grado : new String[]{"ID", "n/a", "A", "A-", "B", "Ms", "MsA", "", null})
+            assertEquals(EstadoMovil.STOCK, EstadoMovil.STOCK.conGrado(grado), String.valueOf(grado));
+    }
+
+    @Test void elGradoSoloCambiaAlQueEsStock() {
+        for (EstadoMovil estado : new EstadoMovil[]{EstadoMovil.DE_PEDIDO, EstadoMovil.NO_CUENTA, EstadoMovil.VENDIDO, EstadoMovil.BAJA})
+            for (String grado : new String[]{"F", "FD", "RMA", "A"})
+                assertEquals(estado, estado.conGrado(grado), estado + " con " + grado);
+    }
 }

@@ -13,6 +13,7 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS Taller_descarte;
+DROP TABLE IF EXISTS Taller_vuelta_ignorada;
 DROP TABLE IF EXISTS Taller_hecho;
 DROP TABLE IF EXISTS Taller_aviso;
 DROP TABLE IF EXISTS Taller_cambio;
@@ -512,9 +513,9 @@ CREATE TABLE Nsys_producto (
     SKU_AMAZON      VARCHAR(60)  NULL,
     SKU_SIN_GRADO   VARCHAR(60)  NULL,
     ES_ESIM         BOOLEAN      NOT NULL DEFAULT FALSE,
-    SKU_AMAZON_ESIM  VARCHAR(60) NULL COMMENT '«SKU (Amazon) con eSIM» del maestro (0.9.26)',
-    SKU_PARTICULARES VARCHAR(60) NULL COMMENT '«SKU (stock fonestore.es) Conjunto» (0.9.26)',
-    SKU_BACKIPHONE   VARCHAR(60) NULL COMMENT '«SKU BackiPhone» (0.9.26)',
+    SKU_AMAZON_ESIM  VARCHAR(60) NULL COMMENT '«SKU (Amazon) con eSIM» del maestro (0.9.31)',
+    SKU_PARTICULARES VARCHAR(60) NULL COMMENT '«SKU (stock fonestore.es) Conjunto» (0.9.31)',
+    SKU_BACKIPHONE   VARCHAR(60) NULL COMMENT '«SKU BackiPhone» (0.9.31)',
     PRIMARY KEY (CLAVE)
 );
 
@@ -625,7 +626,17 @@ CREATE TABLE Taller_descarte (
     CONSTRAINT fk_taller_descarte_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 
--- 0.9.26: pedidos (spec pieza 2 §5)
+-- «ignorar» (0.9.27, spec §3): un vendido o de baja de NSYS que salía en ámbar en «Por pasar a NSYS» y no ha vuelto, con quién
+-- y cuándo. Vale mientras el taller no le haga un trabajo nuevo; se borra sola cuando NSYS lo vuelve a tener en la empresa.
+CREATE TABLE Taller_vuelta_ignorada (
+    IMEI_SN  VARCHAR(40)  NOT NULL COMMENT 'El IMEI del espejo, como Taller_hecho',
+    ID_USU   INT          NULL,
+    FECHA    DATETIME     NOT NULL COMMENT 'Cuándo se ignoró (hora de Madrid)',
+    PRIMARY KEY (IMEI_SN),
+    CONSTRAINT fk_taller_vuelta_ignorada_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+
+-- 0.9.31: pedidos (spec pieza 2 §5)
 -- Un pedido de un cliente (spec §5.1): de ShippyPro (Amazon y webs) o del Simulador. Los cerrados no se borran.
 CREATE TABLE Pedido (
     ID_PEDIDO     INT          NOT NULL AUTO_INCREMENT,

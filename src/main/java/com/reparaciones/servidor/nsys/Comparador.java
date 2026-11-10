@@ -57,8 +57,12 @@ public final class Comparador {
             }
             MovilNsys nuevo = construir(f, t, caja, anterior, fecha);
             cambios(anterior, nuevo, fecha, eventos);
+            // CAMBIADO es la última vez que NSYS cambió el móvil: el día de baja de los móviles de baja (VueltaNsys). Si lo
+            // que NSYS dice es lo mismo y solo cambia la traducción del ERP (el SKU de los n/a, un maestro más completo, la
+            // tabla de cajas), se guarda sin moverlo (0.9.30).
             if (modo != Modo.HISTORICO && !anterior.mismoContenido(nuevo))
-                aGuardar.add(nuevo.conFechas(anterior.vistoPrimero(), fecha));
+                aGuardar.add(nuevo.conFechas(anterior.vistoPrimero(),
+                        anterior.comoFila().equals(nuevo.comoFila()) ? anterior.cambiado() : fecha));
         }
         int desaparecidos = 0;
         for (ClaveMovil k : anteriores.keySet()) if (!vistas.contains(k)) desaparecidos++;
@@ -91,7 +95,7 @@ public final class Comparador {
                 : anterior.ubicacion() != null ? anterior.ubicacion() : anterior.ubicacionUltima();
         return new MovilNsys(f.imeiSn(), f.batch(), f.goods(), f.grade(), f.status(), Normalizacion.caja(f.location()),
                 f.supplier(), f.receivingDate(), f.soldDate(),
-                p == null ? null : p.skuWeb(), p == null ? null : p.modelo(), p == null ? null : p.modeloMaestro(),
+                SkuNa.de(p, f.grade()), p == null ? null : p.modelo(), p == null ? null : p.modeloMaestro(),
                 p == null ? null : p.capacidad(), p == null ? null : p.color(), p == null ? null : p.calidadDetalle(),
                 p != null ? p.esEsim() : Normalizacion.esEsim(f.goods()),
                 ubicacion, ultima, EstadoMovil.de(f.status(), caja),

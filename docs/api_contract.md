@@ -28,14 +28,24 @@ de `model/` conservan su nombre.
   (de `Nsys_movil`) y el `color` que vale (lo del taller vigente o el de NSYS) de la fila más reciente del IMEI en el espejo de
   NSYS (0.9.21). Son `null` si el IMEI no está en el espejo, si la lectura falla (la lista sale igual y se apunta en el log) y en
   las demás rutas que devuelven `ReparacionResumen`. `modelo` sigue siendo el código de `Telefono.MODELO`.
-- Desde la 0.9.24, esas seis listas traen también `esEsim` en `ReparacionResumen` (booleano, no nulo; desde la 0.9.26 detrás van `pedidoNumero`, `pedidoCanal`, `pedidoSku` y `pedidoRepetido`): si NSYS
+- Desde la 0.9.24, esas seis listas traen también `esEsim` en `ReparacionResumen` (booleano, no nulo; desde la 0.9.31 detrás van `pedidoNumero`, `pedidoCanal`, `pedidoSku` y `pedidoRepetido`): si NSYS
   escribe «eSIM» en el producto (`Nsys_movil.ES_ESIM`), de la misma fila que la `capacidad`; `false` fuera del espejo, si la
   lectura falla y en las demás rutas que devuelven `ReparacionResumen`. Lo traen igual la ficha
   (`GET /api/stock-telefonos/{imeiSn}`), el buscador (`GET /api/stock-telefonos/buscar`), «Comprobar»
   (`POST /api/stock-telefonos/comprobar`; un IMEI no encontrado, `false`) y las filas de «Cambio de color», «Cambio de grado»,
   «Revisar a mano» y «Sin grado en NSYS» de las tarjetas de «Por pasar a NSYS» (un aviso sin móvil en el espejo, `false`). El
   stock (`GET /api/stock-telefonos`) ya lo traía.
-- Desde la 0.9.26, esas seis listas traen también en `ReparacionResumen`, tras `esEsim`, `pedidoNumero?`, `pedidoCanal?` y
+- Desde la 0.9.25 («Qué revisar» en Stock de teléfonos, SUPERTECNICO y ADMIN): `POST /api/stock-telefonos/que-revisar/excel`
+  recibe `{hoja, columnas, filas}` (textos) y responde el xlsx para imprimir: cabecera en negrita repetida en cada página,
+  una página de ancho, bordes finos y anchos según el contenido; una celda de datos que sea un entero de 1 a 9 cifras sin ceros a
+  la izquierda va como número (lo demás, texto) y la hoja sale en vertical si la suma de anchos es 90 caracteres o menos, apaisada si pasa. No sabe nada de la lista. `400` con el motivo si la
+  hoja está vacía, pasa de 31 caracteres, lleva `[ ] : * ? / \` o empieza o acaba con un apóstrofo; si no hay de 1 a 12 columnas o una no tiene nombre (o es solo espacios); si pasa
+  de 5000 filas; si una fila no tiene tantas celdas como columnas o lleva una nula, o si un texto pasa de 200 caracteres.
+- Desde la 0.9.26, cada fila de «Cambio de color» (`FilaColorNsys` en `GET /api/stock-telefonos/por-pasar/tarjetas`) trae
+  `caja` (nullable, el último campo): la caja de NSYS del lote del móvil tal cual (`Nsys_movil.LOCATION`); `null` si no tiene.
+  La web la enseña en la columna «Caja» y la escribe en «⬇ Descargar cajas», cuyo Excel hace `POST
+  /api/stock-telefonos/que-revisar/excel`. La plantilla de color no cambia.
+- Desde la 0.9.31, esas seis listas traen también en `ReparacionResumen`, tras `esEsim`, `pedidoNumero?`, `pedidoCanal?` y
   `pedidoSku?` (el pedido abierto del IMEI, el más antiguo si está en varios, y el SKU en el que tiene que acabar) y
   `pedidoRepetido` (booleano, no nulo: el IMEI está en dos pedidos abiertos). Solo van rellenos en las filas de trabajos
   abiertos de esas listas; `null`/`false` fuera de un pedido, con la lectura de pedidos apagada, si falla y en las demás rutas.
@@ -112,7 +122,7 @@ de `model/` conservan su nombre.
   `ID_PROV: <id>, PIEZAS: bat (todos), g (sin 12mini, 13mini)` («ninguna» sin tipos). En `Componente`
   (`GET /api/componentes/gestionados`), `pendiente` (unidades en pedidos pendientes) y `proveedores` (ids de los
   proveedores que venden alguna pieza de su grupo) son nulos para TECNICO.
-- **0.9.26 · Pedidos** (solo lectura; `SUPERTECNICO` y `ADMIN`, el `TECNICO` recibe `403`). `GET /api/pedidos?viejos=false` →
+- **0.9.31 · Pedidos** (solo lectura; `SUPERTECNICO` y `ADMIN`, el `TECNICO` recibe `403`). `GET /api/pedidos?viejos=false` →
   `PedidoVista[]` (`idPedido`, `canal`, `numero`, `cliente?`, `pais?`, `fecha`, `fuente`, `viejo`, `unidades`), del más antiguo
   al más nuevo; `viejos=true` añade los del Simulador con más días que `pedidos.simulador.dias` (`viejo = true`).
   `UnidadVista`: `idUnidad`, `posicion`, `sku`, `pide` (`Atributos`), `imei?`, `imeiFuente?`, `imeiTecleadoEn?`,

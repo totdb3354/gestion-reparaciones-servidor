@@ -17,12 +17,39 @@ import java.util.Optional;
  *  es de una asignación que ya estaba abierta el día D (asignada hasta D y sin terminar o terminada después de D): se hizo mientras
  *  seguía abierta o al cerrarla, porque las R/G/P se insertan antes del UPDATE que pone FECHA_FIN. Es la misma idea que 3823dab
  *  ({@code AltaTaller.ultimoEn}: la última asignación, no la última fila). Límite conocido: filas añadidas a una asignación ya
- *  cerrada mucho después siguen contando. {@code vendidoEn} o {@code bajaEn}: D; {@code desde}: la menor asignación de las que
+ *  cerrada mucho después siguen contando. Desde la 0.9.27, {@code ignoradoAntesPor} e {@code ignoradoAntesEn}: el ignorado
+ *  superado por un trabajo nuevo, si lo hay. {@code vendidoEn} o {@code bajaEn}: D; {@code desde}: la menor asignación de las que
  *  cuentan (hora de Madrid). Los tres null: en la empresa. Es puro. */
-public record VueltaNsys(LocalDate vendidoEn, LocalDate bajaEn, LocalDateTime desde) {
+public record VueltaNsys(LocalDate vendidoEn, LocalDate bajaEn, LocalDateTime desde, String ignoradoAntesPor,
+                         LocalDateTime ignoradoAntesEn) {
 
     /** Un móvil en la empresa: sale tal cual. */
     public static final VueltaNsys EN_EMPRESA = new VueltaNsys(null, null, null);
+
+    /** Sin ignorado superado (spec 0.9.27 §4.1). */
+    public VueltaNsys(LocalDate vendidoEn, LocalDate bajaEn, LocalDateTime desde) {
+        this(vendidoEn, bajaEn, desde, null, null);
+    }
+
+    /** La misma vuelta con un ignorado superado por un trabajo nuevo: quién y cuándo (para «Salió otra vez…»). */
+    VueltaNsys conIgnoradoAntes(VueltaIgnorada i) {
+        return new VueltaNsys(vendidoEn, bajaEn, desde, i.usuario(), i.fecha());
+    }
+
+    private static final Comparator<NsysDAO.TrabajoFecha> POR_ASIGNACION = Comparator.comparing(NsysDAO.TrabajoFecha::asignado,
+            Comparator.nullsFirst(Comparator.naturalOrder()))
+            .thenComparing(NsysDAO.TrabajoFecha::idRep, Comparator.nullsFirst(Comparator.naturalOrder()));
+
+    /** Si un ignorado vale (spec 0.9.27 §4.1): su fecha no es anterior a la última asignación de los trabajos del móvil (A…/AG…/AP…,
+     *  por fecha de asignación y luego por id; sin asignaciones, el último trabajo; sin trabajos, vale). Como los descartes
+     *  ({@code AltaTaller.ultimoEn}): la R/G/P que se crea al terminar una asignación lleva la hora del cierre y no es un trabajo
+     *  nuevo. */
+    static boolean vale(VueltaIgnorada ignorado, Collection<NsysDAO.TrabajoFecha> trabajos) {
+        Optional<NsysDAO.TrabajoFecha> ultima = trabajos.stream().filter(NsysDAO.TrabajoFecha::esAsignacion).max(POR_ASIGNACION)
+                .or(() -> trabajos.stream().max(POR_ASIGNACION));
+        LocalDateTime en = ultima.map(NsysDAO.TrabajoFecha::asignado).orElse(null);
+        return en == null || !ignorado.fecha().isBefore(en);
+    }
 
     /** La vuelta de un móvil con los trabajos suyos (hora de Madrid, en cualquier orden); vacío si no sale. */
     public static Optional<VueltaNsys> de(MovilNsys m, Collection<NsysDAO.TrabajoFecha> trabajos) {

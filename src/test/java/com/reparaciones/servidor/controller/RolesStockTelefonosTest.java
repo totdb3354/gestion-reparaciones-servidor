@@ -4,6 +4,7 @@ import com.reparaciones.servidor.UsuariosOperativosTestConfig;
 import com.reparaciones.servidor.dao.LogDAO;
 import com.reparaciones.servidor.dao.TelefonoDAO;
 import com.reparaciones.servidor.nsys.DescarteDAO;
+import com.reparaciones.servidor.nsys.VueltaIgnoradaDAO;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.HechoDAO;
 import com.reparaciones.servidor.nsys.MovilNsys;
@@ -69,6 +70,7 @@ class RolesStockTelefonosTest {
     @MockBean TallerDAO tallerDao;
     @MockBean HechoDAO hechoDao;
     @MockBean DescarteDAO descarteDao;
+    @MockBean VueltaIgnoradaDAO ignoradoDao;
     @MockBean LogDAO logDao;
     /** «Revisado» es @Transactional y este test no tiene base de datos: sin esto no abre conexión. */
     @MockBean PlatformTransactionManager transactionManager;
@@ -240,6 +242,40 @@ class RolesStockTelefonosTest {
         mvc.perform(put("/api/stock-telefonos/por-pasar/descarte").header("Authorization", admin())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"imeiSn\":\"SIN-IMEI-CAM\",\"motivo\":\" \"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    /** 0.9.27: «ignorar» y su «deshacer», con la misma guarda que el resto. */
+    @Test void elIgnoradoSoloParaSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"imeiSn\":\"350000000000002\"}";
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado")
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        verifyNoInteractions(ignoradoDao);
+
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", supertecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isNoContent());
+        verify(ignoradoDao).ignorar(eq("350000000000002"), eq(7), any());
+        mvc.perform(delete("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isNoContent());
+        verify(ignoradoDao).deshacer("350000000000002");
+        mvc.perform(put("/api/stock-telefonos/por-pasar/ignorado").header("Authorization", admin())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"imeiSn\":\" \"}")).andExpect(status().isBadRequest());
+    }
+
+    /** 0.9.25: «Qué revisar» baja un Excel; misma guarda que el resto. */
+    @Test void elExcelDeQueRevisarSoloParaSupertecnicoYAdmin() throws Exception {
+        String cuerpo = "{\"hoja\":\"Revisar sin grado\",\"columnas\":[\"Modelo\"],\"filas\":[[\"iPhone 13\"]]}";
+        mvc.perform(post("/api/stock-telefonos/que-revisar/excel").header("Authorization", tecnico())
+                .contentType(MediaType.APPLICATION_JSON).content(cuerpo)).andExpect(status().isForbidden());
+        for (String token : List.of(supertecnico(), admin())) {
+            mvc.perform(post("/api/stock-telefonos/que-revisar/excel").header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON).content(cuerpo))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        }
     }
 
     @Test void laPlantillaSeDescargaConSuNombreYSuNumeroDeMoviles() throws Exception {

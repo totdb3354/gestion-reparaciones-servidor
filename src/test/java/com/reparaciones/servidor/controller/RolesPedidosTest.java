@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** «Pedidos» (0.9.26, spec pieza 2 §3): SUPERTECNICO y ADMIN; el TECNICO recibe 403 sin llegar a la vista. */
+/** «Pedidos» (0.9.31, spec pieza 2 §3): SUPERTECNICO y ADMIN; el TECNICO recibe 403 sin llegar a la vista. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(UsuariosOperativosTestConfig.class)

@@ -158,7 +158,7 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "ReparacionResumen", "esEsim");
         assertEquals(List.of("capacidad", "color", "esEsim"), propiedades.subList(propiedades.size() - 7, propiedades.size() - 4),
                 "capacidad, color y esEsim van antes de los campos de pedido de ReparacionResumen");
-        // 0.9.26 (spec pieza 2 §9.3): el pedido abierto del IMEI, nullable salvo pedidoRepetido, al final.
+        // 0.9.31 (spec pieza 2 §9.3): el pedido abierto del IMEI, nullable salvo pedidoRepetido, al final.
         assertNullable(esquemas, "ReparacionResumen", "pedidoNumero", "pedidoCanal", "pedidoSku");
         assertNoNullable(esquemas, "ReparacionResumen", "pedidoRepetido");
         assertEquals(List.of("pedidoNumero", "pedidoCanal", "pedidoSku", "pedidoRepetido"),
@@ -348,7 +348,7 @@ class OpenApiContractTest {
         assertTrue(esquemas.path("CompraOtroEditarRequest").path("properties").path("destino").path("$ref").asText()
                 .endsWith("/DestinoPedido"), "CompraOtroEditarRequest.destino referencia DestinoPedido");
 
-        // 0.9.26 (spec pieza 2 §9.2): «Pedidos». pide y movil nunca son nulos (ajuste 12).
+        // 0.9.31 (spec pieza 2 §9.2): «Pedidos». pide y movil nunca son nulos (ajuste 12).
         for (String ruta : List.of("/api/pedidos", "/api/pedidos/fuentes"))
             assertTrue(paths.has(ruta), () -> "falta la ruta " + ruta + " en el contrato");
         for (String esquema : List.of("PedidoVista", "UnidadVista", "MovilUnidad", "Atributos", "FuentePedidosVista"))
@@ -600,6 +600,16 @@ class OpenApiContractTest {
         for (String esquema : List.of("StockTelefonosFichaMovil", "StockTelefonosMovilBuscado", "StockTelefonosMovilComprobado",
                 "FilaColorNsys", "FilaGradoNsys", "FilaRevisarNsys", "FilaSinGradoNsys"))
             assertNoNullable(esquemas, esquema, "esEsim");
+        // 0.9.25 (spec «Qué revisar» §10.10): la ruta de los vendidos se retiró y no debe volver.
+        assertFalse(paths.has("/api/stock-telefonos/vendidos"), "los vendidos ya no existen");
+        assertFalse(esquemas.has("StockTelefonosMovilVendido"), "los vendidos ya no existen");
+        // 0.9.25 (spec «Qué revisar» §10.3): el Excel para imprimir.
+        assertTrue(refDelCuerpo(paths, "/api/stock-telefonos/que-revisar/excel", "post").endsWith("/StockTelefonosPeticionExcel"));
+        assertNoNullable(esquemas, "StockTelefonosPeticionExcel", "hoja", "columnas", "filas");
+        assertTrue(paths.path("/api/stock-telefonos/que-revisar/excel").path("post").path("responses").path("200").path("content")
+                .has("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), "el Excel responde un xlsx");
+        // 0.9.26 (spec «cajas del cambio de color» §5.1): la caja de NSYS de cada fila de «Cambio de color».
+        assertNullable(esquemas, "FilaColorNsys", "caja");
     }
 
     /** 0.9.21 (spec «SKU del taller», pieza 2, §2.4): la banda del formulario. */
