@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.pedidos;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.LoQueVale;
 import com.reparaciones.servidor.nsys.MovilNsys;
@@ -18,7 +19,7 @@ import java.util.function.Function;
 public final class Recomendador {
 
     /** nivel: 1 igual que el pedido, 2 en el taller y acabará igual, 3 hay que transformarlo. */
-    public record Candidato(String imei, String sku, String caja, int nivel) {}
+    public record Candidato(String imei, @Schema(nullable = true) String sku, @Schema(nullable = true) String caja, int nivel) {}
 
     public static final int TOPE = 5;
 

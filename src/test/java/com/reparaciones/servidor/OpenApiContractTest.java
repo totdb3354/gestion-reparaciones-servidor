@@ -344,6 +344,37 @@ class OpenApiContractTest {
                 .endsWith("/DestinoPedido"), "CompraOtroEditarRequest.destino referencia DestinoPedido");
     }
 
+    /** «Pedidos» como la hoja (spec §7): las cuatro rutas y sus esquemas, con su nulabilidad. */
+    @Test void elContratoPublicaLosPedidosComoLaHoja() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        for (String operacion : List.of("get /api/pedidos/filas", "get /api/pedidos/filas/{id}/recomendados",
+                "put /api/pedidos/filas/{id}/imei", "get /api/pedidos/fuentes")) {
+            String[] partes = operacion.split(" ", 2);
+            assertTrue(paths.path(partes[1]).has(partes[0]), () -> "falta la ruta " + operacion + " en el contrato");
+        }
+        for (String nombre : List.of("desde", "hasta", "buscar")) {
+            assertFalse(parametro(paths, "/api/pedidos/filas", "get", nombre).path("required").asBoolean(true),
+                    () -> nombre + " debe ser opcional");
+        }
+        for (String esquema : List.of("FilaVista", "ListaFilas", "FuenteVista", "RecomendadorCandidato", "PeticionImei"))
+            assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
+
+        assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "nivel", "motivo", "skuMovil", "caja");
+        assertNoNullable(esquemas, "FilaVista", "idFila", "fecha", "plataforma", "enviada");
+        assertNoNullable(esquemas, "ListaFilas", "filas", "hayMas");
+        assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo");
+        assertNoNullable(esquemas, "FuenteVista", "fuente", "filas", "nivel");
+        assertNullable(esquemas, "PeticionImei", "imei");
+        assertNoNullable(esquemas, "RecomendadorCandidato", "imei", "nivel");
+        assertNullable(esquemas, "RecomendadorCandidato", "sku", "caja");
+    }
+
     /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4 y 2026-10-12 §4.3). */
     @Test void elContratoPublicaLasPiezasDeCadaProveedor() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
@@ -689,7 +720,8 @@ class OpenApiContractTest {
                 "post /api/proveedores",
                 "post /api/clientes",
                 "post /api/usuarios/tecnicos",
-                "post /api/reparaciones/{idRep}/incidencia");
+                "post /api/reparaciones/{idRep}/incidencia",
+                "put /api/pedidos/filas/{id}/imei");
 
         for (String operacion : conCabecera) {
             String[] partes = operacion.split(" ", 2);
