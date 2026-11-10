@@ -36,16 +36,4 @@ public record MovilNsys(String imeiSn, String batch, String goods, String grade,
     public boolean mismoContenido(MovilNsys otro) {
         return otro != null && conFechas(null, null).equals(otro.conFechas(null, null));
     }
-
-    /** El mismo móvil con otro SKU. */
-    public MovilNsys conSku(String sku) {
-        return new MovilNsys(imeiSn, batch, goods, grade, status, location, supplier, receivingDate, soldDate, sku, modelo,
-                modeloMaestro, capacidad, color, gradoDetalle, esEsim, ubicacion, ubicacionUltima, estado, vistoPrimero,
-                cambiado);
-    }
-
-    /** Igual salvo el SKU y las fechas de seguimiento: lo único que cambia es el SKU que le pone el ERP (0.9.30). */
-    public boolean mismoSalvoSku(MovilNsys otro) {
-        return otro != null && conSku(null).mismoContenido(otro.conSku(null));
-    }
 }

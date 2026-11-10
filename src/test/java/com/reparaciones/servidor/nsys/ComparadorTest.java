@@ -392,4 +392,21 @@ class ComparadorTest {
         assertEquals(AYER, r.aGuardar().get(0).vistoPrimero());
         assertTrue(r.eventos().isEmpty());
     }
+
+    @Test void completarElMaestroOCambiarLaTraduccionDeUnaCajaNoMueveCambiado() {
+        Traductor sinProductoYOtraCaja = new Traductor(List.of(),
+                List.of(new UbicacionNsys("CAJA LISTOS", "Almacén", true, false)));
+        FilaItems f = fila("350000000000093", "BT-9001", "n/a", "Removed", "CAJA LISTOS");
+        Map<ClaveMovil, MovilNsys> antes = new HashMap<>(Comparador.foto(List.of(f), sinProductoYOtraCaja, AYER));
+        assertNull(antes.get(f.clave()).modelo());
+
+        ResultadoComparacion r = normal(antes, f);
+
+        MovilNsys guardado = r.aGuardar().get(0);
+        assertEquals("13", guardado.modelo());
+        assertEquals("Azul", guardado.color());
+        assertEquals("i13128AzulNA", guardado.sku());
+        assertEquals(AYER, guardado.cambiado(), "NSYS no ha cambiado el móvil: lo ha reescrito el ERP (maestro, cajas)");
+        assertTrue(r.eventos().isEmpty());
+    }
 }

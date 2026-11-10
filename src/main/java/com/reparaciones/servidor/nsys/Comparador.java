@@ -57,11 +57,12 @@ public final class Comparador {
             }
             MovilNsys nuevo = construir(f, t, caja, anterior, fecha);
             cambios(anterior, nuevo, fecha, eventos);
-            // Un cambio solo de SKU (el ERP lo calcula: 0.9.30) no es un cambio de NSYS: conserva CAMBIADO, que es el día de
-            // baja de los móviles de baja (VueltaNsys).
+            // CAMBIADO es la última vez que NSYS cambió el móvil: el día de baja de los móviles de baja (VueltaNsys). Si lo
+            // que NSYS dice es lo mismo y solo cambia la traducción del ERP (el SKU de los n/a, un maestro más completo, la
+            // tabla de cajas), se guarda sin moverlo (0.9.30).
             if (modo != Modo.HISTORICO && !anterior.mismoContenido(nuevo))
                 aGuardar.add(nuevo.conFechas(anterior.vistoPrimero(),
-                        anterior.mismoSalvoSku(nuevo) ? anterior.cambiado() : fecha));
+                        anterior.comoFila().equals(nuevo.comoFila()) ? anterior.cambiado() : fecha));
         }
         int desaparecidos = 0;
         for (ClaveMovil k : anteriores.keySet()) if (!vistas.contains(k)) desaparecidos++;
