@@ -7,8 +7,8 @@
 -- La aplica el usuario a mano en la VM de preprod, con vista previa, ANTES de desplegar el servidor.
 -- NO idempotente (relanzar = error de columna inexistente o existente).
 -- 1) Vista previa: ANTES debe dar 1 (ENVIADA_EN) y NUEVAS_YA, 0.
--- 2) Renombra ENVIADA_EN a CERRADA_EN (los datos se conservan) y anade tres columnas.
--- 3) Comprobacion final: CERRADA debe dar 1, NUEVAS 3 y VIEJA 0.
+-- 2) Renombra ENVIADA_EN a CERRADA_EN (los datos se conservan) y anade cuatro columnas.
+-- 3) Comprobacion final: CERRADA debe dar 1, NUEVAS 4 y VIEJA 0.
 -- Vuelta atras: el servidor anterior lee ENVIADA_EN; habria que deshacer el CHANGE y quitar las tres columnas.
 -- ══════════════════════════════════════════════════════════════════════════════
 USE gestion_reparaciones;
@@ -19,7 +19,7 @@ SELECT COUNT(*) AS ANTES FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Pedido_fila' AND COLUMN_NAME = 'ENVIADA_EN';
 SELECT COUNT(*) AS NUEVAS_YA FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Pedido_fila'
-   AND COLUMN_NAME IN ('CERRADA_EN', 'ENVIO_FECHA', 'TRANSPORTISTA', 'SEGUIMIENTO');
+   AND COLUMN_NAME IN ('CERRADA_EN', 'ENVIO_FECHA', 'TRANSPORTISTA', 'SEGUIMIENTO', 'REABIERTA_EN');
 
 SET SESSION lock_wait_timeout = 10;
 
@@ -27,13 +27,14 @@ ALTER TABLE Pedido_fila
     CHANGE ENVIADA_EN CERRADA_EN DATETIME NULL COMMENT 'Cuando dejo de estar pendiente; NULL = pendiente',
     ADD COLUMN ENVIO_FECHA   DATETIME    NULL COMMENT 'Cuando ShippyPro creo el envio (hora de Madrid); NULL = sin envio conocido',
     ADD COLUMN TRANSPORTISTA VARCHAR(40) NULL,
-    ADD COLUMN SEGUIMIENTO   VARCHAR(60) NULL;
+    ADD COLUMN SEGUIMIENTO   VARCHAR(60) NULL,
+    ADD COLUMN REABIERTA_EN  DATETIME    NULL COMMENT 'Cuando el pedido volvio a estar pendiente';
 
--- Comprobacion final (no modifica nada): CERRADA = 1, NUEVAS = 3 y VIEJA = 0; si no, NO desplegar el servidor.
+-- Comprobacion final (no modifica nada): CERRADA = 1, NUEVAS = 4 y VIEJA = 0; si no, NO desplegar el servidor.
 SELECT COUNT(*) AS CERRADA FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Pedido_fila' AND COLUMN_NAME = 'CERRADA_EN';
 SELECT COUNT(*) AS NUEVAS FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Pedido_fila'
-   AND COLUMN_NAME IN ('ENVIO_FECHA', 'TRANSPORTISTA', 'SEGUIMIENTO');
+   AND COLUMN_NAME IN ('ENVIO_FECHA', 'TRANSPORTISTA', 'SEGUIMIENTO', 'REABIERTA_EN');
 SELECT COUNT(*) AS VIEJA FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Pedido_fila' AND COLUMN_NAME = 'ENVIADA_EN';

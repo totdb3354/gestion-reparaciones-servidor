@@ -55,7 +55,16 @@ public final class SincroShippyPro {
 
     /** Las filas que hay que marcar como enviadas (spec §6 bis): las de {@code candidatas} (filas de ShippyPro sin envio, vivas o
      *  cerradas) cuyo pedido (canal y numero guardado) figura entre los enviados y no esta entre los {@code pendientes} de esta
-     *  vuelta. Un pedido con varias expediciones toma la mas reciente; un marketplace que no esta en {@code canales} se ignora. */
+     *  vuelta. Un pedido con varias expediciones toma la mas reciente. Reglas:
+     *  <ul>
+     *  <li>Una fila reabierta (su pedido volvio a estar pendiente) solo acepta un envio posterior a {@code reabiertaEn}: el envio
+     *  anterior, aun dentro de la ventana de lectura, no es el de esta vez; la fila sigue el camino normal (se cierra como «ya no
+     *  pendiente» tras dos lecturas buenas) salvo que aparezca un envio mas nuevo.</li>
+     *  <li>Un pedido con varias posiciones (filas) que sale de los pendientes y tiene un envio: TODAS sus filas reciben los datos de
+     *  ese envio; con esta API no se distingue un envio parcial.</li>
+     *  <li>Un envio de un marketplace que no esta en {@code canales} se ignora. Los envios manuales llevan el marketplace «0»:
+     *  «0» no debe asignarse nunca a un canal en {@code pedidos.shippypro.canales}.</li>
+     *  </ul> */
     public static List<MarcaEnvio> marcarEnviadas(List<ClienteShippyPro.EnvioShippyPro> enviados, Map<String, Canal> canales,
                                                   Set<ClavePedido> pendientes, List<FilaPedido> candidatas) {
         Map<ClavePedido, ClienteShippyPro.EnvioShippyPro> recientes = enviadosPorPedido(enviados, canales);
@@ -65,6 +74,7 @@ public final class SincroShippyPro {
             ClavePedido clave = new ClavePedido(f.canal(), f.pedido());
             ClienteShippyPro.EnvioShippyPro e = recientes.get(clave);
             if (e == null || pendientes.contains(clave)) continue;
+            if (f.reabiertaEn() != null && !e.fecha().isAfter(f.reabiertaEn())) continue;
             marcas.add(new MarcaEnvio(f.id(), e.fecha(), e.transportista(), e.seguimiento()));
         }
         return marcas;

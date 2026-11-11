@@ -34,6 +34,7 @@ CREATE TABLE Pedido_fila (
     ENVIO_FECHA  DATETIME     NULL COMMENT 'Cuando ShippyPro creo el envio (hora de Madrid); NULL = sin envio conocido',
     TRANSPORTISTA VARCHAR(40) NULL,
     SEGUIMIENTO  VARCHAR(60)  NULL,
+    REABIERTA_EN DATETIME     NULL COMMENT 'Cuando el pedido volvio a estar pendiente',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),

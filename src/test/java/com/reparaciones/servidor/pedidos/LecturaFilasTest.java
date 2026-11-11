@@ -126,7 +126,7 @@ class LecturaFilasTest {
 
         verify(dao).cerradasDeShippyPro(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011")));
         verify(dao).insertar(List.of());
-        verify(dao).reabrir(List.of(4));
+        verify(dao).reabrir(List.of(4), AHORA);
         verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), eq(Set.of()), contains("1 filas reabiertas"), eq(AHORA));
     }
 

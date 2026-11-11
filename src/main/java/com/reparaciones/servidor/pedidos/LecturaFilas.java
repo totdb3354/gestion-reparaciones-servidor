@@ -135,7 +135,7 @@ public class LecturaFilas {
             // Sin transaccion conjunta: se inserta, se reabre, se marcan los envios y despues se cierra; si falla en medio, la
             // siguiente vuelta lo rehace.
             dao.insertar(plan.insertar());
-            dao.reabrir(plan.reabrir());
+            dao.reabrir(plan.reabrir(), LocalDateTime.now(clock));
             dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
             dao.cerrar(cerrar, LocalDateTime.now(clock));
             candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());

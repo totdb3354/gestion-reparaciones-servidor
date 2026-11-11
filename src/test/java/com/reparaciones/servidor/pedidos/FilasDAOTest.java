@@ -25,7 +25,7 @@ class FilasDAOTest {
 
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 11, 10, 10, 0);
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
-            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO FROM Pedido_fila";
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -238,19 +238,20 @@ class FilasDAOTest {
         verifyNoInteractions(jdbc);
     }
 
-    @Test void reabrirBorraLaHoraDeCierreYLosDatosDelEnvioEnTandasDe500() {
+    @Test void reabrirBorraLaHoraDeCierreYLosDatosDelEnvioYApuntaCuandoEnTandasDe500() {
         List<Integer> ids = new ArrayList<>();
         for (int i = 1; i <= 501; i++) ids.add(i);
-        dao.reabrir(ids);
+        dao.reabrir(ids, AHORA);
         ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL, SEGUIMIENTO = NULL"
-                + " WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
-        assertEquals(500, args.getAllValues().get(0).length);
-        assertEquals(1, args.getAllValues().get(1).length);
+        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL, SEGUIMIENTO = NULL,"
+                + " REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
+        assertEquals(501, args.getAllValues().get(0).length, "la hora y 500 ids");
+        assertEquals(Timestamp.valueOf(AHORA), args.getAllValues().get(0)[0]);
+        assertEquals(2, args.getAllValues().get(1).length, "la hora y 1 id");
     }
 
     @Test void reabrirSinIdsNoToca() {
-        dao.reabrir(List.of());
+        dao.reabrir(List.of(), AHORA);
         verifyNoInteractions(jdbc);
     }
 

@@ -31,7 +31,7 @@ public class FilasDAO {
     static final int TANDA = 500;
 
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
-            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO FROM Pedido_fila";
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN FROM Pedido_fila";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
     static final String SQL_SIN_ENVIO_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIO_FECHA IS NULL AND (%s)";
@@ -40,7 +40,7 @@ public class FilasDAO {
     static final String SQL_CERRAR = "UPDATE Pedido_fila SET CERRADA_EN = ? WHERE CERRADA_EN IS NULL AND ID_FILA IN (%s)";
     /** Reabrir borra tambien los datos del envio: un pedido que vuelve a estar pendiente ya no esta enviado. */
     static final String SQL_REABRIR = "UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL,"
-            + " SEGUIMIENTO = NULL WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (%s)";
+            + " SEGUIMIENTO = NULL, REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (%s)";
     /** Un envio es definitivo: si la fila estaba viva se cierra ahora; si ya estaba cerrada conserva su hora de cierre. */
     static final String SQL_MARCAR_ENVIO = "UPDATE Pedido_fila SET ENVIO_FECHA = ?, TRANSPORTISTA = ?, SEGUIMIENTO = ?,"
             + " CERRADA_EN = COALESCE(CERRADA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL";
@@ -131,10 +131,14 @@ public class FilasDAO {
         }
     }
 
-    /** Vuelve a dejar vivas (sin hora de cierre ni datos de envio) las filas indicadas, con su IMEI intacto; las que ya lo estaban no se tocan. */
-    public void reabrir(Collection<Integer> ids) {
-        for (List<Integer> tanda : trozos(List.copyOf(ids)))
-            jdbc.update(String.format(SQL_REABRIR, marcas(tanda.size())), tanda.toArray());
+    /** Vuelve a dejar vivas (sin hora de cierre ni datos de envio, y apunta cuando se reabren) las filas indicadas, con su IMEI intacto; las que ya lo estaban no se tocan. */
+    public void reabrir(Collection<Integer> ids, LocalDateTime ahora) {
+        for (List<Integer> tanda : trozos(List.copyOf(ids))) {
+            List<Object> args = new ArrayList<>();
+            args.add(Timestamp.valueOf(ahora));
+            args.addAll(tanda);
+            jdbc.update(String.format(SQL_REABRIR, marcas(tanda.size())), args.toArray());
+        }
     }
 
     /** Las filas con FECHA entre las dos fechas y, sea cual sea su fecha, las vivas; en orden de hoja. */
@@ -234,7 +238,7 @@ public class FilasDAO {
         return new FilaPedido(rs.getInt("ID_FILA"), dia(rs, "FECHA"), rs.getString("PLATAFORMA"), rs.getString("SKU"),
                 rs.getString("IMEI"), rs.getString("PEDIDO"), dia(rs, "FECHA_COMPRA"), rs.getString("ORIGEN"),
                 canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
-                rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"));
+                rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {
