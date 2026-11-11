@@ -48,17 +48,21 @@ de `model/` conservan su nombre.
 - «Pedidos como la hoja» (SUPERTECNICO y ADMIN; el TECNICO recibe `403`), `/api/pedidos`:
   - `GET /api/pedidos/filas?desde=&hasta=&buscar=` → `ListaFilas` `{filas, hayMas}`, las filas en orden de hoja (la más antigua
     primero). `desde` y `hasta` son fechas ISO opcionales (por defecto, el último mes hasta hoy, hora de Madrid) y la lista trae
-    además las filas sin enviar anteriores al periodo. Con `buscar` (se recorta; menos de 2 caracteres, `400` "Escribe al menos 2
+    además las filas pendientes (sin cerrar) anteriores al periodo. Con `buscar` (se recorta; menos de 2 caracteres, `400` "Escribe al menos 2
     caracteres") se busca en todo el histórico por plataforma, SKU, IMEI o pedido: como mucho 500 filas, las más recientes, y
-    `hayMas` es `true` si había más. Cada `FilaVista` trae `nivel` (`OK`, `AVISO` o `MAL`), `motivo`, `skuMovil` y `caja` solo
-    en las filas sin enviar con IMEI (el aviso se calcula al servir, no se guarda); en las demás son `null`. `sku`, `imei`,
-    `pedido` y `fechaCompra` son nullable (las filas del histórico llevan los textos de la hoja tal cual).
+    `hayMas` es `true` si había más. Cada `FilaVista` trae `estado` (`PENDIENTE`, `ENVIADA`, `NO_PENDIENTE` o `HISTORICO`, nunca
+    nulo: `ENVIADA` si ShippyPro dio el pedido por enviado, `NO_PENDIENTE` si dejó de estar pendiente sin envío conocido),
+    `editable` (`false` solo en el histórico) y, nullable, `envioFecha` (hora de Madrid), `transportista` y `seguimiento`. Trae
+    `nivel` (`OK`, `AVISO` o `MAL`), `motivo`, `skuMovil` y `caja` solo en las filas `PENDIENTE` y `NO_PENDIENTE` con IMEI (el
+    aviso se calcula al servir, no se guarda); en las demás son `null`. `sku`, `imei`, `pedido` y `fechaCompra` son nullable
+    (las filas del histórico llevan los textos de la hoja tal cual).
   - `GET /api/pedidos/filas/{id}/recomendados` → lista de `RecomendadorCandidato` `{imei, sku, caja, nivel}` (hasta cinco; `sku`
-    y `caja` nullable). `404` si la fila no existe; lista vacía si está enviada o si el maestro no conoce su SKU. No ofrece los
-    móviles puestos en otra fila sin enviar (sí el de la propia fila).
+    y `caja` nullable). `404` si la fila no existe; lista vacía si es del histórico o si el maestro no conoce su SKU (las enviadas y las no pendientes
+    sí dan candidatos). No ofrece los móviles puestos en otra fila pendiente o no pendiente, ni en una enviada cuyo móvil NSYS
+    aún no da por vendido (sí el de la propia fila).
   - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei}` → `FilaVista` releída, con su aviso. `imei` nulo o en blanco
-    lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila ya está enviada" si
-    está enviada o es del histórico. Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
+    lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
+    histórico (las filas de ShippyPro se editan siempre, también las enviadas). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
     `filas`, `skuDesconocidos`, `motivo` y `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`). Un `ERROR` enseña un motivo
     fijo, nunca el texto de la excepción.

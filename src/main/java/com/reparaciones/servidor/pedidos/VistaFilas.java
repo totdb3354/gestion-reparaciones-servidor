@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.pedidos;
 
 import com.reparaciones.servidor.nsys.AvisoNsys;
+import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.Importacion;
 import com.reparaciones.servidor.nsys.ImportadorNsys;
 import com.reparaciones.servidor.nsys.LoQueVale;
@@ -37,6 +38,11 @@ public class VistaFilas {
     static final String SHIPPYPRO = "SHIPPYPRO";
     static final String NSYS = "NSYS";
     static final String HISTORICO = "HISTORICO";
+    static final String PENDIENTE = "PENDIENTE";
+    static final String ENVIADA = "ENVIADA";
+    static final String NO_PENDIENTE = "NO_PENDIENTE";
+    /** Cuantos dias hacia atras (por FECHA) miran las filas de ShippyPro ya cerradas para saber que IMEI estan ya puestos. */
+    static final int DIAS_PUESTOS = 60;
 
     private final FilasDAO dao;
     private final NsysDAO nsysDao;
@@ -75,22 +81,19 @@ public class VistaFilas {
         return dao.porId(id).map(f -> vistas(List.of(f)).get(0));
     }
 
-    /** Los candidatos de una fila; {@code Optional.empty()} si la fila no existe, lista vacia si esta enviada o su SKU no lo conoce el maestro. */
+    /** Los candidatos de una fila; {@code Optional.empty()} si la fila no existe, lista vacia si es del historico o su SKU no lo conoce el maestro. */
     public Optional<List<Recomendador.Candidato>> recomendados(int id) {
         Optional<FilaPedido> encontrada = dao.porId(id);
         if (encontrada.isEmpty()) return Optional.empty();
         FilaPedido f = encontrada.get();
-        if (!f.viva() || f.canal() == null) return Optional.of(List.of());
+        if (HISTORICO.equals(f.origen()) || f.canal() == null) return Optional.of(List.of());
         AceptaSku acepta = new AceptaSku(nsysDao.productosPorSkuDeCanal(AceptaSku.conVariantes(Set.of(texto(f.sku())))));
         Aceptacion ac = acepta.para(f.canal(), f.sku());
         if (ac == null) return Optional.of(List.of());
         String propia = f.imei() == null || f.imei().isBlank() ? null : NsysDAO.claveCruce(f.imei());
         Set<String> yaPuestos = new LinkedHashSet<>();
-        for (FilaPedido v : dao.vivasDeShippyPro()) {
-            if (v.imei() == null || v.imei().isBlank()) continue;
-            String clave = NsysDAO.claveCruce(v.imei());
+        for (String clave : puestos(dao.shippyProConImeiDesde(desdePuestos())).keySet())
             if (!clave.equals(propia)) yaPuestos.add(clave);
-        }
         return Optional.of(Recomendador.de(ac, f.canal(), nsysDao.enEmpresa(), taller.valedorDeTodos(),
                 nsysDao.trabajosAbiertos(), yaPuestos));
     }
@@ -99,8 +102,43 @@ public class VistaFilas {
         return sku == null ? "" : sku;
     }
 
+    private LocalDate desdePuestos() {
+        return LocalDate.now(clock).minusDays(DIAS_PUESTOS);
+    }
+
+    /** El estado de una fila (spec §6 bis): HISTORICO, ENVIADA, NO_PENDIENTE o PENDIENTE. */
+    static String estado(FilaPedido f) {
+        if (HISTORICO.equals(f.origen())) return HISTORICO;
+        if (f.enviada()) return ENVIADA;
+        return f.viva() ? PENDIENTE : NO_PENDIENTE;
+    }
+
+    /** De las filas de ShippyPro con IMEI, las que dejan «ya puesto» su movil: las pendientes y las no pendientes, y las enviadas
+     *  mientras NSYS no da el movil por vendido. IMEI (clave de cruce) -> ids de esas filas. */
+    private Map<String, Set<Integer>> puestos(List<FilaPedido> filas) {
+        Set<String> deEnviadas = new LinkedHashSet<>();
+        for (FilaPedido f : filas)
+            if (ENVIADA.equals(estado(f)) && f.imei() != null && !f.imei().isBlank()) deEnviadas.add(f.imei());
+        Map<String, MovilNsys> moviles = new HashMap<>();
+        if (!deEnviadas.isEmpty())
+            for (MovilNsys m : nsysDao.porImeis(deEnviadas)) moviles.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
+        Map<String, Set<Integer>> puestos = new HashMap<>();
+        for (FilaPedido f : filas) {
+            if (f.imei() == null || f.imei().isBlank()) continue;
+            String estado = estado(f);
+            if (HISTORICO.equals(estado)) continue;
+            String clave = NsysDAO.claveCruce(f.imei());
+            if (ENVIADA.equals(estado)) {
+                MovilNsys m = moviles.get(clave);
+                if (m != null && m.estado() == EstadoMovil.VENDIDO) continue;
+            }
+            puestos.computeIfAbsent(clave, k -> new LinkedHashSet<>()).add(f.id());
+        }
+        return puestos;
+    }
+
     private List<FilaVista> vistas(List<FilaPedido> filas) {
-        // Una sola carga para todas: solo las vivas con IMEI llevan aviso.
+        // Una sola carga para todas: solo las pendientes y las no pendientes con IMEI llevan aviso.
         Set<String> imeis = new LinkedHashSet<>();
         Set<String> skus = new LinkedHashSet<>();
         for (FilaPedido f : filas) {
@@ -111,14 +149,14 @@ public class VistaFilas {
         Map<String, MovilNsys> moviles = new HashMap<>();
         Map<String, List<TrabajoAbierto>> trabajos = Map.of();
         Function<MovilNsys, LoQueVale.Valor> vale = m -> null;
-        Map<String, Integer> vivasPorImei = new HashMap<>();
+        Map<String, Set<Integer>> puestos = Map.of();
         AceptaSku acepta = null;
         if (!imeis.isEmpty()) {
             for (MovilNsys m : nsysDao.porImeis(imeis)) moviles.putIfAbsent(NsysDAO.claveCruce(m.imeiSn()), m);
             trabajos = nsysDao.trabajosAbiertos(imeis);
             vale = taller.valedor(imeis);
-            // Sobre todas las vivas con ese IMEI, no solo las de la pagina.
-            for (FilaPedido v : dao.vivasConImei(imeis)) vivasPorImei.merge(NsysDAO.claveCruce(v.imei()), 1, Integer::sum);
+            // Sobre todas las filas de ShippyPro con ese IMEI, no solo las de la pagina.
+            puestos = puestos(dao.shippyProConImei(imeis, desdePuestos()));
             acepta = new AceptaSku(nsysDao.productosPorSkuDeCanal(AceptaSku.conVariantes(skus)));
         }
         List<FilaVista> vistas = new ArrayList<>();
@@ -129,10 +167,13 @@ public class VistaFilas {
                 MovilNsys m = moviles.get(clave);
                 LoQueVale.Valor v = m == null ? null : vale.apply(m);
                 Aceptacion ac = f.canal() == null ? null : acepta.para(f.canal(), f.sku());
-                aviso = AvisoImei.de(ac, f.canal(), m, v, trabajos.getOrDefault(clave, List.of()),
-                        vivasPorImei.getOrDefault(clave, 0) > 1);
+                // Otra fila (no esta) con el mismo movil puesto.
+                boolean enOtraFila = puestos.getOrDefault(clave, Set.of()).stream().anyMatch(id -> id != f.id());
+                aviso = AvisoImei.de(ac, f.canal(), m, v, trabajos.getOrDefault(clave, List.of()), enOtraFila);
             }
-            vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), !f.viva(),
+            String estado = estado(f);
+            vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), estado,
+                    !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja()));
         }
@@ -140,7 +181,8 @@ public class VistaFilas {
     }
 
     private static boolean llevaAviso(FilaPedido f) {
-        return f.viva() && f.imei() != null && !f.imei().isBlank();
+        String estado = estado(f);
+        return (PENDIENTE.equals(estado) || NO_PENDIENTE.equals(estado)) && f.imei() != null && !f.imei().isBlank();
     }
 
     /** ShippyPro y NSYS, en este orden. Un ERROR enseña un motivo fijo: su texto puede llevar datos internos. */

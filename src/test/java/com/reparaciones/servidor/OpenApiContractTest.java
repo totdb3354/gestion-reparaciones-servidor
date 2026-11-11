@@ -365,8 +365,9 @@ class OpenApiContractTest {
         for (String esquema : List.of("FilaVista", "ListaFilas", "FuenteVista", "RecomendadorCandidato", "PeticionImei"))
             assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
 
-        assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "nivel", "motivo", "skuMovil", "caja");
-        assertNoNullable(esquemas, "FilaVista", "idFila", "fecha", "plataforma", "enviada");
+        assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "envioFecha", "transportista", "seguimiento",
+                "nivel", "motivo", "skuMovil", "caja");
+        assertNoNullable(esquemas, "FilaVista", "idFila", "fecha", "plataforma", "estado", "editable");
         assertNoNullable(esquemas, "ListaFilas", "filas", "hayMas");
         assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo");
         assertNoNullable(esquemas, "FuenteVista", "fuente", "filas", "nivel");

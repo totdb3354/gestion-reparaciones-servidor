@@ -32,7 +32,7 @@ public class FilasController {
     static final int MIN_BUSCAR = 2;
     static final String MSG_BUSCAR_CORTO = "Escribe al menos 2 caracteres";
     static final String MSG_IMEI = "Un IMEI son 15 cifras";
-    static final String MSG_ENVIADA = "La fila ya está enviada";
+    static final String MSG_HISTORICO = "La fila es del histórico y no se edita";
 
     private final VistaFilas vista;
     private final FilasDAO dao;
@@ -68,7 +68,7 @@ public class FilasController {
         return vista.recomendados(id).orElseThrow(() -> noExiste(id));
     }
 
-    /** Pone, cambia o quita (imei nulo o en blanco) el IMEI de una fila sin enviar. Devuelve la fila releida con su aviso. */
+    /** Pone, cambia o quita (imei nulo o en blanco) el IMEI de una fila de ShippyPro (también enviada o no pendiente). Devuelve la fila releida con su aviso. */
     @PutMapping("/filas/{id}/imei")
     public FilaVista ponerImei(@PathVariable int id, @RequestBody PeticionImei req,
                                @AuthenticationPrincipal UsuarioPrincipal principal,
@@ -76,14 +76,14 @@ public class FilasController {
         String imei = req.imei() == null || req.imei().isBlank() ? null : req.imei().strip();
         if (imei != null && !imei.matches("\\d{15}")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_IMEI);
         FilaPedido fila = dao.porId(id).orElseThrow(() -> noExiste(id));
-        if (!fila.viva() || VistaFilas.HISTORICO.equals(fila.origen()))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_ENVIADA);
+        if (VistaFilas.HISTORICO.equals(fila.origen()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
         return idempotencia.ejecutar(principal.getIdUsu(), "pedido-imei", claveIdempotencia, new Cambio(id, imei), () -> {
-            // El estado se decide en la transaccion del DAO: una fila enviada entre la comprobacion y el cambio tampoco se toca.
+            // El origen se decide en la transaccion del DAO, con la fila bloqueada.
             FilasDAO.Resultado r = dao.ponerImei(id, imei, principal.getIdUsu(), LocalDateTime.now(clock));
             if (r != FilasDAO.Resultado.PUESTO) {
                 if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
-                throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_ENVIADA);
+                throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
             }
             return vista.fila(id).orElseThrow(() -> noExiste(id));
         });

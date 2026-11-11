@@ -34,9 +34,22 @@ class VistaFilasTest {
     private final TallerNsys taller = mock(TallerNsys.class);
     private final VistaFilas vista = new VistaFilas(dao, nsys, taller, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
-    private static FilaPedido fila(int id, String imei, LocalDateTime enviadaEn) {
+    private static FilaPedido fila(int id, String imei, LocalDateTime cerradaEn) {
         return new FilaPedido(id, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", imei, "402-0000000-000000" + id,
-                LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, enviadaEn);
+                LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, cerradaEn);
+    }
+
+    /** Una fila que ShippyPro dio por enviada (cerrada con envio). */
+    private static FilaPedido enviada(int id, String imei) {
+        return new FilaPedido(id, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", imei, "402-0000000-000000" + id,
+                LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1), AHORA.minusDays(2), "UPSv2",
+                "1Z0000000000000001");
+    }
+
+    private static MovilNsys vendido(String imei) {
+        return new MovilNsys(imei, "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Released", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 9, 1), null, "i13128AzulA", "13", "13", "128GB", "Azul", "A", false, "Listos", "Listos",
+                EstadoMovil.VENDIDO, null, null);
     }
 
     private static MovilNsys movil(String imei) {
@@ -53,31 +66,105 @@ class VistaFilasTest {
                 AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
     }
 
-    @Test void losAvisosSoloEnLasVivasConImei() {
+    @Test void losAvisosSoloEnLasPendientesYNoPendientesConImei() {
+        FilaPedido noPendiente = fila(3, IMEI2, AHORA.minusDays(2));
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(
-                fila(1, IMEI1, null), fila(2, null, null), fila(3, IMEI1, AHORA.minusDays(2)),
+                fila(1, IMEI1, null), fila(2, null, null), noPendiente, enviada(5, IMEI1),
                 new FilaPedido(4, LocalDate.of(2025, 1, 1), "Web", "texto", "sin imei", null, null, "HISTORICO", null, null,
                         AHORA.minusYears(1))));
-        when(dao.vivasConImei(any())).thenReturn(List.of(fila(1, IMEI1, null)));
-        nsysConUnMovilQueCuadra(movil(IMEI1));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), noPendiente));
+        nsysConUnMovilQueCuadra(movil(IMEI1), movil(IMEI2));
 
         List<FilaVista> filas = vista.filas(null, null, null).filas();
 
-        assertEquals(4, filas.size());
+        assertEquals(5, filas.size());
         assertEquals("OK", filas.get(0).nivel());
         assertEquals("Listos", filas.get(0).caja());
         assertEquals("i13128AzulA", filas.get(0).skuMovil());
-        assertFalse(filas.get(0).enviada());
-        for (int i = 1; i < 4; i++) {
+        assertNull(filas.get(1).nivel(), "sin IMEI no hay aviso");
+        // una fila que ya no esta pendiente (sin envio) sigue llevando aviso
+        assertEquals("OK", filas.get(2).nivel());
+        for (int i : new int[]{3, 4}) {
             FilaVista f = filas.get(i);
             assertNull(f.nivel(), "la fila " + f.idFila() + " no lleva aviso");
             assertNull(f.motivo());
             assertNull(f.skuMovil());
             assertNull(f.caja());
         }
-        assertTrue(filas.get(2).enviada());
-        assertTrue(filas.get(3).enviada());
-        verify(nsys).porImeis(Set.of(IMEI1));
+        verify(nsys).porImeis(Set.of(IMEI1, IMEI2));
+    }
+
+    @Test void elEstadoLaEdicionYLosDatosDelEnvioDeCadaFila() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(
+                fila(1, null, null), fila(2, null, AHORA.minusDays(2)), enviada(3, null),
+                new FilaPedido(4, LocalDate.of(2025, 1, 1), "Web", "texto", null, null, null, "HISTORICO", null, null,
+                        AHORA.minusYears(1))));
+
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+
+        assertEquals(List.of("PENDIENTE", "NO_PENDIENTE", "ENVIADA", "HISTORICO"), f.stream().map(FilaVista::estado).toList());
+        assertEquals(List.of(true, true, true, false), f.stream().map(FilaVista::editable).toList());
+        assertEquals(AHORA.minusDays(2), f.get(2).envioFecha());
+        assertEquals("UPSv2", f.get(2).transportista());
+        assertEquals("1Z0000000000000001", f.get(2).seguimiento());
+        for (int i : new int[]{0, 1, 3}) {
+            assertNull(f.get(i).envioFecha());
+            assertNull(f.get(i).transportista());
+            assertNull(f.get(i).seguimiento());
+        }
+    }
+
+    @Test void unaFilaEnviadaConImeiNoLlevaAvisoNiConsultaNsys() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(enviada(3, IMEI1)));
+        FilaVista f = vista.filas(null, null, null).filas().get(0);
+        assertEquals("ENVIADA", f.estado());
+        assertEquals(IMEI1, f.imei());
+        assertNull(f.nivel());
+        verifyNoInteractions(nsys, taller);
+    }
+
+    @Test void unImeiPuestoEnUnaFilaEnviadaCuyoMovilNoEstaVendidoAvisaEnOtraFila() {
+        FilaPedido propia = fila(1, IMEI1, null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(propia));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(propia, enviada(9, IMEI1)));
+        nsysConUnMovilQueCuadra(movil(IMEI1));
+
+        FilaVista f = vista.filas(null, null, null).filas().get(0);
+
+        assertEquals("EN_OTRA_FILA", f.motivo());
+        verify(dao).shippyProConImei(Set.of(IMEI1), LocalDate.of(2026, 9, 11));
+    }
+
+    @Test void unImeiPuestoEnUnaFilaEnviadaCuyoMovilNsysYaEstaVendidoNoCuenta() {
+        FilaPedido propia = fila(1, IMEI1, null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(propia));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(propia, enviada(9, IMEI1)));
+        nsysConUnMovilQueCuadra(movil(IMEI1));
+        // porImeis responde para la fila con aviso y para la comprobacion de las enviadas (ya vendido)
+        when(nsys.porImeis(any())).thenReturn(List.of(vendido(IMEI1)));
+
+        FilaVista f = vista.filas(null, null, null).filas().get(0);
+
+        assertNotEquals("EN_OTRA_FILA", f.motivo());
+    }
+
+    @Test void unaFilaNoPendienteConElMismoImeiYaCuentaComoOtraFila() {
+        FilaPedido propia = fila(1, IMEI1, null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(propia));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(propia, fila(8, IMEI1, AHORA.minusDays(3))));
+        nsysConUnMovilQueCuadra(movil(IMEI1));
+
+        assertEquals("EN_OTRA_FILA", vista.filas(null, null, null).filas().get(0).motivo());
+    }
+
+    @Test void laPropiaFilaFueraDeLosSesentaDiasNoLaHaceDuplicada() {
+        // Una fila no pendiente muy antigua no sale de la consulta de los ultimos 60 dias: sola, no es «otra fila».
+        FilaPedido antigua = fila(1, IMEI1, AHORA.minusDays(100));
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(antigua));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of());
+        nsysConUnMovilQueCuadra(movil(IMEI1));
+
+        assertNotEquals("EN_OTRA_FILA", vista.filas(null, null, null).filas().get(0).motivo());
     }
 
     @Test void sinFilasConImeiNoSeConsultaNsys() {
@@ -88,7 +175,7 @@ class VistaFilasTest {
 
     @Test void enOtraFilaVivaCuentaTodasLasVivasConEseImeiAunqueNoEstenEnLaPagina() {
         when(dao.buscar(eq("0001"), anyInt())).thenReturn(List.of(fila(1, IMEI1, null)));
-        when(dao.vivasConImei(any())).thenReturn(List.of(fila(1, IMEI1, null), fila(9, IMEI1, null)));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), fila(9, IMEI1, null)));
         nsysConUnMovilQueCuadra(movil(IMEI1));
 
         FilaVista f = vista.filas(null, null, "0001").filas().get(0);
@@ -99,7 +186,7 @@ class VistaFilasTest {
 
     @Test void dosFilasVivasConElMismoImeiSeAvisanLasDos() {
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), fila(2, IMEI1, null)));
-        when(dao.vivasConImei(any())).thenReturn(List.of(fila(1, IMEI1, null), fila(2, IMEI1, null)));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), fila(2, IMEI1, null)));
         nsysConUnMovilQueCuadra(movil(IMEI1));
 
         List<FilaVista> filas = vista.filas(null, null, null).filas();
@@ -110,7 +197,7 @@ class VistaFilasTest {
 
     @Test void unImeiQueNoEstaEnNsysEsMal() {
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(fila(1, IMEI2, null)));
-        when(dao.vivasConImei(any())).thenReturn(List.of(fila(1, IMEI2, null)));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(fila(1, IMEI2, null)));
         nsysConUnMovilQueCuadra(movil(IMEI1));
 
         FilaVista f = vista.filas(null, null, null).filas().get(0);
@@ -163,10 +250,24 @@ class VistaFilasTest {
         assertTrue(vista.recomendados(7).isEmpty());
     }
 
-    @Test void recomendadosVaciosSiLaFilaEstaEnviada() {
-        when(dao.porId(7)).thenReturn(Optional.of(fila(7, null, AHORA.minusDays(1))));
+    @Test void recomendadosVaciosSiLaFilaEsDelHistorico() {
+        when(dao.porId(7)).thenReturn(Optional.of(new FilaPedido(7, LocalDate.of(2025, 1, 1), "Web", "i13128AzulA", null, null,
+                null, "HISTORICO", Canal.AMAZON, null, AHORA.minusYears(1))));
         assertEquals(List.of(), vista.recomendados(7).orElseThrow());
         verifyNoInteractions(nsys);
+    }
+
+    @Test void unaFilaEnviadaOQueYaNoEstaPendienteSiDaCandidatos() {
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(
+                AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
+        when(nsys.enEmpresa()).thenReturn(List.of(movil(IMEI1)));
+        when(nsys.trabajosAbiertos()).thenReturn(Map.of());
+        when(taller.valedorDeTodos()).thenReturn(x -> new LoQueVale.Valor("Azul", "A", "i13128AzulA", null, null, null, false));
+        when(dao.shippyProConImeiDesde(any())).thenReturn(List.of());
+        for (FilaPedido f : List.of(enviada(7, null), fila(8, null, AHORA.minusDays(1)))) {
+            when(dao.porId(f.id())).thenReturn(Optional.of(f));
+            assertEquals(List.of(IMEI1), vista.recomendados(f.id()).orElseThrow().stream().map(Recomendador.Candidato::imei).toList());
+        }
     }
 
     @Test void recomendadosVaciosSiElMaestroNoConoceElSku() {
@@ -179,7 +280,7 @@ class VistaFilasTest {
     @Test void recomendadosNoOfrecenLosYaPuestosEnOtraFilaPeroSiElDeLaPropiaFila() {
         FilaPedido propia = fila(7, IMEI1, null);
         when(dao.porId(7)).thenReturn(Optional.of(propia));
-        when(dao.vivasDeShippyPro()).thenReturn(List.of(propia, fila(8, IMEI2, null), fila(9, null, null)));
+        when(dao.shippyProConImeiDesde(LocalDate.of(2026, 9, 11))).thenReturn(List.of(propia, fila(8, IMEI2, null)));
         when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(
                 AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
         when(nsys.enEmpresa()).thenReturn(List.of(movil(IMEI1), movil(IMEI2), movil("350000000000003")));
@@ -189,6 +290,23 @@ class VistaFilasTest {
         List<Recomendador.Candidato> r = vista.recomendados(7).orElseThrow();
 
         assertEquals(List.of(IMEI1, "350000000000003"), r.stream().map(Recomendador.Candidato::imei).toList());
+    }
+
+    @Test void recomendadosCuentanComoPuestosLasEnviadasConMovilNoVendidoYNoLasVendidas() {
+        FilaPedido propia = fila(7, null, null);
+        when(dao.porId(7)).thenReturn(Optional.of(propia));
+        when(dao.shippyProConImeiDesde(any())).thenReturn(List.of(enviada(8, IMEI1), enviada(9, IMEI2),
+                fila(10, "350000000000004", AHORA.minusDays(1))));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI1), vendido(IMEI2)));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(
+                AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
+        when(nsys.enEmpresa()).thenReturn(List.of(movil(IMEI1), movil(IMEI2), movil("350000000000003"), movil("350000000000004")));
+        when(nsys.trabajosAbiertos()).thenReturn(Map.of());
+        when(taller.valedorDeTodos()).thenReturn(x -> new LoQueVale.Valor("Azul", "A", "i13128AzulA", null, null, null, false));
+
+        List<Recomendador.Candidato> r = vista.recomendados(7).orElseThrow();
+
+        assertEquals(List.of(IMEI2, "350000000000003"), r.stream().map(Recomendador.Candidato::imei).toList());
     }
 
     // ---------------------------------------------------------------- fuentes

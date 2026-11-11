@@ -27,14 +27,14 @@ class FilasControllerTest {
             Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
     private final UsuarioPrincipal super_ = new UsuarioPrincipal(7, "super", "", "SUPERTECNICO", 3);
 
-    private static FilaPedido fila(String origen, LocalDateTime enviadaEn) {
+    private static FilaPedido fila(String origen, LocalDateTime cerradaEn) {
         return new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null, "402-0000000-0000005",
-                LocalDate.of(2026, 11, 4), origen, Canal.AMAZON, 1, enviadaEn);
+                LocalDate.of(2026, 11, 4), origen, Canal.AMAZON, 1, cerradaEn);
     }
 
     private static FilaVista vistaDe(String imei) {
         return new FilaVista(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", imei, "402-0000000-0000005",
-                LocalDate.of(2026, 11, 4), false, "OK", null, "i13128AzulA", "Listos");
+                LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, "OK", null, "i13128AzulA", "Listos");
     }
 
     private static int estado(Runnable r) {
@@ -87,16 +87,25 @@ class FilasControllerTest {
         verify(dao, never()).ponerImei(anyInt(), any(), any(), any());
     }
 
-    @Test void unaFilaEnviadaOHistoricaEs409() {
-        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", AHORA.minusDays(1))));
+    @Test void unaFilaDelHistoricoEs409() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("HISTORICO", AHORA.minusDays(30))));
         ResponseStatusException e = assertThrows(ResponseStatusException.class,
                 () -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null));
         assertEquals(409, e.getStatusCode().value());
-        assertEquals("La fila ya está enviada", e.getReason());
-
-        when(dao.porId(5)).thenReturn(Optional.of(fila("HISTORICO", null)));
-        assertEquals(409, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null)));
+        assertEquals("La fila es del histórico y no se edita", e.getReason());
         verify(dao, never()).ponerImei(anyInt(), any(), any(), any());
+    }
+
+    @Test void unaFilaDeShippyProCerradaOEnviadaSiSeEdita() {
+        when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI)));
+        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", AHORA.minusDays(1))));
+        controller.ponerImei(5, new PeticionImei(IMEI), super_, null);
+        when(dao.porId(5)).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
+                "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1),
+                AHORA.minusDays(2), "UPSv2", "1Z0000000000000001")));
+        controller.ponerImei(5, new PeticionImei(IMEI), super_, null);
+        verify(dao, times(2)).ponerImei(5, IMEI, 7, AHORA);
     }
 
     @Test void siElDaoDiceCerradaTrasLaComprobacionEs409YSiNoExisteEs404() {
