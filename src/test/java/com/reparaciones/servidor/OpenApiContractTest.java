@@ -372,7 +372,7 @@ class OpenApiContractTest {
                 "nivel", "motivo", "skuMovil", "caja", "canal");
         assertNoNullable(esquemas, "FilaVista", "idFila", "fecha", "plataforma", "estado", "editable", "tieneEtiqueta");
         assertNoNullable(esquemas, "ListaFilas", "filas", "hayMas");
-        assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo");
+        assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo", "aviso");
         assertNoNullable(esquemas, "FuenteVista", "fuente", "filas", "nivel");
         assertNullable(esquemas, "PeticionImei", "imei");
         assertNullable(esquemas, "CambioImei", "usuario", "imeiAnterior", "imeiNuevo");

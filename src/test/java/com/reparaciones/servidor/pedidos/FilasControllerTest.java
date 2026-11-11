@@ -176,7 +176,7 @@ class FilasControllerTest {
     // ---------------------------------------------------------------- fuentes
 
     @Test void lasFuentesSonLasDeLaVista() {
-        List<FuenteVista> f = List.of(new FuenteVista("SHIPPYPRO", null, null, 0, null, null, "SIN_DATOS"));
+        List<FuenteVista> f = List.of(new FuenteVista("SHIPPYPRO", null, null, 0, null, null, "SIN_DATOS", null));
         when(vista.fuentes()).thenReturn(f);
         assertSame(f, controller.fuentes());
     }

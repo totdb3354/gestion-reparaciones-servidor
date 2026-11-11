@@ -33,6 +33,8 @@ public class VistaFilas {
     static final int TOPE_BUSQUEDA = 500;
     static final String MOTIVO_ERROR = "Error al leer la fuente; ver el registro del servidor";
     static final String MOTIVO_RECHAZADA = "La lectura de pedidos no está configurada";
+    static final String AVISO_DESCARTADOS = "Hay pedidos de ShippyPro sin fecha válida: no se cierra ninguna fila ni se marca ningún envío hasta que se resuelvan";
+    static final String AVISO_SIN_ENVIOS = "No se pudieron leer los envíos de ShippyPro: por ahora no se marcan envíos ni etiquetas";
     static final String MOTIVO_NSYS_RECHAZADO = "La última exportación de NSYS no se pudo aceptar";
     static final String MOTIVO_NSYS_ERROR = "No se pudo leer la última exportación de NSYS";
     static final String SHIPPYPRO = "SHIPPYPRO";
@@ -209,8 +211,18 @@ public class VistaFilas {
         }).orElse(null);
         FuenteVista shippyPro = new FuenteVista(SHIPPYPRO, cuando, ultima.map(LecturaGuardada::resultado).orElse(null),
                 buena.map(LecturaGuardada::filas).orElse(0), buena.map(LecturaGuardada::skuDesconocidos).orElse(null), motivo,
-                AvisoNsys.nivel(cuando, ahora));
+                AvisoNsys.nivel(cuando, ahora), avisoDeLectura(ultima));
         return List.of(shippyPro, nsys(ahora));
+    }
+
+    /** Un texto fijo si la ultima lectura fue buena pero salto el cierre y el marcado de envios (pedidos sin fecha valida o envios que no
+     *  se pudieron leer); el mensaje guardado lleva numeros de pedido y no sale. Con ERROR o RECHAZADA ya habla el motivo. */
+    private static String avisoDeLectura(Optional<LecturaGuardada> ultima) {
+        if (ultima.isEmpty() || !LecturaFilas.OK.equals(ultima.get().resultado()) || ultima.get().mensaje() == null) return null;
+        String m = ultima.get().mensaje();
+        if (m.contains(LecturaFilas.AVISO_DESCARTADOS)) return AVISO_DESCARTADOS;
+        if (m.contains(LecturaFilas.AVISO_SIN_ENVIOS)) return AVISO_SIN_ENVIOS;
+        return null;
     }
 
     /** NSYS con la regla de {@code StockTelefonosController.estado()}: la ultima buena y el fallo posterior, si lo hay; aqui con motivos fijos. */
@@ -224,6 +236,6 @@ public class VistaFilas {
         String motivo = !falloReciente ? null
                 : ImportadorNsys.ERROR.equals(fallo.get().resultado()) ? MOTIVO_NSYS_ERROR : MOTIVO_NSYS_RECHAZADO;
         return new FuenteVista(NSYS, ultima, resultado, ok.map(Importacion::filas).orElse(0), null, motivo,
-                AvisoNsys.nivel(ultima, ahora));
+                AvisoNsys.nivel(ultima, ahora), null);
     }
 }

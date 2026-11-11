@@ -448,4 +448,42 @@ class VistaFilasTest {
         assertEquals(java.util.Arrays.asList("AMAZON", "AMAZON", "AMAZON_STOCKROOM", "AMAZON_STOCKROOM", null, null, null, null, null),
                 canales);
     }
+
+    private void ultimaLectura(String resultado, String mensaje) {
+        LecturaGuardada l = new LecturaGuardada(7, AHORA, AHORA, resultado, 3, null, mensaje);
+        when(dao.ultimaLectura(eq(Set.of(LecturaFilas.OK)))).thenReturn(Optional.of(l));
+        when(dao.ultimaLectura(argThat(s -> s != null && s.size() > 1))).thenReturn(Optional.of(l));
+        when(nsys.ultimaImportacion(any(), any())).thenReturn(Optional.empty());
+    }
+
+    @Test void unaLecturaBuenaQueSaltoElCierreEnseniaUnAvisoFijoSinNumerosDePedido() {
+        ultimaLectura("OK", LecturaFilas.AVISO_DESCARTADOS + " (no se cierra nada): 402-0000000-0000099");
+
+        FuenteVista s = vista.fuentes().get(0);
+
+        assertEquals("OK", s.resultado());
+        assertNull(s.motivo());
+        assertEquals(VistaFilas.AVISO_DESCARTADOS, s.aviso());
+        assertFalse(s.aviso().contains("402-"));
+    }
+
+    @Test void unaLecturaBuenaSinEnviosEnseniaSuAvisoYUnaNormalONoLlevaNinguno() {
+        ultimaLectura("OK", "2 filas reabiertas; " + LecturaFilas.AVISO_SIN_ENVIOS);
+        assertEquals(VistaFilas.AVISO_SIN_ENVIOS, vista.fuentes().get(0).aviso());
+
+        ultimaLectura("OK", "2 filas reabiertas");
+        assertNull(vista.fuentes().get(0).aviso());
+        ultimaLectura("OK", null);
+        assertNull(vista.fuentes().get(0).aviso());
+        assertNull(vista.fuentes().get(1).aviso(), "NSYS no lleva aviso");
+    }
+
+    @Test void conErrorHablaElMotivoYNoElAvisoDeUnaLecturaAnterior() {
+        ultimaLectura("ERROR", LecturaFilas.AVISO_DESCARTADOS + " (no se cierra nada): 402-0000000-0000099");
+
+        FuenteVista s = vista.fuentes().get(0);
+
+        assertEquals(VistaFilas.MOTIVO_ERROR, s.motivo());
+        assertNull(s.aviso());
+    }
 }
