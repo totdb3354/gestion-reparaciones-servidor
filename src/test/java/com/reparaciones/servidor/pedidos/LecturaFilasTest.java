@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -408,5 +409,29 @@ class LecturaFilasTest {
         l.pasada();
         verify(dao).empezarLectura(any());
     }
-}
 
+    /** Un reloj que avanza 3 minutos en cada lectura: lo que tarda ShippyPro en responder. */
+    private static Clock relojQueAvanza() {
+        return new Clock() {
+            private Instant ahora = AHORA.atZone(MADRID).toInstant();
+            @Override public ZoneId getZone() { return MADRID; }
+            @Override public Clock withZone(ZoneId zona) { return this; }
+            @Override public Instant instant() { Instant i = ahora; ahora = ahora.plusSeconds(180); return i; }
+        };
+    }
+
+    @Test void laReaperturaLlevaLaHoraDeInicioDeLaVueltaNoLaDeDespuesDeLeerShippyPro() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(pedido("402-0000000-0000011")), List.of()));
+        when(dao.vivasDeShippyPro()).thenReturn(List.of());
+        when(dao.cerradasDeShippyPro(any())).thenReturn(List.of(new FilaPedido(4, LocalDate.of(2026, 11, 9), "AMZ",
+                "i13128AzulA", "350000000000001", "402-0000000-0000011", LocalDate.of(2026, 11, 9), "SHIPPYPRO", Canal.AMAZON, 1,
+                AHORA.minusHours(1))));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(AceptaSkuTest.producto("Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128AzulAP", "bk-azul-a")));
+
+        new LecturaFilas(shippy, dao, nsys, "100:AMAZON", relojQueAvanza()).pasada();
+
+        verify(dao).reabrir(List.of(4), AHORA);
+    }
+}

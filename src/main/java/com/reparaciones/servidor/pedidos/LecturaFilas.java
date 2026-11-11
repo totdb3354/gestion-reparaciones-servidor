@@ -39,6 +39,8 @@ public class LecturaFilas {
      *  de generarse. */
     static final int DIAS_ENVIOS = 10;
     static final String AVISO_SIN_ENVIOS = "no se pudieron leer los envíos";
+    /** Principio del aviso de la lectura con pedidos descartados; {@link VistaFilas#fuentes()} lo busca en el mensaje guardado. */
+    static final String AVISO_DESCARTADOS = "Pedidos sin fecha valida, saltados";
 
     private final ClienteShippyPro shippyPro;
     private final FilasDAO dao;
@@ -152,7 +154,7 @@ public class LecturaFilas {
             // Sin transaccion conjunta: se inserta, se reabre, se marcan los envios y despues se cierra; si falla en medio, la
             // siguiente vuelta lo rehace.
             dao.insertar(plan.insertar());
-            dao.reabrir(plan.reabrir(), LocalDateTime.now(clock));
+            dao.reabrir(plan.reabrir(), ahora); // el inicio de la vuelta, no despues de las llamadas a ShippyPro: un envio creado entre medias es posterior
             dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
             dao.marcarEtiquetas(etiquetas);
             dao.cerrar(cerrar, LocalDateTime.now(clock));
@@ -160,7 +162,7 @@ public class LecturaFilas {
             List<String> avisos = new ArrayList<>();
             if (!plan.reabrir().isEmpty()) avisos.add(plan.reabrir().size() + " filas reabiertas");
             if (!enviosLeidos) avisos.add(AVISO_SIN_ENVIOS);
-            if (hayDescartados) avisos.add("Pedidos sin fecha valida, saltados (no se cierra nada): "
+            if (hayDescartados) avisos.add(AVISO_DESCARTADOS + " (no se cierra nada): "
                     + String.join(", ", leidos.descartados()));
             if (leidos.pedidos().isEmpty() && !vivas.isEmpty())
                 avisos.add("ShippyPro no trae pendientes y hay " + vivas.size() + " filas vivas");
