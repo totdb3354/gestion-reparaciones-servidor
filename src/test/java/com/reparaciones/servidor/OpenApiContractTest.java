@@ -402,7 +402,7 @@ class OpenApiContractTest {
         assertTrue(esquemas.path("CargaHistoricoEstadoCarga").path("properties").path("informe").path("$ref").asText().endsWith("/InformeCarga"));
         assertNoNullable(esquemas, "InformeCarga", "filasLeidas", "cargadasHistorico", "descartadasVacias", "sinFechaHeredada",
                 "sinFechaDescartada", "imeiNoEsImei", "traspasadasA", "traspasadasB", "traspasadasC", "yaPuesto", "conflicto",
-                "casadasSinImei", "sinPareja", "yaVendidoNsys", "plataformas");
+                "casadasSinImei", "sinPareja", "yaVendidoNsys", "ventaAnterior", "plataformas");
         assertEquals("integer", esquemas.path("InformeCarga").path("properties").path("plataformas").path("additionalProperties").path("type").asText());
     }
 

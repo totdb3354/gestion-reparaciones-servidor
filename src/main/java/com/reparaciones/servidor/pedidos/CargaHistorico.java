@@ -16,6 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -148,7 +149,9 @@ public class CargaHistorico {
             LectorHistorico.Lectura leida = LectorHistorico.leer(tabla);
             // Una lectura vacia o cortada no debe vaciar el historico: se aborta antes de tocar nada.
             if (leida.filas().size() < minimo) throw new CargaAbortada(MOTIVO_POCAS);
-            InformeCarga informe = lectura.sinVueltas(() -> transaccion.execute(s -> guardar(leida)));
+            // Lo que solo depende de la hoja (y NSYS) se calcula antes de tomar los bloqueos de la transaccion.
+            Set<String> vendidos = vendidosEnNsys(Traspaso.imeisCandidatos(leida.filas(), LocalDate.now(clock)));
+            InformeCarga informe = lectura.sinVueltas(() -> transaccion.execute(s -> guardar(leida, vendidos)));
             terminar(empezo, informe, null);
             log.info("Pedidos: historico cargado ({} filas, {} IMEI traspasados)", informe.cargadasHistorico(),
                     informe.traspasadasA() + informe.traspasadasB() + informe.traspasadasC());
@@ -180,10 +183,9 @@ public class CargaHistorico {
     }
 
     /** Dentro de la transacción: las filas de ShippyPro (bloqueadas), el reparto, el borrado, los IMEI y las filas del histórico. */
-    private InformeCarga guardar(LectorHistorico.Lectura leida) {
+    private InformeCarga guardar(LectorHistorico.Lectura leida, Set<String> vendidos) {
         LocalDateTime ahora = LocalDateTime.now(clock);
         List<FilaPedido> erp = dao.todasDeShippyProBloqueadas();
-        Set<String> vendidos = vendidosEnNsys(Traspaso.imeisCandidatos(leida.filas(), ahora.toLocalDate()));
         Traspaso.Plan plan = Traspaso.planear(leida.filas(), erp, ahora.toLocalDate(), vendidos);
         // Borrar las filas HISTORICO borraria en cascada sus apuntes de cambios: no deberia haber ninguno.
         if (dao.contarCambiosDeHistorico() > 0) throw new CargaAbortada(MOTIVO_CAMBIOS);
@@ -220,6 +222,6 @@ public class CargaHistorico {
                 .limit(PLATAFORMAS_EN_INFORME).forEach(e -> plataformas.put(e.getKey(), e.getValue()));
         return new InformeCarga(leida.leidas(), plan.historico().size(), leida.descartadasVacias(), leida.sinFechaHeredada(),
                 leida.sinFechaDescartada(), leida.imeiNoImei(), r.a(), r.b(), r.c(), r.yaPuesto(), r.conflicto(), r.casadasSinImei(),
-                r.sinPareja(), r.yaVendido(), plataformas);
+                r.sinPareja(), r.yaVendido(), r.ventaAnterior(), plataformas);
     }
 }

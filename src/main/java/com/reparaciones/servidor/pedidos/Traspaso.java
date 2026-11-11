@@ -31,6 +31,10 @@ public final class Traspaso {
 
     /** Hasta cuántos días atrás vale una fila de la hoja para B y C. */
     static final int DIAS = 14;
+    /** Una fila de la hoja de más de estos días antes que la fila del ERP que tiene su IMEI es una venta anterior del mismo móvil. */
+    static final int DIAS_VENTA_ANTERIOR = 7;
+    /** FECHA de una fila del ERP sin fecha: todo lo posterior cuenta como «ya puesto». */
+    private static final LocalDate SIN_FECHA = LocalDate.of(1, 1, 1);
 
     public enum Via { A, B, C }
 
@@ -40,8 +44,10 @@ public final class Traspaso {
     /** Recuentos del traspaso. {@code casadasSinImei}: casaron por A pero su celda de IMEI no es un IMEI (ni se traspasan ni se
      *  cargan); {@code sinPareja}: B o C sin fila destino (se cargan como histórico); {@code yaPuesto}: ese IMEI ya estaba en una
      *  fila de ShippyPro (o ya se puso en este plan); {@code conflicto}: casó por A pero todas las filas del pedido tienen otro
-     *  IMEI; {@code yaVendido}: candidatas de B o C cuyo IMEI NSYS da por vendido (se cargan como histórico). */
-    public record Recuentos(int a, int b, int c, int yaPuesto, int conflicto, int casadasSinImei, int sinPareja, int yaVendido) {}
+     *  IMEI; {@code yaVendido}: candidatas de B o C cuyo IMEI NSYS da por vendido (se cargan como histórico);
+     *  {@code ventaAnterior}: su IMEI ya está en una fila de ShippyPro pero la fila de la hoja es de más de {@value #DIAS_VENTA_ANTERIOR}
+     *  días antes que esa fila: una venta anterior del mismo móvil (se carga como histórico). */
+    public record Recuentos(int a, int b, int c, int yaPuesto, int conflicto, int casadasSinImei, int sinPareja, int yaVendido, int ventaAnterior) {}
 
     /** {@code historico}: las filas de la hoja que se cargan como histórico, en el orden de la hoja. */
     public record Plan(List<Traslado> traslados, List<FilaHoja> historico, Recuentos recuentos) {}
@@ -97,13 +103,17 @@ public final class Traspaso {
         return p.equals("NP") || p.startsWith("INCIDENCIA");
     }
 
+    private static LocalDate masAntigua(LocalDate x, LocalDate y) {
+        return x.isBefore(y) ? x : y;
+    }
+
     /** {@code vendidos}: los IMEI que NSYS da por vendidos; una candidata de B o C con uno de ellos va al histórico. */
     public static Plan planear(List<FilaHoja> hoja, List<FilaPedido> filasErp, LocalDate hoy, Set<String> vendidos) {
         List<Destino> destinos = new ArrayList<>();
-        Set<String> puestos = new HashSet<>();
+        Map<String, LocalDate> puestos = new HashMap<>(); // IMEI -> FECHA mas antigua de las filas del ERP que lo tienen
         for (FilaPedido f : filasErp) {
             if (!"SHIPPYPRO".equals(f.origen())) continue;
-            if (f.imei() != null && !f.imei().isBlank()) puestos.add(f.imei().strip());
+            if (f.imei() != null && !f.imei().isBlank()) puestos.merge(f.imei().strip(), f.fecha() == null ? SIN_FECHA : f.fecha(), Traspaso::masAntigua);
             if (f.canal() != null) destinos.add(new Destino(f));
         }
         Map<String, List<Destino>> porPedido = new HashMap<>();
@@ -130,7 +140,7 @@ public final class Traspaso {
                 sinImei++;
                 continue;
             }
-            if (puestos.contains(f.imei())) {
+            if (puestos.containsKey(f.imei())) { // mismo numero de pedido = misma venta
                 yaPuesto++;
                 continue;
             }
@@ -142,7 +152,7 @@ public final class Traspaso {
                 continue;
             }
             libre.imei = f.imei();
-            puestos.add(f.imei());
+            puestos.merge(f.imei(), libre.fila.fecha() == null ? SIN_FECHA : libre.fila.fecha(), Traspaso::masAntigua);
             traslados.add(new Traslado(libre.fila.id(), f.imei(), Via.A));
             a++;
         }
@@ -154,22 +164,14 @@ public final class Traspaso {
         for (int i = 0; i < hoja.size(); i++) {
             FilaHoja f = hoja.get(i);
             if (fuera[i] || esIncidenciaONp(f.plataforma()) || !f.imeiValido()) continue;
-            if (puestos.contains(f.imei())) {
-                yaPuesto++;
-                fuera[i] = true;
-                continue;
-            }
+            if (puestos.containsKey(f.imei())) continue; // ya puesto o venta anterior: se decide al final
             Via via = via(f, limite);
             if (via == null) continue;
             if (vendidos.contains(f.imei())) {
                 yaVendido++;
                 continue;
             }
-            if (!vistos.add(f.imei())) { // el mismo IMEI dos veces en la hoja: solo puede ir a una fila
-                yaPuesto++;
-                fuera[i] = true;
-                continue;
-            }
+            if (!vistos.add(f.imei())) continue; // el mismo IMEI otra vez: solo una fila puede colocarlo; la otra se decide al final
             String sku = Textos.sku(f.sku());
             if (sku == null) {
                 sinPareja++;
@@ -200,16 +202,31 @@ public final class Traspaso {
                 int i = filas.get(k);
                 Destino d = pendientes.get(k - sobran);
                 d.imei = hoja.get(i).imei();
-                puestos.add(d.imei);
+                puestos.merge(d.imei, d.fila.fecha() == null ? SIN_FECHA : d.fila.fecha(), Traspaso::masAntigua);
                 traslados.add(new Traslado(d.fila.id(), d.imei, via));
                 fuera[i] = true;
                 if (via == Via.B) b++;
                 else c++;
             }
         }
+        // Una fila de la hoja cuyo IMEI ya esta en una fila del ERP (o se acaba de colocar): si no es de mas de 7 dias antes que esa
+        // fila es la misma venta («ya puesto», no se carga); si es anterior, es otra venta del mismo movil y va al historico.
+        int ventaAnterior = 0;
+        for (int i = 0; i < hoja.size(); i++) {
+            FilaHoja f = hoja.get(i);
+            if (fuera[i] || esIncidenciaONp(f.plataforma()) || !f.imeiValido()) continue;
+            LocalDate fechaErp = puestos.get(f.imei());
+            if (fechaErp == null) continue;
+            if (!f.fecha().isBefore(fechaErp.minusDays(DIAS_VENTA_ANTERIOR))) {
+                yaPuesto++;
+                fuera[i] = true;
+            } else {
+                ventaAnterior++;
+            }
+        }
         List<FilaHoja> historico = new ArrayList<>();
         for (int i = 0; i < hoja.size(); i++) if (!fuera[i]) historico.add(hoja.get(i));
         return new Plan(List.copyOf(traslados), List.copyOf(historico),
-                new Recuentos(a, b, c, yaPuesto, conflicto, sinImei, sinPareja, yaVendido));
+                new Recuentos(a, b, c, yaPuesto, conflicto, sinImei, sinPareja, yaVendido, ventaAnterior));
     }
 }

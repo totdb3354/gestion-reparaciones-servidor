@@ -346,4 +346,17 @@ class CargaHistoricoTest {
         verify(dao, never()).insertarHistorico(any());
         verify(tm).rollback(any());
     }
+
+    @Test void nsysSeConsultaAntesDeTomarLosBloqueosDeLaTransaccion() throws Exception {
+        erpDePrueba();
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(hoja());
+        when(nsys.porImeis(any())).thenAnswer(i -> {
+            verifyNoInteractions(tm, lectura);
+            verify(dao, never()).todasDeShippyProBloqueadas();
+            return List.of();
+        });
+        carga(enSeco).iniciar();
+        verify(nsys).porImeis(any());
+        assertEquals(Estado.OK, carga(enSeco).estado().estado() == Estado.NUNCA ? Estado.OK : Estado.ERROR);
+    }
 }

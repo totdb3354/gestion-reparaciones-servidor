@@ -11,8 +11,10 @@ import java.util.Map;
  *  <li>{@code traspasadasA/B/C}: IMEI puestos en filas del ERP por cada regla; {@code yaPuesto}: la fila ya tenía ese IMEI;
  *  {@code conflicto}: la fila del pedido tenía otro; {@code casadasSinImei}: de un pedido del ERP pero sin IMEI que traspasar;
  *  {@code sinPareja}: sin fila a la que traspasar (se cargaron como histórico); {@code yaVendidoNsys}: candidatas de B o C
- *  cuyo IMEI NSYS da por vendido (no son de un pedido pendiente: se cargaron como histórico).</li>
+ *  cuyo IMEI NSYS da por vendido (no son de un pedido pendiente: se cargaron como histórico);
+ *  {@code ventaAnterior}: su IMEI ya estaba en una fila de ShippyPro pero la fila de la hoja es de más de 7 días antes que esa fila
+ *  (otra venta del mismo móvil: se cargó como histórico).</li>
  *  </ul> */
 public record InformeCarga(int filasLeidas, int cargadasHistorico, int descartadasVacias, int sinFechaHeredada, int sinFechaDescartada,
                            int imeiNoEsImei, int traspasadasA, int traspasadasB, int traspasadasC, int yaPuesto, int conflicto,
-                           int casadasSinImei, int sinPareja, int yaVendidoNsys, Map<String, Integer> plataformas) {}
+                           int casadasSinImei, int sinPareja, int yaVendidoNsys, int ventaAnterior, Map<String, Integer> plataformas) {}
