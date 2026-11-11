@@ -62,6 +62,8 @@ public class FilasDAO {
     static final String SQL_SHIPPYPRO_BLOQUEADAS = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' ORDER BY FECHA, ID_FILA FOR UPDATE";
     static final String SQL_TRASPASAR_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO'"
             + " AND (IMEI IS NULL OR IMEI = '')";
+    static final String SQL_CAMBIOS_DE_HISTORICO = "SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
+            + " WHERE f.ORIGEN = 'HISTORICO'";
     static final String SQL_EMPEZAR_LECTURA = "INSERT INTO Pedido_lectura (INICIO) VALUES (?)";
     static final String SQL_TERMINAR_LECTURA = "UPDATE Pedido_lectura SET FIN = ?, RESULTADO = ?, FILAS = ?, SKU_DESCONOCIDOS = ?, MENSAJE = ?"
             + " WHERE ID_LECTURA = ?";
@@ -208,6 +210,12 @@ public class FilasDAO {
     /** Todas las filas de origen ShippyPro, vivas o cerradas, en orden de hoja y bloqueadas hasta el fin de la transaccion. */
     public List<FilaPedido> todasDeShippyProBloqueadas() {
         return jdbc.query(SQL_SHIPPYPRO_BLOQUEADAS, FilasDAO::fila);
+    }
+
+    /** Cuantos apuntes de Pedido_fila_cambio cuelgan de filas HISTORICO (deberian ser 0: borrar esas filas los borraria en cascada). */
+    public int contarCambiosDeHistorico() {
+        Integer n = jdbc.queryForObject(SQL_CAMBIOS_DE_HISTORICO, Integer.class);
+        return n == null ? 0 : n;
     }
 
     /** Borra las filas de origen HISTORICO y devuelve cuantas. No toca las de ShippyPro (ni Pedido_fila_cambio: el historico no se edita). */

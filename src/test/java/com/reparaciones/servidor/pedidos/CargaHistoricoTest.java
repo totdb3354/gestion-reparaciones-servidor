@@ -2,6 +2,9 @@ package com.reparaciones.servidor.pedidos;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.reparaciones.servidor.nsys.EstadoMovil;
+import com.reparaciones.servidor.nsys.MovilNsys;
+import com.reparaciones.servidor.nsys.NsysDAO;
 import com.reparaciones.servidor.pedidos.CargaHistorico.Estado;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,7 @@ class CargaHistoricoTest {
 
     private final ClienteSheets sheets = mock(ClienteSheets.class);
     private final FilasDAO dao = mock(FilasDAO.class);
+    private final NsysDAO nsys = mock(NsysDAO.class);
     private final LecturaFilas lectura = mock(LecturaFilas.class);
     private final PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
     private final List<Runnable> pendientes = new ArrayList<>();
@@ -60,7 +64,7 @@ class CargaHistoricoTest {
     }
 
     private CargaHistorico carga(Executor hilo) {
-        return new CargaHistorico(sheets, dao, lectura, tm, ID_HOJA, "PEDIDOS 2026", Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID), hilo);
+        return new CargaHistorico(sheets, dao, nsys, lectura, tm, ID_HOJA, "PEDIDOS 2026", 0, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID), hilo);
     }
 
     private static JsonNode c(Object o) {
@@ -92,10 +96,10 @@ class CargaHistoricoTest {
     // ------------------------------------------------------------------ lanzar
 
     @Test void sinElAjusteDeLaHojaNoSeLeeNadaYSeAvisa() throws Exception {
-        CargaHistorico sin = new CargaHistorico(sheets, dao, lectura, tm, "  ", "PEDIDOS 2026", Clock.systemUTC(), enSeco);
+        CargaHistorico sin = new CargaHistorico(sheets, dao, nsys, lectura, tm, "  ", "PEDIDOS 2026", 1, Clock.systemUTC(), enSeco);
         assertThrows(CargaHistorico.NoConfigurada.class, sin::iniciar);
         assertEquals(Estado.NUNCA, sin.estado().estado());
-        verifyNoInteractions(sheets, dao);
+        verifyNoInteractions(sheets, dao, nsys);
     }
 
     @Test void alPrincipioElEstadoEsNunca() {
@@ -109,7 +113,7 @@ class CargaHistoricoTest {
         assertEquals(Estado.EN_CURSO, e.estado());
         assertEquals(AHORA, e.empezo());
         assertEquals(1, pendientes.size());
-        verifyNoInteractions(sheets, dao);
+        verifyNoInteractions(sheets, dao, nsys);
         assertEquals(Estado.EN_CURSO, c.estado().estado());
     }
 
@@ -279,7 +283,7 @@ class CargaHistoricoTest {
     @Test void elInformeSoloTieneLasQuinceMayoresPlataformasYNingunDatoDeFilas() throws Exception {
         List<TablaHoja.Fila> filas = new ArrayList<>();
         for (int i = 0; i < 20; i++)
-            for (int k = 0; k <= i; k++) filas.add(fila(2 + filas.size(), 46332, String.format("Plataforma %02d", i), "x", 350000000000001L + k));
+            for (int k = 0; k <= i; k++) filas.add(fila(2 + filas.size(), 46332, String.format("Plataforma %02d", i), "x", 350000000000001L + filas.size()));
         when(sheets.leerTodo(any(), any(), any())).thenReturn(new TablaHoja(Map.of("Fecha", 0, "Plataforma", 1, "SKU", 2, "IMEI", 3), filas));
         CargaHistorico c = carga(enSeco);
         c.iniciar();
@@ -291,5 +295,55 @@ class CargaHistoricoTest {
         assertEquals(210, i.filasLeidas());
         assertEquals(210, i.cargadasHistorico());
         assertFalse(c.estado().toString().contains("35000000000000"));
+    }
+
+    // ------------------------------------------------------------------ revision
+
+    private static MovilNsys movil(String imei, EstadoMovil estado) {
+        return new MovilNsys(imei, "L1", null, null, null, null, null, null, null, null, null, null, null, null, null, false, null, null,
+                estado, null, null);
+    }
+
+    @Test void unImeiVendidoEnNsysNoSeTraspasaYVaAlHistoricoYSeCuenta() throws Exception {
+        erpDePrueba();
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(hoja());
+        // La fila B de la hoja (IMEI ...002): su lote mas reciente esta vendido; el anterior (en stock) no cuenta.
+        when(nsys.porImeis(any())).thenReturn(List.of(movil("350000000000002", EstadoMovil.VENDIDO), movil("350000000000002", EstadoMovil.STOCK),
+                movil("350000000000003", EstadoMovil.STOCK)));
+        CargaHistorico c = carga(enSeco);
+        c.iniciar();
+        InformeCarga i = c.estado().informe();
+        assertEquals(1, i.yaVendidoNsys());
+        assertEquals(0, i.traspasadasB());
+        assertEquals(1, i.traspasadasC());
+        assertEquals(3, i.cargadasHistorico());
+        ArgumentCaptor<java.util.Collection<String>> pedidos = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(nsys, times(1)).porImeis(pedidos.capture());
+        assertEquals(java.util.Set.of("350000000000002", "350000000000003"), java.util.Set.copyOf(pedidos.getValue()));
+    }
+
+    @Test void siLaHojaTrajoMuyPocasFilasSeAbortaAntesDeBorrarNada() throws Exception {
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(hoja());
+        CargaHistorico c = new CargaHistorico(sheets, dao, nsys, lectura, tm, ID_HOJA, "PEDIDOS 2026", 1000,
+                Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID), enSeco);
+        c.iniciar();
+        assertEquals(Estado.ERROR, c.estado().estado());
+        assertEquals(CargaHistorico.MOTIVO_POCAS, c.estado().motivo());
+        assertEquals("La hoja ha devuelto muy pocas filas: no se ha tocado nada", c.estado().motivo());
+        verifyNoInteractions(dao, tm, lectura);
+    }
+
+    @Test void conApuntesDeCambiosColgandoDelHistoricoSeAbortaSinBorrarNada() throws Exception {
+        erpDePrueba();
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(hoja());
+        when(dao.contarCambiosDeHistorico()).thenReturn(2);
+        CargaHistorico c = carga(enSeco);
+        c.iniciar();
+        assertEquals(Estado.ERROR, c.estado().estado());
+        assertEquals(CargaHistorico.MOTIVO_CAMBIOS, c.estado().motivo());
+        verify(dao, never()).borrarHistorico();
+        verify(dao, never()).traspasarImei(anyInt(), anyString(), any());
+        verify(dao, never()).insertarHistorico(any());
+        verify(tm).rollback(any());
     }
 }

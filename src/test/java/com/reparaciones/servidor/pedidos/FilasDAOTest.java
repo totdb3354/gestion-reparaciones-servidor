@@ -330,5 +330,11 @@ class FilasDAOTest {
         assertFalse(dao.traspasarImei(5, "350000000000001", AHORA));
         verify(jdbc, never()).update(startsWith("INSERT INTO Pedido_fila_cambio"), any(Object[].class));
     }
-}
 
+    @Test void contarCambiosDeHistoricoCuentaLosApuntesDeFilasHistorico() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(3);
+        assertEquals(3, dao.contarCambiosDeHistorico());
+        verify(jdbc).queryForObject("SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
+                + " WHERE f.ORIGEN = 'HISTORICO'", Integer.class);
+    }
+}

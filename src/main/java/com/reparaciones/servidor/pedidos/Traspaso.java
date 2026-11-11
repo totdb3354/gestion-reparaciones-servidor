@@ -6,23 +6,27 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 
 /** El traspaso de los IMEI de la hoja a las filas del ERP (spec «Pedidos como la hoja» §8). Es una función pura: recibe las filas
  *  útiles de la hoja y las filas de ShippyPro que ya tiene el ERP, y dice qué IMEI pasan a qué fila y qué filas de la hoja se
  *  cargan como histórico (las demás son de un pedido que el ERP ya tiene y no se cargan). No lee ni escribe nada.
  *
- *  Reglas, por este orden y sobre las filas de la hoja en su orden:
- *  A. «Pedido Amazon» coincide con el PEDIDO de filas de ShippyPro de Amazon o Amazon Stockroom (vivas o cerradas).
+ *  Reglas, en dos pasadas:
+ *  A (toda la hoja primero). «Pedido Amazon» coincide con el PEDIDO de filas de ShippyPro de Amazon o Amazon Stockroom (vivas o
+ *     cerradas). Las incidencias y las filas NP nunca van por A.
  *  B. Plataforma AMZ (Amazon) o FNSK/FSNK (Stockroom), sin «Pedido Amazon», IMEI de 15 cifras y fecha de los últimos 14 días: la
- *     fila PENDIENTE de ese canal con el mismo SKU y sin IMEI, de la más antigua a la más nueva.
+ *     fila PENDIENTE de ese canal con el mismo SKU y sin IMEI.
  *  C. Cualquier otra plataforma con nombre (no INCIDENCIA… ni NP), IMEI de 15 cifras y fecha de los últimos 14 días: la fila
  *     PENDIENTE de un canal web cuya plataforma tiene el mismo nombre y el mismo SKU, sin IMEI.
- *  Una fila de destino recibe como mucho un IMEI y un IMEI se pone como mucho en una fila: si una fila del mismo grupo ya lo tiene,
- *  es «ya puesto» (también tras repetir la carga). */
+ *  En B y C no son destino las filas cuyo PEDIDO aparece como «Pedido Amazon» en alguna fila de la hoja (son de A), ni los IMEI
+ *  que NSYS da por vendidos (van al histórico). Si hay más filas de la hoja que pendientes libres, se quedan las más recientes.
+ *  Un IMEI que ya está en cualquier fila de ShippyPro, o que se puso en este plan, no se pone en otra fila: «ya puesto». */
 public final class Traspaso {
 
     /** Hasta cuántos días atrás vale una fila de la hoja para B y C. */
@@ -34,9 +38,10 @@ public final class Traspaso {
     public record Traslado(int idFila, String imei, Via via) {}
 
     /** Recuentos del traspaso. {@code casadasSinImei}: casaron por A pero su celda de IMEI no es un IMEI (ni se traspasan ni se
-     *  cargan); {@code sinPareja}: B o C sin fila destino (se cargan como histórico); {@code yaPuesto}: la fila destino ya tenía ese
-     *  IMEI; {@code conflicto}: casó por A pero todas las filas del pedido tienen otro IMEI. */
-    public record Recuentos(int a, int b, int c, int yaPuesto, int conflicto, int casadasSinImei, int sinPareja) {}
+     *  cargan); {@code sinPareja}: B o C sin fila destino (se cargan como histórico); {@code yaPuesto}: ese IMEI ya estaba en una
+     *  fila de ShippyPro (o ya se puso en este plan); {@code conflicto}: casó por A pero todas las filas del pedido tienen otro
+     *  IMEI; {@code yaVendido}: candidatas de B o C cuyo IMEI NSYS da por vendido (se cargan como histórico). */
+    public record Recuentos(int a, int b, int c, int yaPuesto, int conflicto, int casadasSinImei, int sinPareja, int yaVendido) {}
 
     /** {@code historico}: las filas de la hoja que se cargan como histórico, en el orden de la hoja. */
     public record Plan(List<Traslado> traslados, List<FilaHoja> historico, Recuentos recuentos) {}
@@ -46,10 +51,12 @@ public final class Traspaso {
     /** Una fila del ERP con su IMEI actual, que va cambiando según se reparte. */
     private static final class Destino {
         final FilaPedido fila;
+        final String sku;
         String imei;
 
         Destino(FilaPedido fila) {
             this.fila = fila;
+            this.sku = Textos.sku(fila.sku());
             this.imei = fila.imei() == null || fila.imei().isBlank() ? null : fila.imei().strip();
         }
 
@@ -58,103 +65,151 @@ public final class Traspaso {
         }
     }
 
-    private static final Comparator<Destino> POR_ANTIGUEDAD = Comparator.<Destino, java.time.LocalDate>comparing(d -> d.fila.fecha(),
-            Comparator.nullsLast(Comparator.naturalOrder())).thenComparingInt(d -> d.fila.id());
+    private static final Comparator<Destino> POR_ANTIGUEDAD = Comparator
+            .<Destino, LocalDate>comparing(d -> d.fila.fechaCompra(), Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(d -> d.fila.fecha(), Comparator.nullsLast(Comparator.naturalOrder())).thenComparingInt(d -> d.fila.id());
     private static final Comparator<Destino> POR_POSICION = Comparator.<Destino, Integer>comparing(d -> d.fila.posicion(),
             Comparator.nullsLast(Comparator.naturalOrder())).thenComparingInt(d -> d.fila.id());
+    private static final Comparator<FilaHoja> POR_FECHA_DE_HOJA = Comparator.comparing(FilaHoja::fecha).thenComparingInt(FilaHoja::numero);
 
-    public static Plan planear(List<FilaHoja> hoja, List<FilaPedido> filasErp, LocalDate hoy) {
+    /** Los IMEI de las filas de la hoja que B o C intentarían emparejar: para preguntar a NSYS cuáles ya salieron. */
+    public static Set<String> imeisCandidatos(List<FilaHoja> hoja, LocalDate hoy) {
+        LocalDate limite = hoy.minusDays(DIAS);
+        Set<String> imeis = new HashSet<>();
+        for (FilaHoja f : hoja) if (via(f, limite) != null) imeis.add(f.imei());
+        return imeis;
+    }
+
+    /** B o C si la fila de la hoja es candidata a una de ellas (IMEI de 15 cifras, de los últimos 14 días, ni incidencia ni NP);
+     *  si no, null. */
+    private static Via via(FilaHoja f, LocalDate limite) {
+        if (!f.imeiValido() || f.fecha().isBefore(limite) || esIncidenciaONp(f.plataforma())) return null;
+        String p = f.plataforma() == null ? "" : f.plataforma().strip().toUpperCase(Locale.ROOT);
+        boolean sinPedido = f.pedido() == null || f.pedido().isBlank();
+        if (p.equals("AMZ") || p.equals("FNSK") || p.equals("FSNK")) return sinPedido ? Via.B : null;
+        return p.isEmpty() ? null : Via.C;
+    }
+
+    /** Las incidencias y las filas NP nunca son de un pedido: siempre van al histórico. */
+    private static boolean esIncidenciaONp(String plataforma) {
+        if (plataforma == null) return false;
+        String p = plataforma.strip().toUpperCase(Locale.ROOT);
+        return p.equals("NP") || p.startsWith("INCIDENCIA");
+    }
+
+    /** {@code vendidos}: los IMEI que NSYS da por vendidos; una candidata de B o C con uno de ellos va al histórico. */
+    public static Plan planear(List<FilaHoja> hoja, List<FilaPedido> filasErp, LocalDate hoy, Set<String> vendidos) {
         List<Destino> destinos = new ArrayList<>();
-        for (FilaPedido f : filasErp)
-            if ("SHIPPYPRO".equals(f.origen()) && f.canal() != null) destinos.add(new Destino(f));
-        destinos.sort(POR_ANTIGUEDAD);
-
-        // A: por numero de pedido, solo Amazon y Amazon Stockroom.
+        Set<String> puestos = new HashSet<>();
+        for (FilaPedido f : filasErp) {
+            if (!"SHIPPYPRO".equals(f.origen())) continue;
+            if (f.imei() != null && !f.imei().isBlank()) puestos.add(f.imei().strip());
+            if (f.canal() != null) destinos.add(new Destino(f));
+        }
         Map<String, List<Destino>> porPedido = new HashMap<>();
         for (Destino d : destinos)
             if (d.fila.canal().esAmazon() && d.fila.pedido() != null && !d.fila.pedido().isBlank())
                 porPedido.computeIfAbsent(d.fila.pedido().strip(), k -> new ArrayList<>()).add(d);
         porPedido.values().forEach(l -> l.sort(POR_POSICION));
+        Set<String> reclamados = new HashSet<>();
+        for (FilaHoja f : hoja) if (f.pedido() != null && !f.pedido().isBlank()) reclamados.add(f.pedido().strip());
 
-        // B y C: las pendientes por canal (B) o por canal web y nombre de plataforma (C), con su SKU; se comparan todas las del grupo
-        // para el «ya puesto» y solo las libres para repartir.
         LocalDate limite = hoy.minusDays(DIAS);
+        boolean[] fuera = new boolean[hoja.size()]; // true = no se carga como historico
         List<Traslado> traslados = new ArrayList<>();
-        List<FilaHoja> historico = new ArrayList<>();
-        int a = 0, b = 0, c = 0, yaPuesto = 0, conflicto = 0, sinImei = 0, sinPareja = 0;
-        for (FilaHoja f : hoja) {
-            String pedido = f.pedido() == null || f.pedido().isBlank() ? null : f.pedido().strip();
-            List<Destino> grupoA = pedido == null ? null : porPedido.get(pedido);
-            if (grupoA != null) {
-                if (!f.imeiValido()) {
-                    sinImei++;
-                    continue;
-                }
-                String sku = Textos.sku(f.sku());
-                if (grupoA.stream().anyMatch(d -> f.imei().equals(d.imei))) {
-                    yaPuesto++;
-                    continue;
-                }
-                Destino libre = grupoA.stream().filter(d -> d.libre() && sku != null && sku.equals(Textos.sku(d.fila.sku()))).findFirst()
-                        .or(() -> grupoA.stream().filter(Destino::libre).findFirst()).orElse(null);
-                if (libre == null) {
-                    conflicto++;
-                    continue;
-                }
-                libre.imei = f.imei();
-                traslados.add(new Traslado(libre.fila.id(), f.imei(), Via.A));
-                a++;
+        int a = 0, b = 0, c = 0, yaPuesto = 0, conflicto = 0, sinImei = 0, sinPareja = 0, yaVendido = 0;
+
+        // Pasada 1: A, con toda la hoja.
+        for (int i = 0; i < hoja.size(); i++) {
+            FilaHoja f = hoja.get(i);
+            if (esIncidenciaONp(f.plataforma()) || f.pedido() == null || f.pedido().isBlank()) continue;
+            List<Destino> grupo = porPedido.get(f.pedido().strip());
+            if (grupo == null) continue;
+            fuera[i] = true;
+            if (!f.imeiValido()) {
+                sinImei++;
                 continue;
             }
-            Via via = null;
-            if (pedido == null && f.imeiValido() && !f.fecha().isBefore(limite)) {
-                String p = f.plataforma() == null ? "" : f.plataforma().strip().toUpperCase(Locale.ROOT);
-                if (p.equals("AMZ")) via = Via.B;
-                else if (p.equals("FNSK") || p.equals("FSNK")) via = Via.B;
-            }
-            if (via == null && f.imeiValido() && !f.fecha().isBefore(limite) && esWeb(f.plataforma())) via = Via.C;
-            if (via == null) {
-                historico.add(f);
-                continue;
-            }
-            String sku = Textos.sku(f.sku());
-            List<Destino> grupo = via == Via.B ? grupoB(destinos, f, sku) : grupoC(destinos, f, sku);
-            LocalDate desde = f.fecha().minusDays(DIAS);
-            if (grupo.stream().anyMatch(d -> f.imei().equals(d.imei) && (d.fila.viva() || !d.fila.fecha().isBefore(desde)))) {
+            if (puestos.contains(f.imei())) {
                 yaPuesto++;
                 continue;
             }
-            Destino libre = grupo.stream().filter(d -> d.fila.viva() && d.libre()).findFirst().orElse(null);
+            String sku = Textos.sku(f.sku());
+            Destino libre = grupo.stream().filter(d -> d.libre() && sku != null && sku.equals(d.sku)).findFirst()
+                    .or(() -> grupo.stream().filter(Destino::libre).findFirst()).orElse(null);
             if (libre == null) {
-                sinPareja++;
-                historico.add(f);
+                conflicto++;
                 continue;
             }
             libre.imei = f.imei();
-            traslados.add(new Traslado(libre.fila.id(), f.imei(), via));
-            if (via == Via.B) b++;
-            else c++;
+            puestos.add(f.imei());
+            traslados.add(new Traslado(libre.fila.id(), f.imei(), Via.A));
+            a++;
         }
-        return new Plan(List.copyOf(traslados), List.copyOf(historico), new Recuentos(a, b, c, yaPuesto, conflicto, sinImei, sinPareja));
-    }
 
-    /** Las filas del canal de la plataforma (AMZ = Amazon; FNSK/FSNK = Stockroom) con el SKU de la fila de la hoja. */
-    private static List<Destino> grupoB(List<Destino> destinos, FilaHoja f, String sku) {
-        Canal canal = f.plataforma().strip().equalsIgnoreCase("AMZ") ? Canal.AMAZON : Canal.AMAZON_STOCKROOM;
-        return destinos.stream().filter(d -> d.fila.canal() == canal && sku != null && sku.equals(Textos.sku(d.fila.sku()))).toList();
-    }
-
-    /** Las filas de un canal web cuya plataforma tiene el mismo nombre que la de la hoja, con el mismo SKU. */
-    private static List<Destino> grupoC(List<Destino> destinos, FilaHoja f, String sku) {
-        String nombre = Textos.nombre(f.plataforma());
-        return destinos.stream().filter(d -> d.fila.canal().esWeb() && Objects.equals(nombre, Textos.nombre(d.fila.plataforma()))
-                && sku != null && sku.equals(Textos.sku(d.fila.sku()))).toList();
-    }
-
-    /** ¿Es una venta web? Una plataforma con nombre que no es de Amazon, ni una incidencia, ni NP. */
-    private static boolean esWeb(String plataforma) {
-        if (plataforma == null || plataforma.isBlank()) return false;
-        String p = plataforma.strip().toUpperCase(Locale.ROOT);
-        return !(p.equals("AMZ") || p.equals("FNSK") || p.equals("FSNK") || p.equals("NP") || p.startsWith("INCIDENCIA"));
+        // Pasada 2: candidatas de B y C, por grupo.
+        Map<String, List<Integer>> candidatas = new LinkedHashMap<>();
+        Map<String, Via> viaDelGrupo = new HashMap<>();
+        Set<String> vistos = new HashSet<>();
+        for (int i = 0; i < hoja.size(); i++) {
+            FilaHoja f = hoja.get(i);
+            if (fuera[i] || esIncidenciaONp(f.plataforma()) || !f.imeiValido()) continue;
+            if (puestos.contains(f.imei())) {
+                yaPuesto++;
+                fuera[i] = true;
+                continue;
+            }
+            Via via = via(f, limite);
+            if (via == null) continue;
+            if (vendidos.contains(f.imei())) {
+                yaVendido++;
+                continue;
+            }
+            if (!vistos.add(f.imei())) { // el mismo IMEI dos veces en la hoja: solo puede ir a una fila
+                yaPuesto++;
+                fuera[i] = true;
+                continue;
+            }
+            String sku = Textos.sku(f.sku());
+            if (sku == null) {
+                sinPareja++;
+                continue;
+            }
+            String canal = f.plataforma().strip().equalsIgnoreCase("AMZ") ? Canal.AMAZON.name() : Canal.AMAZON_STOCKROOM.name();
+            String clave = via == Via.B ? "B|" + canal + "|" + sku : "C|" + Textos.nombre(f.plataforma()) + "|" + sku;
+            candidatas.computeIfAbsent(clave, k -> new ArrayList<>()).add(i);
+            viaDelGrupo.put(clave, via);
+        }
+        Map<String, List<Destino>> libres = new HashMap<>();
+        for (Destino d : destinos) {
+            if (!d.fila.viva() || !d.libre() || d.sku == null) continue;
+            if (d.fila.pedido() != null && reclamados.contains(d.fila.pedido().strip())) continue;
+            libres.computeIfAbsent("B|" + d.fila.canal().name() + "|" + d.sku, k -> new ArrayList<>()).add(d);
+            String nombre = Textos.nombre(d.fila.plataforma());
+            if (d.fila.canal().esWeb() && nombre != null) libres.computeIfAbsent("C|" + nombre + "|" + d.sku, k -> new ArrayList<>()).add(d);
+        }
+        libres.values().forEach(l -> l.sort(POR_ANTIGUEDAD));
+        for (Map.Entry<String, List<Integer>> e : candidatas.entrySet()) {
+            List<Destino> pendientes = libres.getOrDefault(e.getKey(), List.of());
+            List<Integer> filas = new ArrayList<>(e.getValue());
+            filas.sort((x, y) -> POR_FECHA_DE_HOJA.compare(hoja.get(x), hoja.get(y)));
+            int sobran = Math.max(0, filas.size() - pendientes.size());
+            sinPareja += sobran;
+            Via via = viaDelGrupo.get(e.getKey());
+            for (int k = sobran; k < filas.size(); k++) {
+                int i = filas.get(k);
+                Destino d = pendientes.get(k - sobran);
+                d.imei = hoja.get(i).imei();
+                puestos.add(d.imei);
+                traslados.add(new Traslado(d.fila.id(), d.imei, via));
+                fuera[i] = true;
+                if (via == Via.B) b++;
+                else c++;
+            }
+        }
+        List<FilaHoja> historico = new ArrayList<>();
+        for (int i = 0; i < hoja.size(); i++) if (!fuera[i]) historico.add(hoja.get(i));
+        return new Plan(List.copyOf(traslados), List.copyOf(historico),
+                new Recuentos(a, b, c, yaPuesto, conflicto, sinImei, sinPareja, yaVendido));
     }
 }

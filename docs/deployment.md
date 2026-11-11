@@ -32,6 +32,7 @@ La configuración se inyecta por variables de entorno, sin valores por defecto e
 - `PEDIDOS_SHIPPYPRO_CANALES` (por defecto vacio): a que canal va cada marketplace de ShippyPro, `"<marketplace>:AMAZON,<marketplace>:AMAZON_STOCKROOM,..."`. Un marketplace por canal salvo Amazon: dos marketplaces en el mismo canal con el mismo numero de pedido compartirian filas.
 - `PEDIDOS_HISTORICO_HOJA` (por defecto vacio): identificador en Google de la hoja de pedidos de la que se carga el historico (solo lectura, con la cuenta de `NSYS_DRIVE_CREDENCIALES`, que tiene que tener acceso a la hoja). Vacio, `POST /api/pedidos/historico` responde `400`. Nunca va al repo.
 - `PEDIDOS_HISTORICO_PESTANA` (por defecto `PEDIDOS 2026`): la pestana de esa hoja.
+- `PEDIDOS_HISTORICO_MINIMO` (por defecto `1000`): filas utiles minimas que tiene que traer la hoja; con menos, la carga se aborta sin tocar nada (guarda contra una lectura vacia o cortada).
 
 ### Pedidos como la hoja: orden de despliegue
 

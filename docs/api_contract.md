@@ -75,13 +75,13 @@ de `model/` conservan su nombre.
     excepción ni el id de la hoja); `empezo`, `acabo`, `informe` y `motivo` son `null` cuando no corresponden (`informe` va como
     `$ref`, así que el contrato no lo marca `nullable`). `InformeCarga` solo lleva recuentos (ningún IMEI, pedido ni fila): `filasLeidas`,
     `cargadasHistorico`, `descartadasVacias`, `sinFechaHeredada`, `sinFechaDescartada`, `imeiNoEsImei`, `traspasadasA`, `traspasadasB`,
-    `traspasadasC`, `yaPuesto`, `conflicto`, `casadasSinImei`, `sinPareja` y `plataformas` (objeto nombre → filas con las 15
+    `traspasadasC`, `yaPuesto`, `conflicto`, `casadasSinImei`, `sinPareja`, `yaVendidoNsys` (candidatas de B o C cuyo IMEI NSYS da por vendido: van al histórico) y `plataformas` (objeto nombre → filas con las 15
     plataformas con más filas). La carga lee la hoja entera por columnas de cabecera (`Fecha`, `Plataforma`, `SKU`, `IMEI`, y si están
     `Pedido Amazon` y `Fecha compra`) y, en una sola transacción, borra las filas `HISTORICO`, pone en las filas de ShippyPro los IMEI
     de la hoja que son de un pedido que el ERP ya tiene (A: por número de pedido; B: AMZ/FNSK/FSNK sin número, de los últimos 14
-    días, a la pendiente más antigua del canal y SKU; C: webs, de los últimos 14 días, a la pendiente con la misma plataforma y SKU) y
+    días; C: webs, de los últimos 14 días), en dos pasadas (A con toda la hoja y después B y C, que no usan filas cuyo número de pedido aparece en la hoja ni IMEI que NSYS da por vendidos; si hay más filas de la hoja que pendientes libres del mismo canal/plataforma y SKU se quedan las más recientes, emparejadas con las pendientes por fecha de compra), sin poner nunca un IMEI que ya esté en otra fila de ShippyPro (`yaPuesto`, sea cual sea la fecha). Si la hoja trae menos de `pedidos.historico.minimo` filas útiles (por defecto 1000) la carga acaba en `ERROR` sin tocar nada y
     crea el resto como filas `HISTORICO` cerradas, en el orden de la hoja. Ajustes: `pedidos.historico.hoja` y
-    `pedidos.historico.pestana` (por defecto `PEDIDOS 2026`).
+    `pedidos.historico.pestana` (por defecto `PEDIDOS 2026`) y `pedidos.historico.minimo` (por defecto 1000).
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
   del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.

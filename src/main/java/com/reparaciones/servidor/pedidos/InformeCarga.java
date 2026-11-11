@@ -10,8 +10,9 @@ import java.util.Map;
  *  (tomó la de la fila anterior / no había ninguna); {@code imeiNoEsImei}: celdas de IMEI con algo que no son 15 cifras.</li>
  *  <li>{@code traspasadasA/B/C}: IMEI puestos en filas del ERP por cada regla; {@code yaPuesto}: la fila ya tenía ese IMEI;
  *  {@code conflicto}: la fila del pedido tenía otro; {@code casadasSinImei}: de un pedido del ERP pero sin IMEI que traspasar;
- *  {@code sinPareja}: sin fila a la que traspasar (se cargaron como histórico).</li>
+ *  {@code sinPareja}: sin fila a la que traspasar (se cargaron como histórico); {@code yaVendidoNsys}: candidatas de B o C
+ *  cuyo IMEI NSYS da por vendido (no son de un pedido pendiente: se cargaron como histórico).</li>
  *  </ul> */
 public record InformeCarga(int filasLeidas, int cargadasHistorico, int descartadasVacias, int sinFechaHeredada, int sinFechaDescartada,
                            int imeiNoEsImei, int traspasadasA, int traspasadasB, int traspasadasC, int yaPuesto, int conflicto,
-                           int casadasSinImei, int sinPareja, Map<String, Integer> plataformas) {}
+                           int casadasSinImei, int sinPareja, int yaVendidoNsys, Map<String, Integer> plataformas) {}
