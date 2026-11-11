@@ -51,8 +51,10 @@ de `model/` conservan su nombre.
   `PARTICULARES`, `BACKIPHONE`) filtra por el canal de la fila; desconocido, `400`; ausente, todos. El filtro va antes de quitar
   repetidos. Una por IMEI (sin repetidos;
   si está en dos filas, la del cambio más reciente). `sku`, `canal` y `pedido` son nullable; `fechaImei` es la hora de Madrid (sin
-  zona) del último cambio de IMEI de la fila. Entran las filas `SHIPPYPRO` pendientes o enviadas (ni las `NO_PENDIENTE` ni el
-  histórico) con IMEI de 15 cifras cuyo último apunte de `Pedido_fila_cambio` cae en hoy o en los `dias - 1` días de Madrid
+  zona) del último cambio de IMEI de la fila. Entran las filas `SHIPPYPRO` pendientes o enviadas (no el histórico) y las
+  `NO_PENDIENTE` (cerradas sin envío) solo si su último cambio de IMEI es posterior a su cierre (`CERRADA_EN`): alguien tecleó el IMEI
+  sabiendo que el pedido ya no estaba pendiente, así que el móvil está vendido; una cerrada que ya tenía el IMEI antes de cerrarse
+  (pedido cancelado) no sale; con IMEI de 15 cifras cuyo último apunte de `Pedido_fila_cambio` cae en hoy o en los `dias - 1` días de Madrid
   anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
   numérico, `400`. Autenticación: solo la clave (ajuste `pedidos.vendidos.clave`, variable `PEDIDOS_VENDIDOS_CLAVE`): ajuste
   admite varias claves separadas por comas (una por consumidor, todas con el mismo permiso; las de menos de 32 caracteres se
@@ -92,8 +94,12 @@ de `model/` conservan su nombre.
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
     histórico (las filas de ShippyPro se editan siempre, también las enviadas). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
-    `filas`, `skuDesconocidos`, `motivo` y `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`). Un `ERROR` enseña un motivo
-    fijo, nunca el texto de la excepción.
+    `filas`, `skuDesconocidos`, `motivo`, `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`, y `aviso`). Un `ERROR` enseña un motivo
+    fijo, nunca el texto de la excepción. `aviso` (nullable, campo añadido; la web que no lo conoce lo ignora) lleva un texto fijo en
+    lenguaje de usuario, sin números de pedido ni datos, cuando la última lectura fue `OK` pero se saltó el cierre y el marcado de envíos:
+    hay pedidos de ShippyPro sin fecha válida (no se cierra ninguna fila ni se marca ningún envío hasta que se resuelvan) o no se pudieron
+    leer los envíos (por ahora no se marcan envíos ni etiquetas). Es `null` en `NSYS`, con `ERROR` o `RECHAZADA` (habla `motivo`) y en
+    una lectura normal; la web puede enseñar una advertencia en la píldora en vez de un `OK` liso.
   - Carga del histórico de la hoja (solo **ADMIN**; SUPERTECNICO y TECNICO reciben `403`), una herramienta a mano que nunca se
     enciende sola y se puede repetir: `POST /api/pedidos/historico` (sin cuerpo) arranca la carga en segundo plano y responde `202` con
     `CargaHistoricoEstadoCarga` (`estado` `EN_CURSO`); `409` si ya hay una en marcha; `400` "No está configurada la hoja del

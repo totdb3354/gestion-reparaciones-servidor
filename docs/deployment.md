@@ -35,6 +35,8 @@ La configuración se inyecta por variables de entorno, sin valores por defecto e
 - `PEDIDOS_HISTORICO_PESTANA` (por defecto `PEDIDOS 2026`): la pestana de esa hoja.
 - `PEDIDOS_HISTORICO_MINIMO` (por defecto `1000`): filas utiles minimas que tiene que traer la hoja; con menos, la carga se aborta sin tocar nada (guarda contra una lectura vacia o cortada).
 
+- `SPRING_TASK_SCHEDULING_POOL_SIZE=2` (recomendado cuando se enciende la lectura de pedidos; no hay valor por defecto en el repo, Spring usa 1): con un solo hilo para todas las tareas programadas, una vuelta lenta de ShippyPro (hasta unos 4 minutos con la API colgada) retrasa la importacion de NSYS y al reves; con 2 no se pisan.
+
 ### Pedidos como la hoja: orden de despliegue
 
 - **La migracion `sql/migracion-pedidos-tabla.sql` se aplica ANTES de desplegar este servidor**, y se sigue solo si su comprobacion final da `CREADAS = 3` y `COLUMNAS = 3`. Sin las tres columnas nuevas de `Nsys_producto` (`SKU_AMAZON_ESIM`, `SKU_PARTICULARES`, `SKU_BACKIPHONE`) el servidor nuevo falla con «Unknown column»: dejan de funcionar Stock de telefonos y todo lo que traduce o valora un movil, y cada importacion de NSYS termina en error. La migracion es aditiva: el servidor anterior sigue funcionando con ella puesta (vuelta atras sin quitar nada).
