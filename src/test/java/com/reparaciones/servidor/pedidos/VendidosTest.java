@@ -105,11 +105,22 @@ class VendidosTest {
         assertTrue(!sql.contains("PLATAFORMA"), "la plataforma no se lee");
         assertTrue(sql.contains("AND (? IS NULL OR f.CANAL = ?)"), "canal opcional, antes del tope");
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'"), "el historico no entra");
-        assertTrue(sql.contains("(f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"), "pendiente o enviada; no las cerradas sin envio");
+        assertTrue(sql.contains("(f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"), "pendiente, enviada o cerrada sin envio con IMEI posterior al cierre");
         assertTrue(sql.contains("f.IMEI REGEXP '^[0-9]{15}$'"), "15 cifras exactas; sin IMEI no sale");
         assertTrue(sql.contains("MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE FECHA >= ? GROUP BY ID_FILA"),
                 "el ultimo cambio de IMEI de la fila, no Pedido_fila.FECHA");
         assertTrue(sql.contains("ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?"));
         assertTrue(!sql.contains("f.FECHA"), "no se mira la fecha del pedido");
+    }
+
+    @Test void laConsultaSirveLasNoPendientesSoloSiElUltimoImeiEsPosteriorAlCierre() {
+        String sql = FilasDAO.SQL_VENDIDOS;
+        // Pendiente o enviada: entra como siempre.
+        assertTrue(sql.contains("f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN"), sql);
+        // Estrictamente posterior: un IMEI apuntado antes de cerrarse (pedido cancelado) o en el mismo instante no sale.
+        assertTrue(!sql.contains(">= f.CERRADA_EN") && !sql.contains("<"), sql);
+        // Mismo origen, canal, formato de IMEI, ventana (subconsulta) y orden de siempre: sigue siendo una sola consulta.
+        assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'") && sql.contains("f.IMEI REGEXP '^[0-9]{15}$'")
+                && sql.contains("WHERE FECHA >= ? GROUP BY ID_FILA") && sql.contains("(? IS NULL OR f.CANAL = ?)"), sql);
     }
 }

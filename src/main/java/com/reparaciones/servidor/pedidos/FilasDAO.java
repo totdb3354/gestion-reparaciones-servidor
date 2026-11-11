@@ -67,13 +67,15 @@ public class FilasDAO {
     static final int TOPE_CAMBIOS = 200;
     static final String SQL_CAMBIOS_DE_FILA = "SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO FROM Pedido_fila_cambio c"
             + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT " + TOPE_CAMBIOS;
-    /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas (no las cerradas sin envio), con IMEI de 15 cifras, cuyo ULTIMO
-     *  apunte de cambio de IMEI es de {@code ?} en adelante; del mas reciente al mas antiguo. Una sola consulta, con tope. */
+    /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas, con IMEI de 15 cifras, cuyo ULTIMO apunte de cambio de IMEI es
+     *  de {@code ?} en adelante; del mas reciente al mas antiguo. Una cerrada sin envio (NO_PENDIENTE) solo entra si su ultimo cambio de
+     *  IMEI es POSTERIOR al cierre (alguien tecleo el IMEI sabiendo que ya no estaba pendiente: el movil esta vendido); si el IMEI ya
+     *  estaba antes de cerrarse (pedido cancelado) no sale. Una sola consulta, con tope. */
     static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
             // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
             + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
-            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"
             + " AND (? IS NULL OR f.CANAL = ?)"
             + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
