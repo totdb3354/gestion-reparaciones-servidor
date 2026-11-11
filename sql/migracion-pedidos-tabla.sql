@@ -3,23 +3,29 @@
 -- (spec docs/superpowers/specs/2026-11-10-pedidos-tabla-design.md).
 -- La aplica el usuario a mano en la VM, con vista previa, ANTES de desplegar el servidor con el modulo.
 -- Aditiva: el servidor anterior no lee las tablas nuevas ni las columnas nuevas de Nsys_producto.
--- NO idempotente (relanzar = error de tabla o columna existente).
--- 1) Vista previa: YA_EXISTEN y COLUMNAS_YA deben dar 0.
+-- Idempotente (MariaDB 11): se puede relanzar entero si algo falla a medias (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS;
+-- los indices van dentro de los CREATE TABLE).
+-- 1) Vista previa: en la primera vez YA_EXISTEN y COLUMNAS_YA deben dar 0; al relanzar dan lo que la vez anterior ya dejo hecho
+--    (hasta 3 y 3).
 -- 2) Tres tablas nuevas y tres columnas en Nsys_producto.
--- 3) Comprobacion final: CREADAS debe dar 3 y COLUMNAS, 3.
+-- 3) Comprobacion final: CREADAS debe dar 3 y COLUMNAS, 3 (tambien en una segunda vez).
+-- No lanzarla mientras corre la copia nocturna.
 -- Vuelta atras: el servidor anterior funciona con todo puesto; no hace falta quitar nada.
 -- ══════════════════════════════════════════════════════════════════════════════
 USE gestion_reparaciones;
 SET NAMES utf8mb4;
+-- Si algo tiene en uso Usuario (la FK de Pedido_fila_cambio) o Nsys_producto (una importacion del maestro), no esperar mas
+-- de 10 s por el bloqueo de metadatos: falla y se relanza (el script se puede repetir).
+SET SESSION lock_wait_timeout = 10;
 
--- Vista previa (no modifica nada): las dos deben dar 0
+-- Vista previa (no modifica nada): la primera vez las dos dan 0; al relanzar, lo ya creado
 SELECT COUNT(*) AS YA_EXISTEN FROM information_schema.TABLES
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura');
 SELECT COUNT(*) AS COLUMNAS_YA FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Nsys_producto'
    AND COLUMN_NAME IN ('SKU_AMAZON_ESIM', 'SKU_PARTICULARES', 'SKU_BACKIPHONE');
 
-CREATE TABLE Pedido_fila (
+CREATE TABLE IF NOT EXISTS Pedido_fila (
     ID_FILA      INT          NOT NULL AUTO_INCREMENT,
     FECHA        DATE         NOT NULL COMMENT 'El dia en que el ERP ve el pedido (hora de Madrid)',
     PLATAFORMA   VARCHAR(150) NOT NULL COMMENT 'AMZ, FNSK o el cliente de la web; en el historico, lo de la hoja',
@@ -44,7 +50,7 @@ CREATE TABLE Pedido_fila (
     KEY idx_fila_imei (IMEI),
     KEY idx_fila_pedido (PEDIDO)
 );
-CREATE TABLE Pedido_fila_cambio (
+CREATE TABLE IF NOT EXISTS Pedido_fila_cambio (
     ID_CAMBIO     INT         NOT NULL AUTO_INCREMENT,
     ID_FILA       INT         NOT NULL,
     ID_USU        INT         NULL,
@@ -56,7 +62,7 @@ CREATE TABLE Pedido_fila_cambio (
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
     CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
-CREATE TABLE Pedido_lectura (
+CREATE TABLE IF NOT EXISTS Pedido_lectura (
     ID_LECTURA       INT           NOT NULL AUTO_INCREMENT,
     INICIO           DATETIME      NOT NULL,
     FIN              DATETIME      NULL,
@@ -68,13 +74,10 @@ CREATE TABLE Pedido_lectura (
     KEY idx_lectura_inicio (INICIO)
 );
 
--- Si una importacion del maestro tiene la tabla en uso, no esperar mas de 10 s por el bloqueo de metadatos.
-SET SESSION lock_wait_timeout = 10;
-
 ALTER TABLE Nsys_producto
-    ADD COLUMN SKU_AMAZON_ESIM  VARCHAR(60) NULL,
-    ADD COLUMN SKU_PARTICULARES VARCHAR(60) NULL,
-    ADD COLUMN SKU_BACKIPHONE   VARCHAR(60) NULL;
+    ADD COLUMN IF NOT EXISTS SKU_AMAZON_ESIM  VARCHAR(60) NULL,
+    ADD COLUMN IF NOT EXISTS SKU_PARTICULARES VARCHAR(60) NULL,
+    ADD COLUMN IF NOT EXISTS SKU_BACKIPHONE   VARCHAR(60) NULL;
 
 -- Comprobacion final (no modifica nada): CREADAS = 3 y COLUMNAS = 3; si no, NO desplegar el servidor.
 SELECT COUNT(*) AS CREADAS FROM information_schema.TABLES

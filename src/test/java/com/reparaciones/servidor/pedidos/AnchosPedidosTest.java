@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /** Los anchos de AnchosPedidos contra el DDL de la migracion y de crear_bd.sql, que es el que manda. */
 class AnchosPedidosTest {
 
-    private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (Pedido\\w*)\\s*\\(");
+    private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (?:IF NOT EXISTS )?(Pedido\\w*)\\s*\\(");
     private static final Pattern COLUMNA = Pattern.compile("^\\s+(\\w+)\\s+VARCHAR\\((\\d+)\\)");
 
     /** «Tabla.COLUMNA» -> ancho de cada VARCHAR de las tablas Pedido* del fichero. */

@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Los anchos de AnchosNsys contra el DDL de la migración, que es el que manda. */
 class AnchosNsysTest {
 
-    private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (Nsys_\\w+)");
+    private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (?:IF NOT EXISTS )?(Nsys_\\w+)");
     private static final Pattern COLUMNA = Pattern.compile("^\\s+(\\w+)\\s+VARCHAR\\((\\d+)\\)");
     private static final Pattern ALTER = Pattern.compile("^ALTER TABLE (Nsys_\\w+)");
-    private static final Pattern ANADIDA = Pattern.compile("^\\s+ADD COLUMN (\\w+)\\s+VARCHAR\\((\\d+)\\)");
+    private static final Pattern ANADIDA = Pattern.compile("^\\s+ADD COLUMN (?:IF NOT EXISTS )?(\\w+)\\s+VARCHAR\\((\\d+)\\)");
 
     /** «Tabla.COLUMNA» → ancho de cada VARCHAR de las tablas Nsys_ del fichero. */
     private static Map<String, Integer> anchos(String fichero) throws Exception {
