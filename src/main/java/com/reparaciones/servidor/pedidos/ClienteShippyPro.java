@@ -86,11 +86,12 @@ public class ClienteShippyPro {
         }
     }
 
-    public Leidos pendientes() throws IOException, InterruptedException {
+    /** Hace la llamada y devuelve la lista «Orders», ya comprobada (respuesta 200, Result OK, lista presente y Total coherente). */
+    private JsonNode pedirLista(String cuerpoPeticion) throws IOException, InterruptedException {
         String basic = Base64.getEncoder().encodeToString((clave.clave() + ":").getBytes(StandardCharsets.UTF_8));
         HttpRequest peticion = HttpRequest.newBuilder(URI.create(API)).timeout(ESPERA_CABECERAS)
                 .header("Content-Type", "application/json").header("Authorization", "Basic " + basic)
-                .header("User-Agent", AGENTE).POST(HttpRequest.BodyPublishers.ofString(CUERPO)).build();
+                .header("User-Agent", AGENTE).POST(HttpRequest.BodyPublishers.ofString(cuerpoPeticion)).build();
         CompletableFuture<HttpResponse<String>> futura = http.sendAsync(peticion, HttpResponse.BodyHandlers.ofString());
         HttpResponse<String> respuesta;
         try {
@@ -116,6 +117,11 @@ public class ClienteShippyPro {
         JsonNode total = cuerpo.path("Total");
         if (total.isNumber() && total.asLong() != lista.size() || total.isNumber() && !total.canConvertToLong())
             throw new IOException("ShippyPro dice Total=" + total.asText() + " pero trae " + lista.size() + " pedidos");
+        return lista;
+    }
+
+    public Leidos pendientes() throws IOException, InterruptedException {
+        JsonNode lista = pedirLista(CUERPO);
         List<PedidoShippyPro> pedidos = new ArrayList<>();
         List<String> descartados = new ArrayList<>();
         for (JsonNode o : lista) {
@@ -129,6 +135,37 @@ public class ClienteShippyPro {
             }
         }
         return new Leidos(pedidos, descartados);
+    }
+
+    /** Un envio ya hecho: solo lo que el ERP guarda (pedido, marketplace, fecha de creacion en hora de Madrid, transportista y
+     *  seguimiento). Nada del cliente. */
+    public record EnvioShippyPro(String numero, String marketplace, LocalDateTime fecha, String transportista,
+                                 String seguimiento) {}
+
+    /** Los pedidos enviados con fecha de envio entre {@code desde} y {@code hasta} (GetShippedOrders, solo lectura). Los que no
+     *  traen numero de pedido o fecha valida se saltan. */
+    public List<EnvioShippyPro> enviados(Instant desde, Instant hasta) throws IOException, InterruptedException {
+        String cuerpo = "{\"Method\":\"GetShippedOrders\",\"Params\":{\"DateMin\":" + desde.getEpochSecond()
+                + ",\"DateMax\":" + hasta.getEpochSecond() + "}}";
+        List<EnvioShippyPro> envios = new ArrayList<>();
+        for (JsonNode o : pedirLista(cuerpo)) {
+            String numero = o.path("transaction_id").asText("").strip();
+            LocalDateTime fecha = fechaUnix(o.path("created_at").asText(""));
+            if (numero.isEmpty() || fecha == null) continue;
+            envios.add(new EnvioShippyPro(numero, o.path("marketplace_id").asText("").strip(), fecha,
+                    vacioANulo(o.path("carrier_name").asText("")), vacioANulo(o.path("tracking_code").asText(""))));
+        }
+        return envios;
+    }
+
+    /** Segundos Unix (con decimales o no) a hora de Madrid; null si el texto no es una fecha valida. */
+    private static LocalDateTime fechaUnix(String texto) {
+        try {
+            long segundos = new BigDecimal(texto.strip()).longValue();
+            return segundos <= 0 ? null : LocalDateTime.ofInstant(Instant.ofEpochSecond(segundos), ImportadorNsys.MADRID);
+        } catch (DateTimeException | ArithmeticException | NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Un pedido de ShippyPro a nuestro modelo. Lanza IllegalArgumentException si el pedido no trae una fecha válida

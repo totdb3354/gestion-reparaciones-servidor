@@ -30,11 +30,14 @@ CREATE TABLE Pedido_fila (
     ORIGEN       VARCHAR(10)  NOT NULL COMMENT 'SHIPPYPRO o HISTORICO',
     CANAL        VARCHAR(20)  NULL COMMENT 'AMAZON, AMAZON_STOCKROOM, DISTRIBUIDORES, PARTICULARES o BACKIPHONE',
     POSICION     INT          NULL,
-    ENVIADA_EN   DATETIME     NULL COMMENT 'NULL = viva',
+    CERRADA_EN   DATETIME     NULL COMMENT 'Cuando dejo de estar pendiente; NULL = pendiente',
+    ENVIO_FECHA  DATETIME     NULL COMMENT 'Cuando ShippyPro creo el envio (hora de Madrid); NULL = sin envio conocido',
+    TRANSPORTISTA VARCHAR(40) NULL,
+    SEGUIMIENTO  VARCHAR(60)  NULL,
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
-    KEY idx_fila_viva (ENVIADA_EN),
+    KEY idx_fila_viva (CERRADA_EN),
     KEY idx_fila_imei (IMEI),
     KEY idx_fila_pedido (PEDIDO)
 );

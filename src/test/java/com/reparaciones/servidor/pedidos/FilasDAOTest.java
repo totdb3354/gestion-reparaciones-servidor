@@ -24,8 +24,8 @@ import static org.mockito.Mockito.*;
 class FilasDAOTest {
 
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 11, 10, 10, 0);
-    private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, ENVIADA_EN"
-            + " FROM Pedido_fila";
+    private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -34,14 +34,19 @@ class FilasDAOTest {
                 LocalDate.of(2026, 11, 9), "SHIPPYPRO", Canal.AMAZON, 1, null);
     }
 
-    @Test void laFilaEstaVivaSoloSiNoEstaEnviada() {
+    @Test void laFilaEstaVivaSoloSiNoEstaCerradaYEnviadaSoloConFechaDeEnvio() {
         assertTrue(fila(1, "AMZ", null).viva());
-        assertFalse(new FilaPedido(1, null, "AMZ", null, null, null, null, "SHIPPYPRO", null, null, AHORA).viva());
+        assertFalse(fila(1, "AMZ", null).enviada());
+        FilaPedido cerrada = new FilaPedido(1, null, "AMZ", null, null, null, null, "SHIPPYPRO", null, null, AHORA);
+        assertFalse(cerrada.viva());
+        assertFalse(cerrada.enviada());
+        assertTrue(new FilaPedido(1, null, "AMZ", null, null, null, null, "SHIPPYPRO", null, null, AHORA, AHORA, "UPSv2",
+                "1Z0000000000000001").enviada());
     }
 
     @Test void vivasDeShippyProPideLasVivasDeEseOrigen() {
         dao.vivasDeShippyPro();
-        verify(jdbc).query(startsWith(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIADA_EN IS NULL"), any(RowMapper.class));
+        verify(jdbc).query(startsWith(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL"), any(RowMapper.class));
     }
 
     @Test void insertarVaPorLotesYCortaLosTextos() {
@@ -66,7 +71,7 @@ class FilasDAOTest {
         for (int i = 1; i <= 501; i++) ids.add(i);
         dao.cerrar(ids, AHORA);
         ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET ENVIADA_EN = ? WHERE ENVIADA_EN IS NULL AND ID_FILA IN (?"), args.capture());
+        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET CERRADA_EN = ? WHERE CERRADA_EN IS NULL AND ID_FILA IN (?"), args.capture());
         assertEquals(501, args.getAllValues().get(0).length, "la hora y 500 ids");
         assertEquals(Timestamp.valueOf(AHORA), args.getAllValues().get(0)[0]);
         assertEquals(2, args.getAllValues().get(1).length, "la hora y 1 id");
@@ -79,7 +84,7 @@ class FilasDAOTest {
 
     @Test void delPeriodoPideLasDeLasFechasOLasVivasEnOrdenDeHoja() {
         dao.delPeriodo(LocalDate.of(2026, 10, 10), LocalDate.of(2026, 11, 10));
-        verify(jdbc).query(eq(COLUMNAS + " WHERE (FECHA BETWEEN ? AND ?) OR ENVIADA_EN IS NULL ORDER BY FECHA, ID_FILA"),
+        verify(jdbc).query(eq(COLUMNAS + " WHERE (FECHA BETWEEN ? AND ?) OR CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA"),
                 any(RowMapper.class), eq(java.sql.Date.valueOf("2026-10-10")), eq(java.sql.Date.valueOf("2026-11-10")));
     }
 
@@ -101,28 +106,65 @@ class FilasDAOTest {
         verify(jdbc).query(eq(COLUMNAS + " WHERE ID_FILA = ?"), any(RowMapper.class), eq(7));
     }
 
-    @Test void vivasConImeiBuscaPorLosImeiDeLaTanda() {
-        dao.vivasConImei(List.of("350000000000001", "350000000000002"));
-        verify(jdbc).query(eq(COLUMNAS + " WHERE ENVIADA_EN IS NULL AND IMEI IN (?, ?) ORDER BY FECHA, ID_FILA"),
-                any(RowMapper.class), eq("350000000000001"), eq("350000000000002"));
+    @Test void shippyProConImeiBuscaPorLosImeiDeLaTandaEnLasVivasYLasRecientes() {
+        dao.shippyProConImei(List.of("350000000000001", "350000000000002"), LocalDate.of(2026, 9, 11));
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
+                        + " AND (CERRADA_EN IS NULL OR FECHA >= ?) AND IMEI IN (?, ?) ORDER BY FECHA, ID_FILA"),
+                any(RowMapper.class), eq(java.sql.Date.valueOf("2026-09-11")), eq("350000000000001"), eq("350000000000002"));
     }
 
-    private static final String SQL_BLOQUEO = "SELECT IMEI, ENVIADA_EN, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    @Test void shippyProConImeiDesdePideTodasLasConImeiVivasORecientes() {
+        dao.shippyProConImeiDesde(LocalDate.of(2026, 9, 11));
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
+                        + " AND (CERRADA_EN IS NULL OR FECHA >= ?) ORDER BY FECHA, ID_FILA"),
+                any(RowMapper.class), eq(java.sql.Date.valueOf("2026-09-11")));
+    }
+
+    @Test void sinEnvioDeShippyProPideLasFilasSinFechaDeEnvioVivasOCerradasDeEsosPedidos() {
+        dao.sinEnvioDeShippyPro(List.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011"),
+                new SincroShippyPro.ClavePedido(Canal.PARTICULARES, "W-1")));
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIO_FECHA IS NULL AND ((CANAL = ? AND PEDIDO = ?) OR (CANAL = ? AND PEDIDO = ?))"),
+                any(RowMapper.class), eq("AMAZON"), eq("402-0000000-0000011"), eq("PARTICULARES"), eq("W-1"));
+    }
+
+    @Test void sinEnvioDeShippyProSinPedidosNoToca() {
+        assertTrue(dao.sinEnvioDeShippyPro(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void marcarEnviadasPoneElEnvioYCierraSoloLasVivasEnUnLoteCortandoLosTextos() {
+        dao.marcarEnviadas(List.of(
+                new SincroShippyPro.MarcaEnvio(4, LocalDateTime.of(2026, 11, 9, 18, 0), "UPSv2", "1Z0000000000000001"),
+                new SincroShippyPro.MarcaEnvio(5, LocalDateTime.of(2026, 11, 9, 19, 0), "t".repeat(60), null)), AHORA);
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq("UPDATE Pedido_fila SET ENVIO_FECHA = ?, TRANSPORTISTA = ?, SEGUIMIENTO = ?,"
+                + " CERRADA_EN = COALESCE(CERRADA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL"), lote.capture());
+        assertArrayEquals(new Object[]{Timestamp.valueOf("2026-11-09 18:00:00"), "UPSv2", "1Z0000000000000001",
+                Timestamp.valueOf(AHORA), 4}, lote.getValue().get(0));
+        assertArrayEquals(new Object[]{Timestamp.valueOf("2026-11-09 19:00:00"), "t".repeat(40), null,
+                Timestamp.valueOf(AHORA), 5}, lote.getValue().get(1));
+    }
+
+    @Test void marcarEnviadasSinNadaNoToca() {
+        dao.marcarEnviadas(List.of(), AHORA);
+        verifyNoInteractions(jdbc);
+    }
+
+    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
 
     /** El mapeador del bloqueo recibe un ResultSet: se simula con la fila indicada. */
     @SuppressWarnings("unchecked")
-    private void filaBloqueada(String imei, Timestamp enviadaEn, String origen) throws Exception {
+    private void filaBloqueada(String imei, String origen) throws Exception {
         when(jdbc.query(eq(SQL_BLOQUEO), any(RowMapper.class), eq(5))).thenAnswer(inv -> {
             java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
             when(rs.getString("IMEI")).thenReturn(imei);
-            when(rs.getTimestamp("ENVIADA_EN")).thenReturn(enviadaEn);
             when(rs.getString("ORIGEN")).thenReturn(origen);
             return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
         });
     }
 
     @Test void ponerImeiBloqueaLeeElAnteriorActualizaYApuntaElCambio() throws Exception {
-        filaBloqueada("350000000000001", null, "SHIPPYPRO");
+        filaBloqueada("350000000000001", "SHIPPYPRO");
         assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", 9, AHORA));
         var orden = inOrder(jdbc);
         orden.verify(jdbc).query(eq(SQL_BLOQUEO), any(RowMapper.class), eq(5));
@@ -132,7 +174,7 @@ class FilasDAOTest {
     }
 
     @Test void ponerImeiCortaYAdmiteAnteriorNuloYUsuarioNulo() throws Exception {
-        filaBloqueada(null, null, "SHIPPYPRO");
+        filaBloqueada(null, "SHIPPYPRO");
         dao.ponerImei(5, "9".repeat(80), null, AHORA);
         verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "9".repeat(60), 5);
         verify(jdbc).update(startsWith("INSERT INTO Pedido_fila_cambio"), eq(5), isNull(), eq(Timestamp.valueOf(AHORA)), isNull(), eq("9".repeat(60)));
@@ -143,12 +185,17 @@ class FilasDAOTest {
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
-    @Test void ponerImeiDeUnaFilaEnviadaOHistoricaNoEscribeNadaYDiceCerrada() throws Exception {
-        filaBloqueada("350000000000001", Timestamp.valueOf(AHORA.minusHours(1)), "SHIPPYPRO");
-        assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", 9, AHORA));
-        filaBloqueada("texto de la hoja", null, "HISTORICO");
+    @Test void ponerImeiDeUnaFilaDelHistoricoNoEscribeNadaYDiceCerrada() throws Exception {
+        filaBloqueada("texto de la hoja", "HISTORICO");
         assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", 9, AHORA));
         verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void ponerImeiDeUnaFilaDeShippyProCerradaOEnviadaSiSePuede() throws Exception {
+        // El bloqueo solo lee IMEI y ORIGEN: una fila de ShippyPro se edita se haya cerrado o enviado o no.
+        filaBloqueada("350000000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "350000000000002", 5);
     }
 
     @Test void empezarLecturaDevuelveElIdGenerado() {
@@ -182,7 +229,7 @@ class FilasDAOTest {
     @Test void cerradasDeShippyProPideLasCerradasDeEsosPedidosPorCanalYNumero() {
         dao.cerradasDeShippyPro(List.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011"),
                 new SincroShippyPro.ClavePedido(Canal.PARTICULARES, "W-1")));
-        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIADA_EN IS NOT NULL AND ((CANAL = ? AND PEDIDO = ?) OR (CANAL = ? AND PEDIDO = ?))"),
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND ((CANAL = ? AND PEDIDO = ?) OR (CANAL = ? AND PEDIDO = ?))"),
                 any(RowMapper.class), eq("AMAZON"), eq("402-0000000-0000011"), eq("PARTICULARES"), eq("W-1"));
     }
 
@@ -191,12 +238,13 @@ class FilasDAOTest {
         verifyNoInteractions(jdbc);
     }
 
-    @Test void reabrirPoneEnviadaEnANuloEnTandasDe500() {
+    @Test void reabrirBorraLaHoraDeCierreYLosDatosDelEnvioEnTandasDe500() {
         List<Integer> ids = new ArrayList<>();
         for (int i = 1; i <= 501; i++) ids.add(i);
         dao.reabrir(ids);
         ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
-        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET ENVIADA_EN = NULL WHERE ENVIADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
+        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL, SEGUIMIENTO = NULL"
+                + " WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
         assertEquals(500, args.getAllValues().get(0).length);
         assertEquals(1, args.getAllValues().get(1).length);
     }

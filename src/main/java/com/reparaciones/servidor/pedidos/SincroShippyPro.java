@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,6 +48,43 @@ public final class SincroShippyPro {
     /** El numero como se guarda (sin espacios y cortado al ancho de la columna): asi la clave coincide con la de la base. */
     private static String numeroGuardado(String numero) {
         return AnchosNsys.corta(numero.strip(), AnchosPedidos.PEDIDO);
+    }
+
+    /** Una fila de ShippyPro a la que hay que poner los datos de su envio (y cerrarla si estaba viva). */
+    public record MarcaEnvio(int fila, LocalDateTime fecha, String transportista, String seguimiento) {}
+
+    /** Las filas que hay que marcar como enviadas (spec §6 bis): las de {@code candidatas} (filas de ShippyPro sin envio, vivas o
+     *  cerradas) cuyo pedido (canal y numero guardado) figura entre los enviados y no esta entre los {@code pendientes} de esta
+     *  vuelta. Un pedido con varias expediciones toma la mas reciente; un marketplace que no esta en {@code canales} se ignora. */
+    public static List<MarcaEnvio> marcarEnviadas(List<ClienteShippyPro.EnvioShippyPro> enviados, Map<String, Canal> canales,
+                                                  Set<ClavePedido> pendientes, List<FilaPedido> candidatas) {
+        Map<ClavePedido, ClienteShippyPro.EnvioShippyPro> recientes = enviadosPorPedido(enviados, canales);
+        List<MarcaEnvio> marcas = new ArrayList<>();
+        for (FilaPedido f : candidatas) {
+            if (f.envioFecha() != null || f.canal() == null || f.pedido() == null) continue;
+            ClavePedido clave = new ClavePedido(f.canal(), f.pedido());
+            ClienteShippyPro.EnvioShippyPro e = recientes.get(clave);
+            if (e == null || pendientes.contains(clave)) continue;
+            marcas.add(new MarcaEnvio(f.id(), e.fecha(), e.transportista(), e.seguimiento()));
+        }
+        return marcas;
+    }
+
+    /** Los pedidos (canal y numero guardado) con envio, para pedir a la base sus filas. */
+    public static Set<ClavePedido> clavesEnviadas(List<ClienteShippyPro.EnvioShippyPro> enviados, Map<String, Canal> canales) {
+        return new LinkedHashSet<>(enviadosPorPedido(enviados, canales).keySet());
+    }
+
+    private static Map<ClavePedido, ClienteShippyPro.EnvioShippyPro> enviadosPorPedido(
+            List<ClienteShippyPro.EnvioShippyPro> enviados, Map<String, Canal> canales) {
+        Map<ClavePedido, ClienteShippyPro.EnvioShippyPro> recientes = new HashMap<>();
+        for (ClienteShippyPro.EnvioShippyPro e : enviados) {
+            Canal canal = canales.get(e.marketplace());
+            if (canal == null || e.numero() == null || e.numero().isBlank()) continue;
+            recientes.merge(new ClavePedido(canal, numeroGuardado(e.numero())), e,
+                    (a, b) -> b.fecha().isAfter(a.fecha()) ? b : a);
+        }
+        return recientes;
     }
 
     /** {@code hoy}: la fecha de Madrid. {@code vivas}: las filas vivas de origen ShippyPro. {@code cerradas}: las filas cerradas
@@ -92,7 +130,7 @@ public final class SincroShippyPro {
                     if (!conocido) continue;
                     existentes.add(clavePosicion);
                     insertar.add(new FilaPedido(0, hoy, plataforma, a.sku(), null, numero, p.fecha().toLocalDate(),
-                            ORIGEN, canal, posicion, null));
+                            ORIGEN, canal, posicion, null, null, null, null));
                 }
             }
         }

@@ -67,6 +67,58 @@ class SincroShippyProTest {
         assertEquals(1, p.insertar().size());
     }
 
+    // ---------------------------------------------------------------- envios (spec 6 bis)
+
+    private static ClienteShippyPro.EnvioShippyPro envio(String numero, String marketplace, int dia, String seguimiento) {
+        return new ClienteShippyPro.EnvioShippyPro(numero, marketplace, LocalDateTime.of(2026, 11, dia, 12, 0), "UPSv2", seguimiento);
+    }
+
+    private static FilaPedido conEnvio(int id, Canal canal, String pedido) {
+        return new FilaPedido(id, HOY, "AMZ", "i13128AzulA", null, pedido, HOY, "SHIPPYPRO", canal, 1, HOY.atStartOfDay(),
+                HOY.atStartOfDay(), "UPSv2", "1Z0000000000000009");
+    }
+
+    @Test void seMarcanLasFilasVivasYLasCerradasSinEnvioDeUnPedidoEnviado() {
+        List<SincroShippyPro.MarcaEnvio> m = SincroShippyPro.marcarEnviadas(
+                List.of(envio("402-0000000-0000011", "100", 9, "1Z0000000000000001")), CANALES, Set.of(),
+                List.of(viva(1, Canal.AMAZON, "402-0000000-0000011", 1), cerrada(2, Canal.AMAZON, "402-0000000-0000011", 2)));
+        assertEquals(List.of(
+                new SincroShippyPro.MarcaEnvio(1, LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "1Z0000000000000001"),
+                new SincroShippyPro.MarcaEnvio(2, LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "1Z0000000000000001")), m);
+    }
+
+    @Test void noSeMarcaUnaFilaQueYaTieneEnvioNiUnPedidoQueSigueEntreLosPendientes() {
+        Set<SincroShippyPro.ClavePedido> pendientes = Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000012"));
+        List<SincroShippyPro.MarcaEnvio> m = SincroShippyPro.marcarEnviadas(
+                List.of(envio("402-0000000-0000011", "100", 9, "a"), envio("402-0000000-0000012", "100", 9, "b")), CANALES,
+                pendientes, List.of(conEnvio(1, Canal.AMAZON, "402-0000000-0000011"),
+                        viva(2, Canal.AMAZON, "402-0000000-0000012", 1)));
+        assertTrue(m.isEmpty());
+    }
+
+    @Test void conVariasExpedicionesDelMismoPedidoGanaLaMasReciente() {
+        List<SincroShippyPro.MarcaEnvio> m = SincroShippyPro.marcarEnviadas(
+                List.of(envio("402-0000000-0000011", "100", 8, "vieja"), envio("402-0000000-0000011", "100", 9, "nueva"),
+                        envio("402-0000000-0000011", "100", 7, "antigua")), CANALES, Set.of(),
+                List.of(viva(1, Canal.AMAZON, "402-0000000-0000011", 1)));
+        assertEquals("nueva", m.get(0).seguimiento());
+    }
+
+    @Test void unEnvioDeUnMarketplaceSinCanalOSinNumeroSeIgnoraYElCanalDistingueElPedido() {
+        List<SincroShippyPro.MarcaEnvio> m = SincroShippyPro.marcarEnviadas(
+                List.of(envio("402-0000000-0000011", "999", 9, "a"), envio("", "100", 9, "b"),
+                        envio("402-0000000-0000012", "200", 9, "c")), CANALES, Set.of(),
+                List.of(viva(1, Canal.AMAZON, "402-0000000-0000011", 1), viva(2, Canal.AMAZON, "402-0000000-0000012", 1),
+                        viva(3, Canal.PARTICULARES, "402-0000000-0000012", 1)));
+        assertEquals(List.of(3), m.stream().map(SincroShippyPro.MarcaEnvio::fila).toList());
+    }
+
+    @Test void clavesEnviadasSonLasDeLosPedidosConCanalYNumero() {
+        assertEquals(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011")),
+                SincroShippyPro.clavesEnviadas(List.of(envio(" 402-0000000-0000011 ", "100", 9, "a"),
+                        envio("402-0000000-0000012", "999", 9, "b")), CANALES));
+    }
+
     @Test void clavesPendientesNormalizaElNumeroYSaltaLosDeCanalDesconocido() {
         assertEquals(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011")),
                 SincroShippyPro.clavesPendientes(List.of(

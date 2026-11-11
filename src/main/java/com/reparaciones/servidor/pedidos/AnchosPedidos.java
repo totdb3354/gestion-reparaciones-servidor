@@ -8,6 +8,8 @@ final class AnchosPedidos {
     static final int SKU = 60;
     static final int IMEI = 60;
     static final int PEDIDO = 60;
+    static final int TRANSPORTISTA = 40;
+    static final int SEGUIMIENTO = 60;
     static final int SKU_DESCONOCIDOS = 500;
     static final int MENSAJE = 1000;
 

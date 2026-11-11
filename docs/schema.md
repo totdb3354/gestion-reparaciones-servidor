@@ -33,7 +33,7 @@ Tablas (generado con grep el 2026-09-14):
 - `Nsys_movil` (0.9.17: la foto actual de NSYS, una fila por IMEI/SN y lote; desde la 0.9.22, con el coste de NSYS de cada lote —`COSTE`, solo para la plantilla de color—; sin precios de venta)
 - `Nsys_evento` (0.9.17: historial de cambios de NSYS para el rastro del teléfono; solo se añade)
 - `Nsys_producto` (0.9.17: el maestro de productos, «Goods + Grade» → modelo, color y SKU; desde la 0.9.22, con el «Product Name» tal cual —`NOMBRE`— para saber cómo se llama cada color en inglés)
-- `Pedido_fila` (Pedidos como la hoja: una fila por unidad pedida, de la lectura de ShippyPro o del historico de la hoja; `ENVIADA_EN` NULL = viva; unica por canal, pedido y posicion; ver `sql/migracion-pedidos-tabla.sql`)
+- `Pedido_fila` (Pedidos como la hoja: una fila por unidad pedida, de la lectura de ShippyPro o del historico de la hoja; `CERRADA_EN` NULL = pendiente (cuando dejo de estar pendiente); `ENVIO_FECHA`, `TRANSPORTISTA` y `SEGUIMIENTO` los pone la lectura de ShippyPro cuando el pedido figura como enviado, NULL = sin envio conocido; unica por canal, pedido y posicion; ver `sql/migracion-pedidos-tabla.sql`; en preprod, `sql/preprod-pedidos-envio.sql`)
 - `Pedido_fila_cambio` (cada cambio de IMEI de una fila, con quien y cuando; se borra con su fila)
 - `Pedido_lectura` (una lectura de ShippyPro con su resultado, filas y SKU desconocidos)
 - `Nsys_producto` tiene ademas tres columnas de SKU de canal: `SKU_AMAZON_ESIM`, `SKU_PARTICULARES` y `SKU_BACKIPHONE` (ver `sql/migracion-pedidos-tabla.sql`)

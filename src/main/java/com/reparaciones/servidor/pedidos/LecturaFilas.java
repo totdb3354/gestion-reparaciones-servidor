@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -19,9 +21,11 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
 /** Una vuelta de lectura de ShippyPro: crea las filas de los pedidos nuevos, reabre las cerradas de los que vuelven a estar
- *  pendientes y cierra las de los que ya no lo estan ({@link SincroShippyPro}). Una fila solo se cierra si su pedido falta en
- *  dos lecturas buenas seguidas; si la lectura falla, falta el ajuste de canales o ShippyPro trajo pedidos que no se pudieron
- *  leer, no se cierra nada. */
+ *  pendientes, marca como enviadas (con fecha, transportista y seguimiento) las de los pedidos que ShippyPro da por enviados y
+ *  cierra las de los que ya no estan pendientes ({@link SincroShippyPro}). Una fila solo se cierra por faltar si su pedido falta
+ *  en dos lecturas buenas seguidas; un envio es definitivo y la cierra al momento. Si la lectura falla, falta el ajuste de
+ *  canales o ShippyPro trajo pedidos que no se pudieron leer, no se cierra nada; si fallan solo los envios, la vuelta sigue
+ *  como buena, sin marcar ninguno, y lo anota. */
 @Service
 public class LecturaFilas {
 
@@ -30,6 +34,9 @@ public class LecturaFilas {
     public static final String ERROR = "ERROR";
     public static final String RECHAZADA = "RECHAZADA";
     static final int DIAS_REGISTRO = 30;
+    /** Cuantos dias hacia atras se piden los envios: cubre un corte de la tarea de unos dias. */
+    static final int DIAS_ENVIOS = 3;
+    static final String AVISO_SIN_ENVIOS = "no se pudieron leer los envíos";
 
     private final ClienteShippyPro shippyPro;
     private final FilasDAO dao;
@@ -106,20 +113,35 @@ public class LecturaFilas {
             List<FilaPedido> vivas = dao.vivasDeShippyPro();
             Set<SincroShippyPro.ClavePedido> claves = SincroShippyPro.clavesPendientes(leidos.pedidos(), canales);
             List<FilaPedido> cerradas = claves.isEmpty() ? List.of() : dao.cerradasDeShippyPro(claves);
+            // Con pedidos descartados no se sabe cuales de los enviados siguen pendientes: no se marca ningun envio.
+            boolean hayDescartados = !leidos.descartados().isEmpty();
+            boolean enviosLeidos = true;
+            List<SincroShippyPro.MarcaEnvio> marcas = List.of();
+            if (!hayDescartados) {
+                List<ClienteShippyPro.EnvioShippyPro> enviados = leerEnvios();
+                if (enviados == null) enviosLeidos = false;
+                else {
+                    Set<SincroShippyPro.ClavePedido> conEnvio = SincroShippyPro.clavesEnviadas(enviados, canales);
+                    if (!conEnvio.isEmpty())
+                        marcas = SincroShippyPro.marcarEnviadas(enviados, canales, claves, dao.sinEnvioDeShippyPro(conEnvio));
+                }
+            }
             SincroShippyPro.Plan plan = SincroShippyPro.de(leidos.pedidos(), canales, acepta, vivas, cerradas,
                     LocalDateTime.now(clock).toLocalDate());
             // Cerrar solo lo que falta en dos lecturas buenas seguidas. Con pedidos descartados (sin fecha valida) no se puede
             // saber cuales de las filas ausentes son suyos: no se cierra nada.
-            boolean hayDescartados = !leidos.descartados().isEmpty();
             List<Integer> cerrar = new ArrayList<>();
             if (!hayDescartados) for (Integer fila : plan.cerrar()) if (candidatasAntes.contains(fila)) cerrar.add(fila);
-            // Sin transaccion conjunta: se inserta, se reabre y despues se cierra; si falla en medio, la siguiente vuelta lo rehace.
+            // Sin transaccion conjunta: se inserta, se reabre, se marcan los envios y despues se cierra; si falla en medio, la
+            // siguiente vuelta lo rehace.
             dao.insertar(plan.insertar());
             dao.reabrir(plan.reabrir());
+            dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
             dao.cerrar(cerrar, LocalDateTime.now(clock));
             candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             List<String> avisos = new ArrayList<>();
             if (!plan.reabrir().isEmpty()) avisos.add(plan.reabrir().size() + " filas reabiertas");
+            if (!enviosLeidos) avisos.add(AVISO_SIN_ENVIOS);
             if (hayDescartados) avisos.add("Pedidos sin fecha valida, saltados (no se cierra nada): "
                     + String.join(", ", leidos.descartados()));
             if (leidos.pedidos().isEmpty() && !vivas.isEmpty())
@@ -131,6 +153,20 @@ public class LecturaFilas {
             terminar(id, ERROR, 0, Set.of(), "No se pudo guardar la vuelta (" + e.getClass().getSimpleName() + ")",
                     LocalDateTime.now(clock));
         }
+    }
+
+    /** Los envios de los ultimos dias, o null si no se pudieron leer (la vuelta sigue sin ellos). Sin datos en el registro: solo la
+     *  clase de la excepcion. */
+    private List<ClienteShippyPro.EnvioShippyPro> leerEnvios() {
+        Instant fin = clock.instant();
+        try {
+            return shippyPro.enviados(fin.minus(DIAS_ENVIOS, ChronoUnit.DAYS), fin);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException | RuntimeException e) {
+            log.warn("Pedidos: no se pudieron leer los envios de ShippyPro: {}", e.getClass().getSimpleName());
+        }
+        return null;
     }
 
     /** Cierra la lectura sin dejar escapar un fallo de la base de datos: la tarea programada no debe morir por esto. */

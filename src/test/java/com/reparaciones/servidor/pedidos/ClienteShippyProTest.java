@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -107,6 +108,56 @@ class ClienteShippyProTest {
 
         assertEquals(1, leidos.pedidos().size());
         assertEquals(List.of("402-0000000-0000008"), leidos.descartados());
+    }
+
+    @Test void pideLosEnviadosPorFechasYSoloLeeLoQueNecesita() throws Exception {
+        responde(200, """
+                {"Result":"OK","Total":4,"Orders":[
+                 {"transaction_id":"402-0000000-0000011","marketplace_id":"100","tracking_code":"1Z0000000000000001",
+                  "carrier_name":"UPSv2","created_at":"1793629400","printed_at":"1793629500",
+                  "to_name":"Cliente Web A","to_address":"Calle Falsa 1","to_email":"a@example.com"},
+                 {"transaction_id":"","marketplace_id":"100","created_at":"1793629400"},
+                 {"transaction_id":"402-0000000-0000012","marketplace_id":"0","tracking_code":"","carrier_name":"","created_at":"1793690392.0"},
+                 {"transaction_id":"402-0000000-0000013","marketplace_id":"100","created_at":"abc"}]}""");
+
+        List<ClienteShippyPro.EnvioShippyPro> envios =
+                cliente.enviados(Instant.ofEpochSecond(1793400000L), Instant.ofEpochSecond(1793700000L));
+
+        assertEquals(List.of(
+                new ClienteShippyPro.EnvioShippyPro("402-0000000-0000011", "100", LocalDateTime.of(2026, 11, 2, 15, 23, 20),
+                        "UPSv2", "1Z0000000000000001"),
+                new ClienteShippyPro.EnvioShippyPro("402-0000000-0000012", "0", LocalDateTime.of(2026, 11, 3, 8, 19, 52),
+                        null, null)), envios);
+        ArgumentCaptor<HttpRequest> c = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(c.capture(), any());
+        HttpRequest p = c.getValue();
+        assertEquals("POST", p.method());
+        assertEquals("Basic " + Base64.getEncoder().encodeToString("clave-1:".getBytes()), p.headers().firstValue("Authorization").orElseThrow());
+        assertEquals(ClienteShippyPro.AGENTE, p.headers().firstValue("User-Agent").orElseThrow());
+        assertEquals("{\"Method\":\"GetShippedOrders\",\"Params\":{\"DateMin\":1793400000,\"DateMax\":1793700000}}",
+                cuerpoDe(p));
+    }
+
+    @Test void losEnviadosFallanComoLosPendientes() {
+        Instant a = Instant.ofEpochSecond(1), b = Instant.ofEpochSecond(2);
+        responde(500, "x");
+        assertEquals("ShippyPro respondió 500", assertThrows(IOException.class, () -> cliente.enviados(a, b)).getMessage());
+        responde(200, "{\"Result\":\"ERROR\",\"Error\":\"Invalid API key\"}");
+        assertEquals("ShippyPro: ERROR Invalid API key", assertThrows(IOException.class, () -> cliente.enviados(a, b)).getMessage());
+        responde(200, "{\"Result\":\"OK\",\"Total\":0}");
+        assertEquals("ShippyPro: la respuesta no trae la lista de pedidos",
+                assertThrows(IOException.class, () -> cliente.enviados(a, b)).getMessage());
+    }
+
+    private static String cuerpoDe(HttpRequest p) {
+        StringBuilder sb = new StringBuilder();
+        p.bodyPublisher().orElseThrow().subscribe(new java.util.concurrent.Flow.Subscriber<>() {
+            @Override public void onSubscribe(java.util.concurrent.Flow.Subscription s) { s.request(Long.MAX_VALUE); }
+            @Override public void onNext(java.nio.ByteBuffer b) { sb.append(java.nio.charset.StandardCharsets.UTF_8.decode(b)); }
+            @Override public void onError(Throwable t) { throw new IllegalStateException(t); }
+            @Override public void onComplete() {}
+        });
+        return sb.toString();
     }
 
     @Test void sinRutaDeLaClaveFallaAlPedirNoAlCrearse() {
