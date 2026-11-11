@@ -232,4 +232,14 @@ class ClienteShippyProTest {
         responde(500, "");
         assertThrows(IOException.class, () -> cliente.urlEtiqueta(1));
     }
+
+    @Test void urlEtiquetaConTopeCortoNoEsperaAUnaShippyProQueNoRespondeMas() {
+        doReturn(new CompletableFuture<HttpResponse<String>>()).when(http).sendAsync(any(HttpRequest.class), any());
+        long ini = System.nanoTime();
+        assertThrows(IOException.class, () -> cliente.urlEtiqueta(1, Duration.ofMillis(150)));
+        assertTrue(System.nanoTime() - ini < 3_000_000_000L);
+        ArgumentCaptor<HttpRequest> c = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(c.capture(), any());
+        assertEquals(Duration.ofMillis(150), c.getValue().timeout().orElseThrow());
+    }
 }

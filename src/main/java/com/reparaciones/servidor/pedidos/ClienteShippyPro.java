@@ -89,14 +89,19 @@ public class ClienteShippyPro {
 
     /** Hace la llamada y devuelve el cuerpo ya comprobado (respuesta 200 y Result OK). */
     private JsonNode pedirCuerpo(String cuerpoPeticion) throws IOException, InterruptedException {
+        return pedirCuerpo(cuerpoPeticion, espera);
+    }
+
+    /** Igual, con un tope de espera propio (tambien para las cabeceras de la peticion). */
+    private JsonNode pedirCuerpo(String cuerpoPeticion, Duration tope) throws IOException, InterruptedException {
         String basic = Base64.getEncoder().encodeToString((clave.clave() + ":").getBytes(StandardCharsets.UTF_8));
-        HttpRequest peticion = HttpRequest.newBuilder(URI.create(API)).timeout(ESPERA_CABECERAS)
+        HttpRequest peticion = HttpRequest.newBuilder(URI.create(API)).timeout(tope.compareTo(ESPERA_CABECERAS) < 0 ? tope : ESPERA_CABECERAS)
                 .header("Content-Type", "application/json").header("Authorization", "Basic " + basic)
                 .header("User-Agent", AGENTE).POST(HttpRequest.BodyPublishers.ofString(cuerpoPeticion)).build();
         CompletableFuture<HttpResponse<String>> futura = http.sendAsync(peticion, HttpResponse.BodyHandlers.ofString());
         HttpResponse<String> respuesta;
         try {
-            respuesta = futura.get(espera.toMillis(), TimeUnit.MILLISECONDS);
+            respuesta = futura.get(tope.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             futura.cancel(true);
             throw new IOException("ShippyPro no respondió a tiempo");
@@ -130,7 +135,12 @@ public class ClienteShippyPro {
     /** La URL de la etiqueta ya generada del envio (GetLabelUrl, solo lectura): «LabelURL» como texto o, a veces, como lista (la
      *  primera). Vacio si ShippyPro no trae ninguna. */
     public Optional<String> urlEtiqueta(long envioId) throws IOException, InterruptedException {
-        JsonNode url = pedirCuerpo("{\"Method\":\"GetLabelUrl\",\"Params\":{\"OrderID\":" + envioId + "}}").path("LabelURL");
+        return urlEtiqueta(envioId, espera);
+    }
+
+    /** Igual, con un tope de espera corto propio (la peticion de una persona espera; las lecturas de fondo no). */
+    public Optional<String> urlEtiqueta(long envioId, Duration tope) throws IOException, InterruptedException {
+        JsonNode url = pedirCuerpo("{\"Method\":\"GetLabelUrl\",\"Params\":{\"OrderID\":" + envioId + "}}", tope).path("LabelURL");
         if (url.isArray()) url = url.isEmpty() ? null : url.get(0);
         if (url == null || !url.isTextual() || url.asText().isBlank()) return Optional.empty();
         return Optional.of(url.asText().strip());

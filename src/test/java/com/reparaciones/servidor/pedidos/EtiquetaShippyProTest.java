@@ -20,6 +20,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /** La etiqueta sin red: ClienteShippyPro y HttpClient simulados. */
@@ -67,7 +68,7 @@ class EtiquetaShippyProTest {
     }
 
     @Test void descargaElPdfSinCredencialesNiRedireccionesYLoDevuelve() throws Exception {
-        when(shippy.urlEtiqueta(77)).thenReturn(Optional.of(URL));
+        when(shippy.urlEtiqueta(eq(77L), any(Duration.class))).thenReturn(Optional.of(URL));
         descarga(200, PDF, (long) PDF.length);
 
         assertArrayEquals(PDF, etiquetas.pdf(5, 77));
@@ -91,23 +92,23 @@ class EtiquetaShippyProTest {
     }
 
     @Test void sinEtiquetaOUrlNoValidaEs502YNoSeDescargaNada() throws Exception {
-        when(shippy.urlEtiqueta(1)).thenReturn(Optional.empty());
+        when(shippy.urlEtiqueta(eq(1L), any(Duration.class))).thenReturn(Optional.empty());
         es502(() -> etiquetas.pdf(5, 1));
         for (String mala : List.of("http://cdn.shippypro.com/a.pdf", "https://shippypro.com.evil.tld/a.pdf", "https://127.0.0.1/a.pdf")) {
-            when(shippy.urlEtiqueta(2)).thenReturn(Optional.of(mala));
+            when(shippy.urlEtiqueta(eq(2L), any(Duration.class))).thenReturn(Optional.of(mala));
             es502(() -> etiquetas.pdf(5, 2));
         }
         verifyNoInteractions(http);
     }
 
     @Test void siShippyProFallaEs502() throws Exception {
-        when(shippy.urlEtiqueta(3)).thenThrow(new IOException("ShippyPro: ERROR clave secreta"));
+        when(shippy.urlEtiqueta(eq(3L), any(Duration.class))).thenThrow(new IOException("ShippyPro: ERROR clave secreta"));
         es502(() -> etiquetas.pdf(5, 3));
         verifyNoInteractions(http);
     }
 
     @Test void siLaDescargaFallaOsNoEs200Es502() throws Exception {
-        when(shippy.urlEtiqueta(4)).thenReturn(Optional.of(URL));
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
         doThrow(new IOException("conexion")).when(http).send(any(HttpRequest.class), any());
         es502(() -> etiquetas.pdf(5, 4));
         for (int estado : new int[]{302, 403, 404, 500}) {
@@ -117,7 +118,7 @@ class EtiquetaShippyProTest {
     }
 
     @Test void siNoEmpiezaPorPdfEs502() throws Exception {
-        when(shippy.urlEtiqueta(4)).thenReturn(Optional.of(URL));
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
         descarga(200, "<html>hola</html>".getBytes(StandardCharsets.US_ASCII), null);
         es502(() -> etiquetas.pdf(5, 4));
         descarga(200, new byte[0], null);
@@ -127,7 +128,7 @@ class EtiquetaShippyProTest {
     }
 
     @Test void siSuperaElTopeEs502AunSinContentLength() throws Exception {
-        when(shippy.urlEtiqueta(4)).thenReturn(Optional.of(URL));
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
         byte[] grande = new byte[1001];
         Arrays.fill(grande, (byte) 'a');
         System.arraycopy(PDF, 0, grande, 0, 4);
@@ -143,7 +144,7 @@ class EtiquetaShippyProTest {
 
     @Test void unaLecturaQueSeQuedaEsperandoSeCortaPorElTiempoTotal() throws Exception {
         EtiquetaShippyPro corta = new EtiquetaShippyPro(shippy, http, 1000, Duration.ofMillis(200));
-        when(shippy.urlEtiqueta(4)).thenReturn(Optional.of(URL));
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
         InputStream colgado = new InputStream() {
             private volatile boolean cerrado;
 
@@ -168,5 +169,76 @@ class EtiquetaShippyProTest {
         when(r.headers()).thenReturn(HttpHeaders.of(Map.of(), (a, b) -> true));
         doReturn(r).when(http).send(any(HttpRequest.class), any());
         es502(() -> corta.pdf(5, 4));
+    }
+
+    @Test void getLabelUrlTieneSuTopeCortoYLaPeticionUnTopeTotal() throws Exception {
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.empty());
+        es502(() -> etiquetas.pdf(5, 4));
+        ArgumentCaptor<Duration> d = ArgumentCaptor.forClass(Duration.class);
+        verify(shippy).urlEtiqueta(eq(4L), d.capture());
+        assertEquals(Duration.ofSeconds(6), d.getValue());
+        assertTrue(EtiquetaShippyPro.TOTAL.compareTo(Duration.ofSeconds(12)) <= 0);
+
+        // GetLabelUrl tarda mas que el total: no se descarga y es 502.
+        EtiquetaShippyPro corta = new EtiquetaShippyPro(shippy, http, 1000, Duration.ofSeconds(5), Duration.ofSeconds(5), Duration.ofMillis(100));
+        when(shippy.urlEtiqueta(eq(6L), any(Duration.class))).thenAnswer(i -> {
+            Thread.sleep(250);
+            return Optional.of(URL);
+        });
+        es502(() -> corta.pdf(5, 6));
+        verifyNoInteractions(http);
+    }
+
+    @Test void unaDescargaTruncadaQueDevuelveMenosBytesDeLosDeclaradosEs502() throws Exception {
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
+        descarga(200, PDF, PDF.length + 100L);
+        es502(() -> etiquetas.pdf(5, 4));
+        descarga(200, PDF, PDF.length - 3L);
+        es502(() -> etiquetas.pdf(5, 4));
+    }
+
+    @Test void siElVigilanteCierraYElReadDevuelveMenosUnoEs502() throws Exception {
+        EtiquetaShippyPro corta = new EtiquetaShippyPro(shippy, http, 1000, Duration.ofMillis(100));
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
+        InputStream silencioso = new InputStream() {
+            private volatile boolean cerrado;
+            private boolean primero = true;
+
+            @Override public int read() { return -1; }
+
+            @Override public int read(byte[] b, int off, int len) throws IOException {
+                if (primero) {
+                    primero = false;
+                    System.arraycopy(PDF, 0, b, off, PDF.length);
+                    return PDF.length;
+                }
+                while (!cerrado) {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        throw new IOException(e);
+                    }
+                }
+                return -1; // cierra con fin de datos en vez de lanzar: medio fichero que empieza por %PDF
+            }
+
+            @Override public void close() { cerrado = true; }
+        };
+        @SuppressWarnings("unchecked") HttpResponse<InputStream> r = mock(HttpResponse.class);
+        when(r.statusCode()).thenReturn(200);
+        when(r.body()).thenReturn(silencioso);
+        when(r.headers()).thenReturn(HttpHeaders.of(Map.of(), (a, b) -> true));
+        doReturn(r).when(http).send(any(HttpRequest.class), any());
+        es502(() -> corta.pdf(5, 4));
+    }
+
+    @Test void unContentLengthNoNumericoSeTrataComoAusente() throws Exception {
+        when(shippy.urlEtiqueta(eq(4L), any(Duration.class))).thenReturn(Optional.of(URL));
+        @SuppressWarnings("unchecked") HttpResponse<InputStream> r = mock(HttpResponse.class);
+        when(r.statusCode()).thenReturn(200);
+        when(r.body()).thenReturn(new ByteArrayInputStream(PDF));
+        when(r.headers()).thenReturn(HttpHeaders.of(Map.of("Content-Length", List.of("abc")), (a, b) -> true));
+        doReturn(r).when(http).send(any(HttpRequest.class), any());
+        assertArrayEquals(PDF, etiquetas.pdf(5, 4));
     }
 }
