@@ -31,6 +31,7 @@ La configuración se inyecta por variables de entorno, sin valores por defecto e
 - `PEDIDOS_SHIPPYPRO_CLAVE` (por defecto vacio): ruta, dentro del contenedor, del fichero con la clave de ShippyPro. Nunca va al repo.
 - `PEDIDOS_SHIPPYPRO_CANALES` (por defecto vacio): a que canal va cada marketplace de ShippyPro, `"<marketplace>:AMAZON,<marketplace>:AMAZON_STOCKROOM,..."`. Un marketplace por canal salvo Amazon: dos marketplaces en el mismo canal con el mismo numero de pedido compartirian filas.
 - `PEDIDOS_HISTORICO_HOJA` (por defecto vacio): identificador en Google de la hoja de pedidos de la que se carga el historico (solo lectura, con la cuenta de `NSYS_DRIVE_CREDENCIALES`, que tiene que tener acceso a la hoja). Vacio, `POST /api/pedidos/historico` responde `400`. Nunca va al repo.
+- `PEDIDOS_VENDIDOS_CLAVE` (por defecto vacio): clave de maquina con la que el bot de stock llama a `GET /api/pedidos/vendidos` (cabecera `X-API-Key`). Vacia, esa ruta responde `404` para todos. Una clave distinta en produccion y en preprod; solo vale para esa ruta y nunca va al repo ni a la documentacion.
 - `PEDIDOS_HISTORICO_PESTANA` (por defecto `PEDIDOS 2026`): la pestana de esa hoja.
 - `PEDIDOS_HISTORICO_MINIMO` (por defecto `1000`): filas utiles minimas que tiene que traer la hoja; con menos, la carga se aborta sin tocar nada (guarda contra una lectura vacia o cortada).
 

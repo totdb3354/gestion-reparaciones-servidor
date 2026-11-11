@@ -45,6 +45,15 @@ de `model/` conservan su nombre.
   `caja` (nullable, el último campo): la caja de NSYS del lote del móvil tal cual (`Nsys_movil.LOCATION`); `null` si no tiene.
   La web la enseña en la columna «Caja» y la escribe en «⬇ Descargar cajas», cuyo Excel hace `POST
   /api/stock-telefonos/que-revisar/excel`. La plantilla de color no cambia.
+- Lista de IMEI vendidos para el bot de stock (no es una ruta de usuario): `GET /api/pedidos/vendidos?dias=7` con la cabecera
+  `X-API-Key` → lista JSON en la raíz de `Vendido` `{imei, sku, plataforma, canal, pedido, fechaImei}`, una por IMEI (sin repetidos;
+  si está en dos filas, la del cambio más reciente). `sku`, `canal` y `pedido` son nullable; `fechaImei` es la hora de Madrid (sin
+  zona) del último cambio de IMEI de la fila. Entran las filas `SHIPPYPRO` pendientes o enviadas (ni las `NO_PENDIENTE` ni el
+  histórico) con IMEI de 15 cifras cuyo último apunte de `Pedido_fila_cambio` cae en hoy o en los `dias - 1` días de Madrid
+  anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
+  numérico, `400`. Autenticación: solo la clave (ajuste `pedidos.vendidos.clave`, variable `PEDIDOS_VENDIDOS_CLAVE`): ajuste
+  vacío, `404` para todos; sin cabecera o con otra clave, `401` (comparación en tiempo constante); un token de usuario, del rol que
+  sea, no vale (`401`) y la clave no abre ninguna otra ruta.
 - «Pedidos como la hoja» (SUPERTECNICO y ADMIN; el TECNICO recibe `403`), `/api/pedidos`:
   - `GET /api/pedidos/filas?desde=&hasta=&buscar=` → `ListaFilas` `{filas, hayMas}`, las filas en orden de hoja (la más antigua
     primero). `desde` y `hasta` son fechas ISO opcionales (por defecto, el último mes hasta hoy, hora de Madrid) y la lista trae

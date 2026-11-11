@@ -60,6 +60,13 @@ public class FilasDAO {
     static final int TOPE_CAMBIOS = 200;
     static final String SQL_CAMBIOS_DE_FILA = "SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO FROM Pedido_fila_cambio c"
             + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT " + TOPE_CAMBIOS;
+    /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas (no las cerradas sin envio), con IMEI de 15 cifras, cuyo ULTIMO
+     *  apunte de cambio de IMEI es de {@code ?} en adelante; del mas reciente al mas antiguo. Una sola consulta, con tope. */
+    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.PLATAFORMA, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
+            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio GROUP BY ID_FILA HAVING MAX(FECHA) >= ?) u"
+            + " ON u.ID_FILA = f.ID_FILA"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"
+            + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
     static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
             + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)";
@@ -193,6 +200,17 @@ public class FilasDAO {
     /** Todas las filas de ShippyPro con IMEI: las vivas y las cerradas con FECHA desde {@code desde}. */
     public List<FilaPedido> shippyProConImeiDesde(LocalDate desde) {
         return jdbc.query(SQL_SHIPPYPRO_CON_IMEI_DESDE + " ORDER BY FECHA, ID_FILA", FilasDAO::fila, fecha(desde));
+    }
+
+    /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI desde {@code desde}, a lo sumo {@code tope} filas, sin
+     *  IMEI repetidos: si esta en dos filas sale la del cambio mas reciente. Un IMEI quitado de la fila no sale (la fila ya no lo tiene). */
+    public List<Vendido> vendidosDesde(LocalDateTime desde, int tope) {
+        List<Vendido> filas = jdbc.query(SQL_VENDIDOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
+                rs.getString("PLATAFORMA"), rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
+                Timestamp.valueOf(desde), tope);
+        java.util.Map<String, Vendido> porImei = new java.util.LinkedHashMap<>();
+        for (Vendido v : filas) porImei.putIfAbsent(v.imei(), v);
+        return new ArrayList<>(porImei.values());
     }
 
     /** Resultado de {@link #ponerImei}: PUESTO, NO_EXISTE o CERRADA (del historico: no se toca). */

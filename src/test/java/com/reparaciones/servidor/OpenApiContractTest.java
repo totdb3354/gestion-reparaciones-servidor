@@ -378,6 +378,21 @@ class OpenApiContractTest {
         assertNullable(esquemas, "RecomendadorCandidato", "sku", "caja");
     }
 
+    /** La lista de IMEI vendidos para el bot (spec «lista de IMEI vendidos para el bot» §3): ruta, parametro opcional y esquema. */
+    @Test void elContratoPublicaLosVendidosParaElBot() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+        assertTrue(paths.path("/api/pedidos/vendidos").has("get"), "falta GET /api/pedidos/vendidos");
+        assertFalse(parametro(paths, "/api/pedidos/vendidos", "get", "dias").path("required").asBoolean(true), "dias es opcional");
+        assertTrue(esquemas.has("Vendido"), () -> "falta el esquema Vendido; publicados: " + nombres(esquemas));
+        assertNoNullable(esquemas, "Vendido", "imei", "plataforma", "fechaImei");
+        assertNullable(esquemas, "Vendido", "sku", "canal", "pedido");
+    }
+
     /** «Pedidos como la hoja» (spec §8): la carga a mano del histórico, solo ADMIN, con su estado y su informe. */
     @Test void elContratoPublicaLaCargaDelHistoricoDeLaHoja() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
