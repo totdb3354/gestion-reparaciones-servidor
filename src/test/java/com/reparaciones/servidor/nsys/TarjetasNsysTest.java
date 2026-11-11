@@ -434,4 +434,78 @@ class TarjetasNsysTest {
         assertNull(filas.get(1).ignoradoPor());
         assertEquals(LocalDate.of(2026, 10, 15), filas.get(1).bajaEn());
     }
+
+    // ---------------------------------------------------------------- «Fuera de su caja»
+
+    /** Un iPhone 13 128GB Azul con este grado de NSYS, en esta caja de NSYS (null: sin caja) y con este estado. */
+    private static MovilNsys enCaja(String imei, String grade, String location, String ubicacion, EstadoMovil estado) {
+        return new MovilNsys(imei, "BT-9001", "Apple iPhone 13 128GB Blue", grade, "Available", location, "Proveedor A",
+                LocalDate.of(2026, 10, 1), null, null, "13", "13", "128GB", "Azul", grade, false, ubicacion, ubicacion, estado,
+                HOY.minusDays(20), HOY.minusDays(1));
+    }
+
+    private static final Map<String, List<TrabajoAbierto>> SIN_TRABAJOS = Map.of();
+
+    @Test void unNoVendibleFueraDeSuCajaSaleConLaQueLeToca() {
+        MovilNsys f = enCaja(IMEI, "F", "CAJA REP. OFICINA", "Taller · Reparación", EstadoMovil.STOCK);
+        FilaCajaNsys fila = TarjetasNsys.cajas(List.of(f), Map.of(), SIN_TRABAJOS).get(0);
+        assertEquals(IMEI, fila.imeiSn());
+        assertEquals("13", fila.modelo());
+        assertEquals("128GB", fila.capacidad());
+        assertEquals("Azul", fila.color());
+        assertEquals("F", fila.grado());
+        assertNull(fila.gradoNsys(), "el grado es el de NSYS");
+        assertEquals("CAJA REP. OFICINA", fila.caja());
+        assertEquals("Taller · Reparación", fila.ubicacion());
+        assertEquals("CF021", fila.cajaQueToca());
+    }
+
+    @Test void enSuCajaConGradoVendibleODePedidoNoSale() {
+        List<MovilNsys> moviles = List.of(
+                enCaja(IMEI, "RMA", "Funcionalidad pendiente", "Devolución", EstadoMovil.STOCK),
+                enCaja(OTRO, "F", "CF021", "No vendible", EstadoMovil.NO_CUENTA),
+                enCaja("350000000000003", "B", "CAJA LISTOS", "Listos", EstadoMovil.STOCK),
+                enCaja("350000000000004", "RMA", "Pedidos realizados", null, EstadoMovil.DE_PEDIDO));
+        assertTrue(TarjetasNsys.cajas(moviles, Map.of(), SIN_TRABAJOS).isEmpty());
+    }
+
+    @Test void sinCajaTambienSaleYUnNoCuentaTambien() {
+        List<FilaCajaNsys> filas = TarjetasNsys.cajas(List.of(
+                enCaja(IMEI, "RMA", null, "En revisión", EstadoMovil.STOCK),
+                enCaja(OTRO, "Fd", "AFaltaRepuestos", "Esperando pieza", EstadoMovil.NO_CUENTA)), Map.of(), SIN_TRABAJOS);
+        assertEquals(List.of("Desguace", "Funcionalidad pendiente"), filas.stream().map(FilaCajaNsys::cajaQueToca).toList());
+        assertNull(filas.get(1).caja(), "sin caja");
+        assertEquals("Fd", filas.get(0).grado(), "como esté escrito");
+    }
+
+    @Test void conUnTrabajoAbiertoDelTallerNoSale() {
+        MovilNsys f = enCaja("f2lxabc123", "F", "CAJA REP. OFICINA", "Taller · Reparación", EstadoMovil.STOCK);
+        Map<String, List<TrabajoAbierto>> abiertos = Map.of("F2LXABC123",
+                List.of(new TrabajoAbierto("REPARACION", "Técnico 2", AYER, null)));
+        assertTrue(TarjetasNsys.cajas(List.of(f), Map.of(), abiertos).isEmpty(), "cruza por la clave, sin mirar mayúsculas");
+        assertEquals(1, TarjetasNsys.cajas(List.of(f), Map.of(), Map.of("F2LXABC123", List.of())).size(), "sin trabajos, sale");
+    }
+
+    @Test void mandaElGradoQueValeElDelTallerPorEncima() {
+        MovilNsys rmaEnNsys = enCaja(IMEI, "RMA", "CAJA LISTOS", "Listos", EstadoMovil.STOCK);
+        MovilNsys bEnNsys = enCaja(OTRO, "B", "CAJA REP. OFICINA", "Taller · Reparación", EstadoMovil.STOCK);
+        Map<String, List<CambioTaller>> vigentes = TallerNsys.porImei(List.of(
+                vigente(1, IMEI, GRADO, "A", "RMA"), vigente(2, OTRO, GRADO, "F", "B")));
+        List<FilaCajaNsys> filas = TarjetasNsys.cajas(List.of(rmaEnNsys, bEnNsys), vigentes, SIN_TRABAJOS);
+        assertEquals(List.of(OTRO), filas.stream().map(FilaCajaNsys::imeiSn).toList(), "el RMA corregido a A no sale; el B puesto a F, sí");
+        assertEquals("F", filas.get(0).grado());
+        assertEquals("B", filas.get(0).gradoNsys(), "NSYS aún no lo sabe: también está en «Cambio de grado»");
+    }
+
+    @Test void vanPorLaCajaQueTocaLuegoPorLaCajaDeHoyConSinCajaAlFinalYPorImei() {
+        List<FilaCajaNsys> filas = TarjetasNsys.cajas(List.of(
+                enCaja("350000000000009", "RMA", "CAJA REP. OFICINA", "Taller · Reparación", EstadoMovil.STOCK),
+                enCaja("350000000000008", "F", null, "En revisión", EstadoMovil.STOCK),
+                enCaja("350000000000007", "F", "CAJA REP. OFICINA", "Taller · Reparación", EstadoMovil.STOCK),
+                enCaja("350000000000006", "FD", "CAJA LISTOS", "Listos", EstadoMovil.STOCK),
+                enCaja("350000000000005", "F", "CAJA REP. OFICINA", "Taller · Reparación", EstadoMovil.STOCK),
+                enCaja("350000000000004", "F", "CAJA LISTOS", "Listos", EstadoMovil.STOCK)), Map.of(), SIN_TRABAJOS);
+        assertEquals(List.of("350000000000004", "350000000000005", "350000000000007", "350000000000008", "350000000000006",
+                "350000000000009"), filas.stream().map(FilaCajaNsys::imeiSn).toList());
+    }
 }
