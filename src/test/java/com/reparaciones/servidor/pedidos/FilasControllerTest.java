@@ -34,7 +34,7 @@ class FilasControllerTest {
 
     private static FilaVista vistaDe(String imei) {
         return new FilaVista(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", imei, "402-0000000-0000005",
-                LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, "OK", null, "i13128AzulA", "Listos", "AMAZON");
+                LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, null, false, "OK", null, "i13128AzulA", "Listos", "AMAZON");
     }
 
     private static int estado(Runnable r) {

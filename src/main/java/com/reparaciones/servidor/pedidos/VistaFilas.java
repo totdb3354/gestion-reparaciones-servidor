@@ -174,6 +174,7 @@ public class VistaFilas {
             String estado = estado(f);
             vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), estado,
                     !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),
+                    f.impresaEn(), f.tieneEtiqueta(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f)));
         }

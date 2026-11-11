@@ -31,19 +31,23 @@ public class FilasDAO {
     static final int TANDA = 500;
 
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
-            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN FROM Pedido_fila";
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN FROM Pedido_fila";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
-    static final String SQL_SIN_ENVIO_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIO_FECHA IS NULL AND (%s)";
+    static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
+            + " AND (ENVIO_FECHA IS NULL OR IMPRESA_EN IS NULL OR ENVIO_ID IS NULL) AND (%s)";
     static final String SQL_INSERTAR = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION)"
             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_CERRAR = "UPDATE Pedido_fila SET CERRADA_EN = ? WHERE CERRADA_EN IS NULL AND ID_FILA IN (%s)";
     /** Reabrir borra tambien los datos del envio: un pedido que vuelve a estar pendiente ya no esta enviado. */
     static final String SQL_REABRIR = "UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL,"
-            + " SEGUIMIENTO = NULL, REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (%s)";
+            + " SEGUIMIENTO = NULL, ENVIO_ID = NULL, IMPRESA_EN = NULL, REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (%s)";
     /** Un envio es definitivo: si la fila estaba viva se cierra ahora; si ya estaba cerrada conserva su hora de cierre. */
     static final String SQL_MARCAR_ENVIO = "UPDATE Pedido_fila SET ENVIO_FECHA = ?, TRANSPORTISTA = ?, SEGUIMIENTO = ?,"
-            + " CERRADA_EN = COALESCE(CERRADA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL";
+            + " CERRADA_EN = COALESCE(CERRADA_EN, ?), ENVIO_ID = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL";
+    /** Completa el id del envio y la impresion de una fila ya enviada; lo que ya tiene no se toca ni se borra. */
+    static final String SQL_MARCAR_ETIQUETA = "UPDATE Pedido_fila SET ENVIO_ID = COALESCE(ENVIO_ID, ?),"
+            + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL";
     static final String SQL_DEL_PERIODO = SQL_FILAS + " WHERE (FECHA BETWEEN ? AND ?) OR CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. */
     static final String SQL_BUSCAR = SQL_FILAS + " WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
@@ -115,9 +119,10 @@ public class FilasDAO {
         return filas;
     }
 
-    /** Las filas de origen ShippyPro sin envio conocido (vivas o cerradas) de esos pedidos (canal y numero), en tandas. */
-    public List<FilaPedido> sinEnvioDeShippyPro(Collection<SincroShippyPro.ClavePedido> pedidos) {
-        return deShippyPro(SQL_SIN_ENVIO_SHIPPYPRO, pedidos);
+    /** Las filas de origen ShippyPro (vivas o cerradas) de esos pedidos (canal y numero) a las que aun puede faltar algo del envio:
+     *  sin envio conocido, sin id de envio o sin impresion de la etiqueta; en tandas. */
+    public List<FilaPedido> porMarcarDeShippyPro(Collection<SincroShippyPro.ClavePedido> pedidos) {
+        return deShippyPro(SQL_POR_MARCAR_SHIPPYPRO, pedidos);
     }
 
     /** Pone a cada fila los datos de su envio y, si estaba viva, la cierra ahora; las que ya tenian envio no se tocan. */
@@ -126,8 +131,18 @@ public class FilasDAO {
         List<Object[]> lote = new ArrayList<>();
         for (SincroShippyPro.MarcaEnvio m : marcas)
             lote.add(new Object[]{Timestamp.valueOf(m.fecha()), AnchosNsys.corta(m.transportista(), AnchosPedidos.TRANSPORTISTA),
-                    AnchosNsys.corta(m.seguimiento(), AnchosPedidos.SEGUIMIENTO), Timestamp.valueOf(ahora), m.fila()});
+                    AnchosNsys.corta(m.seguimiento(), AnchosPedidos.SEGUIMIENTO), Timestamp.valueOf(ahora), m.envioId(),
+                    m.impresaEn() == null ? null : Timestamp.valueOf(m.impresaEn()), m.fila()});
         jdbc.batchUpdate(SQL_MARCAR_ENVIO, lote);
+    }
+
+    /** Completa el id del envio y la impresion de las filas ya enviadas; nunca borra lo ya puesto. */
+    public void marcarEtiquetas(List<SincroShippyPro.MarcaEtiqueta> marcas) {
+        if (marcas.isEmpty()) return;
+        List<Object[]> lote = new ArrayList<>();
+        for (SincroShippyPro.MarcaEtiqueta m : marcas)
+            lote.add(new Object[]{m.envioId(), m.impresaEn() == null ? null : Timestamp.valueOf(m.impresaEn()), m.fila()});
+        jdbc.batchUpdate(SQL_MARCAR_ETIQUETA, lote);
     }
 
     /** Inserta las filas nuevas (el id del record se ignora), con los textos cortados a los anchos del DDL. */
@@ -316,10 +331,12 @@ public class FilasDAO {
         String canal = rs.getString("CANAL");
         int posicion = rs.getInt("POSICION");
         Integer pos = rs.wasNull() ? null : posicion;
+        long idEnvio = rs.getLong("ENVIO_ID");
+        Long envioId = rs.wasNull() ? null : idEnvio;
         return new FilaPedido(rs.getInt("ID_FILA"), dia(rs, "FECHA"), rs.getString("PLATAFORMA"), rs.getString("SKU"),
                 rs.getString("IMEI"), rs.getString("PEDIDO"), dia(rs, "FECHA_COMPRA"), rs.getString("ORIGEN"),
                 canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
-                rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"));
+                rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

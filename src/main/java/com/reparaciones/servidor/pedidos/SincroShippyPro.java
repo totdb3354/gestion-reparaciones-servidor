@@ -51,7 +51,11 @@ public final class SincroShippyPro {
     }
 
     /** Una fila de ShippyPro a la que hay que poner los datos de su envio (y cerrarla si estaba viva). */
-    public record MarcaEnvio(int fila, LocalDateTime fecha, String transportista, String seguimiento) {}
+    public record MarcaEnvio(int fila, LocalDateTime fecha, String transportista, String seguimiento, Long envioId,
+                             LocalDateTime impresaEn) {}
+
+    /** Una fila que ya tenia envio a la que hay que completar el id del envio y/o la impresion; nunca borra lo ya puesto. */
+    public record MarcaEtiqueta(int fila, Long envioId, LocalDateTime impresaEn) {}
 
     /** Las filas que hay que marcar como enviadas (spec §6 bis): las de {@code candidatas} (filas de ShippyPro sin envio, vivas o
      *  cerradas) cuyo pedido (canal y numero guardado) figura entre los enviados y no esta entre los {@code pendientes} de esta
@@ -75,7 +79,29 @@ public final class SincroShippyPro {
             ClienteShippyPro.EnvioShippyPro e = recientes.get(clave);
             if (e == null || pendientes.contains(clave)) continue;
             if (f.reabiertaEn() != null && !e.fecha().isAfter(f.reabiertaEn())) continue;
-            marcas.add(new MarcaEnvio(f.id(), e.fecha(), e.transportista(), e.seguimiento()));
+            marcas.add(new MarcaEnvio(f.id(), e.fecha(), e.transportista(), e.seguimiento(), e.idEnvio(), e.impresaEn()));
+        }
+        return marcas;
+    }
+
+    /** Las filas que ya tienen envio y aun no tienen el id del envio o la impresion de su etiqueta (spec 6 bis): si su pedido
+     *  figura entre los enviados leidos, se completa lo que falta. Un pedido con varias expediciones toma la mas reciente; si la
+     *  fila ya guarda el id de otra expedicion, no se mezcla. Mismas reglas de reapertura y de pendientes que
+     *  {@link #marcarEnviadas}. */
+    public static List<MarcaEtiqueta> completarEtiquetas(List<ClienteShippyPro.EnvioShippyPro> enviados, Map<String, Canal> canales,
+                                                         Set<ClavePedido> pendientes, List<FilaPedido> candidatas) {
+        Map<ClavePedido, ClienteShippyPro.EnvioShippyPro> recientes = enviadosPorPedido(enviados, canales);
+        List<MarcaEtiqueta> marcas = new ArrayList<>();
+        for (FilaPedido f : candidatas) {
+            if (f.envioFecha() == null || f.canal() == null || f.pedido() == null) continue;
+            ClavePedido clave = new ClavePedido(f.canal(), f.pedido());
+            ClienteShippyPro.EnvioShippyPro e = recientes.get(clave);
+            if (e == null || pendientes.contains(clave)) continue;
+            if (f.reabiertaEn() != null && !e.fecha().isAfter(f.reabiertaEn())) continue;
+            if (f.envioId() != null && e.idEnvio() != null && !f.envioId().equals(e.idEnvio())) continue;
+            Long id = f.envioId() == null ? e.idEnvio() : null;
+            LocalDateTime impresa = f.impresaEn() == null ? e.impresaEn() : null;
+            if (id != null || impresa != null) marcas.add(new MarcaEtiqueta(f.id(), id, impresa));
         }
         return marcas;
     }

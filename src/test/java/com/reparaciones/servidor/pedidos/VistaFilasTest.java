@@ -114,6 +114,27 @@ class VistaFilasTest {
         }
     }
 
+    @Test void laImpresionYSiTieneEtiquetaSalenEnLaVista() {
+        LocalDateTime impresa = AHORA.minusDays(1);
+        FilaPedido conEtiqueta = new FilaPedido(3, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null, "402-0000000-0000003",
+                LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(2), AHORA.minusDays(2), "UPSv2", "x", null,
+                555L, impresa);
+        FilaPedido sinImprimir = new FilaPedido(4, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null, "402-0000000-0000004",
+                LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(2), AHORA.minusDays(2), "UPSv2", "x", null,
+                556L, null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(conEtiqueta, sinImprimir, fila(1, null, null)));
+
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+
+        assertEquals(impresa, f.get(0).impresaEn());
+        assertTrue(f.get(0).tieneEtiqueta());
+        assertNull(f.get(1).impresaEn());
+        assertTrue(f.get(1).tieneEtiqueta());
+        assertNull(f.get(2).impresaEn());
+        assertFalse(f.get(2).tieneEtiqueta());
+        assertEquals("ENVIADA", f.get(0).estado(), "el estado no cambia");
+    }
+
     @Test void unaFilaEnviadaConImeiNoLlevaAvisoNiConsultaNsys() {
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(enviada(3, IMEI1)));
         FilaVista f = vista.filas(null, null, null).filas().get(0);

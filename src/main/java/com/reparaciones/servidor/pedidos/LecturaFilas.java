@@ -35,8 +35,9 @@ public class LecturaFilas {
     public static final String ERROR = "ERROR";
     public static final String RECHAZADA = "RECHAZADA";
     static final int DIAS_REGISTRO = 30;
-    /** Cuantos dias hacia atras se piden los envios: cubre un corte de la tarea de unos dias. */
-    static final int DIAS_ENVIOS = 3;
+    /** Cuantos dias hacia atras se piden los envios: cubre un corte de la tarea de unos dias y una etiqueta impresa dias despues
+     *  de generarse. */
+    static final int DIAS_ENVIOS = 10;
     static final String AVISO_SIN_ENVIOS = "no se pudieron leer los envíos";
 
     private final ClienteShippyPro shippyPro;
@@ -129,13 +130,17 @@ public class LecturaFilas {
             boolean hayDescartados = !leidos.descartados().isEmpty();
             boolean enviosLeidos = true;
             List<SincroShippyPro.MarcaEnvio> marcas = List.of();
+            List<SincroShippyPro.MarcaEtiqueta> etiquetas = List.of();
             if (!hayDescartados) {
                 List<ClienteShippyPro.EnvioShippyPro> enviados = leerEnvios();
                 if (enviados == null) enviosLeidos = false;
                 else {
                     Set<SincroShippyPro.ClavePedido> conEnvio = SincroShippyPro.clavesEnviadas(enviados, canales);
-                    if (!conEnvio.isEmpty())
-                        marcas = SincroShippyPro.marcarEnviadas(enviados, canales, claves, dao.sinEnvioDeShippyPro(conEnvio));
+                    if (!conEnvio.isEmpty()) {
+                        List<FilaPedido> porMarcar = dao.porMarcarDeShippyPro(conEnvio);
+                        marcas = SincroShippyPro.marcarEnviadas(enviados, canales, claves, porMarcar);
+                        etiquetas = SincroShippyPro.completarEtiquetas(enviados, canales, claves, porMarcar);
+                    }
                 }
             }
             SincroShippyPro.Plan plan = SincroShippyPro.de(leidos.pedidos(), canales, acepta, vivas, cerradas,
@@ -149,6 +154,7 @@ public class LecturaFilas {
             dao.insertar(plan.insertar());
             dao.reabrir(plan.reabrir(), LocalDateTime.now(clock));
             dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
+            dao.marcarEtiquetas(etiquetas);
             dao.cerrar(cerrar, LocalDateTime.now(clock));
             candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             List<String> avisos = new ArrayList<>();

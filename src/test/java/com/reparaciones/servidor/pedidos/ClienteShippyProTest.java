@@ -138,6 +138,47 @@ class ClienteShippyProTest {
                 cuerpoDe(p));
     }
 
+    @Test void losEnviadosTraenElIdDelEnvioYCuandoSeImprimioLaEtiqueta() throws Exception {
+        responde(200, """
+                {"Result":"OK","Total":8,"Orders":[
+                 {"transaction_id":"402-0000000-0000021","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"5001","is_printed":"1","printed_at":"1793629500"},
+                 {"transaction_id":"402-0000000-0000022","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":5002,"is_printed":1,"printed_at":"1793629500.0"},
+                 {"transaction_id":"402-0000000-0000023","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"5003","is_printed":"0","printed_at":"1793629500"},
+                 {"transaction_id":"402-0000000-0000024","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"5004","is_printed":"1","printed_at":""},
+                 {"transaction_id":"402-0000000-0000025","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"5005","is_printed":"1","printed_at":"0"},
+                 {"transaction_id":"402-0000000-0000026","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"5006","is_printed":"1","printed_at":"abc"},
+                 {"transaction_id":"402-0000000-0000027","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"","is_printed":"","printed_at":""},
+                 {"transaction_id":"402-0000000-0000028","marketplace_id":"100","created_at":"1793629400",
+                  "ordine_id":"abc","is_printed":"abc"}]}""");
+
+        List<ClienteShippyPro.EnvioShippyPro> e =
+                cliente.enviados(Instant.ofEpochSecond(1793400000L), Instant.ofEpochSecond(1793700000L));
+
+        LocalDateTime envio = LocalDateTime.of(2026, 11, 2, 15, 23, 20);
+        LocalDateTime impresa = LocalDateTime.of(2026, 11, 2, 15, 25, 0);
+        assertEquals(8, e.size());
+        assertEquals(5001L, e.get(0).idEnvio());
+        assertEquals(impresa, e.get(0).impresaEn());
+        assertEquals(5002L, e.get(1).idEnvio(), "el id como numero");
+        assertEquals(impresa, e.get(1).impresaEn(), "is_printed como numero y printed_at con decimales");
+        assertEquals(5003L, e.get(2).idEnvio());
+        assertNull(e.get(2).impresaEn(), "is_printed 0: sin imprimir aunque venga printed_at");
+        assertEquals(envio, e.get(3).impresaEn(), "impresa sin printed_at: la fecha del envio");
+        assertEquals(envio, e.get(4).impresaEn(), "printed_at 0: la fecha del envio");
+        assertEquals(envio, e.get(5).impresaEn(), "printed_at no valido: la fecha del envio");
+        assertNull(e.get(6).idEnvio());
+        assertNull(e.get(6).impresaEn());
+        assertNull(e.get(7).idEnvio(), "ordine_id no numerico");
+        assertNull(e.get(7).impresaEn(), "is_printed no valido: sin imprimir");
+    }
+
     @Test void losEnviadosFallanComoLosPendientes() {
         Instant a = Instant.ofEpochSecond(1), b = Instant.ofEpochSecond(2);
         responde(500, "x");

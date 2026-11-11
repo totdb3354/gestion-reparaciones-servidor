@@ -140,30 +140,58 @@ class LecturaFilasTest {
                 "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1));
     }
 
-    @Test void pideLosEnviadosDeLosUltimosTresDiasYMarcaYCierraAlMomentoLasFilasEnviadas() throws Exception {
+    @Test void pideLosEnviadosDeLosUltimosDiezDiasYMarcaYCierraAlMomentoLasFilasEnviadas() throws Exception {
         unPedidoBien();
         when(dao.vivasDeShippyPro()).thenReturn(List.of(viva(9, "402-0000000-0000099")));
         when(shippy.enviados(any(), any())).thenReturn(List.of(envio("402-0000000-0000099", "100", 5)));
-        when(dao.sinEnvioDeShippyPro(any())).thenReturn(List.of(viva(9, "402-0000000-0000099"),
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(viva(9, "402-0000000-0000099"),
                 cerradaSinEnvio(8, "402-0000000-0000099")));
 
         lectura("100:AMAZON").pasada();
 
-        verify(shippy).enviados(AHORA.atZone(MADRID).toInstant().minus(3, java.time.temporal.ChronoUnit.DAYS),
+        verify(shippy).enviados(AHORA.atZone(MADRID).toInstant().minus(10, java.time.temporal.ChronoUnit.DAYS),
                 AHORA.atZone(MADRID).toInstant());
-        verify(dao).sinEnvioDeShippyPro(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000099")));
+        verify(dao).porMarcarDeShippyPro(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000099")));
         verify(dao).marcarEnviadas(List.of(
-                new SincroShippyPro.MarcaEnvio(9, AHORA.minusHours(5), "UPSv2", "1Z0000000000000001"),
-                new SincroShippyPro.MarcaEnvio(8, AHORA.minusHours(5), "UPSv2", "1Z0000000000000001")), AHORA);
+                new SincroShippyPro.MarcaEnvio(9, AHORA.minusHours(5), "UPSv2", "1Z0000000000000001", null, null),
+                new SincroShippyPro.MarcaEnvio(8, AHORA.minusHours(5), "UPSv2", "1Z0000000000000001", null, null)), AHORA);
         // Sin esperar a las dos lecturas: la primera ya cierra por envio; el cierre por ausencia sigue pendiente de confirmar.
         verify(dao).cerrar(eq(List.of()), any());
         verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), eq(Set.of()), isNull(), eq(AHORA));
     }
 
+    @Test void alMarcarSeGuardanElIdDelEnvioYLaImpresion() throws Exception {
+        unPedidoBien();
+        when(shippy.enviados(any(), any())).thenReturn(List.of(new ClienteShippyPro.EnvioShippyPro("402-0000000-0000099", "100",
+                AHORA.minusHours(5), "UPSv2", "1Z0000000000000001", 4321L, AHORA.minusHours(1))));
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(viva(9, "402-0000000-0000099")));
+
+        lectura("100:AMAZON").pasada();
+
+        verify(dao).marcarEnviadas(List.of(new SincroShippyPro.MarcaEnvio(9, AHORA.minusHours(5), "UPSv2", "1Z0000000000000001",
+                4321L, AHORA.minusHours(1))), AHORA);
+    }
+
+    @Test void unaFilaYaEnviadaSinImprimirSeCompletaEnUnaVueltaPosteriorEnUnaSolaConsulta() throws Exception {
+        unPedidoBien();
+        when(shippy.enviados(any(), any())).thenReturn(List.of(new ClienteShippyPro.EnvioShippyPro("402-0000000-0000099", "100",
+                AHORA.minusDays(4), "UPSv2", "1Z0000000000000001", 4321L, AHORA.minusHours(1))));
+        FilaPedido yaEnviada = new FilaPedido(9, LocalDate.of(2026, 11, 6), "AMZ", "i13128AzulA", null, "402-0000000-0000099",
+                LocalDate.of(2026, 11, 6), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(4), AHORA.minusDays(4), "UPSv2",
+                "1Z0000000000000001", null, 4321L, null);
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(yaEnviada));
+
+        lectura("100:AMAZON").pasada();
+
+        verify(dao, times(1)).porMarcarDeShippyPro(any());
+        verify(dao).marcarEnviadas(List.of(), AHORA);
+        verify(dao).marcarEtiquetas(List.of(new SincroShippyPro.MarcaEtiqueta(9, null, AHORA.minusHours(1))));
+    }
+
     @Test void marcarEnviosVaAntesQueCerrar() throws Exception {
         unPedidoBien();
         when(shippy.enviados(any(), any())).thenReturn(List.of(envio("402-0000000-0000099", "100", 5)));
-        when(dao.sinEnvioDeShippyPro(any())).thenReturn(List.of(viva(9, "402-0000000-0000099")));
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(viva(9, "402-0000000-0000099")));
         lectura("100:AMAZON").pasada();
         InOrder orden = inOrder(dao);
         orden.verify(dao).insertar(any());
@@ -174,7 +202,7 @@ class LecturaFilasTest {
     @Test void unPedidoPendienteEnEstaVueltaNoSeMarcaAunqueFigureComoEnviado() throws Exception {
         unPedidoBien();
         when(shippy.enviados(any(), any())).thenReturn(List.of(envio("402-0000000-0000011", "100", 5)));
-        when(dao.sinEnvioDeShippyPro(any())).thenReturn(List.of(viva(7, "402-0000000-0000011")));
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(viva(7, "402-0000000-0000011")));
 
         lectura("100:AMAZON").pasada();
 
@@ -187,7 +215,7 @@ class LecturaFilasTest {
 
         lectura("100:AMAZON").pasada();
 
-        verify(dao, never()).sinEnvioDeShippyPro(any());
+        verify(dao, never()).porMarcarDeShippyPro(any());
         verify(dao).marcarEnviadas(List.of(), AHORA);
     }
 
@@ -198,7 +226,7 @@ class LecturaFilasTest {
         lectura("100:AMAZON").pasada();
 
         verify(dao).insertar(argThat(l -> l.size() == 1));
-        verify(dao, never()).sinEnvioDeShippyPro(any());
+        verify(dao, never()).porMarcarDeShippyPro(any());
         verify(dao).marcarEnviadas(List.of(), AHORA);
         verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), eq(Set.of()),
                 argThat(m -> m.contains("no se pudieron leer los envíos") && !m.contains("secreta")), eq(AHORA));

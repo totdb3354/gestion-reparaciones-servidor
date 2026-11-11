@@ -137,10 +137,15 @@ public class ClienteShippyPro {
         return new Leidos(pedidos, descartados);
     }
 
-    /** Un envio ya hecho: solo lo que el ERP guarda (pedido, marketplace, fecha de creacion en hora de Madrid, transportista y
-     *  seguimiento). Nada del cliente. */
+    /** Un envio ya hecho: solo lo que el ERP guarda (pedido, marketplace, fecha de creacion en hora de Madrid, transportista,
+     *  seguimiento, id del envio en ShippyPro y cuando se imprimio su etiqueta, nulo si no). Nada del cliente. */
     public record EnvioShippyPro(String numero, String marketplace, LocalDateTime fecha, String transportista,
-                                 String seguimiento) {}
+                                 String seguimiento, Long idEnvio, LocalDateTime impresaEn) {
+        /** Un envio sin id ni impresion conocidos. */
+        public EnvioShippyPro(String numero, String marketplace, LocalDateTime fecha, String transportista, String seguimiento) {
+            this(numero, marketplace, fecha, transportista, seguimiento, null, null);
+        }
+    }
 
     /** Los pedidos enviados con fecha de envio entre {@code desde} y {@code hasta} (GetShippedOrders, solo lectura). Los que no
      *  traen numero de pedido o fecha valida se saltan. */
@@ -153,9 +158,32 @@ public class ClienteShippyPro {
             LocalDateTime fecha = fechaUnix(o.path("created_at").asText(""));
             if (numero.isEmpty() || fecha == null) continue;
             envios.add(new EnvioShippyPro(numero, o.path("marketplace_id").asText("").strip(), fecha,
-                    vacioANulo(o.path("carrier_name").asText("")), vacioANulo(o.path("tracking_code").asText(""))));
+                    vacioANulo(o.path("carrier_name").asText("")), vacioANulo(o.path("tracking_code").asText("")),
+                    idEnvio(o.path("ordine_id").asText("")), impresaEn(o, fecha)));
         }
         return envios;
+    }
+
+    /** El id del envio (entero o texto con cifras); null si no es un entero positivo. */
+    private static Long idEnvio(String texto) {
+        try {
+            long id = new BigDecimal(texto.strip()).longValueExact();
+            return id > 0 ? id : null;
+        } catch (ArithmeticException | NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Cuando se imprimio la etiqueta: null si {@code is_printed} no es 1; si lo es, {@code printed_at} y, sin una fecha valida,
+     *  la del envio. */
+    private static LocalDateTime impresaEn(JsonNode o, LocalDateTime fechaEnvio) {
+        try {
+            if (new BigDecimal(o.path("is_printed").asText("").strip()).compareTo(BigDecimal.ONE) != 0) return null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        LocalDateTime impresa = fechaUnix(o.path("printed_at").asText(""));
+        return impresa != null ? impresa : fechaEnvio;
     }
 
     /** Segundos Unix (con decimales o no) a hora de Madrid; null si el texto no es una fecha valida. */

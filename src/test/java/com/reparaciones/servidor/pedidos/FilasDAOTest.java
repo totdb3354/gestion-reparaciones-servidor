@@ -25,7 +25,7 @@ class FilasDAOTest {
 
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 11, 10, 10, 0);
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
-            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN FROM Pedido_fila";
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -120,29 +120,45 @@ class FilasDAOTest {
                 any(RowMapper.class), eq(java.sql.Date.valueOf("2026-09-11")));
     }
 
-    @Test void sinEnvioDeShippyProPideLasFilasSinFechaDeEnvioVivasOCerradasDeEsosPedidos() {
-        dao.sinEnvioDeShippyPro(List.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011"),
+    @Test void porMarcarDeShippyProPideLasFilasSinEnvioSinIdOSinImpresionVivasOCerradasDeEsosPedidos() {
+        dao.porMarcarDeShippyPro(List.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011"),
                 new SincroShippyPro.ClavePedido(Canal.PARTICULARES, "W-1")));
-        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIO_FECHA IS NULL AND ((CANAL = ? AND PEDIDO = ?) OR (CANAL = ? AND PEDIDO = ?))"),
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND (ENVIO_FECHA IS NULL OR IMPRESA_EN IS NULL OR ENVIO_ID IS NULL) AND ((CANAL = ? AND PEDIDO = ?) OR (CANAL = ? AND PEDIDO = ?))"),
                 any(RowMapper.class), eq("AMAZON"), eq("402-0000000-0000011"), eq("PARTICULARES"), eq("W-1"));
     }
 
-    @Test void sinEnvioDeShippyProSinPedidosNoToca() {
-        assertTrue(dao.sinEnvioDeShippyPro(List.of()).isEmpty());
+    @Test void porMarcarDeShippyProSinPedidosNoToca() {
+        assertTrue(dao.porMarcarDeShippyPro(List.of()).isEmpty());
         verifyNoInteractions(jdbc);
     }
 
     @Test void marcarEnviadasPoneElEnvioYCierraSoloLasVivasEnUnLoteCortandoLosTextos() {
         dao.marcarEnviadas(List.of(
-                new SincroShippyPro.MarcaEnvio(4, LocalDateTime.of(2026, 11, 9, 18, 0), "UPSv2", "1Z0000000000000001"),
-                new SincroShippyPro.MarcaEnvio(5, LocalDateTime.of(2026, 11, 9, 19, 0), "t".repeat(60), null)), AHORA);
+                new SincroShippyPro.MarcaEnvio(4, LocalDateTime.of(2026, 11, 9, 18, 0), "UPSv2", "1Z0000000000000001", 77L,
+                        LocalDateTime.of(2026, 11, 9, 20, 0)),
+                new SincroShippyPro.MarcaEnvio(5, LocalDateTime.of(2026, 11, 9, 19, 0), "t".repeat(60), null, null, null)), AHORA);
         ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
         verify(jdbc).batchUpdate(eq("UPDATE Pedido_fila SET ENVIO_FECHA = ?, TRANSPORTISTA = ?, SEGUIMIENTO = ?,"
-                + " CERRADA_EN = COALESCE(CERRADA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL"), lote.capture());
+                + " CERRADA_EN = COALESCE(CERRADA_EN, ?), ENVIO_ID = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL"), lote.capture());
         assertArrayEquals(new Object[]{Timestamp.valueOf("2026-11-09 18:00:00"), "UPSv2", "1Z0000000000000001",
-                Timestamp.valueOf(AHORA), 4}, lote.getValue().get(0));
+                Timestamp.valueOf(AHORA), 77L, Timestamp.valueOf("2026-11-09 20:00:00"), 4}, lote.getValue().get(0));
         assertArrayEquals(new Object[]{Timestamp.valueOf("2026-11-09 19:00:00"), "t".repeat(40), null,
-                Timestamp.valueOf(AHORA), 5}, lote.getValue().get(1));
+                Timestamp.valueOf(AHORA), null, null, 5}, lote.getValue().get(1));
+    }
+
+    @Test void marcarEtiquetasCompletaElIdYLaImpresionEnUnLoteSinBorrarLoYaPuesto() {
+        dao.marcarEtiquetas(List.of(new SincroShippyPro.MarcaEtiqueta(4, 77L, LocalDateTime.of(2026, 11, 9, 20, 0)),
+                new SincroShippyPro.MarcaEtiqueta(5, null, LocalDateTime.of(2026, 11, 9, 21, 0))));
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq("UPDATE Pedido_fila SET ENVIO_ID = COALESCE(ENVIO_ID, ?),"
+                + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL"), lote.capture());
+        assertArrayEquals(new Object[]{77L, Timestamp.valueOf("2026-11-09 20:00:00"), 4}, lote.getValue().get(0));
+        assertArrayEquals(new Object[]{null, Timestamp.valueOf("2026-11-09 21:00:00"), 5}, lote.getValue().get(1));
+    }
+
+    @Test void marcarEtiquetasSinNadaNoToca() {
+        dao.marcarEtiquetas(List.of());
+        verifyNoInteractions(jdbc);
     }
 
     @Test void marcarEnviadasSinNadaNoToca() {
@@ -263,7 +279,7 @@ class FilasDAOTest {
         dao.reabrir(ids, AHORA);
         ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
         verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL, SEGUIMIENTO = NULL,"
-                + " REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
+                + " ENVIO_ID = NULL, IMPRESA_EN = NULL, REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
         assertEquals(501, args.getAllValues().get(0).length, "la hora y 500 ids");
         assertEquals(Timestamp.valueOf(AHORA), args.getAllValues().get(0)[0]);
         assertEquals(2, args.getAllValues().get(1).length, "la hora y 1 id");

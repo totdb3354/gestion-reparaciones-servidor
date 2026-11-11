@@ -83,8 +83,76 @@ class SincroShippyProTest {
                 List.of(envio("402-0000000-0000011", "100", 9, "1Z0000000000000001")), CANALES, Set.of(),
                 List.of(viva(1, Canal.AMAZON, "402-0000000-0000011", 1), cerrada(2, Canal.AMAZON, "402-0000000-0000011", 2)));
         assertEquals(List.of(
-                new SincroShippyPro.MarcaEnvio(1, LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "1Z0000000000000001"),
-                new SincroShippyPro.MarcaEnvio(2, LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "1Z0000000000000001")), m);
+                new SincroShippyPro.MarcaEnvio(1, LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "1Z0000000000000001", null, null),
+                new SincroShippyPro.MarcaEnvio(2, LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "1Z0000000000000001", null, null)), m);
+    }
+
+    private static ClienteShippyPro.EnvioShippyPro envioImpreso(String numero, int dia, Long id, LocalDateTime impresaEn) {
+        return new ClienteShippyPro.EnvioShippyPro(numero, "100", LocalDateTime.of(2026, 11, dia, 12, 0), "UPSv2", "x", id, impresaEn);
+    }
+
+    private static FilaPedido enviadaCon(int id, String pedido, Long envioId, LocalDateTime impresaEn) {
+        return new FilaPedido(id, HOY, "AMZ", "i13128AzulA", null, pedido, HOY, "SHIPPYPRO", Canal.AMAZON, 1, HOY.atStartOfDay(),
+                LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "x", null, envioId, impresaEn);
+    }
+
+    @Test void alMarcarUnEnvioSeGuardanElIdYLaImpresion() {
+        LocalDateTime imp = LocalDateTime.of(2026, 11, 9, 13, 0);
+        List<SincroShippyPro.MarcaEnvio> m = SincroShippyPro.marcarEnviadas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 777L, imp), envioImpreso("402-0000000-0000012", 9, 778L, null)),
+                CANALES, Set.of(), List.of(viva(1, Canal.AMAZON, "402-0000000-0000011", 1),
+                        viva(2, Canal.AMAZON, "402-0000000-0000012", 1)));
+        assertEquals(777L, m.get(0).envioId());
+        assertEquals(imp, m.get(0).impresaEn());
+        assertEquals(778L, m.get(1).envioId());
+        assertNull(m.get(1).impresaEn());
+    }
+
+    @Test void unaFilaYaEnviadaSinImprimirPasaAImpresaEnUnaVueltaPosterior() {
+        LocalDateTime imp = LocalDateTime.of(2026, 11, 9, 15, 0);
+        List<SincroShippyPro.MarcaEtiqueta> m = SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 777L, imp)), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", 777L, null)));
+        assertEquals(List.of(new SincroShippyPro.MarcaEtiqueta(1, null, imp)), m);
+    }
+
+    @Test void unaFilaEnviadaSinIdDeEnvioLoRecibeAunqueLaEtiquetaNoEsteImpresa() {
+        List<SincroShippyPro.MarcaEtiqueta> m = SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 777L, null)), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", null, null)));
+        assertEquals(List.of(new SincroShippyPro.MarcaEtiqueta(1, 777L, null)), m);
+    }
+
+    @Test void loYaImpresoNoSeTocaNiSeMezclaConOtraExpedicion() {
+        LocalDateTime antes = LocalDateTime.of(2026, 11, 9, 14, 0);
+        // ya tiene id e impresion: nada que completar
+        assertTrue(SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 777L, antes.plusHours(1))), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", 777L, antes))).isEmpty());
+        // ShippyPro ya no la da por impresa (is_printed 0): no se borra nada
+        assertTrue(SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 777L, null)), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", 777L, antes))).isEmpty());
+        // la fila guarda el id de otra expedicion: no se le pone la impresion de esta
+        assertTrue(SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 10, 999L, antes)), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", 777L, null))).isEmpty());
+    }
+
+    @Test void completarEtiquetasIgnoraFilasSinEnvioPendientesYEnviosDeOtroCanalOAnterioresALaReapertura() {
+        LocalDateTime imp = LocalDateTime.of(2026, 11, 9, 15, 0);
+        List<ClienteShippyPro.EnvioShippyPro> envios = List.of(envioImpreso("402-0000000-0000011", 9, 777L, imp),
+                envioImpreso("402-0000000-0000012", 9, 778L, imp));
+        Set<SincroShippyPro.ClavePedido> pendientes = Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000012"));
+        assertTrue(SincroShippyPro.completarEtiquetas(envios, CANALES, pendientes, List.of(
+                viva(1, Canal.AMAZON, "402-0000000-0000011", 1), // sin envio: es de marcarEnviadas
+                enviadaCon(2, "402-0000000-0000012", null, null), // sigue pendiente
+                enviadaCon(3, "402-0000000-0000099", null, null), // sin envio leido
+                new FilaPedido(4, HOY, "AMZ", "i13128AzulA", null, "402-0000000-0000011", HOY, "SHIPPYPRO", Canal.PARTICULARES, 1,
+                        HOY.atStartOfDay(), LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "x", null, null, null), // otro canal
+                new FilaPedido(5, HOY, "AMZ", "i13128AzulA", null, "402-0000000-0000011", HOY, "SHIPPYPRO", Canal.AMAZON, 1,
+                        HOY.atStartOfDay(), LocalDateTime.of(2026, 11, 9, 12, 0), "UPSv2", "x",
+                        LocalDateTime.of(2026, 11, 9, 13, 0), null, null))).isEmpty()); // envio anterior a la reapertura
     }
 
     @Test void noSeMarcaUnaFilaQueYaTieneEnvioNiUnPedidoQueSigueEntreLosPendientes() {
