@@ -65,6 +65,33 @@ final class TarjetasNsys {
         return m.location() == null || m.location().isBlank() ? null : m.location();
     }
 
+    /** «Fuera de su caja» (spec §3): de los móviles en la empresa, los de estado STOCK o NO_CUENTA (un de pedido, no) cuyo grado
+     *  que vale (NSYS con lo del taller vigente, sin el «100») es F, FD o RMA, que no están en la caja de su grado y que no tienen
+     *  ningún trabajo abierto del taller. {@code vigentes} y {@code abiertos}, por {@link NsysDAO#claveCruce}. Por la caja que
+     *  toca (el orden de {@link EstadoMovil#CAJA_DE_GRADO}), dentro por la caja de hoy (sin caja al final) y por IMEI. */
+    static List<FilaCajaNsys> cajas(List<MovilNsys> enEmpresa, Map<String, List<CambioTaller>> vigentes,
+                                    Map<String, List<TrabajoAbierto>> abiertos) {
+        List<String> orden = List.copyOf(EstadoMovil.CAJA_DE_GRADO.values());
+        List<FilaCajaNsys> filas = new ArrayList<>();
+        for (MovilNsys m : enEmpresa) {
+            if (m.estado() != EstadoMovil.STOCK && m.estado() != EstadoMovil.NO_CUENTA) continue;
+            String clave = NsysDAO.claveCruce(m.imeiSn());
+            List<CambioTaller> suyos = vigentes.getOrDefault(clave, List.of());
+            String grade = LoQueVale.valor(suyos, DatoTaller.GRADO, m);
+            String grado = Normalizacion.gradoSinBateria(grade).strip();
+            Optional<String> toca = EstadoMovil.cajaQueToca(grado, m.location());
+            if (toca.isEmpty() || !abiertos.getOrDefault(clave, List.of()).isEmpty()) continue;
+            filas.add(new FilaCajaNsys(m.imeiSn(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.esEsim(),
+                    LoQueVale.valor(suyos, DatoTaller.COLOR, m), grado, LoQueVale.siCambia(grade, m.grade()), caja(m),
+                    m.ubicacion(), toca.get()));
+        }
+        filas.sort(Comparator.comparingInt((FilaCajaNsys f) -> orden.indexOf(f.cajaQueToca()))
+                .thenComparing(f -> f.caja() == null)
+                .thenComparing(f -> f.caja() == null ? "" : f.caja())
+                .thenComparing(FilaCajaNsys::imeiSn));
+        return filas;
+    }
+
     static List<FilaColorNsys> color(List<TallerNsys.MovilPorPasar> moviles, Map<String, HechoTaller> marcas) {
         return color(moviles, marcas, Map.of());
     }

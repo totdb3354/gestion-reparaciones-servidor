@@ -89,6 +89,23 @@ class PorPasarNsysTest {
         verify(descartes, never()).todos();
     }
 
+    @Test void lasTarjetasLlevanLosQueEstanFueraDeSuCaja() {
+        MovilNsys rma = new MovilNsys(IMEI, "BT-9001", "Apple iPhone 13 128GB Blue", "RMA", "Available", "CAJA REP. OFICINA",
+                "Proveedor A", LocalDate.of(2026, 10, 1), null, null, "13", "13", "128GB", "Azul", "RMA", false,
+                "Taller · Reparación", "Taller · Reparación", EstadoMovil.STOCK, AHORA.minusDays(20), AHORA.minusDays(1));
+        MovilNsys conTrabajo = new MovilNsys("350000000000002", "BT-9001", "Apple iPhone 13 128GB Blue", "F", "Available",
+                "CAJA REP. OFICINA", "Proveedor A", LocalDate.of(2026, 10, 1), null, null, "13", "13", "128GB", "Azul", "F", false,
+                "Taller · Reparación", "Taller · Reparación", EstadoMovil.STOCK, AHORA.minusDays(20), AHORA.minusDays(1));
+        when(nsys.clavesDelEspejo()).thenReturn(Set.of(IMEI, "350000000000002"));
+        when(nsys.imeisDelTaller()).thenReturn(List.of(IMEI, "350000000000002"));
+        when(nsys.enEmpresa()).thenReturn(List.of(rma, conTrabajo));
+        when(nsys.trabajosAbiertos()).thenReturn(Map.of("350000000000002",
+                List.of(new TrabajoAbierto("REPARACION", "Técnico 2", AHORA.minusHours(2), null))));
+        TarjetasPorPasar t = servicio.tarjetas();
+        assertEquals(List.of(IMEI), t.cajas().stream().map(FilaCajaNsys::imeiSn).toList());
+        assertEquals("Funcionalidad pendiente", t.cajas().get(0).cajaQueToca());
+    }
+
     @Test void marcarLimpiaLosImeisYPoneLaHoraDeMadrid() {
         servicio.marcar("GRADO", List.of(" 350000000000001 ", IMEI, "350000000000002"), 7);
         verify(hechos).marcar(TarjetaHecho.GRADO, List.of(IMEI, "350000000000002"), 7, AHORA);
