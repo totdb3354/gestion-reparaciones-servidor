@@ -179,6 +179,45 @@ class FilasDAOTest {
         assertEquals(500, ((String) texto.getValue()).length());
     }
 
+    @Test void cerradasDeShippyProPideLasCerradasDeEsosPedidosPorCanalYNumero() {
+        dao.cerradasDeShippyPro(List.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011"),
+                new SincroShippyPro.ClavePedido(Canal.PARTICULARES, "W-1")));
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIADA_EN IS NOT NULL AND ((CANAL = ? AND PEDIDO = ?) OR (CANAL = ? AND PEDIDO = ?))"),
+                any(RowMapper.class), eq("AMAZON"), eq("402-0000000-0000011"), eq("PARTICULARES"), eq("W-1"));
+    }
+
+    @Test void cerradasDeShippyProSinPedidosNoToca() {
+        assertTrue(dao.cerradasDeShippyPro(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void reabrirPoneEnviadaEnANuloEnTandasDe500() {
+        List<Integer> ids = new ArrayList<>();
+        for (int i = 1; i <= 501; i++) ids.add(i);
+        dao.reabrir(ids);
+        ArgumentCaptor<Object[]> args = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc, times(2)).update(startsWith("UPDATE Pedido_fila SET ENVIADA_EN = NULL WHERE ENVIADA_EN IS NOT NULL AND ID_FILA IN (?"), args.capture());
+        assertEquals(500, args.getAllValues().get(0).length);
+        assertEquals(1, args.getAllValues().get(1).length);
+    }
+
+    @Test void reabrirSinIdsNoToca() {
+        dao.reabrir(List.of());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void ultimaLecturaSinResultadosNoPreguntaYDaVacio() {
+        assertTrue(dao.ultimaLectura(Set.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void ponerImeiVaEnReadCommitted() throws Exception {
+        var m = FilasDAO.class.getMethod("ponerImei", int.class, String.class, Integer.class, LocalDateTime.class);
+        var t = m.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+        assertNotNull(t);
+        assertEquals(org.springframework.transaction.annotation.Isolation.READ_COMMITTED, t.isolation());
+    }
+
     @Test void ultimaLecturaFiltraPorResultados() {
         dao.ultimaLectura(Set.of("OK"));
         verify(jdbc).query(contains("FROM Pedido_lectura WHERE RESULTADO IN (?) ORDER BY ID_LECTURA DESC LIMIT 1"), any(RowMapper.class), eq("OK"));

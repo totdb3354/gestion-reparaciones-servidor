@@ -32,8 +32,53 @@ class SincroShippyProTest {
         return new FilaPedido(id, HOY, "AMZ", "i13128AzulA", null, pedido, HOY, "SHIPPYPRO", canal, posicion, null);
     }
 
+    private static FilaPedido cerrada(int id, Canal canal, String pedido, int posicion) {
+        return new FilaPedido(id, HOY, "AMZ", "i13128AzulA", "350000000000001", pedido, HOY, "SHIPPYPRO", canal, posicion,
+                HOY.atStartOfDay());
+    }
+
     private static SincroShippyPro.Plan plan(List<PedidoShippyPro> pendientes, List<FilaPedido> vivas) {
-        return SincroShippyPro.de(pendientes, CANALES, ACEPTA, vivas, HOY);
+        return SincroShippyPro.de(pendientes, CANALES, ACEPTA, vivas, List.of(), HOY);
+    }
+
+    private static SincroShippyPro.Plan plan(List<PedidoShippyPro> pendientes, List<FilaPedido> vivas, List<FilaPedido> cerradas) {
+        return SincroShippyPro.de(pendientes, CANALES, ACEPTA, vivas, cerradas, HOY);
+    }
+
+    @Test void unaFilaCerradaDeUnPedidoPendienteSeReabreYNoSeInserta() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("402-0000000-0000011", "100", null, art("i13128AzulA", 1))), List.of(),
+                List.of(cerrada(4, Canal.AMAZON, "402-0000000-0000011", 1)));
+        assertEquals(List.of(4), p.reabrir());
+        assertTrue(p.insertar().isEmpty());
+        assertTrue(p.cerrar().isEmpty());
+    }
+
+    @Test void unaPosicionNuevaDeUnPedidoConFilaCerradaSeInsertaYLaCerradaSeReabre() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("402-0000000-0000011", "100", null, art("i13128AzulA", 2))), List.of(),
+                List.of(cerrada(4, Canal.AMAZON, "402-0000000-0000011", 1)));
+        assertEquals(List.of(4), p.reabrir());
+        assertEquals(List.of(2), p.insertar().stream().map(FilaPedido::posicion).toList());
+    }
+
+    @Test void unaFilaCerradaDeOtroCanalOPedidoNoSeReabre() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("402-0000000-0000011", "100", null, art("i13128AzulA", 1))), List.of(),
+                List.of(cerrada(4, Canal.PARTICULARES, "402-0000000-0000011", 1), cerrada(5, Canal.AMAZON, "402-0000000-0000012", 1)));
+        assertTrue(p.reabrir().isEmpty());
+        assertEquals(1, p.insertar().size());
+    }
+
+    @Test void clavesPendientesNormalizaElNumeroYSaltaLosDeCanalDesconocido() {
+        assertEquals(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011")),
+                SincroShippyPro.clavesPendientes(List.of(
+                        pedido(" 402-0000000-0000011 ", "100", null, art("i13128AzulA", 1)),
+                        pedido("402-0000000-0000012", "999", null, art("i13128AzulA", 1)),
+                        pedido(" ", "100", null, art("i13128AzulA", 1))), CANALES));
+    }
+
+    @Test void unaLineaConMuchasUnidadesSeCortaA50() {
+        SincroShippyPro.Plan p = plan(List.of(pedido("402-0000000-0000011", "100", null, art("i13128AzulA", 1_000_000))), List.of());
+        assertEquals(SincroShippyPro.MAX_UNIDADES, p.insertar().size());
+        assertEquals(50, SincroShippyPro.MAX_UNIDADES);
     }
 
     @Test void unMarketplaceFueraDelAjusteSeIgnora() {

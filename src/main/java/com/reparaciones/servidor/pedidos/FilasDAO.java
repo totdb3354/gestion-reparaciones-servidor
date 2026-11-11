@@ -33,9 +33,11 @@ public class FilasDAO {
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, ENVIADA_EN"
             + " FROM Pedido_fila";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIADA_EN IS NULL ORDER BY FECHA, ID_FILA";
+    static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND ENVIADA_EN IS NOT NULL AND (%s)";
     static final String SQL_INSERTAR = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION)"
             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_CERRAR = "UPDATE Pedido_fila SET ENVIADA_EN = ? WHERE ENVIADA_EN IS NULL AND ID_FILA IN (%s)";
+    static final String SQL_REABRIR = "UPDATE Pedido_fila SET ENVIADA_EN = NULL WHERE ENVIADA_EN IS NOT NULL AND ID_FILA IN (%s)";
     static final String SQL_DEL_PERIODO = SQL_FILAS + " WHERE (FECHA BETWEEN ? AND ?) OR ENVIADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. */
     static final String SQL_BUSCAR = SQL_FILAS + " WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
@@ -64,6 +66,21 @@ public class FilasDAO {
         return jdbc.query(SQL_VIVAS_SHIPPYPRO, FilasDAO::fila);
     }
 
+    /** Las filas cerradas de origen ShippyPro de esos pedidos (canal y numero), en tandas. */
+    public List<FilaPedido> cerradasDeShippyPro(Collection<SincroShippyPro.ClavePedido> pedidos) {
+        List<FilaPedido> filas = new ArrayList<>();
+        for (List<SincroShippyPro.ClavePedido> tanda : trozos(List.copyOf(pedidos))) {
+            List<Object> args = new ArrayList<>();
+            for (SincroShippyPro.ClavePedido c : tanda) {
+                args.add(c.canal().name());
+                args.add(c.pedido());
+            }
+            String condicion = String.join(" OR ", Collections.nCopies(tanda.size(), "(CANAL = ? AND PEDIDO = ?)"));
+            filas.addAll(jdbc.query(String.format(SQL_CERRADAS_SHIPPYPRO, condicion), FilasDAO::fila, args.toArray()));
+        }
+        return filas;
+    }
+
     /** Inserta las filas nuevas (el id del record se ignora), con los textos cortados a los anchos del DDL. */
     public void insertar(List<FilaPedido> nuevas) {
         if (nuevas.isEmpty()) return;
@@ -84,6 +101,12 @@ public class FilasDAO {
             args.addAll(tanda);
             jdbc.update(String.format(SQL_CERRAR, marcas(tanda.size())), args.toArray());
         }
+    }
+
+    /** Vuelve a dejar vivas (sin hora de envio) las filas indicadas, con su IMEI intacto; las que ya lo estaban no se tocan. */
+    public void reabrir(Collection<Integer> ids) {
+        for (List<Integer> tanda : trozos(List.copyOf(ids)))
+            jdbc.update(String.format(SQL_REABRIR, marcas(tanda.size())), tanda.toArray());
     }
 
     /** Las filas con FECHA entre las dos fechas y, sea cual sea su fecha, las vivas; en orden de hoja. */
@@ -156,6 +179,7 @@ public class FilasDAO {
     }
 
     public Optional<LecturaGuardada> ultimaLectura(Set<String> resultados) {
+        if (resultados.isEmpty()) return Optional.empty();
         return jdbc.query(String.format(SQL_ULTIMA_LECTURA, marcas(resultados.size())), FilasDAO::lectura, resultados.toArray())
                 .stream().findFirst();
     }

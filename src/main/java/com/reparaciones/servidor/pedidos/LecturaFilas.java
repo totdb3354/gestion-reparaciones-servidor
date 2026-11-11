@@ -12,13 +12,16 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
-/** Una vuelta de lectura de ShippyPro: crea las filas de los pedidos nuevos y cierra las de los que ya no estan pendientes
- *  ({@link SincroShippyPro}). Si la lectura falla o falta el ajuste de canales no se cierra nada. */
+/** Una vuelta de lectura de ShippyPro: crea las filas de los pedidos nuevos, reabre las cerradas de los que vuelven a estar
+ *  pendientes y cierra las de los que ya no lo estan ({@link SincroShippyPro}). Una fila solo se cierra si su pedido falta en
+ *  dos lecturas buenas seguidas; si la lectura falla, falta el ajuste de canales o ShippyPro trajo pedidos que no se pudieron
+ *  leer, no se cierra nada. */
 @Service
 public class LecturaFilas {
 
@@ -34,6 +37,8 @@ public class LecturaFilas {
     private final Map<String, Canal> canales;
     private final Clock clock;
     private final ReentrantLock enCurso = new ReentrantLock();
+    /** Filas vivas cuyo pedido falto en la ultima lectura buena (solo en memoria: tras reiniciar, la primera lectura no cierra). */
+    private Set<Integer> candidatasAntes = Set.of();
 
     @Autowired
     public LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao,
@@ -98,13 +103,28 @@ public class LecturaFilas {
             leidos.pedidos().forEach(p -> p.articulos().forEach(a -> skus.add(a.sku())));
             Set<String> todos = AceptaSku.conVariantes(skus);
             AceptaSku acepta = new AceptaSku(todos.isEmpty() ? List.of() : nsysDao.productosPorSkuDeCanal(todos));
-            SincroShippyPro.Plan plan = SincroShippyPro.de(leidos.pedidos(), canales, acepta, dao.vivasDeShippyPro(),
+            List<FilaPedido> vivas = dao.vivasDeShippyPro();
+            Set<SincroShippyPro.ClavePedido> claves = SincroShippyPro.clavesPendientes(leidos.pedidos(), canales);
+            List<FilaPedido> cerradas = claves.isEmpty() ? List.of() : dao.cerradasDeShippyPro(claves);
+            SincroShippyPro.Plan plan = SincroShippyPro.de(leidos.pedidos(), canales, acepta, vivas, cerradas,
                     LocalDateTime.now(clock).toLocalDate());
-            // Sin transaccion conjunta: primero se inserta y despues se cierra; si falla en medio, la siguiente vuelta lo rehace.
+            // Cerrar solo lo que falta en dos lecturas buenas seguidas. Con pedidos descartados (sin fecha valida) no se puede
+            // saber cuales de las filas ausentes son suyos: no se cierra nada.
+            boolean hayDescartados = !leidos.descartados().isEmpty();
+            List<Integer> cerrar = new ArrayList<>();
+            if (!hayDescartados) for (Integer fila : plan.cerrar()) if (candidatasAntes.contains(fila)) cerrar.add(fila);
+            // Sin transaccion conjunta: se inserta, se reabre y despues se cierra; si falla en medio, la siguiente vuelta lo rehace.
             dao.insertar(plan.insertar());
-            dao.cerrar(plan.cerrar(), LocalDateTime.now(clock));
-            String aviso = leidos.descartados().isEmpty() ? null
-                    : "Pedidos sin fecha valida, saltados: " + String.join(", ", leidos.descartados());
+            dao.reabrir(plan.reabrir());
+            dao.cerrar(cerrar, LocalDateTime.now(clock));
+            candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
+            List<String> avisos = new ArrayList<>();
+            if (!plan.reabrir().isEmpty()) avisos.add(plan.reabrir().size() + " filas reabiertas");
+            if (hayDescartados) avisos.add("Pedidos sin fecha valida, saltados (no se cierra nada): "
+                    + String.join(", ", leidos.descartados()));
+            if (leidos.pedidos().isEmpty() && !vivas.isEmpty())
+                avisos.add("ShippyPro no trae pendientes y hay " + vivas.size() + " filas vivas");
+            String aviso = avisos.isEmpty() ? null : String.join("; ", avisos);
             dao.terminarLectura(id, OK, leidos.pedidos().size(), plan.desconocidos(), aviso, LocalDateTime.now(clock));
         } catch (RuntimeException e) {
             log.error("Pedidos: no se pudo guardar la vuelta", e);
@@ -115,6 +135,7 @@ public class LecturaFilas {
 
     /** Cierra la lectura sin dejar escapar un fallo de la base de datos: la tarea programada no debe morir por esto. */
     private void terminar(int id, String resultado, int filas, Set<String> desconocidos, String mensaje, LocalDateTime fin) {
+        candidatasAntes = Set.of(); // tras un fallo o un rechazo la lectura anterior ya no cuenta como «seguida»
         try {
             dao.terminarLectura(id, resultado, filas, desconocidos, mensaje, fin);
         } catch (RuntimeException e) {

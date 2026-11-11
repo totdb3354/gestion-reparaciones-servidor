@@ -51,9 +51,83 @@ class LecturaFilasTest {
 
         verify(dao).insertar(argThat(l -> l.size() == 1 && l.get(0).pedido().equals("402-0000000-0000011")
                 && l.get(0).fecha().equals(LocalDate.of(2026, 11, 10))));
-        verify(dao).cerrar(List.of(9), AHORA);
+        verify(dao).cerrar(List.of(), AHORA); // la primera lectura buena no cierra: falta confirmarlo con la siguiente
         verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), eq(Set.of()), isNull(), eq(AHORA));
         verify(dao).podarLecturas(AHORA.minusDays(30));
+    }
+
+    @Test void unaFilaSeCierraAlFaltarEnDosLecturasBuenasSeguidas() throws Exception {
+        unPedidoBien();
+        LecturaFilas l = lectura("100:AMAZON");
+        l.pasada();
+        l.pasada();
+        InOrder orden = inOrder(dao);
+        orden.verify(dao).cerrar(eq(List.of()), any());
+        orden.verify(dao).cerrar(eq(List.of(9)), any());
+    }
+
+    @Test void ausentePresenteAusenteNoCierra() throws Exception {
+        unPedidoBien();
+        LecturaFilas l = lectura("100:AMAZON");
+        l.pasada();
+        when(dao.vivasDeShippyPro()).thenReturn(List.of(viva(9, "402-0000000-0000011")));
+        l.pasada();
+        when(dao.vivasDeShippyPro()).thenReturn(List.of(viva(9, "402-0000000-0000099")));
+        l.pasada();
+        verify(dao, never()).cerrar(eq(List.of(9)), any());
+    }
+
+    @Test void unErrorEntreLasDosLecturasReiniciaLaConfirmacion() throws Exception {
+        unPedidoBien();
+        LecturaFilas l = lectura("100:AMAZON");
+        l.pasada();
+        when(shippy.pendientes()).thenThrow(new IOException("x"));
+        l.pasada();
+        doReturn(new ClienteShippyPro.Leidos(List.of(pedido("402-0000000-0000011")), List.of())).when(shippy).pendientes();
+        l.pasada();
+        verify(dao, never()).cerrar(eq(List.of(9)), any());
+    }
+
+    @Test void unaLecturaConPedidosDescartadosNoCierraNiConfirmaNada() throws Exception {
+        unPedidoBien();
+        LecturaFilas l = lectura("100:AMAZON");
+        l.pasada();
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(pedido("402-0000000-0000011")),
+                List.of("402-0000000-0000099")));
+        l.pasada();
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(pedido("402-0000000-0000011")), List.of()));
+        l.pasada();
+        verify(dao, never()).cerrar(eq(List.of(9)), any());
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), eq(Set.of()),
+                contains("402-0000000-0000099"), eq(AHORA));
+    }
+
+    @Test void unaLecturaBuenaSinPedidosConFilasVivasLoApuntaEnElMensaje() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(), List.of()));
+        when(dao.vivasDeShippyPro()).thenReturn(List.of(viva(9, "402-0000000-0000099")));
+        lectura("100:AMAZON").pasada();
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(0), eq(Set.of()),
+                contains("no trae pendientes"), eq(AHORA));
+        verify(dao, never()).cerrar(eq(List.of(9)), any());
+    }
+
+    @Test void unPedidoQueVuelveAPendienteReabreSusFilasYLaLecturaTerminaOk() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(pedido("402-0000000-0000011")), List.of()));
+        when(dao.vivasDeShippyPro()).thenReturn(List.of());
+        when(dao.cerradasDeShippyPro(any())).thenReturn(List.of(new FilaPedido(4, LocalDate.of(2026, 11, 9), "AMZ",
+                "i13128AzulA", "350000000000001", "402-0000000-0000011", LocalDate.of(2026, 11, 9), "SHIPPYPRO", Canal.AMAZON, 1,
+                AHORA.minusHours(1))));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(AceptaSkuTest.producto("Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128AzulAP", "bk-azul-a")));
+
+        lectura("100:AMAZON").pasada();
+
+        verify(dao).cerradasDeShippyPro(Set.of(new SincroShippyPro.ClavePedido(Canal.AMAZON, "402-0000000-0000011")));
+        verify(dao).insertar(List.of());
+        verify(dao).reabrir(List.of(4));
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), eq(Set.of()), contains("1 filas reabiertas"), eq(AHORA));
     }
 
     @Test void sinElAjusteDeCanalesEsRechazadaYNoCierraNada() throws Exception {
