@@ -354,10 +354,13 @@ class OpenApiContractTest {
         JsonNode esquemas = doc.path("components").path("schemas");
 
         for (String operacion : List.of("get /api/pedidos/filas", "get /api/pedidos/filas/{id}/recomendados",
-                "put /api/pedidos/filas/{id}/imei", "get /api/pedidos/filas/{id}/cambios", "get /api/pedidos/fuentes")) {
+                "put /api/pedidos/filas/{id}/imei", "get /api/pedidos/filas/{id}/cambios", "get /api/pedidos/fuentes",
+                "get /api/pedidos/filas/{id}/etiqueta")) {
             String[] partes = operacion.split(" ", 2);
             assertTrue(paths.path(partes[1]).has(partes[0]), () -> "falta la ruta " + operacion + " en el contrato");
         }
+        assertTrue(paths.path("/api/pedidos/filas/{id}/etiqueta").path("get").path("responses").path("200").path("content")
+                .has("application/pdf"), "la etiqueta responde un pdf");
         for (String nombre : List.of("desde", "hasta", "buscar")) {
             assertFalse(parametro(paths, "/api/pedidos/filas", "get", nombre).path("required").asBoolean(true),
                     () -> nombre + " debe ser opcional");

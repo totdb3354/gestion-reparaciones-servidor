@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.UsuariosOperativosTestConfig;
+import com.reparaciones.servidor.pedidos.EtiquetaShippyPro;
 import com.reparaciones.servidor.pedidos.FilaPedido;
 import com.reparaciones.servidor.pedidos.FilaVista;
 import com.reparaciones.servidor.pedidos.FilasDAO;
@@ -26,10 +27,13 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** «Pedidos» como la hoja: SUPERTECNICO y ADMIN; el TECNICO recibe 403 sin llegar a la vista ni al DAO. */
@@ -50,6 +54,7 @@ class RolesPedidosTest {
     @Autowired JwtUtil jwtUtil;
     @MockBean VistaFilas vista;
     @MockBean FilasDAO dao;
+    @MockBean EtiquetaShippyPro etiquetas;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico2", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }
@@ -80,5 +85,23 @@ class RolesPedidosTest {
                 "350000000000001", "402-0000000-0000005", LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, null, false, null, null, null, null, "AMAZON")));
         for (String token : List.of(supertecnico(), admin()))
             for (var ruta : RUTAS) mvc.perform(ruta.apply(token)).andExpect(status().isOk());
+    }
+
+    @Test void laEtiquetaLaVenSupertecnicoYAdminYElTecnicoRecibe403SinLlegarAlDaoNiAShippyPro() throws Exception {
+        mvc.perform(get("/api/pedidos/filas/5/etiqueta").header("Authorization", tecnico())).andExpect(status().isForbidden());
+        verifyNoInteractions(dao, etiquetas);
+
+        byte[] pdf = "%PDF-1.4 prueba".getBytes();
+        when(dao.porId(anyInt())).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
+                "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, null, null, null, null, null, 123456L, null)));
+        when(etiquetas.pdf(anyInt(), anyLong())).thenReturn(pdf);
+        for (String token : List.of(supertecnico(), admin()))
+            mvc.perform(get("/api/pedidos/filas/5/etiqueta").header("Authorization", token))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "application/pdf"))
+                    .andExpect(header().string("Content-Disposition", "inline; filename=\"etiqueta.pdf\""))
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(content().bytes(pdf));
+        mvc.perform(get("/api/pedidos/filas/5/etiqueta")).andExpect(status().is4xxClientError());
     }
 }

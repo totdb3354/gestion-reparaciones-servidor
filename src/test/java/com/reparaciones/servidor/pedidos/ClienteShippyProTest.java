@@ -206,4 +206,30 @@ class ClienteShippyProTest {
         assertEquals("Falta el ajuste pedidos.shippypro.clave",
                 assertThrows(IOException.class, sinClave::pendientes).getMessage());
     }
+
+    @Test void urlEtiquetaPideGetLabelUrlConElIdEnteroYTomaLaUrlComoTextoOComoLista() throws Exception {
+        responde(200, "{\"Result\":\"OK\",\"LabelURL\":\"https://cdn.shippypro.com/a.pdf\"}");
+        assertEquals("https://cdn.shippypro.com/a.pdf", cliente.urlEtiqueta(123456).orElseThrow());
+        ArgumentCaptor<HttpRequest> c = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).sendAsync(c.capture(), any());
+        assertEquals(ClienteShippyPro.API, c.getValue().uri().toString());
+        assertEquals("Basic " + Base64.getEncoder().encodeToString("clave-1:".getBytes()),
+                c.getValue().headers().firstValue("Authorization").orElseThrow());
+        assertTrue(c.getValue().bodyPublisher().orElseThrow().contentLength() > 0);
+
+        responde(200, "{\"Result\":\"OK\",\"LabelURL\":[\"https://cdn.shippypro.com/b.pdf\",\"https://cdn.shippypro.com/c.pdf\"]}");
+        assertEquals("https://cdn.shippypro.com/b.pdf", cliente.urlEtiqueta(1).orElseThrow());
+    }
+
+    @Test void urlEtiquetaSinEtiquetaEsVacioYUnFalloDeShippyProEsUnaExcepcion() throws Exception {
+        for (String cuerpo : List.of("{\"Result\":\"OK\"}", "{\"Result\":\"OK\",\"LabelURL\":\"\"}",
+                "{\"Result\":\"OK\",\"LabelURL\":[]}", "{\"Result\":\"OK\",\"LabelURL\":5}")) {
+            responde(200, cuerpo);
+            assertTrue(cliente.urlEtiqueta(1).isEmpty(), cuerpo);
+        }
+        responde(200, "{\"Result\":\"ERROR\",\"Error\":\"x\"}");
+        assertThrows(IOException.class, () -> cliente.urlEtiqueta(1));
+        responde(500, "");
+        assertThrows(IOException.class, () -> cliente.urlEtiqueta(1));
+    }
 }

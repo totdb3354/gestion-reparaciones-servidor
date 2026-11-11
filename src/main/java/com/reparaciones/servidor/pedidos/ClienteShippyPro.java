@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -86,8 +87,8 @@ public class ClienteShippyPro {
         }
     }
 
-    /** Hace la llamada y devuelve la lista «Orders», ya comprobada (respuesta 200, Result OK, lista presente y Total coherente). */
-    private JsonNode pedirLista(String cuerpoPeticion) throws IOException, InterruptedException {
+    /** Hace la llamada y devuelve el cuerpo ya comprobado (respuesta 200 y Result OK). */
+    private JsonNode pedirCuerpo(String cuerpoPeticion) throws IOException, InterruptedException {
         String basic = Base64.getEncoder().encodeToString((clave.clave() + ":").getBytes(StandardCharsets.UTF_8));
         HttpRequest peticion = HttpRequest.newBuilder(URI.create(API)).timeout(ESPERA_CABECERAS)
                 .header("Content-Type", "application/json").header("Authorization", "Basic " + basic)
@@ -111,6 +112,12 @@ public class ClienteShippyPro {
         String resultado = cuerpo.path("Result").asText("");
         if (!"OK".equals(resultado))
             throw new IOException(("ShippyPro: " + resultado + " " + cuerpo.path("Error").asText("")).strip());
+        return cuerpo;
+    }
+
+    /** Hace la llamada y devuelve la lista «Orders», ya comprobada (respuesta 200, Result OK, lista presente y Total coherente). */
+    private JsonNode pedirLista(String cuerpoPeticion) throws IOException, InterruptedException {
+        JsonNode cuerpo = pedirCuerpo(cuerpoPeticion);
         // Sin la lista no hay «cero pendientes»: sería cerrar todos los pedidos de ShippyPro en silencio.
         JsonNode lista = cuerpo.path("Orders");
         if (!lista.isArray()) throw new IOException("ShippyPro: la respuesta no trae la lista de pedidos");
@@ -118,6 +125,15 @@ public class ClienteShippyPro {
         if (total.isNumber() && total.asLong() != lista.size() || total.isNumber() && !total.canConvertToLong())
             throw new IOException("ShippyPro dice Total=" + total.asText() + " pero trae " + lista.size() + " pedidos");
         return lista;
+    }
+
+    /** La URL de la etiqueta ya generada del envio (GetLabelUrl, solo lectura): «LabelURL» como texto o, a veces, como lista (la
+     *  primera). Vacio si ShippyPro no trae ninguna. */
+    public Optional<String> urlEtiqueta(long envioId) throws IOException, InterruptedException {
+        JsonNode url = pedirCuerpo("{\"Method\":\"GetLabelUrl\",\"Params\":{\"OrderID\":" + envioId + "}}").path("LabelURL");
+        if (url.isArray()) url = url.isEmpty() ? null : url.get(0);
+        if (url == null || !url.isTextual() || url.asText().isBlank()) return Optional.empty();
+        return Optional.of(url.asText().strip());
     }
 
     public Leidos pendientes() throws IOException, InterruptedException {

@@ -82,6 +82,12 @@ de `model/` conservan su nombre.
     y `caja` nullable). `404` si la fila no existe; lista vacía si es del histórico o si el maestro no conoce su SKU (las enviadas y las no pendientes
     sí dan candidatos). No ofrece los móviles puestos en otra fila pendiente o no pendiente, ni en una enviada cuyo móvil NSYS
     aún no da por vendido (sí el de la propia fila).
+  - `GET /api/pedidos/filas/{id}/etiqueta` → el PDF de la etiqueta que ShippyPro ya generó (`200`, `application/pdf`,
+    `Content-Disposition: inline; filename="etiqueta.pdf"`, `Cache-Control: no-store`). Solo lectura: no se guarda ni se imprime
+    nada (ShippyPro `GetLabelUrl`, y se descarga el PDF de su CDN con `https` y host `shippypro.com`, sin redirecciones, tope de 8 MB).
+    `404` si la fila no existe o si no tiene etiqueta («Este pedido no tiene etiqueta generada»: pendiente sin envío, histórico, cerrada
+    sin envío); `502` «No se pudo obtener la etiqueta de ShippyPro. Inténtalo de nuevo.» si ShippyPro falla, no da etiqueta o la
+    descarga falla, no es un PDF o es demasiado grande (nunca el texto de ShippyPro ni la URL). SUPERTECNICO y ADMIN.
   - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
     histórico (las filas de ShippyPro se editan siempre, también las enviadas). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
