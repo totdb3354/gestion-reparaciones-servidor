@@ -34,7 +34,7 @@ class FilasControllerTest {
 
     private static FilaVista vistaDe(String imei) {
         return new FilaVista(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", imei, "402-0000000-0000005",
-                LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, "OK", null, "i13128AzulA", "Listos");
+                LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, "OK", null, "i13128AzulA", "Listos", "AMAZON");
     }
 
     private static int estado(Runnable r) {
@@ -71,6 +71,27 @@ class FilasControllerTest {
         List<Recomendador.Candidato> c = List.of(new Recomendador.Candidato(IMEI, "i13128AzulA", "Listos", 1));
         when(vista.recomendados(5)).thenReturn(Optional.of(c));
         assertEquals(c, controller.recomendados(5));
+    }
+
+    // ---------------------------------------------------------------- cambios
+
+    @Test void cambiosDeUnaFilaQueNoExisteEs404() {
+        when(dao.porId(99)).thenReturn(Optional.empty());
+        assertEquals(404, estado(() -> controller.cambios(99)));
+        verify(dao, never()).cambiosDeFila(anyInt());
+    }
+
+    @Test void cambiosDeUnaFilaDelHistoricoEsVaciaSinConsultarCambios() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("HISTORICO", AHORA.minusDays(30))));
+        assertEquals(List.of(), controller.cambios(5));
+        verify(dao, never()).cambiosDeFila(anyInt());
+    }
+
+    @Test void cambiosDeUnaFilaDeShippyProLosDaElDao() {
+        List<CambioImei> c = List.of(new CambioImei("super", AHORA, IMEI, null), new CambioImei(null, AHORA.minusDays(1), null, IMEI));
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.cambiosDeFila(5)).thenReturn(c);
+        assertEquals(c, controller.cambios(5));
     }
 
     // ---------------------------------------------------------------- PUT /filas/{id}/imei

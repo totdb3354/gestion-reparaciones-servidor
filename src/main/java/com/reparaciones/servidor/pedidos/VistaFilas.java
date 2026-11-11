@@ -175,9 +175,15 @@ public class VistaFilas {
             vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), estado,
                     !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
-                    aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja()));
+                    aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f)));
         }
         return vistas;
+    }
+
+    /** El canal de la fila: el guardado en las de ShippyPro; en el historico (sin canal en la base) se deduce de la plataforma. */
+    static String canal(FilaPedido f) {
+        Canal c = HISTORICO.equals(f.origen()) ? Canal.deHistorico(f.plataforma()) : f.canal();
+        return c == null ? null : c.name();
     }
 
     private static boolean llevaAviso(FilaPedido f) {

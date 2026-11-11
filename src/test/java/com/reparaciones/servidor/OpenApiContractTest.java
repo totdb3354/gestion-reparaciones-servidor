@@ -354,7 +354,7 @@ class OpenApiContractTest {
         JsonNode esquemas = doc.path("components").path("schemas");
 
         for (String operacion : List.of("get /api/pedidos/filas", "get /api/pedidos/filas/{id}/recomendados",
-                "put /api/pedidos/filas/{id}/imei", "get /api/pedidos/fuentes")) {
+                "put /api/pedidos/filas/{id}/imei", "get /api/pedidos/filas/{id}/cambios", "get /api/pedidos/fuentes")) {
             String[] partes = operacion.split(" ", 2);
             assertTrue(paths.path(partes[1]).has(partes[0]), () -> "falta la ruta " + operacion + " en el contrato");
         }
@@ -362,16 +362,18 @@ class OpenApiContractTest {
             assertFalse(parametro(paths, "/api/pedidos/filas", "get", nombre).path("required").asBoolean(true),
                     () -> nombre + " debe ser opcional");
         }
-        for (String esquema : List.of("FilaVista", "ListaFilas", "FuenteVista", "RecomendadorCandidato", "PeticionImei"))
+        for (String esquema : List.of("FilaVista", "ListaFilas", "FuenteVista", "RecomendadorCandidato", "PeticionImei", "CambioImei"))
             assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
 
         assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "envioFecha", "transportista", "seguimiento",
-                "nivel", "motivo", "skuMovil", "caja");
+                "nivel", "motivo", "skuMovil", "caja", "canal");
         assertNoNullable(esquemas, "FilaVista", "idFila", "fecha", "plataforma", "estado", "editable");
         assertNoNullable(esquemas, "ListaFilas", "filas", "hayMas");
         assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo");
         assertNoNullable(esquemas, "FuenteVista", "fuente", "filas", "nivel");
         assertNullable(esquemas, "PeticionImei", "imei");
+        assertNullable(esquemas, "CambioImei", "usuario", "imeiAnterior", "imeiNuevo");
+        assertNoNullable(esquemas, "CambioImei", "fecha");
         assertNoNullable(esquemas, "RecomendadorCandidato", "imei", "nivel");
         assertNullable(esquemas, "RecomendadorCandidato", "sku", "caja");
     }

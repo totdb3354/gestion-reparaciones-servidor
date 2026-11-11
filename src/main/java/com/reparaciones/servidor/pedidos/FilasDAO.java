@@ -56,6 +56,10 @@ public class FilasDAO {
     static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
     static final String SQL_CAMBIO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)";
+    /** Tope defensivo de apuntes que sirve {@link #cambiosDeFila}. */
+    static final int TOPE_CAMBIOS = 200;
+    static final String SQL_CAMBIOS_DE_FILA = "SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO FROM Pedido_fila_cambio c"
+            + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT " + TOPE_CAMBIOS;
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
     static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
             + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)";
@@ -166,6 +170,12 @@ public class FilasDAO {
 
     public Optional<FilaPedido> porId(int id) {
         return jdbc.query(SQL_POR_ID, FilasDAO::fila, id).stream().findFirst();
+    }
+
+    /** Los apuntes de IMEI de una fila, del mas reciente al mas antiguo (hasta 200), con el nombre de quien los hizo (nulo si no hay usuario). */
+    public List<CambioImei> cambiosDeFila(int id) {
+        return jdbc.query(SQL_CAMBIOS_DE_FILA, (rs, n) -> new CambioImei(rs.getString("NOMBRE_USUARIO"),
+                rs.getTimestamp("FECHA").toLocalDateTime(), rs.getString("IMEI_ANTERIOR"), rs.getString("IMEI_NUEVO")), id);
     }
 
     /** Las filas de ShippyPro con alguno de esos IMEI: las vivas y las cerradas con FECHA desde {@code desde}. */

@@ -55,12 +55,13 @@ class RolesPedidosTest {
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }
     private String admin()        { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null)); }
 
-    /** Las cuatro rutas, cada una con su peticion para un token dado. */
+    /** Las cinco rutas, cada una con su peticion para un token dado. */
     private static final List<java.util.function.Function<String, MockHttpServletRequestBuilder>> RUTAS = List.of(
             t -> get("/api/pedidos/filas").header("Authorization", t),
             t -> get("/api/pedidos/filas/5/recomendados").header("Authorization", t),
             t -> put("/api/pedidos/filas/5/imei").header("Authorization", t)
                     .contentType(MediaType.APPLICATION_JSON).content("{\"imei\":\"350000000000001\"}"),
+            t -> get("/api/pedidos/filas/5/cambios").header("Authorization", t),
             t -> get("/api/pedidos/fuentes").header("Authorization", t));
 
     @Test void elTecnicoRecibe403SinLlegarALaVistaNiAlDao() throws Exception {
@@ -76,7 +77,7 @@ class RolesPedidosTest {
                 "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, null)));
         when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
         when(vista.fila(anyInt())).thenReturn(Optional.of(new FilaVista(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA",
-                "350000000000001", "402-0000000-0000005", LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, null, null, null, null)));
+                "350000000000001", "402-0000000-0000005", LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, null, null, null, null, "AMAZON")));
         for (String token : List.of(supertecnico(), admin()))
             for (var ruta : RUTAS) mvc.perform(ruta.apply(token)).andExpect(status().isOk());
     }

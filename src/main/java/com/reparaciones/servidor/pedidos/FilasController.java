@@ -68,6 +68,14 @@ public class FilasController {
         return vista.recomendados(id).orElseThrow(() -> noExiste(id));
     }
 
+    /** Quien ha tocado el IMEI de la fila, del mas reciente al mas antiguo; lista vacia en una fila del historico (no hay registro). */
+    @GetMapping("/filas/{id}/cambios")
+    public List<CambioImei> cambios(@PathVariable int id) {
+        FilaPedido fila = dao.porId(id).orElseThrow(() -> noExiste(id));
+        if (VistaFilas.HISTORICO.equals(fila.origen())) return List.of();
+        return dao.cambiosDeFila(id);
+    }
+
     /** Pone, cambia o quita (imei nulo o en blanco) el IMEI de una fila de ShippyPro (también enviada o no pendiente). Devuelve la fila releida con su aviso. */
     @PutMapping("/filas/{id}/imei")
     public FilaVista ponerImei(@PathVariable int id, @RequestBody PeticionImei req,

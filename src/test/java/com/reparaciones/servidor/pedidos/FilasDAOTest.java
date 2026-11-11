@@ -173,6 +173,25 @@ class FilasDAOTest {
                 5, 9, Timestamp.valueOf(AHORA), "350000000000001", "350000000000002");
     }
 
+    @Test void cambiosDeFilaUnaSolaConsultaConUsuarioPorLeftJoinDelMasRecienteAlMasAntiguoConTope() {
+        dao.cambiosDeFila(5);
+        verify(jdbc).query(eq("SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO FROM Pedido_fila_cambio c"
+                + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT 200"),
+                any(RowMapper.class), eq(5));
+    }
+
+    @Test void cambiosDeFilaLeeUsuarioNuloFechaEImeis() throws Exception {
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(5))).thenAnswer(inv -> {
+            java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+            when(rs.getString("NOMBRE_USUARIO")).thenReturn(null);
+            when(rs.getTimestamp("FECHA")).thenReturn(Timestamp.valueOf(AHORA));
+            when(rs.getString("IMEI_ANTERIOR")).thenReturn(null);
+            when(rs.getString("IMEI_NUEVO")).thenReturn("350000000000002");
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+        assertEquals(List.of(new CambioImei(null, AHORA, null, "350000000000002")), dao.cambiosDeFila(5));
+    }
+
     @Test void ponerImeiCortaYAdmiteAnteriorNuloYUsuarioNulo() throws Exception {
         filaBloqueada(null, "SHIPPYPRO");
         dao.ponerImei(5, "9".repeat(80), null, AHORA);

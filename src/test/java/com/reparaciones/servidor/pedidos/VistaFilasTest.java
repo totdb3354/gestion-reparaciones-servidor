@@ -367,4 +367,32 @@ class VistaFilasTest {
                 new Importacion(7, "Items.xlsx", AHORA, "RECHAZADO", 0, "Faltan columnas: IMEI")));
         assertEquals(VistaFilas.MOTIVO_NSYS_RECHAZADO, vista.fuentes().get(1).motivo());
     }
+
+    // ---------------------------------------------------------------- canal
+
+    private static FilaPedido historico(int id, String plataforma) {
+        return new FilaPedido(id, LocalDate.of(2025, 1, 1), plataforma, "texto", null, null, null, "HISTORICO", null, null,
+                AHORA.minusYears(1));
+    }
+
+    @Test void elCanalDeUnaFilaDeShippyProEsElSuyo() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(fila(1, null, null)));
+        assertEquals("AMAZON", vista.filas(null, null, null).filas().get(0).canal());
+    }
+
+    @Test void elCanalDeUnaFilaDeShippyProSinCanalEsNulo() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(new FilaPedido(1, LocalDate.of(2026, 11, 5), "Web", "x", null, null,
+                null, "SHIPPYPRO", null, 1, null)));
+        assertNull(vista.filas(null, null, null).filas().get(0).canal());
+    }
+
+    @Test void elCanalDelHistoricoSeDeduceDeLaPlataformaSoloParaLasDosCuentasDeAmazon() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(historico(1, "AMZ"), historico(2, "  amz "), historico(3, "FNSK"),
+                historico(4, "fsnk"), historico(5, "Cliente Web A"), historico(6, "INCIDENCIA 12"), historico(7, "NP"),
+                historico(8, ""), historico(9, null)));
+        List<String> canales = new ArrayList<>();
+        for (FilaVista f : vista.filas(null, null, null).filas()) canales.add(f.canal());
+        assertEquals(java.util.Arrays.asList("AMAZON", "AMAZON", "AMAZON_STOCKROOM", "AMAZON_STOCKROOM", null, null, null, null, null),
+                canales);
+    }
 }

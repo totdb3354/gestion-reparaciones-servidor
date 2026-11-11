@@ -55,12 +55,19 @@ de `model/` conservan su nombre.
     `editable` (`false` solo en el histórico) y, nullable, `envioFecha` (hora de Madrid), `transportista` y `seguimiento`. Trae
     `nivel` (`OK`, `AVISO` o `MAL`), `motivo`, `skuMovil` y `caja` solo en las filas `PENDIENTE` y `NO_PENDIENTE` con IMEI (el
     aviso se calcula al servir, no se guarda); en las demás son `null`. `sku`, `imei`, `pedido` y `fechaCompra` son nullable
-    (las filas del histórico llevan los textos de la hoja tal cual).
+    (las filas del histórico llevan los textos de la hoja tal cual). Trae también `canal` (nullable): el nombre del enum `Canal`
+    (`AMAZON`, `AMAZON_STOCKROOM`, `DISTRIBUIDORES`, `PARTICULARES`, `BACKIPHONE`); en las filas de ShippyPro, el guardado; en las
+    del histórico se deduce al servir de `plataforma` (recortada, sin distinguir mayúsculas: `AMZ` → `AMAZON`; `FNSK` o `FSNK` →
+    `AMAZON_STOCKROOM`) y es `null` en todo lo demás (clientes, incidencias, `NP`, vacía).
+  - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo}` con los apuntes de
+    IMEI de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `usuario` (nombre de usuario),
+    `imeiAnterior` e `imeiNuevo` son nullable (`usuario` nulo en el traspaso desde la hoja; `imeiNuevo` nulo = se quitó). `404` si la
+    fila no existe; lista vacía si es del histórico. SUPERTECNICO y ADMIN.
   - `GET /api/pedidos/filas/{id}/recomendados` → lista de `RecomendadorCandidato` `{imei, sku, caja, nivel}` (hasta cinco; `sku`
     y `caja` nullable). `404` si la fila no existe; lista vacía si es del histórico o si el maestro no conoce su SKU (las enviadas y las no pendientes
     sí dan candidatos). No ofrece los móviles puestos en otra fila pendiente o no pendiente, ni en una enviada cuyo móvil NSYS
     aún no da por vendido (sí el de la propia fila).
-  - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei}` → `FilaVista` releída, con su aviso. `imei` nulo o en blanco
+  - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
     histórico (las filas de ShippyPro se editan siempre, también las enviadas). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,

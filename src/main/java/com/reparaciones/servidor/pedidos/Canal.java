@@ -31,6 +31,16 @@ public enum Canal {
         return this == DISTRIBUIDORES || this == PARTICULARES || this == BACKIPHONE;
     }
 
+    /** El canal de una fila del historico segun su plataforma (recortada y sin distinguir mayusculas): AMZ es Amazon; FNSK o FSNK,
+     *  Amazon Stockroom; todo lo demas (clientes, incidencias, NP, vacia), nulo. */
+    public static Canal deHistorico(String plataforma) {
+        if (plataforma == null) return null;
+        String p = plataforma.strip().toUpperCase(Locale.ROOT);
+        if (p.equals("AMZ")) return AMAZON;
+        if (p.equals("FNSK") || p.equals("FSNK")) return AMAZON_STOCKROOM;
+        return null;
+    }
+
     /** «100:AMAZON, 200:AMAZON_STOCKROOM» → marketplace de ShippyPro → canal (ajuste pedidos.shippypro.canales). Un trozo mal
      *  escrito o un canal desconocido se saltan con un aviso en el log. */
     public static Map<String, Canal> deAjuste(String texto) {
