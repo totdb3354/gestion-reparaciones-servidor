@@ -83,7 +83,7 @@ class VendidosTest {
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'"), "el historico no entra");
         assertTrue(sql.contains("(f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"), "pendiente o enviada; no las cerradas sin envio");
         assertTrue(sql.contains("f.IMEI REGEXP '^[0-9]{15}$'"), "15 cifras exactas; sin IMEI no sale");
-        assertTrue(sql.contains("MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio GROUP BY ID_FILA HAVING MAX(FECHA) >= ?"),
+        assertTrue(sql.contains("MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE FECHA >= ? GROUP BY ID_FILA"),
                 "el ultimo cambio de IMEI de la fila, no Pedido_fila.FECHA");
         assertTrue(sql.contains("ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?"));
         assertTrue(!sql.contains("f.FECHA"), "no se mira la fecha del pedido");

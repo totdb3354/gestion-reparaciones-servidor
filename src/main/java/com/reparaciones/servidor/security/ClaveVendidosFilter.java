@@ -1,6 +1,8 @@
 package com.reparaciones.servidor.security;
 
 import jakarta.servlet.FilterChain;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -36,8 +38,19 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
 
     private final byte[] clave;
 
+    /** Largo minimo de la clave (caracteres, ya recortada): con menos, la ruta queda apagada como si estuviera vacia. */
+    static final int LARGO_MINIMO = 32;
+
+    private static final Logger LOG = LoggerFactory.getLogger(ClaveVendidosFilter.class);
+
     public ClaveVendidosFilter(String clave) {
-        this.clave = clave == null ? new byte[0] : clave.strip().getBytes(StandardCharsets.UTF_8);
+        String limpia = clave == null ? "" : clave.strip();
+        if (!limpia.isEmpty() && limpia.length() < LARGO_MINIMO) {
+            // Ni la clave ni su largo exacto van al registro.
+            LOG.warn("La clave de la ruta de vendidos es demasiado corta: la ruta queda apagada");
+            limpia = "";
+        }
+        this.clave = limpia.getBytes(StandardCharsets.UTF_8);
     }
 
     @Override

@@ -38,11 +38,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.hikari.initialization-fail-timeout=-1",
         "jwt.secret=secreto-solo-para-tests-de-32-caracteres-o-mas",
         "jwt.expiration=86400000",
-        "pedidos.vendidos.clave=clave-de-prueba-inventada"
+        "pedidos.vendidos.clave=clave-de-prueba-inventada-000001"
 })
 class RolesVendidosTest {
 
-    private static final String CLAVE = "clave-de-prueba-inventada";
+    private static final String CLAVE = "clave-de-prueba-inventada-000001";
 
     @Autowired MockMvc mvc;
     @Autowired JwtUtil jwtUtil;
@@ -106,6 +106,20 @@ class RolesVendidosTest {
         mvc.perform(get("/api/pedidos/vendidos").header("X-API-Key", CLAVE)).andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
         mvc.perform(get("/api/pedidos/vendidos?dias=1").header("X-API-Key", CLAVE)).andExpect(status().isOk());
         mvc.perform(get("/api/pedidos/vendidos?dias=31").header("X-API-Key", CLAVE)).andExpect(status().isOk());
+    }
+
+    /** Defensa de respaldo: la ruta con una letra codificada no es la ruta del bot; ni el token de ADMIN ni la clave la abren. */
+    @Test void laRutaCodificadaNoAbreConNadaYNoLlegaAlDao() throws Exception {
+        java.net.URI codificada = java.net.URI.create("/api/pedidos/vendid%6Fs");
+        mvc.perform(get(codificada).header("Authorization", admin())).andExpect(status().isForbidden());
+        mvc.perform(get(codificada).header("X-API-Key", CLAVE)).andExpect(status().isForbidden());
+        verifyNoInteractions(dao);
+    }
+
+    @Test void claveBuenaConUnTokenDeUsuarioValidoALaVezEsUn200() throws Exception {
+        when(dao.vendidosDesde(any(), anyInt())).thenReturn(List.of());
+        mvc.perform(get("/api/pedidos/vendidos").header("Authorization", admin()).header("X-API-Key", CLAVE))
+                .andExpect(status().isOk());
     }
 
     @Test void soloSeLee() throws Exception {

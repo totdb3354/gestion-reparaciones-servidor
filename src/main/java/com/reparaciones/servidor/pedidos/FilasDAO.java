@@ -63,7 +63,8 @@ public class FilasDAO {
     /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas (no las cerradas sin envio), con IMEI de 15 cifras, cuyo ULTIMO
      *  apunte de cambio de IMEI es de {@code ?} en adelante; del mas reciente al mas antiguo. Una sola consulta, con tope. */
     static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.PLATAFORMA, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
-            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio GROUP BY ID_FILA HAVING MAX(FECHA) >= ?) u"
+            // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
+            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
             + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"
             + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
