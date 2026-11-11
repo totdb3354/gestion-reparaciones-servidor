@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -32,18 +33,18 @@ class VendidosTest {
     private final VendidosController controller = new VendidosController(dao, RELOJ);
 
     @Test void laVentanaEmpiezaALaMedianocheDeMadridDeHoyMenosDiasMenosUno() {
-        controller.vendidos(1);
-        verify(dao).vendidosDesde(LocalDateTime.of(2026, 11, 11, 0, 0), 5000);
-        controller.vendidos(7);
-        verify(dao).vendidosDesde(LocalDateTime.of(2026, 11, 5, 0, 0), 5000);
-        controller.vendidos(31);
-        verify(dao).vendidosDesde(LocalDateTime.of(2026, 10, 12, 0, 0), 5000);
+        controller.vendidos(1, null);
+        verify(dao).vendidosDesde(LocalDateTime.of(2026, 11, 11, 0, 0), null, 5000);
+        controller.vendidos(7, null);
+        verify(dao).vendidosDesde(LocalDateTime.of(2026, 11, 5, 0, 0), null, 5000);
+        controller.vendidos(31, null);
+        verify(dao).vendidosDesde(LocalDateTime.of(2026, 10, 12, 0, 0), null, 5000);
     }
 
     @Test void fueraDeRangoNoLlegaAlDao() {
         for (int dias : new int[]{0, 32, -3})
             org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,
-                    () -> controller.vendidos(dias));
+                    () -> controller.vendidos(dias, null));
         org.mockito.Mockito.verifyNoInteractions(dao);
     }
 
@@ -51,7 +52,6 @@ class VendidosTest {
         ResultSet rs = mock(ResultSet.class);
         when(rs.getString("IMEI")).thenReturn(imei);
         when(rs.getString("SKU")).thenReturn(sku);
-        when(rs.getString("PLATAFORMA")).thenReturn("AMZ");
         when(rs.getString("CANAL")).thenReturn("AMAZON");
         when(rs.getString("PEDIDO")).thenReturn("402-0000000-0000001");
         when(rs.getTimestamp("FECHA_IMEI")).thenReturn(Timestamp.valueOf(LocalDateTime.of(2026, 11, 10, hora, 0)));
@@ -60,26 +60,50 @@ class VendidosTest {
 
     @Test void elDaoHaceUnaConsultaConTopeYDejaUnaSolaFilaPorImeiLaMasReciente() throws Exception {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        when(jdbc.query(any(String.class), any(RowMapper.class), any(Timestamp.class), anyInt())).thenAnswer(inv -> {
+        when(jdbc.query(any(String.class), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
             RowMapper<Vendido> mapa = inv.getArgument(1);
             // La consulta ya viene del cambio mas reciente al mas antiguo.
             return List.of(mapa.mapRow(fila("350000000000001", "i13128AzulA", 12), 0),
                     mapa.mapRow(fila("350000000000002", "i13128NegroA", 11), 1),
                     mapa.mapRow(fila("350000000000001", "viejo", 9), 2));
         });
-        List<Vendido> r = new FilasDAO(jdbc).vendidosDesde(LocalDateTime.of(2026, 11, 5, 0, 0), 5000);
+        List<Vendido> r = new FilasDAO(jdbc).vendidosDesde(LocalDateTime.of(2026, 11, 5, 0, 0), null, 5000);
 
         assertEquals(2, r.size());
         assertEquals("350000000000001", r.get(0).imei());
         assertEquals("i13128AzulA", r.get(0).sku(), "gana la fila del cambio mas reciente");
         assertEquals(LocalDateTime.of(2026, 11, 10, 12, 0), r.get(0).fechaImei());
         assertEquals("350000000000002", r.get(1).imei());
-        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(Timestamp.valueOf(LocalDateTime.of(2026, 11, 5, 0, 0))), eq(5000));
+        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(Timestamp.valueOf(LocalDateTime.of(2026, 11, 5, 0, 0))), isNull(), isNull(), eq(5000));
         org.mockito.Mockito.verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test void elCanalSePasaAlDaoYUnoDesconocidoEsUn400() {
+        controller.vendidos(7, "DISTRIBUIDORES");
+        verify(dao).vendidosDesde(LocalDateTime.of(2026, 11, 5, 0, 0), Canal.DISTRIBUIDORES, 5000);
+        for (String malo : new String[]{"NOEXISTE", "distribuidores", "Amazon"})
+            org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> controller.vendidos(7, malo));
+        org.mockito.Mockito.verifyNoMoreInteractions(dao);
+    }
+
+    @Test void elDaoFiltraPorCanalEnLaConsultaYDespuesQuitaRepetidos() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(any(String.class), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+            RowMapper<Vendido> mapa = inv.getArgument(1);
+            return List.of(mapa.mapRow(fila("350000000000003", "a", 12), 0), mapa.mapRow(fila("350000000000003", "b", 10), 1));
+        });
+        Timestamp desde = Timestamp.valueOf(LocalDateTime.of(2026, 11, 5, 0, 0));
+        List<Vendido> r = new FilasDAO(jdbc).vendidosDesde(desde.toLocalDateTime(), Canal.DISTRIBUIDORES, 5000);
+        assertEquals(1, r.size());
+        assertEquals("a", r.get(0).sku());
+        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(desde), eq("DISTRIBUIDORES"), eq("DISTRIBUIDORES"), eq(5000));
     }
 
     @Test void laConsultaPideLoQueDiceLaSpec() {
         String sql = FilasDAO.SQL_VENDIDOS;
+        assertTrue(!sql.contains("PLATAFORMA"), "la plataforma no se lee");
+        assertTrue(sql.contains("AND (? IS NULL OR f.CANAL = ?)"), "canal opcional, antes del tope");
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'"), "el historico no entra");
         assertTrue(sql.contains("(f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"), "pendiente o enviada; no las cerradas sin envio");
         assertTrue(sql.contains("f.IMEI REGEXP '^[0-9]{15}$'"), "15 cifras exactas; sin IMEI no sale");

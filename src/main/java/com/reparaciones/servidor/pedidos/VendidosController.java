@@ -27,6 +27,7 @@ public class VendidosController {
     static final int DIAS_MAX = 31;
     static final int TOPE = 5000;
     static final String MSG_DIAS = "dias tiene que estar entre 1 y 31";
+    static final String MSG_CANAL = "canal no es uno de los conocidos";
 
     private final FilasDAO dao;
     private final Clock clock;
@@ -43,9 +44,17 @@ public class VendidosController {
 
     /** Los vendidos cuyo ultimo cambio de IMEI cae en hoy o en los {@code dias - 1} dias de Madrid anteriores. */
     @GetMapping
-    public List<Vendido> vendidos(@RequestParam(defaultValue = "7") int dias) {
+    public List<Vendido> vendidos(@RequestParam(defaultValue = "7") int dias, @RequestParam(required = false) String canal) {
         if (dias < DIAS_MIN || dias > DIAS_MAX) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_DIAS);
+        Canal filtro = null;
+        if (canal != null && !canal.isEmpty()) {
+            try {
+                filtro = Canal.valueOf(canal);
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_CANAL);
+            }
+        }
         LocalDateTime desde = LocalDate.now(clock).minusDays(dias - 1L).atStartOfDay();
-        return dao.vendidosDesde(desde, TOPE);
+        return dao.vendidosDesde(desde, filtro, TOPE);
     }
 }

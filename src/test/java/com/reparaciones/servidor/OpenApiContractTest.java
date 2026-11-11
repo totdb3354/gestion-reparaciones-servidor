@@ -388,8 +388,10 @@ class OpenApiContractTest {
         JsonNode esquemas = doc.path("components").path("schemas");
         assertTrue(paths.path("/api/pedidos/vendidos").has("get"), "falta GET /api/pedidos/vendidos");
         assertFalse(parametro(paths, "/api/pedidos/vendidos", "get", "dias").path("required").asBoolean(true), "dias es opcional");
+        assertFalse(parametro(paths, "/api/pedidos/vendidos", "get", "canal").path("required").asBoolean(true), "canal es opcional");
+        assertFalse(esquemas.path("Vendido").path("properties").has("plataforma"), "plataforma no se publica");
         assertTrue(esquemas.has("Vendido"), () -> "falta el esquema Vendido; publicados: " + nombres(esquemas));
-        assertNoNullable(esquemas, "Vendido", "imei", "plataforma", "fechaImei");
+        assertNoNullable(esquemas, "Vendido", "imei", "fechaImei");
         assertNullable(esquemas, "Vendido", "sku", "canal", "pedido");
     }
 

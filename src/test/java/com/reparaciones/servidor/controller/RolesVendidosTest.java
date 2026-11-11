@@ -52,17 +52,17 @@ class RolesVendidosTest {
     private String admin() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null)); }
 
     @Test void conLaClaveBuenaDevuelveLaListaEnLaRaiz() throws Exception {
-        when(dao.vendidosDesde(any(), anyInt())).thenReturn(List.of(new Vendido("350000000000001", "i13128AzulA", "AMZ", "AMAZON",
+        when(dao.vendidosDesde(any(), any(), anyInt())).thenReturn(List.of(new Vendido("350000000000001", "i13128AzulA", "AMAZON",
                 "402-0000000-0000001", LocalDateTime.of(2026, 11, 11, 9, 30))));
         mvc.perform(get("/api/pedidos/vendidos?dias=3").header("X-API-Key", CLAVE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].imei").value("350000000000001"))
                 .andExpect(jsonPath("$[0].sku").value("i13128AzulA"))
-                .andExpect(jsonPath("$[0].plataforma").value("AMZ"))
+                .andExpect(jsonPath("$[0].plataforma").doesNotExist())
                 .andExpect(jsonPath("$[0].canal").value("AMAZON"))
                 .andExpect(jsonPath("$[0].pedido").value("402-0000000-0000001"))
                 .andExpect(jsonPath("$[0].fechaImei").exists());
-        verify(dao).vendidosDesde(any(), anyInt());
+        verify(dao).vendidosDesde(any(), any(), anyInt());
     }
 
     @Test void sinClaveOConOtraClaveEsUn401SinTocarLaBase() throws Exception {
@@ -102,7 +102,7 @@ class RolesVendidosTest {
     }
 
     @Test void diasPorDefectoSiete() throws Exception {
-        when(dao.vendidosDesde(any(), anyInt())).thenReturn(List.of());
+        when(dao.vendidosDesde(any(), any(), anyInt())).thenReturn(List.of());
         mvc.perform(get("/api/pedidos/vendidos").header("X-API-Key", CLAVE)).andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
         mvc.perform(get("/api/pedidos/vendidos?dias=1").header("X-API-Key", CLAVE)).andExpect(status().isOk());
         mvc.perform(get("/api/pedidos/vendidos?dias=31").header("X-API-Key", CLAVE)).andExpect(status().isOk());
@@ -117,9 +117,16 @@ class RolesVendidosTest {
     }
 
     @Test void claveBuenaConUnTokenDeUsuarioValidoALaVezEsUn200() throws Exception {
-        when(dao.vendidosDesde(any(), anyInt())).thenReturn(List.of());
+        when(dao.vendidosDesde(any(), any(), anyInt())).thenReturn(List.of());
         mvc.perform(get("/api/pedidos/vendidos").header("Authorization", admin()).header("X-API-Key", CLAVE))
                 .andExpect(status().isOk());
+    }
+
+    @Test void elCanalFiltraYUnoDesconocidoEsUn400() throws Exception {
+        when(dao.vendidosDesde(any(), any(), anyInt())).thenReturn(List.of());
+        mvc.perform(get("/api/pedidos/vendidos?canal=DISTRIBUIDORES").header("X-API-Key", CLAVE)).andExpect(status().isOk());
+        verify(dao).vendidosDesde(any(), org.mockito.ArgumentMatchers.eq(com.reparaciones.servidor.pedidos.Canal.DISTRIBUIDORES), anyInt());
+        mvc.perform(get("/api/pedidos/vendidos?canal=NOEXISTE").header("X-API-Key", CLAVE)).andExpect(status().isBadRequest());
     }
 
     @Test void soloSeLee() throws Exception {

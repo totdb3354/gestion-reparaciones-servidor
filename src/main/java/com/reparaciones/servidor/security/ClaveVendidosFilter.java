@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -22,7 +23,8 @@ import java.util.List;
  * salta esa ruta, asi que un token de usuario no cuenta).
  *
  * <ul>
- *   <li>Ajuste vacio: 404 para todos (ruta apagada).</li>
+ *   <li>Ajuste con una o varias claves separadas por comas; las de menos de 32 caracteres se ignoran (aviso al arrancar con cuantas).
+ *       Sin ninguna valida: 404 para todos (ruta apagada).</li>
  *   <li>Sin cabecera X-API-Key o con otra clave: 401. Comparacion en tiempo constante.</li>
  *   <li>Clave buena: autentica con la unica autoridad {@link #ROL} (que ninguna otra ruta pide).</li>
  * </ul>
@@ -36,21 +38,38 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
     public static final String CABECERA = "X-API-Key";
     public static final String ROL = "BOT_VENDIDOS";
 
-    private final byte[] clave;
+    private final List<byte[]> claves;
 
-    /** Largo minimo de la clave (caracteres, ya recortada): con menos, la ruta queda apagada como si estuviera vacia. */
+    /** Largo minimo de cada clave (caracteres, ya recortada): las de menos se ignoran; si no queda ninguna, la ruta queda apagada. */
     static final int LARGO_MINIMO = 32;
 
     private static final Logger LOG = LoggerFactory.getLogger(ClaveVendidosFilter.class);
 
-    public ClaveVendidosFilter(String clave) {
-        String limpia = clave == null ? "" : clave.strip();
-        if (!limpia.isEmpty() && limpia.length() < LARGO_MINIMO) {
-            // Ni la clave ni su largo exacto van al registro.
-            LOG.warn("La clave de la ruta de vendidos es demasiado corta: la ruta queda apagada");
-            limpia = "";
+    /** Una o varias claves separadas por comas (una por consumidor); todas dan el mismo permiso. */
+    public ClaveVendidosFilter(String ajuste) {
+        List<byte[]> validas = new ArrayList<>();
+        int ignoradas = 0;
+        if (ajuste != null) {
+            for (String trozo : ajuste.split(",")) {
+                String limpia = trozo.strip();
+                if (limpia.isEmpty()) continue;
+                if (limpia.length() < LARGO_MINIMO) ignoradas++;
+                else validas.add(limpia.getBytes(StandardCharsets.UTF_8));
+            }
         }
-        this.clave = limpia.getBytes(StandardCharsets.UTF_8);
+        // Ni las claves ni su largo van al registro: solo cuantas se han ignorado.
+        if (ignoradas > 0)
+            LOG.warn("Claves de la ruta de vendidos demasiado cortas, ignoradas: {}{}", ignoradas,
+                    validas.isEmpty() ? " (no queda ninguna valida: la ruta queda apagada)" : "");
+        this.claves = List.copyOf(validas);
+    }
+
+    /** Recorre TODAS las claves, sin cortar en la que acierta, para no filtrar por tiempo cual fue. */
+    private boolean valida(String recibida) {
+        byte[] bytes = recibida.strip().getBytes(StandardCharsets.UTF_8);
+        boolean ok = false;
+        for (byte[] clave : claves) ok |= MessageDigest.isEqual(clave, bytes);
+        return ok;
     }
 
     @Override
@@ -61,12 +80,12 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        if (clave.length == 0) {
+        if (claves.isEmpty()) {
             response.sendError(HttpServletResponse.SC_NOT_FOUND);
             return;
         }
         String recibida = request.getHeader(CABECERA);
-        if (recibida == null || !MessageDigest.isEqual(clave, recibida.strip().getBytes(StandardCharsets.UTF_8))) {
+        if (recibida == null || !valida(recibida)) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Clave no válida");
             return;
         }

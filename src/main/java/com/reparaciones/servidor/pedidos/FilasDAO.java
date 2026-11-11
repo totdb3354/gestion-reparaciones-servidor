@@ -62,11 +62,12 @@ public class FilasDAO {
             + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT " + TOPE_CAMBIOS;
     /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas (no las cerradas sin envio), con IMEI de 15 cifras, cuyo ULTIMO
      *  apunte de cambio de IMEI es de {@code ?} en adelante; del mas reciente al mas antiguo. Una sola consulta, con tope. */
-    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.PLATAFORMA, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
+    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
             // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
             + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
             + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL)"
+            + " AND (? IS NULL OR f.CANAL = ?)"
             + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
     static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
@@ -205,10 +206,12 @@ public class FilasDAO {
 
     /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI desde {@code desde}, a lo sumo {@code tope} filas, sin
      *  IMEI repetidos: si esta en dos filas sale la del cambio mas reciente. Un IMEI quitado de la fila no sale (la fila ya no lo tiene). */
-    public List<Vendido> vendidosDesde(LocalDateTime desde, int tope) {
+    public List<Vendido> vendidosDesde(LocalDateTime desde, Canal canal, int tope) {
+        String nombreCanal = canal == null ? null : canal.name();
+        // El canal filtra en la consulta; el dedup por IMEI va despues, sobre lo ya filtrado.
         List<Vendido> filas = jdbc.query(SQL_VENDIDOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
-                rs.getString("PLATAFORMA"), rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
-                Timestamp.valueOf(desde), tope);
+                rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
+                Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
         java.util.Map<String, Vendido> porImei = new java.util.LinkedHashMap<>();
         for (Vendido v : filas) porImei.putIfAbsent(v.imei(), v);
         return new ArrayList<>(porImei.values());
