@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.mockito.InOrder;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -316,4 +317,42 @@ class LecturaFilasTest {
             primera.join(10_000);
         }
     }
+
+    @Test void sinVueltasEjecutaElTrabajoYMientrasDuraLasVueltasSeSaltan() throws Exception {
+        LecturaFilas l = lectura("100:AMAZON");
+        assertEquals("hecho", l.sinVueltas(() -> "hecho"));
+
+        CountDownLatch dentro = new CountDownLatch(1);
+        CountDownLatch soltar = new CountDownLatch(1);
+        Thread carga = new Thread(() -> {
+            try {
+                l.sinVueltas(() -> {
+                    dentro.countDown();
+                    try {
+                        soltar.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return null;
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        carga.start();
+        try {
+            assertTrue(dentro.await(10, TimeUnit.SECONDS));
+            clearInvocations(dao);
+            l.pasada();
+            verifyNoInteractions(dao, shippy);
+        } finally {
+            soltar.countDown();
+            carga.join(10_000);
+        }
+        // Y al terminar el trabajo el candado queda libre.
+        when(dao.empezarLectura(any())).thenReturn(1);
+        l.pasada();
+        verify(dao).empezarLectura(any());
+    }
 }
+

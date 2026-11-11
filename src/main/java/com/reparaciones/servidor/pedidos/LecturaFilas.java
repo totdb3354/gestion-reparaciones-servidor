@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /** Una vuelta de lectura de ShippyPro: crea las filas de los pedidos nuevos, reabre las cerradas de los que vuelven a estar
  *  pendientes, marca como enviadas (con fecha, transportista y seguimiento) las de los pedidos que ShippyPro da por enviados y
@@ -59,6 +60,17 @@ public class LecturaFilas {
         this.nsysDao = nsysDao;
         this.canales = Canal.deAjuste(canales);
         this.clock = clock;
+    }
+
+    /** Ejecuta {@code trabajo} con las vueltas de lectura detenidas: espera a que acabe la que esté en curso y, mientras dura, las
+     *  vueltas programadas se saltan (como si hubiera otra en curso) y vuelven a los 5 minutos. Lo usa la carga del histórico. */
+    public <T> T sinVueltas(Supplier<T> trabajo) throws InterruptedException {
+        enCurso.lockInterruptibly();
+        try {
+            return trabajo.get();
+        } finally {
+            enCurso.unlock();
+        }
     }
 
     public void pasada() {

@@ -37,6 +37,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
   - **Gestión del taller** — asignar, reasignar, editar o eliminar trabajos, catálogo y stock de componentes, compras, gestión de solicitudes, tipos de pieza que vende cada proveedor (`PUT /api/proveedores/{idProv}/piezas`, 0.9.9; el `GET` también lo lee ADMIN): **SUPERTECNICO**.
   - **Administración** — usuarios, logs, valores de dificultad, stock mínimo de los componentes y parámetros de la previsión de pedidos: **ADMIN**.
   - **Pedidos como la hoja** — poner, cambiar o quitar el IMEI de una fila (`PUT /api/pedidos/filas/{id}/imei`): **SUPERTECNICO y ADMIN** (no hay jerarquía de roles: van los dos nombrados).
+  - **Carga del histórico de «Pedidos como la hoja»** (`POST` y `GET /api/pedidos/historico`): solo **ADMIN**; SUPERTECNICO y TECNICO reciben `403`.
   - **Trabajo propio del técnico** — completar, guardar una fila, registrar un componente agotado, borrador del formulario, "por cerrar", entrega y llegada de glass, crear una solicitud de stock: **TECNICO y SUPERTECNICO**, siempre sobre sus propias asignaciones.
 - Un endpoint nuevo se anota en el mismo cambio que lo crea, con un test que compruebe al menos un rol admitido y uno no admitido.
 
@@ -66,6 +67,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 | Roles de solicitudes de stock (MockMvc) | `controller/RolesSolicitudesStockTest` |
 | Roles de los bloques de pedidos (cadena de seguridad real, MockMvc) | `controller/RolesBloquesCompraTest` |
 | Roles de «Pedidos como la hoja» (las cuatro rutas, cadena de seguridad real, MockMvc) | `controller/RolesPedidosTest` |
+| Roles de la carga del histórico (solo ADMIN; 403 para SUPERTECNICO y TECNICO) | `controller/RolesHistoricoPedidosTest` |
 | Roles del GET y el PUT de las piezas de un proveedor (cadena de seguridad real, MockMvc) | `controller/RolesPiezasProveedorTest` |
 | Mínimo y parámetros solo ADMIN | `controller/RolesParametrosPrevisionTest`, `controller/ParametroControllerTest` |
 | Dueño de la asignación en la entrega y la llegada de glass | `controller/ReparacionControllerEntregaGlassTest` |

@@ -376,6 +376,42 @@ class OpenApiContractTest {
         assertNullable(esquemas, "RecomendadorCandidato", "sku", "caja");
     }
 
+    /** «Pedidos como la hoja» (spec §8): la carga a mano del histórico, solo ADMIN, con su estado y su informe. */
+    @Test void elContratoPublicaLaCargaDelHistoricoDeLaHoja() throws Exception {
+        String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));
+        var res = mvc.perform(get("/v3/api-docs").header("Authorization", "Bearer " + token)).andReturn().getResponse();
+        assertEquals(200, res.getStatus());
+        JsonNode doc = JSON.readTree(res.getContentAsString());
+        JsonNode paths = doc.get("paths");
+        JsonNode esquemas = doc.path("components").path("schemas");
+
+        JsonNode ruta = paths.path("/api/pedidos/historico");
+        assertTrue(ruta.has("post"), "falta POST /api/pedidos/historico");
+        assertTrue(ruta.has("get"), "falta GET /api/pedidos/historico");
+        assertCodigos(paths, "/api/pedidos/historico", "post", "202", "400", "409");
+        assertTrue(ruta.path("post").path("responses").path("202").toString().contains("/CargaHistoricoEstadoCarga\""),
+                "el 202 devuelve el estado");
+        assertTrue(ruta.path("get").path("responses").path("200").toString().contains("/CargaHistoricoEstadoCarga\""));
+        for (String esquema : List.of("CargaHistoricoEstadoCarga", "InformeCarga"))
+            assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
+
+        assertNoNullable(esquemas, "CargaHistoricoEstadoCarga", "estado");
+        assertEquals(List.of("NUNCA", "EN_CURSO", "OK", "ERROR"), valoresDe(esquemas.path("CargaHistoricoEstadoCarga").path("properties").path("estado")));
+        assertNullable(esquemas, "CargaHistoricoEstadoCarga", "empezo", "acabo", "motivo");
+        // informe (null salvo en OK) es una $ref: OpenAPI 3.0 ignora "nullable" junto a un $ref, como CompraEditarRequest.destino.
+        assertTrue(esquemas.path("CargaHistoricoEstadoCarga").path("properties").path("informe").path("$ref").asText().endsWith("/InformeCarga"));
+        assertNoNullable(esquemas, "InformeCarga", "filasLeidas", "cargadasHistorico", "descartadasVacias", "sinFechaHeredada",
+                "sinFechaDescartada", "imeiNoEsImei", "traspasadasA", "traspasadasB", "traspasadasC", "yaPuesto", "conflicto",
+                "casadasSinImei", "sinPareja", "plataformas");
+        assertEquals("integer", esquemas.path("InformeCarga").path("properties").path("plataformas").path("additionalProperties").path("type").asText());
+    }
+
+    private static List<String> valoresDe(JsonNode propiedad) {
+        List<String> v = new java.util.ArrayList<>();
+        propiedad.path("enum").forEach(n -> v.add(n.asText()));
+        return v;
+    }
+
     /** 0.9.9 (ampliación): piezas de cada proveedor y lo pendiente en el listado de Stock (spec 2026-10-11 §4 y 2026-10-12 §4.3). */
     @Test void elContratoPublicaLasPiezasDeCadaProveedor() throws Exception {
         String token = jwtUtil.generateToken(new UsuarioPrincipal(1, "admin", "", "ADMIN", null));

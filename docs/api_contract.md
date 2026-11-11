@@ -66,6 +66,22 @@ de `model/` conservan su nombre.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
     `filas`, `skuDesconocidos`, `motivo` y `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`). Un `ERROR` enseña un motivo
     fijo, nunca el texto de la excepción.
+  - Carga del histórico de la hoja (solo **ADMIN**; SUPERTECNICO y TECNICO reciben `403`), una herramienta a mano que nunca se
+    enciende sola y se puede repetir: `POST /api/pedidos/historico` (sin cuerpo) arranca la carga en segundo plano y responde `202` con
+    `CargaHistoricoEstadoCarga` (`estado` `EN_CURSO`); `409` si ya hay una en marcha; `400` "No está configurada la hoja del
+    histórico (pedidos.historico.hoja)" si falta el ajuste. `GET /api/pedidos/historico` → `CargaHistoricoEstadoCarga`
+    `{estado, empezo, acabo, informe, motivo}`, el estado de la última carga de este arranque (solo en memoria): `estado` es
+    `NUNCA`, `EN_CURSO`, `OK` (con `informe`) o `ERROR` (con `motivo`, un texto fijo en lenguaje de usuario: nunca el texto de la
+    excepción ni el id de la hoja); `empezo`, `acabo`, `informe` y `motivo` son `null` cuando no corresponden (`informe` va como
+    `$ref`, así que el contrato no lo marca `nullable`). `InformeCarga` solo lleva recuentos (ningún IMEI, pedido ni fila): `filasLeidas`,
+    `cargadasHistorico`, `descartadasVacias`, `sinFechaHeredada`, `sinFechaDescartada`, `imeiNoEsImei`, `traspasadasA`, `traspasadasB`,
+    `traspasadasC`, `yaPuesto`, `conflicto`, `casadasSinImei`, `sinPareja` y `plataformas` (objeto nombre → filas con las 15
+    plataformas con más filas). La carga lee la hoja entera por columnas de cabecera (`Fecha`, `Plataforma`, `SKU`, `IMEI`, y si están
+    `Pedido Amazon` y `Fecha compra`) y, en una sola transacción, borra las filas `HISTORICO`, pone en las filas de ShippyPro los IMEI
+    de la hoja que son de un pedido que el ERP ya tiene (A: por número de pedido; B: AMZ/FNSK/FSNK sin número, de los últimos 14
+    días, a la pendiente más antigua del canal y SKU; C: webs, de los últimos 14 días, a la pendiente con la misma plataforma y SKU) y
+    crea el resto como filas `HISTORICO` cerradas, en el orden de la hoja. Ajustes: `pedidos.historico.hoja` y
+    `pedidos.historico.pestana` (por defecto `PEDIDOS 2026`).
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
   del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.

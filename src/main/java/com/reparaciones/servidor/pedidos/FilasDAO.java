@@ -56,6 +56,12 @@ public class FilasDAO {
     static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
     static final String SQL_CAMBIO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)";
+    static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
+    static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
+            + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)";
+    static final String SQL_SHIPPYPRO_BLOQUEADAS = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' ORDER BY FECHA, ID_FILA FOR UPDATE";
+    static final String SQL_TRASPASAR_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO'"
+            + " AND (IMEI IS NULL OR IMEI = '')";
     static final String SQL_EMPEZAR_LECTURA = "INSERT INTO Pedido_lectura (INICIO) VALUES (?)";
     static final String SQL_TERMINAR_LECTURA = "UPDATE Pedido_lectura SET FIN = ?, RESULTADO = ?, FILAS = ?, SKU_DESCONOCIDOS = ?, MENSAJE = ?"
             + " WHERE ID_LECTURA = ?";
@@ -195,6 +201,41 @@ public class FilasDAO {
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
         return Resultado.PUESTO;
+    }
+
+    // ---------------------------------------------------------------- carga del historico (se llaman dentro de una transaccion)
+
+    /** Todas las filas de origen ShippyPro, vivas o cerradas, en orden de hoja y bloqueadas hasta el fin de la transaccion. */
+    public List<FilaPedido> todasDeShippyProBloqueadas() {
+        return jdbc.query(SQL_SHIPPYPRO_BLOQUEADAS, FilasDAO::fila);
+    }
+
+    /** Borra las filas de origen HISTORICO y devuelve cuantas. No toca las de ShippyPro (ni Pedido_fila_cambio: el historico no se edita). */
+    public int borrarHistorico() {
+        return jdbc.update(SQL_BORRAR_HISTORICO);
+    }
+
+    /** Inserta las filas del historico en el orden dado y en lotes de {@value #TANDA}. Origen HISTORICO, sin canal ni posicion, y
+     *  cerradas a la medianoche de su fecha; los textos se cortan a los anchos del DDL. */
+    public void insertarHistorico(List<FilaPedido> filas) {
+        for (List<FilaPedido> tanda : trozos(filas)) {
+            List<Object[]> lote = new ArrayList<>();
+            for (FilaPedido f : tanda)
+                lote.add(new Object[]{fecha(f.fecha()), AnchosNsys.corta(f.plataforma(), AnchosPedidos.PLATAFORMA),
+                        AnchosNsys.corta(f.sku(), AnchosPedidos.SKU), AnchosNsys.corta(f.imei(), AnchosPedidos.IMEI),
+                        AnchosNsys.corta(f.pedido(), AnchosPedidos.PEDIDO), fecha(f.fechaCompra()),
+                        Timestamp.valueOf(f.fecha().atStartOfDay())});
+            jdbc.batchUpdate(SQL_INSERTAR_HISTORICO, lote);
+        }
+    }
+
+    /** Pone el IMEI en una fila de ShippyPro que no lo tiene y lo apunta (sin usuario, IMEI anterior nulo). Falso, sin escribir nada
+     *  mas, si la fila ya tenia IMEI o no existe. */
+    public boolean traspasarImei(int idFila, String imei, LocalDateTime ahora) {
+        String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
+        if (jdbc.update(SQL_TRASPASAR_IMEI, nuevo, idFila) == 0) return false;
+        jdbc.update(SQL_CAMBIO, idFila, null, Timestamp.valueOf(ahora), null, nuevo);
+        return true;
     }
 
     // ---------------------------------------------------------------- lecturas

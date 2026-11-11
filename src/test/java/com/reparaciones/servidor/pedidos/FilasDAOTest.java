@@ -276,4 +276,59 @@ class FilasDAOTest {
         dao.podarLecturas(AHORA);
         verify(jdbc).update("DELETE FROM Pedido_lectura WHERE INICIO < ?", Timestamp.valueOf(AHORA));
     }
+
+    // ---------------------------------------------------------------- carga del historico
+
+    private static FilaPedido historica(int n) {
+        return new FilaPedido(0, LocalDate.of(2026, 3, 1), "x".repeat(200), "i13128AzulA", "CANCELADO", n == 0 ? null : "402-0000000-000000" + n,
+                n == 0 ? null : LocalDate.of(2026, 2, 28), "HISTORICO", null, null, LocalDate.of(2026, 3, 1).atStartOfDay());
+    }
+
+    @Test void borrarHistoricoBorraSoloLasFilasDeEseOrigen() {
+        when(jdbc.update(anyString())).thenReturn(7);
+        assertEquals(7, dao.borrarHistorico());
+        verify(jdbc).update("DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'");
+        verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test void insertarHistoricoVaEnOrdenEnLotesDe500CerradasAMedianocheYCortaLosTextos() {
+        List<FilaPedido> filas = new ArrayList<>();
+        for (int i = 0; i < 1201; i++) filas.add(historica(i % 9));
+        dao.insertarHistorico(filas);
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc, times(3)).batchUpdate(eq("INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
+                + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)"), lote.capture());
+        assertEquals(List.of(500, 500, 201), lote.getAllValues().stream().map(List::size).toList());
+        assertArrayEquals(new Object[]{java.sql.Date.valueOf("2026-03-01"), "x".repeat(150), "i13128AzulA", "CANCELADO", null, null,
+                Timestamp.valueOf("2026-03-01 00:00:00")}, lote.getAllValues().get(0).get(0));
+        assertArrayEquals(new Object[]{java.sql.Date.valueOf("2026-03-01"), "x".repeat(150), "i13128AzulA", "CANCELADO",
+                "402-0000000-0000001", java.sql.Date.valueOf("2026-02-28"), Timestamp.valueOf("2026-03-01 00:00:00")},
+                lote.getAllValues().get(0).get(1), "el orden del lote es el de la lista");
+    }
+
+    @Test void insertarHistoricoSinFilasNoToca() {
+        dao.insertarHistorico(List.of());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void todasDeShippyProBloqueadasLasPideEnOrdenDeHojaConFOR_UPDATE() {
+        dao.todasDeShippyProBloqueadas();
+        verify(jdbc).query(eq(COLUMNAS + " WHERE ORIGEN = 'SHIPPYPRO' ORDER BY FECHA, ID_FILA FOR UPDATE"), any(RowMapper.class));
+    }
+
+    @Test void traspasarImeiSoloEscribeSiLaFilaNoTeniaImeiYApuntaElCambioSinUsuario() {
+        when(jdbc.update(startsWith("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO' AND (IMEI IS NULL OR IMEI = '')"),
+                any(Object[].class))).thenReturn(1);
+        assertTrue(dao.traspasarImei(5, "350000000000001", AHORA));
+        verify(jdbc).update(contains("UPDATE Pedido_fila SET IMEI"), eq("350000000000001"), eq(5));
+        verify(jdbc).update(eq("INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)"),
+                eq(5), isNull(), eq(Timestamp.valueOf(AHORA)), isNull(), eq("350000000000001"));
+    }
+
+    @Test void traspasarImeiSiLaFilaYaTeniaImeiNoApuntaNada() {
+        when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
+        assertFalse(dao.traspasarImei(5, "350000000000001", AHORA));
+        verify(jdbc, never()).update(startsWith("INSERT INTO Pedido_fila_cambio"), any(Object[].class));
+    }
 }
+

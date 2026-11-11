@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.pedidos;
 
+import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -23,6 +24,15 @@ public final class Textos {
      *  verdad en las hojas: cada sinónimo de más hace la comparación menos estricta. Lo demás no cambia. */
     public static String equivalente(String sku) {
         return sku == null ? null : ULTRAMARINO.matcher(sku).replaceAll("Azul");
+    }
+
+    /** Un nombre (la plataforma de una venta web) para comparar: sin tildes, en minúsculas y con los espacios repetidos o a los
+     *  lados reducidos a uno. null si queda vacío. */
+    public static String nombre(String texto) {
+        if (texto == null) return null;
+        String s = Normalizer.normalize(texto, Normalizer.Form.NFD).replaceAll("\\p{M}+", "")
+                .replaceAll("\\s+", " ").strip().toLowerCase(Locale.ROOT);
+        return s.isEmpty() ? null : s;
     }
 
     /** ¿Parece el SKU de un teléfono? Empieza por «i» y una cifra (los portes y las cajas, no). */

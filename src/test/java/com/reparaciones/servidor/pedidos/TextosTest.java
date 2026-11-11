@@ -26,4 +26,11 @@ class TextosTest {
         assertEquals("i16eSIM128AzulA", Textos.equivalente("i16eSIM128UltramarinoA"));
         assertEquals("i13128VerdeA", Textos.equivalente("i13128VerdeA"));
     }
+
+    @Test void unNombreSeComparaSinMayusculasTildesNiEspaciosRepetidos() {
+        assertEquals("cliente web a", Textos.nombre("  Cliente   Web	Á "));
+        assertEquals(Textos.nombre("Camión Ñandú"), Textos.nombre("camion  nandu"));
+        assertNull(Textos.nombre("   "));
+        assertNull(Textos.nombre(null));
+    }
 }
