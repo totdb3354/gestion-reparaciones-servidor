@@ -45,6 +45,9 @@ public class FilasDAO {
     /** Un envio es definitivo: si la fila estaba viva se cierra ahora; si ya estaba cerrada conserva su hora de cierre. */
     static final String SQL_MARCAR_ENVIO = "UPDATE Pedido_fila SET ENVIO_FECHA = ?, TRANSPORTISTA = ?, SEGUIMIENTO = ?,"
             + " CERRADA_EN = COALESCE(CERRADA_EN, ?), ENVIO_ID = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL";
+    /** Una etiqueta regenerada: la fila aun sin imprimir pasa al envio mas reciente. Una fila ya impresa no se toca. */
+    static final String SQL_CAMBIAR_ENVIO = "UPDATE Pedido_fila SET ENVIO_ID = ?, ENVIO_FECHA = ?, TRANSPORTISTA = ?,"
+            + " SEGUIMIENTO = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL AND IMPRESA_EN IS NULL";
     /** Completa el id del envio y la impresion de una fila ya enviada; lo que ya tiene no se toca ni se borra. */
     static final String SQL_MARCAR_ETIQUETA = "UPDATE Pedido_fila SET ENVIO_ID = COALESCE(ENVIO_ID, ?),"
             + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL";
@@ -140,9 +143,16 @@ public class FilasDAO {
     public void marcarEtiquetas(List<SincroShippyPro.MarcaEtiqueta> marcas) {
         if (marcas.isEmpty()) return;
         List<Object[]> lote = new ArrayList<>();
-        for (SincroShippyPro.MarcaEtiqueta m : marcas)
-            lote.add(new Object[]{m.envioId(), m.impresaEn() == null ? null : Timestamp.valueOf(m.impresaEn()), m.fila()});
-        jdbc.batchUpdate(SQL_MARCAR_ETIQUETA, lote);
+        List<Object[]> cambios = new ArrayList<>();
+        for (SincroShippyPro.MarcaEtiqueta m : marcas) {
+            Timestamp impresa = m.impresaEn() == null ? null : Timestamp.valueOf(m.impresaEn());
+            if (m.nuevo() == null) lote.add(new Object[]{m.envioId(), impresa, m.fila()});
+            else cambios.add(new Object[]{m.envioId(), Timestamp.valueOf(m.nuevo().fecha()),
+                    AnchosNsys.corta(m.nuevo().transportista(), AnchosPedidos.TRANSPORTISTA),
+                    AnchosNsys.corta(m.nuevo().seguimiento(), AnchosPedidos.SEGUIMIENTO), impresa, m.fila()});
+        }
+        if (!lote.isEmpty()) jdbc.batchUpdate(SQL_MARCAR_ETIQUETA, lote);
+        if (!cambios.isEmpty()) jdbc.batchUpdate(SQL_CAMBIAR_ENVIO, cambios);
     }
 
     /** Inserta las filas nuevas (el id del record se ignora), con los textos cortados a los anchos del DDL. */

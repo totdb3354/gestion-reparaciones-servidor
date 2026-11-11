@@ -188,6 +188,32 @@ class LecturaFilasTest {
         verify(dao).marcarEtiquetas(List.of(new SincroShippyPro.MarcaEtiqueta(9, null, AHORA.minusHours(1))));
     }
 
+    @Test void unEnvioDeHaceNueveDiasMarcaUnaFilaNoPendienteSinEnvio() throws Exception {
+        unPedidoBien();
+        when(shippy.enviados(any(), any())).thenReturn(List.of(new ClienteShippyPro.EnvioShippyPro("402-0000000-0000099", "100",
+                AHORA.minusDays(9), "UPSv2", "1Z0000000000000001")));
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(cerradaSinEnvio(8, "402-0000000-0000099")));
+
+        lectura("100:AMAZON").pasada();
+
+        verify(dao).marcarEnviadas(List.of(
+                new SincroShippyPro.MarcaEnvio(8, AHORA.minusDays(9), "UPSv2", "1Z0000000000000001", null, null)), AHORA);
+    }
+
+    @Test void unaFilaCuyoPedidoSeReabreEnLaMismaVueltaNoRecibeEtiqueta() throws Exception {
+        unPedidoBien(); // pendiente: 402-0000000-0000011
+        when(shippy.enviados(any(), any())).thenReturn(List.of(new ClienteShippyPro.EnvioShippyPro("402-0000000-0000011", "100",
+                AHORA.minusDays(2), "UPSv2", "x", 4321L, AHORA.minusDays(1))));
+        FilaPedido vieja = new FilaPedido(7, LocalDate.of(2026, 11, 6), "AMZ", "i13128AzulA", null, "402-0000000-0000011",
+                LocalDate.of(2026, 11, 6), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(2), AHORA.minusDays(3), "UPSv2", "x",
+                null, 1L, null);
+        when(dao.porMarcarDeShippyPro(any())).thenReturn(List.of(vieja));
+
+        lectura("100:AMAZON").pasada();
+
+        verify(dao).marcarEtiquetas(List.of());
+    }
+
     @Test void marcarEnviosVaAntesQueCerrar() throws Exception {
         unPedidoBien();
         when(shippy.enviados(any(), any())).thenReturn(List.of(envio("402-0000000-0000099", "100", 5)));

@@ -156,6 +156,17 @@ class FilasDAOTest {
         assertArrayEquals(new Object[]{null, Timestamp.valueOf("2026-11-09 21:00:00"), 5}, lote.getValue().get(1));
     }
 
+    @Test void marcarEtiquetasCambiaElEnvioDeUnaFilaSinImprimirConUnaEtiquetaRegenerada() {
+        dao.marcarEtiquetas(List.of(new SincroShippyPro.MarcaEtiqueta(6, 88L, null,
+                new SincroShippyPro.EnvioNuevo(LocalDateTime.of(2026, 11, 10, 12, 0), "UPSv2", "1Z0000000000000002"))));
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq("UPDATE Pedido_fila SET ENVIO_ID = ?, ENVIO_FECHA = ?, TRANSPORTISTA = ?,"
+                + " SEGUIMIENTO = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL AND IMPRESA_EN IS NULL"), lote.capture());
+        assertArrayEquals(new Object[]{88L, Timestamp.valueOf("2026-11-10 12:00:00"), "UPSv2", "1Z0000000000000002", null, 6},
+                lote.getValue().get(0));
+        verify(jdbc, never()).batchUpdate(startsWith("UPDATE Pedido_fila SET ENVIO_ID = COALESCE"), anyList());
+    }
+
     @Test void marcarEtiquetasSinNadaNoToca() {
         dao.marcarEtiquetas(List.of());
         verifyNoInteractions(jdbc);

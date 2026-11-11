@@ -68,7 +68,7 @@ de `model/` conservan su nombre.
     `editable` (`false` solo en el histórico) y, nullable, `envioFecha` (hora de Madrid), `transportista` y `seguimiento`. Trae
     además `impresaEn` (nullable, hora de Madrid: cuándo ShippyPro dio la etiqueta por impresa; `null` = sin imprimir) y
     `tieneEtiqueta` (booleano: la fila tiene el id del envío en ShippyPro; el id no se expone). El `estado` no cambia. Trae
-    `nivel` (`OK`, `AVISO` o `MAL`), `motivo`, `skuMovil` y `caja` solo en las filas `PENDIENTE` y `NO_PENDIENTE` con IMEI (el
+    `nivel` (`OK`, `AVISO` o `MAL`), `motivo`, `skuMovil` y `caja` solo en las filas `PENDIENTE`, `NO_PENDIENTE` y `ENVIADA` sin imprimir (`impresaEn` nulo; con la etiqueta solo generada el móvil sigue en el almacén), con IMEI (el
     aviso se calcula al servir, no se guarda); en las demás son `null`. `sku`, `imei`, `pedido` y `fechaCompra` son nullable
     (las filas del histórico llevan los textos de la hoja tal cual). Trae también `canal` (nullable): el nombre del enum `Canal`
     (`AMAZON`, `AMAZON_STOCKROOM`, `DISTRIBUIDORES`, `PARTICULARES`, `BACKIPHONE`); en las filas de ShippyPro, el guardado; en las

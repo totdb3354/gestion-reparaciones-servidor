@@ -39,6 +39,13 @@ class VistaFilasTest {
                 LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, cerradaEn);
     }
 
+    /** Una fila enviada con la etiqueta ya impresa. */
+    private static FilaPedido enviadaImpresa(int id, String imei) {
+        FilaPedido f = enviada(id, imei);
+        return new FilaPedido(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), f.origen(), f.canal(),
+                f.posicion(), f.cerradaEn(), f.envioFecha(), f.transportista(), f.seguimiento(), null, 9L, AHORA.minusDays(1));
+    }
+
     /** Una fila que ShippyPro dio por enviada (cerrada con envio). */
     private static FilaPedido enviada(int id, String imei) {
         return new FilaPedido(id, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", imei, "402-0000000-000000" + id,
@@ -69,7 +76,7 @@ class VistaFilasTest {
     @Test void losAvisosSoloEnLasPendientesYNoPendientesConImei() {
         FilaPedido noPendiente = fila(3, IMEI2, AHORA.minusDays(2));
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(
-                fila(1, IMEI1, null), fila(2, null, null), noPendiente, enviada(5, IMEI1),
+                fila(1, IMEI1, null), fila(2, null, null), noPendiente, enviadaImpresa(5, IMEI1),
                 new FilaPedido(4, LocalDate.of(2025, 1, 1), "Web", "texto", "sin imei", null, null, "HISTORICO", null, null,
                         AHORA.minusYears(1))));
         when(dao.shippyProConImei(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), noPendiente));
@@ -135,8 +142,33 @@ class VistaFilasTest {
         assertEquals("ENVIADA", f.get(0).estado(), "el estado no cambia");
     }
 
-    @Test void unaFilaEnviadaConImeiNoLlevaAvisoNiConsultaNsys() {
-        when(dao.delPeriodo(any(), any())).thenReturn(List.of(enviada(3, IMEI1)));
+    @Test void unaFilaEnviadaSinImprimirConImeiLlevaAvisoYUnaImpresaNo() {
+        FilaPedido sinImprimir = enviada(3, IMEI1);
+        FilaPedido impresa = new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", IMEI2, "402-0000000-0000005",
+                LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1), AHORA.minusDays(2), "UPSv2", "x", null,
+                9L, AHORA.minusDays(1));
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(sinImprimir, impresa));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(sinImprimir));
+        nsysConUnMovilQueCuadra(movil(IMEI1), movil(IMEI2));
+
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+
+        assertEquals("ENVIADA", f.get(0).estado());
+        assertNotNull(f.get(0).nivel());
+        assertEquals("ENVIADA", f.get(1).estado());
+        assertNull(f.get(1).nivel());
+        assertNull(f.get(1).motivo());
+        assertNull(f.get(1).skuMovil());
+        assertNull(f.get(1).caja());
+        // una sola carga para todas las filas, sin consultas por fila
+        verify(nsys, atMost(2)).porImeis(any()); // el aviso y los ya puestos (enviadas), ambos por lotes
+        verify(dao, times(1)).shippyProConImei(any(), any());
+    }
+
+    @Test void unaFilaEnviadaImpresaConImeiNoLlevaAvisoNiConsultaNsys() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(new FilaPedido(3, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA",
+                IMEI1, "402-0000000-0000003", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1),
+                AHORA.minusDays(2), "UPSv2", "x", null, 9L, AHORA.minusDays(1))));
         FilaVista f = vista.filas(null, null, null).filas().get(0);
         assertEquals("ENVIADA", f.estado());
         assertEquals(IMEI1, f.imei());

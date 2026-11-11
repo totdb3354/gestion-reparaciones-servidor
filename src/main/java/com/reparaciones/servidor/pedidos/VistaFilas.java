@@ -138,7 +138,7 @@ public class VistaFilas {
     }
 
     private List<FilaVista> vistas(List<FilaPedido> filas) {
-        // Una sola carga para todas: solo las pendientes y las no pendientes con IMEI llevan aviso.
+        // Una sola carga para todas: solo las pendientes, las no pendientes y las enviadas sin imprimir, con IMEI, llevan aviso.
         Set<String> imeis = new LinkedHashSet<>();
         Set<String> skus = new LinkedHashSet<>();
         for (FilaPedido f : filas) {
@@ -189,7 +189,10 @@ public class VistaFilas {
 
     private static boolean llevaAviso(FilaPedido f) {
         String estado = estado(f);
-        return (PENDIENTE.equals(estado) || NO_PENDIENTE.equals(estado)) && f.imei() != null && !f.imei().isBlank();
+        // Con la etiqueta solo generada (sin imprimir) el movil sigue en el almacen: la ENVIADA sin impresion tambien lleva aviso.
+        boolean conAviso = PENDIENTE.equals(estado) || NO_PENDIENTE.equals(estado)
+                || (ENVIADA.equals(estado) && f.impresaEn() == null);
+        return conAviso && f.imei() != null && !f.imei().isBlank();
     }
 
     /** ShippyPro y NSYS, en este orden. Un ERROR enseña un motivo fijo: su texto puede llevar datos internos. */

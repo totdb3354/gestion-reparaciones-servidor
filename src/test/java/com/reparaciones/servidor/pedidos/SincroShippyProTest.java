@@ -133,10 +133,43 @@ class SincroShippyProTest {
         assertTrue(SincroShippyPro.completarEtiquetas(
                 List.of(envioImpreso("402-0000000-0000011", 9, 777L, null)), CANALES, Set.of(),
                 List.of(enviadaCon(1, "402-0000000-0000011", 777L, antes))).isEmpty());
-        // la fila guarda el id de otra expedicion: no se le pone la impresion de esta
+        // la fila ya impresa guarda el id de otra expedicion: nunca cambia de envio
         assertTrue(SincroShippyPro.completarEtiquetas(
                 List.of(envioImpreso("402-0000000-0000011", 10, 999L, antes)), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", 777L, antes))).isEmpty());
+    }
+
+    @Test void unaEtiquetaRegeneradaSustituyeAlEnvioDeUnaFilaSinImprimir() {
+        LocalDateTime imp = LocalDateTime.of(2026, 11, 10, 15, 0);
+        List<SincroShippyPro.MarcaEtiqueta> m = SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 10, 888L, imp)), CANALES, Set.of(),
+                List.of(enviadaCon(1, "402-0000000-0000011", 777L, null)));
+        assertEquals(List.of(new SincroShippyPro.MarcaEtiqueta(1, 888L, imp,
+                new SincroShippyPro.EnvioNuevo(LocalDateTime.of(2026, 11, 10, 12, 0), "UPSv2", "x"))), m);
+    }
+
+    @Test void elEnvioMasRecienteSinImprimirManda_AunqueHayaUnoAnteriorImpreso() {
+        LocalDateTime imp = LocalDateTime.of(2026, 11, 9, 15, 0);
+        List<SincroShippyPro.MarcaEtiqueta> m = SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 777L, imp), envioImpreso("402-0000000-0000011", 10, 888L, null)),
+                CANALES, Set.of(), List.of(enviadaCon(1, "402-0000000-0000011", 777L, null)));
+        assertEquals(1, m.size());
+        assertEquals(888L, m.get(0).envioId());
+        assertNull(m.get(0).impresaEn(), "la fila sigue sin imprimir");
+        assertNotNull(m.get(0).nuevo());
+    }
+
+    @Test void unaEtiquetaRegeneradaNoSustituyeSiEsAnteriorALaFilaOALaReapertura() {
+        // el envio mas reciente leido (dia 8) es anterior al de la fila (dia 9): no se cambia
+        assertTrue(SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 8, 888L, null)), CANALES, Set.of(),
                 List.of(enviadaCon(1, "402-0000000-0000011", 777L, null))).isEmpty());
+        // fila reabierta a las 13:00 del dia 9: un envio de las 12:00 no cuenta
+        FilaPedido reabierta = new FilaPedido(1, HOY, "AMZ", "i13128AzulA", null, "402-0000000-0000011", HOY, "SHIPPYPRO",
+                Canal.AMAZON, 1, HOY.atStartOfDay(), LocalDateTime.of(2026, 11, 8, 12, 0), "UPSv2", "x",
+                LocalDateTime.of(2026, 11, 9, 13, 0), 777L, null);
+        assertTrue(SincroShippyPro.completarEtiquetas(
+                List.of(envioImpreso("402-0000000-0000011", 9, 888L, null)), CANALES, Set.of(), List.of(reabierta)).isEmpty());
     }
 
     @Test void completarEtiquetasIgnoraFilasSinEnvioPendientesYEnviosDeOtroCanalOAnterioresALaReapertura() {
