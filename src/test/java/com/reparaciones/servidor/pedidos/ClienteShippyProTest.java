@@ -208,7 +208,8 @@ class ClienteShippyProTest {
     }
 
     @Test void urlEtiquetaPideGetLabelUrlConElIdEnteroYTomaLaUrlComoTextoOComoLista() throws Exception {
-        responde(200, "{\"Result\":\"OK\",\"LabelURL\":\"https://cdn.shippypro.com/a.pdf\"}");
+        // La respuesta real de GetLabelUrl NO trae «Result» (comprobado contra ShippyPro el 11/11): solo la URL y datos del envio.
+        responde(200, "{\"LabelURL\":\"https://cdn.shippypro.com/a.pdf\",\"PDF\":[\"x\"],\"ZPL\":[],\"Status\":\"x\"}");
         assertEquals("https://cdn.shippypro.com/a.pdf", cliente.urlEtiqueta(123456).orElseThrow());
         ArgumentCaptor<HttpRequest> c = ArgumentCaptor.forClass(HttpRequest.class);
         verify(http).sendAsync(c.capture(), any());
@@ -229,6 +230,12 @@ class ClienteShippyProTest {
         }
         responde(200, "{\"Result\":\"ERROR\",\"Error\":\"x\"}");
         assertThrows(IOException.class, () -> cliente.urlEtiqueta(1));
+        // Sin «Result» pero con «Error» (asi responde ShippyPro a un id que no vale): tambien es un fallo.
+        responde(200, "{\"Error\":\"x\",\"ValidationErrors\":\"y\"}");
+        assertThrows(IOException.class, () -> cliente.urlEtiqueta(1));
+        // Sin «Result» ni «Error» ni etiqueta: no hay etiqueta.
+        responde(200, "{\"Status\":\"x\"}");
+        assertTrue(cliente.urlEtiqueta(1).isEmpty());
         responde(500, "");
         assertThrows(IOException.class, () -> cliente.urlEtiqueta(1));
     }

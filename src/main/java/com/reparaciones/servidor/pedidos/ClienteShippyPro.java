@@ -89,11 +89,13 @@ public class ClienteShippyPro {
 
     /** Hace la llamada y devuelve el cuerpo ya comprobado (respuesta 200 y Result OK). */
     private JsonNode pedirCuerpo(String cuerpoPeticion) throws IOException, InterruptedException {
-        return pedirCuerpo(cuerpoPeticion, espera);
+        return pedirCuerpo(cuerpoPeticion, espera, true);
     }
 
-    /** Igual, con un tope de espera propio (tambien para las cabeceras de la peticion). */
-    private JsonNode pedirCuerpo(String cuerpoPeticion, Duration tope) throws IOException, InterruptedException {
+    /** Igual, con un tope de espera propio (tambien para las cabeceras de la peticion). Con {@code exigeOk} el cuerpo tiene que
+     *  traer «Result: OK» (las listas de pedidos); sin el (GetLabelUrl, que no trae «Result») basta con que no traiga «Error» ni
+     *  un «Result» distinto de OK. */
+    private JsonNode pedirCuerpo(String cuerpoPeticion, Duration tope, boolean exigeOk) throws IOException, InterruptedException {
         String basic = Base64.getEncoder().encodeToString((clave.clave() + ":").getBytes(StandardCharsets.UTF_8));
         HttpRequest peticion = HttpRequest.newBuilder(URI.create(API)).timeout(tope.compareTo(ESPERA_CABECERAS) < 0 ? tope : ESPERA_CABECERAS)
                 .header("Content-Type", "application/json").header("Authorization", "Basic " + basic)
@@ -115,8 +117,9 @@ public class ClienteShippyPro {
         if (respuesta.statusCode() != 200) throw new IOException("ShippyPro respondió " + respuesta.statusCode());
         JsonNode cuerpo = json.readTree(respuesta.body());
         String resultado = cuerpo.path("Result").asText("");
-        if (!"OK".equals(resultado))
-            throw new IOException(("ShippyPro: " + resultado + " " + cuerpo.path("Error").asText("")).strip());
+        boolean mal = exigeOk ? !"OK".equals(resultado)
+                : (!resultado.isEmpty() && !"OK".equals(resultado)) || !cuerpo.path("Error").asText("").isBlank();
+        if (mal) throw new IOException(("ShippyPro: " + resultado + " " + cuerpo.path("Error").asText("")).strip());
         return cuerpo;
     }
 
@@ -140,7 +143,7 @@ public class ClienteShippyPro {
 
     /** Igual, con un tope de espera corto propio (la peticion de una persona espera; las lecturas de fondo no). */
     public Optional<String> urlEtiqueta(long envioId, Duration tope) throws IOException, InterruptedException {
-        JsonNode url = pedirCuerpo("{\"Method\":\"GetLabelUrl\",\"Params\":{\"OrderID\":" + envioId + "}}", tope).path("LabelURL");
+        JsonNode url = pedirCuerpo("{\"Method\":\"GetLabelUrl\",\"Params\":{\"OrderID\":" + envioId + "}}", tope, false).path("LabelURL");
         if (url.isArray()) url = url.isEmpty() ? null : url.get(0);
         if (url == null || !url.isTextual() || url.asText().isBlank()) return Optional.empty();
         return Optional.of(url.asText().strip());
