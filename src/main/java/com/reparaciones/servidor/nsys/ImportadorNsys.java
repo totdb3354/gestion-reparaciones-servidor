@@ -254,7 +254,7 @@ public class ImportadorNsys {
         }
     }
 
-    /** Al maestro guardado le faltan los nombres de producto (0.9.22) o los SKU de los canales (0.9.31): las columnas son nuevas: se recarga una vez aunque no haya
+    /** Al maestro guardado le faltan los nombres de producto (0.9.22) o los SKU de los canales: las columnas son nuevas: se recarga una vez aunque no haya
      *  cambiado en Drive. Una vez recargado (o si ya los tiene) no se vuelve a mirar en este arranque, para no descargarlo en cada
      *  pasada si el Excel no trae la columna; si la mirada falla, se vuelve a mirar en la siguiente pasada. */
     private boolean faltanNombres() {

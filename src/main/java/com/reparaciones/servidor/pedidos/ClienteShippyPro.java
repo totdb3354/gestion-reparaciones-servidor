@@ -36,7 +36,7 @@ import java.util.concurrent.TimeoutException;
 public class ClienteShippyPro {
 
     private static final Logger log = LoggerFactory.getLogger(ClienteShippyPro.class);
-    static final String API ="https://www.shippypro.com/api";
+    static final String API = "https://www.shippypro.com/api";
     static final String AGENTE = "FSGR-ERP (lectura de pedidos)";
     private static final Duration ESPERA_CABECERAS = Duration.ofSeconds(60);
     static final Duration ESPERA = Duration.ofMinutes(2);

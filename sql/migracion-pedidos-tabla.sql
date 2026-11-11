@@ -62,6 +62,9 @@ CREATE TABLE Pedido_lectura (
     KEY idx_lectura_inicio (INICIO)
 );
 
+-- Si una importacion del maestro tiene la tabla en uso, no esperar mas de 10 s por el bloqueo de metadatos.
+SET SESSION lock_wait_timeout = 10;
+
 ALTER TABLE Nsys_producto
     ADD COLUMN SKU_AMAZON_ESIM  VARCHAR(60) NULL,
     ADD COLUMN SKU_PARTICULARES VARCHAR(60) NULL,

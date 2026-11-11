@@ -26,7 +26,8 @@ public record AvisoImei(String nivel, String motivo, String skuMovil, String caj
             case "NECESITA_TALLER" -> new AvisoImei(MAL, "COLOR_O_GRADO", sku, caja);
             case "EN_TALLER" -> new AvisoImei(AVISO, "EN_TALLER", sku, caja);
             case "CON_AVISO" -> new AvisoImei(AVISO, r.motivo(), sku, caja);
-            default -> new AvisoImei(OK, null, sku, caja);
+            case "CUADRA" -> new AvisoImei(OK, null, sku, caja);
+            default -> throw new IllegalStateException("Estado de unidad desconocido: " + r.estado());
         };
     }
 }

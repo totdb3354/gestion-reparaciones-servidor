@@ -56,13 +56,13 @@ public class NsysDAO {
             + " SKU_AMAZON, SKU_SIN_GRADO, ES_ESIM, NOMBRE, SKU_AMAZON_ESIM, SKU_PARTICULARES, SKU_BACKIPHONE";
     static final String SQL_PRODUCTO = "INSERT INTO Nsys_producto (" + COLUMNAS_PRODUCTO + ")"
             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    /** El maestro guardado no tiene ningún SKU de los canales nuevos (se cargó antes de la 0.9.31). */
+    /** El maestro guardado no tiene ningún SKU de los canales nuevos (se cargó antes de que existieran). */
     static final String SQL_PRODUCTOS_SIN_SKU_DE_CANALES = "SELECT COUNT(*) > 0 AND COALESCE(SUM(SKU_AMAZON_ESIM IS NOT NULL"
             + " OR SKU_PARTICULARES IS NOT NULL OR SKU_BACKIPHONE IS NOT NULL), 0) = 0 FROM Nsys_producto";
-    /** Los productos cuyo SKU de algún canal es uno de estos (la intercalación de la tabla no distingue mayúsculas). Amazon es
-     *  solo «SKU (Amazon) con eSIM» (SKU_AMAZON_ESIM): SKU_AMAZON no cuenta como SKU de canal. */
     /** SKU_WEB, SKU_AMAZON_ESIM, SKU_PARTICULARES y SKU_BACKIPHONE: las veces que {@code SQL_PRODUCTOS_POR_SKU} usa la lista. */
     static final int COLUMNAS_DE_CANAL = 4;
+    /** Los productos cuyo SKU de algún canal es uno de estos (la intercalación de la tabla no distingue mayúsculas). Amazon es
+     *  solo «SKU (Amazon) con eSIM» (SKU_AMAZON_ESIM): SKU_AMAZON no cuenta como SKU de canal. */
     static final String SQL_PRODUCTOS_POR_SKU = "SELECT " + COLUMNAS_PRODUCTO + " FROM Nsys_producto WHERE SKU_WEB IN (%1$s)"
             + " OR SKU_AMAZON_ESIM IN (%1$s) OR SKU_PARTICULARES IN (%1$s) OR SKU_BACKIPHONE IN (%1$s)";
     static final String SQL_EMPEZAR = "INSERT INTO Nsys_importacion (FICHERO, FECHA_EXPORTACION, ORIGEN, EMPEZADA)"
@@ -139,7 +139,7 @@ public class NsysDAO {
         return jdbc.query("SELECT " + COLUMNAS_PRODUCTO + " FROM Nsys_producto", NsysDAO::producto);
     }
 
-    /** Los productos del maestro que un pedido puede pedir con estos SKU de canal (0.9.31, spec pieza 2 §6.4.1), en tandas. */
+    /** Los productos del maestro que un pedido puede pedir con estos SKU de canal (spec pieza 2 §6.4.1), en tandas. */
     public List<ProductoMaestro> productosPorSkuDeCanal(Collection<String> skus) {
         List<ProductoMaestro> productos = new ArrayList<>();
         for (List<String> tanda : trozos(List.copyOf(skus), TANDA_IN)) {

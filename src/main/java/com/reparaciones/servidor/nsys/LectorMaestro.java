@@ -22,7 +22,7 @@ public final class LectorMaestro {
             "Calidad Detalle", "SKU (stock web)", "SKU (Amazon)", "SKU sin grado");
     /** La columna con el nombre del producto sin el grado (0.9.22). Opcional: un maestro sin ella se carga como antes. */
     static final String NOMBRE = "Product Name";
-    /** Los SKU de los canales que no son el nuestro ni el de Amazon (0.9.31). Opcionales: sin ellas, esos pedidos no se
+    /** Los SKU de los canales que no son el nuestro ni el de Amazon. Opcionales: sin ellas, esos pedidos no se
      *  reconocen y el maestro se carga igual. */
     static final String SKU_AMAZON_ESIM = "SKU (Amazon) con eSIM";
     static final String SKU_PARTICULARES = "SKU (stock fonestore.es) Conjunto";

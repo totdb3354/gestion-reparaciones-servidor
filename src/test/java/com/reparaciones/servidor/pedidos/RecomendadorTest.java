@@ -136,7 +136,7 @@ class RecomendadorTest {
 
     @Test void comoMuchoCincoYElSexto_queda_fuera() {
         List<MovilNsys> stock = new java.util.ArrayList<>();
-        for (int i = 1; i <= 7; i++) stock.add(movil("35000000000000" + i, "A", LocalDate.of(2026, 9, i)));
+        for (int i = 7; i >= 1; i--) stock.add(movil("35000000000000" + i, "A", LocalDate.of(2026, 9, i))); // fechas al reves: el tope va despues de ordenar
         List<Recomendador.Candidato> r = de(AMAZON_A, Canal.AMAZON, stock, SIN_TRABAJOS, NADIE);
         assertEquals(Recomendador.TOPE, r.size());
         assertEquals("350000000000001", r.get(0).imei());

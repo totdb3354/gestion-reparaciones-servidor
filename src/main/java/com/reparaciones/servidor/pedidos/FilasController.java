@@ -81,8 +81,10 @@ public class FilasController {
         return idempotencia.ejecutar(principal.getIdUsu(), "pedido-imei", claveIdempotencia, new Cambio(id, imei), () -> {
             // El estado se decide en la transaccion del DAO: una fila enviada entre la comprobacion y el cambio tampoco se toca.
             FilasDAO.Resultado r = dao.ponerImei(id, imei, principal.getIdUsu(), LocalDateTime.now(clock));
-            if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
-            if (r == FilasDAO.Resultado.CERRADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_ENVIADA);
+            if (r != FilasDAO.Resultado.PUESTO) {
+                if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
+                throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_ENVIADA);
+            }
             return vista.fila(id).orElseThrow(() -> noExiste(id));
         });
     }
