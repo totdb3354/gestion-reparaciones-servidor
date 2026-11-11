@@ -153,9 +153,9 @@ class TraspasoTest {
                 erp(22, Canal.AMAZON, "AMZ", SKU, null, "402-0000000-0000003", 1, HOY.minusDays(5), true));
         Plan p = planear(List.of(hoja(HOY.minusDays(6), "AMZ", SKU, IMEI1, null), hoja(HOY.minusDays(6), "AMZ", SKU, IMEI2, null),
                 hoja(HOY.minusDays(5), "AMZ", SKU, IMEI3, null), hoja(HOY.minusDays(5), "AMZ", SKU, "350000000000004", null)), erp, HOY);
-        // Orden de las filas vivas: (fecha, id) = 22, 20, 21. Hay 4 filas de hoja y 3 pendientes: se quedan las 3 mas recientes
-        // y la mas antigua (IMEI1) va al historico sin pareja.
-        assertEquals(List.of(new Traslado(22, IMEI2, Via.B), new Traslado(20, IMEI3, Via.B), new Traslado(21, "350000000000004", Via.B)),
+        // Orden de las filas vivas: (fecha, id) = 22, 20, 21. Hay 4 filas de hoja y 3 pendientes: de la mas reciente a la mas antigua
+        // cada una toma la primera libre; la mas antigua (IMEI1) se queda sin pareja y va al historico.
+        assertEquals(List.of(new Traslado(21, IMEI2, Via.B), new Traslado(20, IMEI3, Via.B), new Traslado(22, "350000000000004", Via.B)),
                 traslados(p));
         assertEquals(1, p.historico().size());
         assertEquals(IMEI1, p.historico().get(0).imei());
@@ -177,7 +177,7 @@ class TraspasoTest {
         List<FilaPedido> erp = List.of(erp(20, Canal.AMAZON_STOCKROOM, "FNSK", SKU, null, PED1, 1, HOY, true),
                 erp(21, Canal.AMAZON_STOCKROOM, "FNSK", SKU, null, "402-0000000-0000002", 1, HOY, true));
         Plan p = planear(List.of(hoja(HOY, " fnsk ", SKU, IMEI1, null), hoja(HOY, "FSNK", SKU, IMEI2, "  ")), erp, HOY);
-        assertEquals(List.of(new Traslado(20, IMEI1, Via.B), new Traslado(21, IMEI2, Via.B)), traslados(p));
+        assertEquals(List.of(new Traslado(21, IMEI1, Via.B), new Traslado(20, IMEI2, Via.B)), traslados(p));
     }
 
     @Test void bExigeImeiValidoYFechaDeLosUltimos14Dias() {
@@ -230,7 +230,7 @@ class TraspasoTest {
                 web(32, Canal.PARTICULARES, "Cliente Web A", SKU, null, HOY.minusDays(1)));
         Plan p = planear(List.of(hoja(HOY, "Cliente Web A", SKU, IMEI1, null), hoja(HOY, "Cliente Web A", SKU, IMEI2, null),
                 hoja(HOY, "Cliente Web A", SKU, IMEI3, null), hoja(HOY, "Cliente Web A", SKU, "350000000000004", null)), erp, HOY);
-        assertEquals(List.of(new Traslado(30, IMEI2, Via.C), new Traslado(32, IMEI3, Via.C), new Traslado(31, "350000000000004", Via.C)),
+        assertEquals(List.of(new Traslado(31, IMEI2, Via.C), new Traslado(32, IMEI3, Via.C), new Traslado(30, "350000000000004", Via.C)),
                 traslados(p));
         assertEquals(1, p.recuentos().sinPareja());
         assertEquals(1, p.historico().size());
@@ -329,7 +329,7 @@ class TraspasoTest {
     }
 
     @Test void unImeiQueYaEstaEnCualquierFilaDeShippyProDeOtroSkuOCanalNoSePoneEnOtraYNoSeCargaComoHistorico() {
-        List<FilaPedido> erp = List.of(erp(40, Canal.BACKIPHONE, "Otro", OTRO_SKU, IMEI1, "W-40", 1, HOY.minusDays(40), false),
+        List<FilaPedido> erp = List.of(erp(40, Canal.BACKIPHONE, "Otro", OTRO_SKU, IMEI1, "W-40", 1, HOY.minusDays(3), false),
                 amazon(10, SKU, null, PED1, 1), web(30, Canal.PARTICULARES, "Cliente Web A", SKU, null, HOY));
         Plan p = planear(List.of(hoja(HOY, "AMZ", SKU, IMEI1, null), hoja(HOY, "Cliente Web A", SKU, IMEI1, null),
                 hoja(HOY, "AMZ", SKU, IMEI1, PED1)), erp, HOY);
@@ -447,7 +447,7 @@ class TraspasoTest {
         String[] imeis = {"350000000000011", "350000000000012", "350000000000013", "350000000000014", "350000000000015"};
         for (int i = 0; i < 5; i++) hoja.add(hoja(HOY.minusDays(10 - 2 * i), "AMZ", SKU, imeis[i], null)); // de hace 10 a hace 2 dias
         Plan p = planear(hoja, erp, HOY);
-        assertEquals(List.of(new Traslado(10, imeis[3], Via.B), new Traslado(11, imeis[4], Via.B)), traslados(p));
+        assertEquals(List.of(new Traslado(11, imeis[3], Via.B), new Traslado(10, imeis[4], Via.B)), traslados(p));
         assertEquals(List.of(imeis[0], imeis[1], imeis[2]), p.historico().stream().map(FilaHoja::imei).toList());
         assertEquals(3, p.recuentos().sinPareja());
     }
@@ -465,7 +465,7 @@ class TraspasoTest {
         FilaPedido sinCompra = new FilaPedido(9, HOY, "AMZ", SKU, null, "402-0000000-0000003", null, "SHIPPYPRO", Canal.AMAZON, 1, null);
         Plan p = planear(List.of(hoja(HOY.minusDays(3), "AMZ", SKU, IMEI1, null), hoja(HOY.minusDays(2), "AMZ", SKU, IMEI2, null),
                 hoja(HOY.minusDays(1), "AMZ", SKU, IMEI3, null)), List.of(tarde, pronto, sinCompra), HOY);
-        assertEquals(List.of(new Traslado(11, IMEI1, Via.B), new Traslado(10, IMEI2, Via.B), new Traslado(9, IMEI3, Via.B)), traslados(p));
+        assertEquals(List.of(new Traslado(9, IMEI1, Via.B), new Traslado(10, IMEI2, Via.B), new Traslado(11, IMEI3, Via.B)), traslados(p));
     }
 
     @Test void lasIncidenciasYLasFilasNpNuncaSonDeAYSiempreVanAlHistorico() {
@@ -529,6 +529,77 @@ class TraspasoTest {
                 assertEquals(primera.historico(), segunda.historico(), etiqueta);
             }
         }
+    }
+
+    @Test void elContraejemploDeLaRevisionYaNoCambiaAlRepetir() {
+        // p1: FECHA hoy y compra mas antigua; p2: FECHA hoy-10. R1 (hoy-12) y R2 (hoy-5).
+        FilaPedido p1 = new FilaPedido(1, HOY, "AMZ", SKU, null, PED1, HOY.minusDays(9), "SHIPPYPRO", Canal.AMAZON, 1, null);
+        FilaPedido p2 = new FilaPedido(2, HOY.minusDays(10), "AMZ", SKU, null, "402-0000000-0000002", HOY.minusDays(8), "SHIPPYPRO", Canal.AMAZON, 1, null);
+        List<FilaHoja> hoja = List.of(hoja(HOY.minusDays(12), "AMZ", SKU, IMEI1, null), hoja(HOY.minusDays(5), "AMZ", SKU, IMEI2, null));
+        Plan primera = planear(hoja, List.of(p1, p2), HOY);
+        assertEquals(List.of(new Traslado(2, IMEI1, Via.B), new Traslado(1, IMEI2, Via.B)), traslados(primera),
+                "R2 toma p1 (compra mas antigua) y R1 aun cumple con p2: ya no hay nada que cambie al repetir");
+        Plan segunda = planear(hoja, List.of(aplicar(p1, primera), aplicar(p2, primera)), HOY);
+        assertTrue(segunda.traslados().isEmpty());
+        assertEquals(primera.historico(), segunda.historico());
+    }
+
+    private static FilaPedido aplicar(FilaPedido f, Plan plan) {
+        String imei = plan.traslados().stream().filter(t -> t.idFila() == f.id()).map(Traslado::imei).findFirst().orElse(f.imei());
+        return new FilaPedido(f.id(), f.fecha(), f.plataforma(), f.sku(), imei, f.pedido(), f.fechaCompra(), f.origen(), f.canal(),
+                f.posicion(), f.cerradaEn());
+    }
+
+    @Test void variosPendientesPorGrupoConFechasDistintasEsUnPuntoFijo() {
+        int[] fechasErp = {0, 3, 10, 14};
+        for (int pasoErp = 0; pasoErp < 24; pasoErp++) {
+            // Pendientes de un mismo canal y SKU con FECHA y fecha de compra distintas segun la combinacion.
+            List<FilaPedido> erp = new ArrayList<>();
+            for (int k = 0; k < 4; k++)
+                erp.add(new FilaPedido(100 + k, HOY.minusDays(fechasErp[(k + pasoErp) % 4]), "AMZ", SKU, null, "402-0000000-00001" + k,
+                        k % 2 == 0 ? HOY.minusDays(1 + (k * 7 + pasoErp) % 11) : null, "SHIPPYPRO", Canal.AMAZON, 1, null));
+            for (int paso = 1; paso <= 6; paso++) {
+                List<FilaHoja> hoja = new ArrayList<>();
+                for (int r = 0; r < 7; r++)
+                    hoja.add(hoja(HOY.minusDays((r * paso + pasoErp) % 15), "AMZ", SKU, String.format("3500000000%05d", 100 + r), null));
+                String etiqueta = "pasoErp " + pasoErp + " paso " + paso;
+                Plan primera = planear(hoja, erp, HOY);
+                List<FilaPedido> despues = erp.stream().map(f -> aplicar(f, primera)).toList();
+                Plan segunda = planear(hoja, despues, HOY);
+                assertTrue(segunda.traslados().isEmpty(), etiqueta);
+                assertEquals(primera.historico(), segunda.historico(), etiqueta);
+            }
+        }
+    }
+
+    @Test void unMovilRevendidoEnOtroPedidoSeTraspasaALaFilaDeSuPedidoYAlRepetirEsYaPuesto() {
+        FilaPedido vieja = erp(50, Canal.AMAZON, "AMZ", SKU, IMEI1, "402-0000000-0000050", 1, HOY.minusDays(60), false);
+        FilaPedido y = amazon(10, SKU, null, PED1, 1);
+        List<FilaHoja> hoja = List.of(hoja(HOY, "AMZ", SKU, IMEI1, PED1));
+        Plan primera = planear(hoja, List.of(vieja, y), HOY);
+        assertEquals(List.of(new Traslado(10, IMEI1, Via.A)), traslados(primera));
+        assertTrue(primera.historico().isEmpty());
+        Plan segunda = planear(hoja, List.of(vieja, aplicar(y, primera)), HOY);
+        assertTrue(segunda.traslados().isEmpty());
+        assertTrue(segunda.historico().isEmpty());
+        assertEquals(1, segunda.recuentos().yaPuesto());
+    }
+
+    @Test void unImeiEnOtraFilaDelErpDeFechaCercanaEsYaPuestoTambienEnA() {
+        FilaPedido reciente = erp(50, Canal.AMAZON, "AMZ", SKU, IMEI1, "402-0000000-0000050", 1, HOY.minusDays(2), true);
+        Plan p = planear(List.of(hoja(HOY, "AMZ", SKU, IMEI1, PED1)), List.of(reciente, amazon(10, SKU, null, PED1, 1)), HOY);
+        assertTrue(traslados(p).isEmpty());
+        assertTrue(p.historico().isEmpty());
+        assertEquals(1, p.recuentos().yaPuesto());
+    }
+
+    @Test void trasUnTraspasoAConImeiRevendidoUnaFilaAntiguaDeLaHojaConEseImeiSigueSiendoVentaAnterior() {
+        FilaPedido vieja = erp(50, Canal.AMAZON, "AMZ", SKU, IMEI1, "402-0000000-0000050", 1, HOY.minusDays(60), false);
+        Plan p = planear(List.of(hoja(HOY.minusDays(70), "AMZ", SKU, IMEI1, null), hoja(HOY, "AMZ", SKU, IMEI1, PED1)),
+                List.of(vieja, amazon(10, SKU, null, PED1, 1)), HOY);
+        assertEquals(List.of(new Traslado(10, IMEI1, Via.A)), traslados(p));
+        assertEquals(1, p.historico().size());
+        assertEquals(1, p.recuentos().ventaAnterior());
     }
 
     // ------------------------------------------------------------------ idempotencia

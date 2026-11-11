@@ -140,7 +140,15 @@ public final class Traspaso {
                 sinImei++;
                 continue;
             }
-            if (puestos.containsKey(f.imei())) { // mismo numero de pedido = misma venta
+            // Mismo numero de pedido = misma venta: si una fila del propio pedido ya tiene el IMEI, «ya puesto».
+            if (grupo.stream().anyMatch(d -> f.imei().equals(d.imei))) {
+                yaPuesto++;
+                continue;
+            }
+            // El IMEI esta en una fila de OTRO pedido: si esa fila es mas de 7 dias anterior a la fila de la hoja, es una venta anterior
+            // del movil (vendido, devuelto y revendido) y esta se traspasa; si es cercana o posterior, es «ya puesto».
+            LocalDate otra = puestos.get(f.imei());
+            if (otra != null && !otra.isBefore(f.fecha().minusDays(DIAS_VENTA_ANTERIOR))) {
                 yaPuesto++;
                 continue;
             }
@@ -195,19 +203,31 @@ public final class Traspaso {
             List<Destino> pendientes = libres.getOrDefault(e.getKey(), List.of());
             List<Integer> filas = new ArrayList<>(e.getValue());
             filas.sort((x, y) -> POR_FECHA_DE_HOJA.compare(hoja.get(x), hoja.get(y)));
-            int sobran = Math.max(0, filas.size() - pendientes.size());
-            sinPareja += sobran;
             Via via = viaDelGrupo.get(e.getKey());
-            int j = 0; // siguiente pendiente libre
-            for (int k = sobran; k < filas.size() && j < pendientes.size(); k++) {
+            // De la mas reciente a la mas antigua, cada una toma la PRIMERA pendiente libre que cumpla Fecha >= FECHA del destino - 7 dias
+            // (destino sin fecha: vale), es decir, que repetir la carga la daria por «ya puesta». Si no cumple con ninguna libre, va al
+            // historico: asi tampoco cumplira con las que queden libres despues y repetir da siempre lo mismo.
+            List<Destino> libresDelGrupo = new ArrayList<>(pendientes);
+            List<Object[]> colocadas = new ArrayList<>(); // {indice de la hoja, destino}
+            for (int k = filas.size() - 1; k >= 0; k--) {
                 int i = filas.get(k);
-                Destino d = pendientes.get(j);
-                // Solo casa si despues sera «ya puesto» al repetir: Fecha >= FECHA del destino - 7 dias (destino sin fecha: vale).
-                if (d.fila.fecha() != null && hoja.get(i).fecha().isBefore(d.fila.fecha().minusDays(DIAS_VENTA_ANTERIOR))) {
+                Destino elegido = null;
+                for (Destino d : libresDelGrupo)
+                    if (d.fila.fecha() == null || !hoja.get(i).fecha().isBefore(d.fila.fecha().minusDays(DIAS_VENTA_ANTERIOR))) {
+                        elegido = d;
+                        break;
+                    }
+                if (elegido == null) {
                     sinPareja++;
                     continue;
                 }
-                j++;
+                libresDelGrupo.remove(elegido);
+                colocadas.add(new Object[]{i, elegido});
+            }
+            java.util.Collections.reverse(colocadas); // en el orden de la hoja
+            for (Object[] par : colocadas) {
+                int i = (Integer) par[0];
+                Destino d = (Destino) par[1];
                 d.imei = hoja.get(i).imei();
                 puestos.merge(d.imei, d.fila.fecha() == null ? SIN_FECHA : d.fila.fecha(), Traspaso::masAntigua);
                 traslados.add(new Traslado(d.fila.id(), d.imei, via));
