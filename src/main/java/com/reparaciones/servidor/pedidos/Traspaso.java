@@ -198,9 +198,16 @@ public final class Traspaso {
             int sobran = Math.max(0, filas.size() - pendientes.size());
             sinPareja += sobran;
             Via via = viaDelGrupo.get(e.getKey());
-            for (int k = sobran; k < filas.size(); k++) {
+            int j = 0; // siguiente pendiente libre
+            for (int k = sobran; k < filas.size() && j < pendientes.size(); k++) {
                 int i = filas.get(k);
-                Destino d = pendientes.get(k - sobran);
+                Destino d = pendientes.get(j);
+                // Solo casa si despues sera «ya puesto» al repetir: Fecha >= FECHA del destino - 7 dias (destino sin fecha: vale).
+                if (d.fila.fecha() != null && hoja.get(i).fecha().isBefore(d.fila.fecha().minusDays(DIAS_VENTA_ANTERIOR))) {
+                    sinPareja++;
+                    continue;
+                }
+                j++;
                 d.imei = hoja.get(i).imei();
                 puestos.merge(d.imei, d.fila.fecha() == null ? SIN_FECHA : d.fila.fecha(), Traspaso::masAntigua);
                 traslados.add(new Traslado(d.fila.id(), d.imei, via));

@@ -188,7 +188,8 @@ class TraspasoTest {
         assertEquals(3, p.historico().size());
         assertEquals(0, p.recuentos().sinPareja(), "no se intento emparejar: no es «sin pareja»");
 
-        Plan limite = planear(List.of(hoja(HOY.minusDays(14), "AMZ", SKU, IMEI1, null)), erp, HOY);
+        Plan limite = planear(List.of(hoja(HOY.minusDays(14), "AMZ", SKU, IMEI1, null)),
+                List.of(erp(20, Canal.AMAZON, "AMZ", SKU, null, PED1, 1, HOY.minusDays(10), true)), HOY);
         assertEquals(1, limite.recuentos().b(), "el dia 14 todavia vale");
     }
 
@@ -481,6 +482,53 @@ class TraspasoTest {
                 amazon(12, " I13128AZULA ", null, "402-0000000-0000002", 1));
         Plan p = planear(List.of(hoja(HOY, "AMZ", " i13128azula ", IMEI1, PED1), hoja(HOY, "AMZ", "i13128AzulA", IMEI2, null)), erp, HOY);
         assertEquals(List.of(new Traslado(11, IMEI1, Via.A), new Traslado(12, IMEI2, Via.B)), traslados(p));
+    }
+
+    @Test void unaFilaDeLaHojaMuyAnteriorALaPendienteNoSeTraspasaYUnaCercanaSiYAlRepetirEsYaPuesto() {
+        FilaPedido pendiente = erp(10, Canal.AMAZON, "AMZ", SKU, null, PED1, 1, HOY, true);
+        Plan lejos = planear(List.of(hoja(HOY.minusDays(10), "AMZ", SKU, IMEI1, null)), List.of(pendiente), HOY);
+        assertTrue(lejos.traslados().isEmpty());
+        assertEquals(1, lejos.historico().size());
+        assertEquals(1, lejos.recuentos().sinPareja());
+        List<FilaHoja> cerca = List.of(hoja(HOY.minusDays(5), "AMZ", SKU, IMEI1, null));
+        Plan primera = planear(cerca, List.of(pendiente), HOY);
+        assertEquals(List.of(new Traslado(10, IMEI1, Via.B)), traslados(primera));
+        Plan segunda = planear(cerca, List.of(erp(10, Canal.AMAZON, "AMZ", SKU, IMEI1, PED1, 1, HOY, true)), HOY);
+        assertTrue(segunda.traslados().isEmpty());
+        assertTrue(segunda.historico().isEmpty());
+        assertEquals(1, segunda.recuentos().yaPuesto());
+    }
+
+    @Test void siUnParNoCumpleLaCondicionLaPendienteQuedaLibreParaLaSiguienteCandidata() {
+        FilaPedido pendiente = erp(10, Canal.AMAZON, "AMZ", SKU, null, PED1, 1, HOY, true);
+        FilaPedido otra = erp(11, Canal.AMAZON, "AMZ", SKU, null, "402-0000000-0000002", 1, HOY, true);
+        Plan p = planear(List.of(hoja(HOY.minusDays(12), "AMZ", SKU, IMEI1, null), hoja(HOY.minusDays(3), "AMZ", SKU, IMEI2, null)),
+                List.of(pendiente, otra), HOY);
+        assertEquals(List.of(new Traslado(10, IMEI2, Via.B)), traslados(p));
+        assertEquals(List.of(IMEI1), p.historico().stream().map(FilaHoja::imei).toList());
+        assertEquals(1, p.recuentos().sinPareja());
+    }
+
+    @Test void repetirDaSiempreCeroTraspasosYElMismoHistoricoParaTodosLosDesfases() {
+        for (int dias = 0; dias <= 14; dias++) {
+            for (int fechaErp = 0; fechaErp <= 3; fechaErp++) {
+                String etiqueta = "hoja de hace " + dias + " dias, pendiente de hace " + fechaErp;
+                List<FilaHoja> hoja = List.of(hoja(HOY.minusDays(dias), "AMZ", SKU, IMEI1, null),
+                        hoja(HOY.minusDays(dias), "Cliente Web A", SKU, IMEI2, null));
+                List<FilaPedido> erp = List.of(erp(10, Canal.AMAZON, "AMZ", SKU, null, PED1, 1, HOY.minusDays(fechaErp), true),
+                        web(30, Canal.PARTICULARES, "Cliente Web A", SKU, null, HOY.minusDays(fechaErp)));
+                Plan primera = planear(hoja, erp, HOY);
+                List<FilaPedido> despues = new ArrayList<>();
+                for (FilaPedido f : erp) {
+                    String imei = primera.traslados().stream().filter(t -> t.idFila() == f.id()).map(Traslado::imei).findFirst().orElse(f.imei());
+                    despues.add(new FilaPedido(f.id(), f.fecha(), f.plataforma(), f.sku(), imei, f.pedido(), null, f.origen(), f.canal(),
+                            f.posicion(), f.cerradaEn()));
+                }
+                Plan segunda = planear(hoja, despues, HOY);
+                assertTrue(segunda.traslados().isEmpty(), etiqueta);
+                assertEquals(primera.historico(), segunda.historico(), etiqueta);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ idempotencia
