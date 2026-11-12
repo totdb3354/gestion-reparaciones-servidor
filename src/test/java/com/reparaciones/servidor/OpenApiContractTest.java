@@ -423,7 +423,7 @@ class OpenApiContractTest {
         // informe (null salvo en OK) es una $ref: OpenAPI 3.0 ignora "nullable" junto a un $ref, como CompraEditarRequest.destino.
         assertTrue(esquemas.path("CargaHistoricoEstadoCarga").path("properties").path("informe").path("$ref").asText().endsWith("/InformeCarga"));
         assertNoNullable(esquemas, "InformeCarga", "filasLeidas", "cargadasHistorico", "descartadasVacias", "sinFechaHeredada",
-                "sinFechaDescartada", "imeiNoEsImei", "traspasadasA", "traspasadasB", "traspasadasC", "yaPuesto", "conflicto",
+                "sinFechaDescartada", "incidenciasDescartadas", "imeiNoEsImei", "traspasadasA", "traspasadasB", "traspasadasC", "yaPuesto", "conflicto",
                 "casadasSinImei", "sinPareja", "yaVendidoNsys", "ventaAnterior", "plataformas");
         assertEquals("integer", esquemas.path("InformeCarga").path("properties").path("plataformas").path("additionalProperties").path("type").asText());
     }

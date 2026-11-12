@@ -105,8 +105,26 @@ class LectorHistoricoTest {
 
     @Test void lasFilasSeQuedanEnElOrdenDeLaHojaConSuNumeroYSeCuentanLasPlataformas() {
         var l = LectorHistorico.leer(tabla(fila(D2, "AMZ", "a"), fila(D2, "INCIDENCIA AMZ 1", "b"), fila(D2, "AMZ", "c"), fila(D2, "", "d")));
-        assertEquals(List.of(2, 3, 4, 5), l.filas().stream().map(LectorHistorico.FilaHoja::numero).toList());
-        assertEquals(Map.of("AMZ", 2, "INCIDENCIA AMZ 1", 1), l.plataformas());
+        assertEquals(List.of(2, 4, 5), l.filas().stream().map(LectorHistorico.FilaHoja::numero).toList());
+        assertEquals(Map.of("AMZ", 2), l.plataformas());
+        assertEquals(1, l.incidenciasDescartadas());
+        assertEquals(4, l.leidas());
+    }
+
+    @Test void soloEsIncidenciaSiLaPlataformaEmpiezaPorLaPalabraSinEspaciosNiMayusculas() {
+        var l = LectorHistorico.leer(tabla(fila(D2, " incidencia amz stock", "a"), fila(D2, "INCIDENCIA", "b"), fila(D2, "Incidencia AMZ DE", "c"),
+                fila(D2, "Taller Incidencias SL", "d"), fila(D2, "NP", "e"), fila(D2, "Sin incidencia", "f")));
+        assertEquals(3, l.incidenciasDescartadas());
+        assertEquals(List.of("Taller Incidencias SL", "NP", "Sin incidencia"), l.filas().stream().map(LectorHistorico.FilaHoja::plataforma).toList());
+    }
+
+    @Test void unaIncidenciaNoCuentaComoFechaHeredadaNiComoSinFechaNiComoImeiRaro() {
+        var l = LectorHistorico.leer(tabla(fila(null, "INCIDENCIA 1", "a", "CANCELADO"), fila(D2, "AMZ", "b"), fila(null, "incidencia 2", "c", "DEVUELTO")));
+        assertEquals(2, l.incidenciasDescartadas());
+        assertEquals(0, l.sinFechaDescartada());
+        assertEquals(0, l.sinFechaHeredada());
+        assertEquals(0, l.imeiNoImei());
+        assertEquals(1, l.filas().size());
     }
 
     @Test void unaTablaSinColumnasOpcionalesSeLeeIgual() {

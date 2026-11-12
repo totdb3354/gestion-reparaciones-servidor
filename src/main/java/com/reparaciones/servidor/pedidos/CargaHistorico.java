@@ -221,7 +221,7 @@ public class CargaHistorico {
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                 .limit(PLATAFORMAS_EN_INFORME).forEach(e -> plataformas.put(e.getKey(), e.getValue()));
         return new InformeCarga(leida.leidas(), plan.historico().size(), leida.descartadasVacias(), leida.sinFechaHeredada(),
-                leida.sinFechaDescartada(), leida.imeiNoImei(), r.a(), r.b(), r.c(), r.yaPuesto(), r.conflicto(), r.casadasSinImei(),
+                leida.sinFechaDescartada(), leida.incidenciasDescartadas(), leida.imeiNoImei(), r.a(), r.b(), r.c(), r.yaPuesto(), r.conflicto(), r.casadasSinImei(),
                 r.sinPareja(), r.yaVendido(), r.ventaAnterior(), plataformas);
     }
 }

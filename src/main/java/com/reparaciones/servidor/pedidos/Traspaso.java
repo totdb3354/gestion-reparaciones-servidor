@@ -19,10 +19,11 @@ import java.util.Set;
  *
  *  Reglas, en dos pasadas:
  *  A (toda la hoja primero). «Pedido Amazon» coincide con el PEDIDO de filas de ShippyPro de Amazon o Amazon Stockroom (vivas o
- *     cerradas). Las incidencias y las filas NP nunca van por A.
+ *     cerradas). Las filas NP nunca van por A.
+ *  Las filas de incidencia no llegan aquí: {@link LectorHistorico} las descarta antes (no se cargan ni cuentan para nada).
  *  B. Plataforma AMZ (Amazon) o FNSK/FSNK (Stockroom), sin «Pedido Amazon», IMEI de 15 cifras y fecha de los últimos 14 días: la
  *     fila PENDIENTE de ese canal con el mismo SKU y sin IMEI.
- *  C. Cualquier otra plataforma con nombre (no INCIDENCIA… ni NP), IMEI de 15 cifras y fecha de los últimos 14 días: la fila
+ *  C. Cualquier otra plataforma con nombre (no NP), IMEI de 15 cifras y fecha de los últimos 14 días: la fila
  *     PENDIENTE de un canal web cuya plataforma tiene el mismo nombre y el mismo SKU, sin IMEI.
  *  En B y C no son destino las filas cuyo PEDIDO aparece como «Pedido Amazon» en alguna fila de la hoja (son de A), ni los IMEI
  *  que NSYS da por vendidos (van al histórico). Si hay más filas de la hoja que pendientes libres, se quedan las más recientes.

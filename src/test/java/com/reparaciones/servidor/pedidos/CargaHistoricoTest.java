@@ -153,9 +153,12 @@ class CargaHistoricoTest {
         assertEquals(1, i.traspasadasA());
         assertEquals(1, i.traspasadasB());
         assertEquals(1, i.traspasadasC());
-        assertEquals(2, i.cargadasHistorico(), "la incidencia y la fila antigua");
-        assertEquals(1, i.imeiNoEsImei());
-        assertEquals(Map.of("AMZ", 3, "Cliente Web A", 1, "INCIDENCIA AMZ 1", 1), i.plataformas());
+        assertEquals(1, i.incidenciasDescartadas());
+        assertEquals(1, i.cargadasHistorico(), "solo la fila antigua: la incidencia no se carga");
+        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.cargadasHistorico()
+                + i.traspasadasA() + i.traspasadasB() + i.traspasadasC() + i.yaPuesto() + i.conflicto() + i.casadasSinImei(), "cuadre");
+        assertEquals(0, i.imeiNoEsImei(), "el CANCELADO era de la incidencia");
+        assertEquals(Map.of("AMZ", 3, "Cliente Web A", 1), i.plataformas());
 
         InOrder orden = inOrder(lectura, dao, tm);
         orden.verify(lectura).sinVueltas(any());
@@ -166,17 +169,42 @@ class CargaHistoricoTest {
         orden.verify(dao).insertarHistorico(historico.capture());
         orden.verify(tm).commit(any());
         verify(tm, never()).rollback(any());
-        assertEquals(List.of("INCIDENCIA AMZ 1", "AMZ"), historico.getValue().stream().map(FilaPedido::plataforma).toList(),
+        assertEquals(List.of("AMZ"), historico.getValue().stream().map(FilaPedido::plataforma).toList(),
                 "en el orden de la hoja");
         FilaPedido h = historico.getValue().get(0);
         assertEquals("HISTORICO", h.origen());
         assertNull(h.canal());
         assertNull(h.posicion());
-        assertEquals(LocalDate.of(2026, 11, 6).atStartOfDay(), h.cerradaEn());
-        assertEquals("CANCELADO", h.imei());
+        assertEquals(LocalDate.of(2026, 10, 5).atStartOfDay(), h.cerradaEn());
+        assertEquals("350000000000004", h.imei());
         ArgumentCaptor<TransactionDefinition> def = ArgumentCaptor.forClass(TransactionDefinition.class);
         verify(tm).getTransaction(def.capture());
         assertEquals(TransactionDefinition.ISOLATION_READ_COMMITTED, def.getValue().getIsolationLevel());
+    }
+
+    @Test void lasIncidenciasEnCualquierGrafiaNoSeCarganNiTraspasanNiBloquean() throws Exception {
+        erpDePrueba();
+        TablaHoja t = new TablaHoja(Map.of("Fecha", 0, "Plataforma", 1, "SKU", 2, "IMEI", 3, "Pedido Amazon", 4, "Fecha compra", 5),
+                List.of(fila(2, 46332, "  incidencia amz stock", "i13128AzulA", 350000000000001L, PED1),
+                        fila(3, 46332, "INCIDENCIA", "i13128AzulA", 350000000000009L),
+                        fila(4, 46332, "Incidencia AMZ DE", "i13128AzulA", 350000000000008L, PED1),
+                        fila(5, 46332, "AMZ", "i13128AzulA", 350000000000001L, PED1),
+                        fila(6, 46332, "Taller Incidencias SL", "i13128AzulA", 350000000000007L)));
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(t);
+        CargaHistorico c = carga(enSeco);
+        c.iniciar();
+        InformeCarga i = c.estado().informe();
+        assertEquals(3, i.incidenciasDescartadas());
+        assertEquals(1, i.traspasadasA(), "la fila real recibe el IMEI aunque una incidencia traiga su pedido y su IMEI");
+        assertEquals(1, i.cargadasHistorico(), "el cliente cuyo nombre solo contiene la palabra se carga");
+        assertEquals(Map.of("AMZ", 1, "Taller Incidencias SL", 1), i.plataformas());
+        assertEquals(5, i.filasLeidas());
+        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.cargadasHistorico()
+                + i.traspasadasA() + i.traspasadasB() + i.traspasadasC() + i.yaPuesto() + i.conflicto() + i.casadasSinImei());
+        verify(dao).traspasarImei(10, "350000000000001", AHORA);
+        ArgumentCaptor<List<FilaPedido>> historico = ArgumentCaptor.forClass(List.class);
+        verify(dao).insertarHistorico(historico.capture());
+        assertEquals(List.of("Taller Incidencias SL"), historico.getValue().stream().map(FilaPedido::plataforma).toList());
     }
 
     @Test void laHojaSeLeeFueraDeLaTransaccionYDeLasVueltasDeLectura() throws Exception {
@@ -316,7 +344,7 @@ class CargaHistoricoTest {
         assertEquals(1, i.yaVendidoNsys());
         assertEquals(0, i.traspasadasB());
         assertEquals(1, i.traspasadasC());
-        assertEquals(3, i.cargadasHistorico());
+        assertEquals(2, i.cargadasHistorico(), "la vendida y la antigua; la incidencia ya no se carga");
         ArgumentCaptor<java.util.Collection<String>> pedidos = ArgumentCaptor.forClass(java.util.Collection.class);
         verify(nsys, times(1)).porImeis(pedidos.capture());
         assertEquals(java.util.Set.of("350000000000002", "350000000000003"), java.util.Set.copyOf(pedidos.getValue()));

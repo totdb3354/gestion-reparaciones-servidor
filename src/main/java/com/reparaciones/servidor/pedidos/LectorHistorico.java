@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -35,14 +36,21 @@ public final class LectorHistorico {
         }
     }
 
-    /** Lo leído y los recuentos de lo que no entró. {@code plataformas}: filas útiles por plataforma (sin las de plataforma vacía). */
+    /** ¿Es una fila de incidencia? Su Plataforma, sin espacios y sin distinguir mayúsculas, EMPIEZA por INCIDENCIA (no basta con
+     *  contener la palabra: un cliente «Taller Incidencias SL» no lo es). Esas filas no se cargan ni cuentan para nada. */
+    static boolean esIncidencia(String plataforma) {
+        return plataforma != null && plataforma.strip().toUpperCase(Locale.ROOT).startsWith("INCIDENCIA");
+    }
+
+    /** Lo leído y los recuentos de lo que no entró. {@code incidenciasDescartadas}: filas de incidencia, que no se cargan (no están
+     *  en {@code filas}, ni en {@code plataformas}, ni cuentan como sin fecha heredada ni como IMEI que no es IMEI). {@code plataformas}: filas útiles por plataforma (sin las de plataforma vacía). */
     public record Lectura(List<FilaHoja> filas, int leidas, int descartadasVacias, int sinFechaHeredada, int sinFechaDescartada,
-                          int imeiNoImei, Map<String, Integer> plataformas) {}
+                          int incidenciasDescartadas, int imeiNoImei, Map<String, Integer> plataformas) {}
 
     public static Lectura leer(TablaHoja t) {
         List<FilaHoja> filas = new ArrayList<>();
         Map<String, Integer> plataformas = new HashMap<>();
-        int vacias = 0, heredadas = 0, descartadas = 0, noImei = 0;
+        int vacias = 0, heredadas = 0, descartadas = 0, incidencias = 0, noImei = 0;
         LocalDate ultimaFecha = null;
         for (TablaHoja.Fila f : t.filas()) {
             String plataforma = TablaHoja.texto(t.celda(f, "Plataforma"));
@@ -56,6 +64,10 @@ public final class LectorHistorico {
             boolean hayAlgo = plataforma != null || sku != null || imei.texto() != null || imei.vaciada();
             if (!hayAlgo) {
                 vacias++;
+                continue;
+            }
+            if (esIncidencia(plataforma)) {
+                incidencias++;
                 continue;
             }
             if (fecha == null) {
@@ -72,7 +84,7 @@ public final class LectorHistorico {
             filas.add(new FilaHoja(f.numero(), fecha, plataforma == null ? "" : plataforma, sku, imei.texto(),
                     TablaHoja.texto(t.celda(f, "Pedido Amazon")), compra == null ? null : compra.toLocalDate()));
         }
-        return new Lectura(filas, t.filas().size(), vacias, heredadas, descartadas, noImei, plataformas);
+        return new Lectura(filas, t.filas().size(), vacias, heredadas, descartadas, incidencias, noImei, plataformas);
     }
 
     /** El texto de una celda de IMEI; {@code vaciada}: había algo que no se puede guardar (error de celda o número imposible). */
