@@ -128,6 +128,90 @@ class CargaHistoricoTest {
         assertEquals(1, pendientes.size());
     }
 
+    // ------------------------------------------------------------------ pendientes recientes sin IMEI ni pedido
+
+    private static final Map<String, Integer> COLS = Map.of("Fecha", 0, "Plataforma", 1, "SKU", 2, "IMEI", 3, "Pedido Amazon", 4, "Fecha compra", 5);
+
+    /** AHORA = 2026-11-11: el dia 14 es 2026-10-28 (serie 46323), el 15 es 2026-10-27 (46322). */
+    private InformeCarga cargarHoja(List<TablaHoja.Fila> filas) throws Exception {
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(new TablaHoja(COLS, filas));
+        CargaHistorico c = carga(enSeco);
+        c.iniciar();
+        assertEquals(Estado.OK, c.estado().estado());
+        return c.estado().informe();
+    }
+
+    private static void cuadra(InformeCarga i) {
+        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.pendientesSinImeiNoCargadas()
+                + i.cargadasHistorico() + i.traspasadasA() + i.traspasadasB() + i.traspasadasC() + i.yaPuesto() + i.conflicto() + i.casadasSinImei(), "cuadre");
+    }
+
+    private List<FilaPedido> insertadas() {
+        ArgumentCaptor<List<FilaPedido>> historico = ArgumentCaptor.forClass(List.class);
+        verify(dao).insertarHistorico(historico.capture());
+        return historico.getValue();
+    }
+
+    @Test void unaFilaRecienteSinImeiNiPedidoNoSeCargaYSeCuenta() throws Exception {
+        InformeCarga i = cargarHoja(List.of(fila(2, 46332, "AMZ", "i13128AzulA"), fila(3, 46332, "Cliente Web A", "i13128AzulA", "CANCELADO")));
+        assertEquals(2, i.pendientesSinImeiNoCargadas(), "vacia y con texto que no es IMEI");
+        assertEquals(0, i.cargadasHistorico());
+        assertEquals(2, i.filasLeidas());
+        cuadra(i);
+        assertEquals(List.of(), insertadas());
+    }
+
+    @Test void unaFilaDeQuinceDiasSinImeiNiPedidoSiSeCarga() throws Exception {
+        InformeCarga i = cargarHoja(List.of(fila(2, 46322, "AMZ", "i13128AzulA")));
+        assertEquals(0, i.pendientesSinImeiNoCargadas());
+        assertEquals(1, i.cargadasHistorico());
+        cuadra(i);
+        assertEquals(1, insertadas().size());
+    }
+
+    @Test void elLimiteEsElDia14Incluido() throws Exception {
+        InformeCarga i = cargarHoja(List.of(fila(2, 46323, "AMZ", "i13128AzulA"), fila(3, 46322, "AMZ", "i13128AzulA")));
+        assertEquals(1, i.pendientesSinImeiNoCargadas(), "el dia 14 (2026-10-28) no se carga");
+        assertEquals(1, i.cargadasHistorico(), "el dia 15 si");
+        cuadra(i);
+    }
+
+    @Test void unaFilaRecienteConNumeroDePedidoNoCambia() throws Exception {
+        InformeCarga i = cargarHoja(List.of(fila(2, 46332, "AMZ", "i13128AzulA", null, "999-0000000-0000001")));
+        assertEquals(0, i.pendientesSinImeiNoCargadas());
+        assertEquals(1, i.cargadasHistorico());
+        cuadra(i);
+    }
+
+    @Test void unaFilaRecienteConImeiNoCambia() throws Exception {
+        InformeCarga i = cargarHoja(List.of(fila(2, 46332, "AMZ", "i13128AzulA", 350000000000001L)));
+        assertEquals(0, i.pendientesSinImeiNoCargadas());
+        assertEquals(1, i.cargadasHistorico(), "sin fila en el ERP: sinPareja, va al historico");
+        cuadra(i);
+    }
+
+    @Test void laIdentidadCuadraConTodoMezclado() throws Exception {
+        erpDePrueba();
+        InformeCarga i = cargarHoja(List.of(
+                fila(2, 46332, "AMZ", "i13128AzulA", 350000000000001L, PED1), fila(3, 46332, "AMZ", "i13128AzulA", 350000000000002L),
+                fila(4, 46332, "Cliente Web A", "i13128AzulA", 350000000000003L), fila(5),
+                fila(6, 46332, "INCIDENCIA AMZ 1", "i13128AzulA", "CANCELADO"), fila(7, 46300, "AMZ", "i13128AzulA", 350000000000004L),
+                fila(8, 46332, "AMZ", "i13128AzulA"), fila(9, 46332, "Cliente Web B", "i13128AzulA", "pendiente"),
+                fila(10, 46300, "AMZ", "i13128AzulA")));
+        assertEquals(2, i.pendientesSinImeiNoCargadas());
+        assertEquals(9, i.filasLeidas());
+        cuadra(i);
+    }
+
+    @Test void lasPendientesNoBajanLaGuardaDelMinimo() throws Exception {
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(new TablaHoja(COLS, List.of(fila(2, 46332, "AMZ", "i13128AzulA"))));
+        CargaHistorico c = new CargaHistorico(sheets, dao, nsys, lectura, tm, ID_HOJA, "PEDIDOS 2026", 1,
+                Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID), enSeco);
+        c.iniciar();
+        assertEquals(Estado.OK, c.estado().estado(), "la guarda cuenta las filas utiles leidas, antes de quitar las pendientes");
+        assertEquals(1, c.estado().informe().pendientesSinImeiNoCargadas());
+    }
+
     // ------------------------------------------------------------------ hacer
 
     @Test void lasPruebasDeLaHojaCuadran() {
@@ -155,7 +239,7 @@ class CargaHistoricoTest {
         assertEquals(1, i.traspasadasC());
         assertEquals(1, i.incidenciasDescartadas());
         assertEquals(1, i.cargadasHistorico(), "solo la fila antigua: la incidencia no se carga");
-        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.cargadasHistorico()
+        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.pendientesSinImeiNoCargadas() + i.cargadasHistorico()
                 + i.traspasadasA() + i.traspasadasB() + i.traspasadasC() + i.yaPuesto() + i.conflicto() + i.casadasSinImei(), "cuadre");
         assertEquals(0, i.imeiNoEsImei(), "el CANCELADO era de la incidencia");
         assertEquals(Map.of("AMZ", 3, "Cliente Web A", 1), i.plataformas());
@@ -199,7 +283,7 @@ class CargaHistoricoTest {
         assertEquals(1, i.cargadasHistorico(), "el cliente cuyo nombre solo contiene la palabra se carga");
         assertEquals(Map.of("AMZ", 1, "Taller Incidencias SL", 1), i.plataformas());
         assertEquals(5, i.filasLeidas());
-        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.cargadasHistorico()
+        assertEquals(i.filasLeidas(), i.descartadasVacias() + i.sinFechaDescartada() + i.incidenciasDescartadas() + i.pendientesSinImeiNoCargadas() + i.cargadasHistorico()
                 + i.traspasadasA() + i.traspasadasB() + i.traspasadasC() + i.yaPuesto() + i.conflicto() + i.casadasSinImei());
         verify(dao).traspasarImei(10, "350000000000001", AHORA);
         ArgumentCaptor<List<FilaPedido>> historico = ArgumentCaptor.forClass(List.class);

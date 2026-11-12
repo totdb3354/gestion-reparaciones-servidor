@@ -150,8 +150,13 @@ public class CargaHistorico {
             // Una lectura vacia o cortada no debe vaciar el historico: se aborta antes de tocar nada.
             if (leida.filas().size() < minimo) throw new CargaAbortada(MOTIVO_POCAS);
             // Lo que solo depende de la hoja (y NSYS) se calcula antes de tomar los bloqueos de la transaccion.
-            Set<String> vendidos = vendidosEnNsys(Traspaso.imeisCandidatos(leida.filas(), LocalDate.now(clock)));
-            InformeCarga informe = lectura.sinVueltas(() -> transaccion.execute(s -> guardar(leida, vendidos)));
+            // Las filas recientes sin IMEI ni pedido son pedidos pendientes que el ERP ya tiene por ShippyPro: no se cargan ni traspasan.
+            LocalDate hoy = LocalDate.now(clock);
+            List<LectorHistorico.FilaHoja> utiles = new ArrayList<>();
+            for (LectorHistorico.FilaHoja f : leida.filas()) if (!Traspaso.esPendienteSinImei(f, hoy)) utiles.add(f);
+            int pendientes = leida.filas().size() - utiles.size();
+            Set<String> vendidos = vendidosEnNsys(Traspaso.imeisCandidatos(utiles, hoy));
+            InformeCarga informe = lectura.sinVueltas(() -> transaccion.execute(s -> guardar(leida, utiles, pendientes, hoy, vendidos)));
             terminar(empezo, informe, null);
             log.info("Pedidos: historico cargado ({} filas, {} IMEI traspasados)", informe.cargadasHistorico(),
                     informe.traspasadasA() + informe.traspasadasB() + informe.traspasadasC());
@@ -183,10 +188,11 @@ public class CargaHistorico {
     }
 
     /** Dentro de la transacción: las filas de ShippyPro (bloqueadas), el reparto, el borrado, los IMEI y las filas del histórico. */
-    private InformeCarga guardar(LectorHistorico.Lectura leida, Set<String> vendidos) {
+    private InformeCarga guardar(LectorHistorico.Lectura leida, List<LectorHistorico.FilaHoja> utiles, int pendientes, LocalDate hoy,
+                                 Set<String> vendidos) {
         LocalDateTime ahora = LocalDateTime.now(clock);
         List<FilaPedido> erp = dao.todasDeShippyProBloqueadas();
-        Traspaso.Plan plan = Traspaso.planear(leida.filas(), erp, ahora.toLocalDate(), vendidos);
+        Traspaso.Plan plan = Traspaso.planear(utiles, erp, hoy, vendidos);
         // Borrar las filas HISTORICO borraria en cascada sus apuntes de cambios: no deberia haber ninguno.
         if (dao.contarCambiosDeHistorico() > 0) throw new CargaAbortada(MOTIVO_CAMBIOS);
         dao.borrarHistorico();
@@ -198,7 +204,7 @@ public class CargaHistorico {
             filas.add(new FilaPedido(0, f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), "HISTORICO", null,
                     null, f.fecha().atStartOfDay()));
         dao.insertarHistorico(filas);
-        return informe(leida, plan);
+        return informe(leida, pendientes, plan);
     }
 
     /** De esos IMEI, los que NSYS da por vendidos (el lote mas reciente de cada IMEI), con el texto del IMEI de la hoja. En tandas. */
@@ -214,14 +220,14 @@ public class CargaHistorico {
         return vendidos;
     }
 
-    static InformeCarga informe(LectorHistorico.Lectura leida, Traspaso.Plan plan) {
+    static InformeCarga informe(LectorHistorico.Lectura leida, int pendientes, Traspaso.Plan plan) {
         Traspaso.Recuentos r = plan.recuentos();
         Map<String, Integer> plataformas = new LinkedHashMap<>();
         leida.plataformas().entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                 .limit(PLATAFORMAS_EN_INFORME).forEach(e -> plataformas.put(e.getKey(), e.getValue()));
         return new InformeCarga(leida.leidas(), plan.historico().size(), leida.descartadasVacias(), leida.sinFechaHeredada(),
-                leida.sinFechaDescartada(), leida.incidenciasDescartadas(), leida.imeiNoImei(), r.a(), r.b(), r.c(), r.yaPuesto(), r.conflicto(), r.casadasSinImei(),
+                leida.sinFechaDescartada(), leida.incidenciasDescartadas(), pendientes, leida.imeiNoImei(), r.a(), r.b(), r.c(), r.yaPuesto(), r.conflicto(), r.casadasSinImei(),
                 r.sinPareja(), r.yaVendido(), r.ventaAnterior(), plataformas);
     }
 }

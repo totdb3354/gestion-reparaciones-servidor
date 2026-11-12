@@ -87,6 +87,12 @@ public final class Traspaso {
         return imeis;
     }
 
+    /** ¿Es un pedido pendiente que el ERP ya tiene por ShippyPro? Fecha dentro de los últimos {@value #DIAS} días (la misma ventana
+     *  que B y C), sin IMEI de 15 cifras (vacío o un texto que no es IMEI) y sin número de pedido. No se carga como histórico. */
+    static boolean esPendienteSinImei(FilaHoja f, LocalDate hoy) {
+        return !f.fecha().isBefore(hoy.minusDays(DIAS)) && !f.imeiValido() && (f.pedido() == null || f.pedido().isBlank());
+    }
+
     /** B o C si la fila de la hoja es candidata a una de ellas (IMEI de 15 cifras, de los últimos 14 días, ni incidencia ni NP);
      *  si no, null. */
     private static Via via(FilaHoja f, LocalDate limite) {
