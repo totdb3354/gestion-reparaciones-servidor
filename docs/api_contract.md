@@ -45,6 +45,103 @@ de `model/` conservan su nombre.
   `caja` (nullable, el último campo): la caja de NSYS del lote del móvil tal cual (`Nsys_movil.LOCATION`); `null` si no tiene.
   La web la enseña en la columna «Caja» y la escribe en «⬇ Descargar cajas», cuyo Excel hace `POST
   /api/stock-telefonos/que-revisar/excel`. La plantilla de color no cambia.
+- Lista de IMEI vendidos para el bot de stock (no es una ruta de usuario): `GET /api/pedidos/vendidos?dias=7&canal=` con la cabecera
+  `X-API-Key` → lista JSON en la raíz de `Vendido` `{imei, sku, canal, pedido, fechaImei}` (sin `plataforma`: en los pedidos web es el
+  nombre del cliente). `canal` es opcional: un nombre del enum `Canal` (`AMAZON`, `AMAZON_STOCKROOM`, `DISTRIBUIDORES`,
+  `PARTICULARES`, `BACKIPHONE`) filtra por el canal de la fila; desconocido, `400`; ausente, todos. El filtro va antes de quitar
+  repetidos. Una por IMEI (sin repetidos;
+  si está en dos filas, la del cambio más reciente). `sku`, `canal` y `pedido` son nullable; `fechaImei` es la hora de Madrid (sin
+  zona) del último cambio de IMEI de la fila. Entran las filas `SHIPPYPRO` pendientes o enviadas (no el histórico) y las
+  `NO_PENDIENTE` (cerradas sin envío) solo si su último cambio de IMEI es posterior a su cierre (`CERRADA_EN`): alguien tecleó el IMEI
+  sabiendo que el pedido ya no estaba pendiente, así que el móvil está vendido; una cerrada que ya tenía el IMEI antes de cerrarse
+  (pedido cancelado) no sale; con IMEI de 15 cifras cuyo último apunte de `Pedido_fila_cambio` cae en hoy o en los `dias - 1` días de Madrid
+  anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
+  numérico, `400`. Autenticación: solo la clave (ajuste `pedidos.vendidos.clave`, variable `PEDIDOS_VENDIDOS_CLAVE`): ajuste
+  admite varias claves separadas por comas (una por consumidor, todas con el mismo permiso; las de menos de 32 caracteres se
+  ignoran); sin ninguna válida, `404` para todos; sin cabecera o con otra clave, `401` (comparación en tiempo constante); un token de usuario, del rol que
+  sea, no vale (`401`) y la clave no abre ninguna otra ruta.
+- «Pedidos como la hoja» (SUPERTECNICO y ADMIN; el TECNICO recibe `403`), `/api/pedidos`:
+  - `GET /api/pedidos/filas?desde=&hasta=&buscar=` → `ListaFilas` `{filas, hayMas}`, las filas en orden de hoja (la más antigua
+    primero). `desde` y `hasta` son fechas ISO opcionales (por defecto, el último mes hasta hoy, hora de Madrid) y la lista trae
+    además las filas pendientes (sin cerrar) anteriores al periodo. Con `buscar` (se recorta; menos de 2 caracteres, `400` "Escribe al menos 2
+    caracteres") se busca en todo el histórico por plataforma, SKU, IMEI o pedido: como mucho 500 filas, las más recientes, y
+    `hayMas` es `true` si había más. Cada `FilaVista` trae `estado` (`PENDIENTE`, `ENVIADA`, `NO_PENDIENTE` o `HISTORICO`, nunca
+    nulo: `ENVIADA` si ShippyPro dio el pedido por enviado, `NO_PENDIENTE` si dejó de estar pendiente sin envío conocido),
+    `editable` (`false` solo en el histórico) y, nullable, `envioFecha` (hora de Madrid), `transportista` y `seguimiento`. Trae
+    además `impresaEn` (nullable, hora de Madrid: cuándo ShippyPro dio la etiqueta por impresa; `null` = sin imprimir) y
+    `tieneEtiqueta` (booleano: la fila tiene el id del envío en ShippyPro; el id no se expone). El `estado` no cambia. Trae
+    `nivel` (`OK`, `AVISO` o `MAL`), `motivo`, `skuMovil` y `caja` solo en las filas `PENDIENTE`, `NO_PENDIENTE` y `ENVIADA` sin imprimir (`impresaEn` nulo; con la etiqueta solo generada el móvil sigue en el almacén), con IMEI (el
+    aviso se calcula al servir, no se guarda); en las demás son `null`. `sku`, `imei`, `pedido` y `fechaCompra` son nullable
+    (las filas del histórico llevan los textos de la hoja tal cual). Trae también `canal` (nullable): el nombre del enum `Canal`
+    (`AMAZON`, `AMAZON_STOCKROOM`, `DISTRIBUIDORES`, `PARTICULARES`, `BACKIPHONE`); en las filas de ShippyPro, el guardado; en las
+    del histórico se deduce al servir de `plataforma` (recortada, sin distinguir mayúsculas: `AMZ` → `AMAZON`; `FNSK` o `FSNK` →
+    `AMAZON_STOCKROOM`) y es `null` en todo lo demás (clientes, incidencias, `NP`, vacía). Trae además, nullable, `faltaEnviarEn` (hora de
+    Madrid: cuándo una persona marcó que el móvil de la fila falta por enviar, en un envío parcial de un pedido de web; `null` = sin
+    marca) y `sincronizadaEn` (la última vez que el plugin de la web avisó de que el pedido ya lleva ese móvil; `null` = nunca). El
+    `estado` y el aviso no cambian: la web deriva de esos campos lo que enseña.
+  - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
+    de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
+    que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o
+    `YA_ENVIADO` (se quitó esa marca); en los dos últimos `imeiAnterior` e `imeiNuevo` son `null`. `usuario` (nombre de usuario),
+    `imeiAnterior` e `imeiNuevo` son nullable (`usuario` nulo en el traspaso desde la hoja y cuando quitó la marca el plugin de la web;
+    `imeiNuevo` nulo = se quitó). `404` si la
+    fila no existe; lista vacía si es del histórico. SUPERTECNICO y ADMIN.
+  - `GET /api/pedidos/filas/{id}/recomendados` → lista de `RecomendadorCandidato` `{imei, sku, caja, nivel}` (hasta cinco; `sku`
+    y `caja` nullable). `404` si la fila no existe; lista vacía si es del histórico o si el maestro no conoce su SKU (las enviadas y las no pendientes
+    sí dan candidatos). No ofrece los móviles puestos en otra fila pendiente o no pendiente, ni en una enviada cuyo móvil NSYS
+    aún no da por vendido (sí el de la propia fila).
+  - `GET /api/pedidos/filas/{id}/etiqueta` → el PDF de la etiqueta que ShippyPro ya generó (`200`, `application/pdf`,
+    `Content-Disposition: inline; filename="etiqueta.pdf"`, `Cache-Control: no-store`). Solo lectura: no se guarda ni se imprime
+    nada (ShippyPro `GetLabelUrl`, y se descarga el PDF de su CDN con `https` y host `shippypro.com`, sin redirecciones, tope de 8 MB).
+    `404` si la fila no existe o si no tiene etiqueta («Este pedido no tiene etiqueta generada»: pendiente sin envío, histórico, cerrada
+    sin envío); `502` «No se pudo obtener la etiqueta de ShippyPro. Inténtalo de nuevo.» si ShippyPro falla, no da etiqueta o la
+    descarga falla, no es un PDF o es demasiado grande (nunca el texto de ShippyPro ni la URL). SUPERTECNICO y ADMIN.
+  - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei, imeiAnterior?}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
+    lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
+    histórico (las filas de ShippyPro se editan siempre, también las enviadas). `imeiAnterior` (opcional, nullable; la web vieja no lo manda): lo que la persona veía en la fila; ausente o `null` no comprueba nada, `""` espera la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`). Si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
+  - `PUT /api/pedidos/filas/{id}/falta-enviar` con `PeticionFaltaEnviar` `{falta}` (obligatorio; `null` o ausente `400`) → `FilaVista` releída.
+    `true` marca el móvil de la fila como «falta enviar» (envío parcial de un pedido de web: la etiqueta salió con todos los móviles y este
+    todavía no); `false` quita la marca. Marcar exige una fila de ShippyPro de un canal web (`DISTRIBUIDORES`, `PARTICULARES` o
+    `BACKIPHONE`) con la etiqueta generada (`envioFecha` no nula); si no, `409` "Solo se puede marcar en un pedido de web con la etiqueta ya
+    generada". `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del histórico. Marcar una fila ya marcada o
+    desmarcar una sin marca no hace nada (`200`, sin apunte nuevo); quitar la marca siempre se puede si la tiene. Poner y quitar la marca
+    quedan en el historial (`tipo` `FALTA_ENVIAR` y `YA_ENVIADO`) con quién y cuándo; la fila guarda cuándo (`faltaEnviarEn`) y quién la
+    puso. Comprobación y escritura atómicas, con la fila bloqueada. Cabecera opcional `Idempotency-Key`. SUPERTECNICO y ADMIN. La lectura
+    de ShippyPro (marcar enviada o impresa) no toca la marca, y `GET /api/pedidos/vendidos` solo mira los apuntes de tipo `IMEI`.
+  - `POST /api/pedidos/sincronizados` (no es una ruta de usuario: aviso del plugin de la web) con la cabecera `X-API-Key` y el cuerpo
+    `{canal, pedidos: [{pedido, imeis: [..]}]}` → `{filasSincronizadas, marcasQuitadas, sinFila}`. La clave es una de las del ajuste
+    `PEDIDOS_SINCRONIZADOS_CLAVE` (distinto del de los vendidos; una clave puede estar en los dos): sin ninguna válida `404` para todos,
+    clave ausente o mala `401`, un token de usuario no vale y la clave no abre ninguna otra ruta. `canal`: `DISTRIBUIDORES`, `PARTICULARES`
+    o `BACKIPHONE` (otro, `400`); hasta 500 pedidos y 50 `imeis` por pedido, cada IMEI de 15 cifras, `pedido` obligatorio (si no, `400`).
+    El número de pedido se normaliza como lo guarda la lectura de ShippyPro (sin espacios en los extremos y cortado al ancho de la columna).
+    En una transacción, para cada pedido, las filas de ShippyPro de ese canal y número cuyo IMEI viene en `imeis` reciben
+    `sincronizadaEn` = ahora y, si tenían la marca «falta enviar», la pierden con un apunte `YA_ENVIADO` sin usuario (`usuario` nulo: la
+    web lo muestra como «plugin de la web»). Las demás filas del pedido (el móvil que aún falta) no se tocan; pedidos e IMEI que no casan
+    se ignoran. `filasSincronizadas`: filas puestas al día; `marcasQuitadas`: marcas quitadas; `sinFila`: IMEI enviados (distintos, por
+    pedido) que no casaron con ninguna fila. Idempotente: repetir la llamada no crea apuntes nuevos.
+  - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
+    `filas`, `skuDesconocidos`, `motivo`, `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`, y `aviso`). Un `ERROR` enseña un motivo
+    fijo, nunca el texto de la excepción. `aviso` (nullable, campo añadido; la web que no lo conoce lo ignora) lleva un texto fijo en
+    lenguaje de usuario, sin números de pedido ni datos, cuando la última lectura fue `OK` pero se saltó el cierre y el marcado de envíos:
+    hay pedidos de ShippyPro sin fecha válida (no se cierra ninguna fila ni se marca ningún envío hasta que se resuelvan) o no se pudieron
+    leer los envíos (por ahora no se marcan envíos ni etiquetas). Es `null` en `NSYS`, con `ERROR` o `RECHAZADA` (habla `motivo`) y en
+    una lectura normal; la web puede enseñar una advertencia en la píldora en vez de un `OK` liso.
+  - Carga del histórico de la hoja (solo **ADMIN**; SUPERTECNICO y TECNICO reciben `403`), una herramienta a mano que nunca se
+    enciende sola y se puede repetir: `POST /api/pedidos/historico` (sin cuerpo) arranca la carga en segundo plano y responde `202` con
+    `CargaHistoricoEstadoCarga` (`estado` `EN_CURSO`); `409` si ya hay una en marcha; `400` "No está configurada la hoja del
+    histórico (pedidos.historico.hoja)" si falta el ajuste. `GET /api/pedidos/historico` → `CargaHistoricoEstadoCarga`
+    `{estado, empezo, acabo, informe, motivo}`, el estado de la última carga de este arranque (solo en memoria): `estado` es
+    `NUNCA`, `EN_CURSO`, `OK` (con `informe`) o `ERROR` (con `motivo`, un texto fijo en lenguaje de usuario: nunca el texto de la
+    excepción ni el id de la hoja); `empezo`, `acabo`, `informe` y `motivo` son `null` cuando no corresponden (`informe` va como
+    `$ref`, así que el contrato no lo marca `nullable`). `InformeCarga` solo lleva recuentos (ningún IMEI, pedido ni fila): `filasLeidas`,
+    `cargadasHistorico`, `descartadasVacias`, `sinFechaHeredada`, `sinFechaDescartada`, `incidenciasDescartadas` (filas cuya Plataforma, sin espacios ni mayúsculas, empieza por `INCIDENCIA`: no se cargan ni cuentan para nada), `pendientesSinImeiNoCargadas` (filas de los últimos 14 días, contados desde el día de la carga y con el día 14 incluido, sin IMEI de 15 cifras —vacío o con un texto que no es IMEI— y sin número de pedido: son pedidos pendientes que el ERP ya tiene por ShippyPro, no se cargan ni entran en los traspasos; las de más de 14 días sí se cargan), `imeiNoEsImei`, `traspasadasA`, `traspasadasB`,
+    `traspasadasC`, `yaPuesto`, `conflicto`, `casadasSinImei`, `sinPareja`, `yaVendidoNsys` (candidatas de B o C cuyo IMEI NSYS da por vendido: van al histórico), `ventaAnterior` (su IMEI ya está en una fila de ShippyPro pero la fila de la hoja es de más de 7 días antes que esa fila: otra venta del mismo móvil, se carga como histórico) y `plataformas` (objeto nombre → filas con las 15
+    plataformas con más filas, sin las de incidencia). Cuadre: `filasLeidas` = `descartadasVacias` + `sinFechaDescartada` + `incidenciasDescartadas` + `pendientesSinImeiNoCargadas` + `cargadasHistorico` + `traspasadasA` + `traspasadasB` + `traspasadasC` + `yaPuesto` + `conflicto` + `casadasSinImei`. La carga lee la hoja entera por columnas de cabecera (`Fecha`, `Plataforma`, `SKU`, `IMEI`, y si están
+    `Pedido Amazon` y `Fecha compra`) y, en una sola transacción, borra las filas `HISTORICO`, pone en las filas de ShippyPro los IMEI
+    de la hoja que son de un pedido que el ERP ya tiene (A: por número de pedido; B: AMZ/FNSK/FSNK sin número, de los últimos 14
+    días; C: webs, de los últimos 14 días), en dos pasadas (A con toda la hoja y después B y C, que no usan filas cuyo número de pedido aparece en la hoja ni IMEI que NSYS da por vendidos; las filas de la hoja, de la más reciente a la más antigua, toman la primera pendiente libre (por fecha de compra) cuya `FECHA` no sea más de 7 días posterior a la de la fila de la hoja (así repetir la carga da lo mismo); en A, un IMEI que está en otra fila del ERP de más de 7 días antes que la fila de la hoja es una venta anterior del móvil (revendido) y se traspasa igualmente; las que no encuentran pendiente se cargan como histórico, «sin pareja»), sin poner nunca un IMEI que ya esté en otra fila de ShippyPro (`yaPuesto` si la fila de la hoja no es de más de 7 días antes que la fila del ERP). Si la hoja trae menos de `pedidos.historico.minimo` filas útiles, sin contar las de incidencia (por defecto 1000) la carga acaba en `ERROR` sin tocar nada y
+    crea el resto como filas `HISTORICO` cerradas, en el orden de la hoja. Ajustes: `pedidos.historico.hoja` y
+    `pedidos.historico.pestana` (por defecto `PEDIDOS 2026`) y `pedidos.historico.minimo` (por defecto 1000).
 - `GET /api/reparaciones/pendientes/contadores` → `ContadoresPendientes` `{reparaciones, glass, pulidos}`:
   asignaciones abiertas (`A`, `AG`, `AP` sin `FECHA_FIN`) del técnico efectivo. Sin `?tecnico=` cuenta las
   del técnico del token (también el SUPERTECNICO); un ADMIN sin técnico recibe ceros.

@@ -69,19 +69,62 @@ class NsysDAOTest {
         ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
         verify(jdbc).batchUpdate(eq(NsysDAO.SQL_PRODUCTO), lote.capture());
         assertArrayEquals(new Object[]{"clave", "13", "13", "128GB", "Azul", "A", "w", "a", "s", true,
-                "Apple iPhone 13 128GB Blue"}, lote.getValue().get(0));
-        assertTrue(NsysDAO.SQL_PRODUCTO.contains("ES_ESIM, NOMBRE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"), NsysDAO.SQL_PRODUCTO);
+                "Apple iPhone 13 128GB Blue", null, null, null}, lote.getValue().get(0));
+        assertTrue(NsysDAO.SQL_PRODUCTO.contains("SKU_BACKIPHONE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"), NsysDAO.SQL_PRODUCTO);
     }
 
     @SuppressWarnings("unchecked")
     @Test void cargarProductosLeeElNombre() throws SQLException {
         dao.cargarProductos();
         ArgumentCaptor<RowMapper<ProductoMaestro>> mapeo = ArgumentCaptor.forClass(RowMapper.class);
-        verify(jdbc).query(contains(", NOMBRE FROM Nsys_producto"), mapeo.capture());
+        verify(jdbc).query(contains("NOMBRE, SKU_AMAZON_ESIM, SKU_PARTICULARES, SKU_BACKIPHONE FROM Nsys_producto"), mapeo.capture());
         ResultSet rs = mock(ResultSet.class);
         when(rs.getString("CLAVE")).thenReturn("clave");
         when(rs.getString("NOMBRE")).thenReturn("Apple iPhone 13 128GB Blue");
         assertEquals("Apple iPhone 13 128GB Blue", mapeo.getValue().mapRow(rs, 0).nombre());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void cargarProductosLeeLosSkuDeLosCanales() throws SQLException {
+        dao.cargarProductos();
+        ArgumentCaptor<RowMapper<ProductoMaestro>> mapeo = ArgumentCaptor.forClass(RowMapper.class);
+        verify(jdbc).query(contains("SKU_BACKIPHONE FROM Nsys_producto"), mapeo.capture());
+        ResultSet rs = mock(ResultSet.class);
+        when(rs.getString("SKU_AMAZON_ESIM")).thenReturn("a-esim");
+        when(rs.getString("SKU_PARTICULARES")).thenReturn("p");
+        when(rs.getString("SKU_BACKIPHONE")).thenReturn("b");
+        ProductoMaestro p = mapeo.getValue().mapRow(rs, 0);
+        assertEquals(List.of("a-esim", "p", "b"), List.of(p.skuAmazonEsim(), p.skuParticulares(), p.skuBackiphone()));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void productosPorSkuDeCanalBuscaEnLasCuatroColumnasEnTandas() {
+        List<Object[]> llamadas = new ArrayList<>();
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
+            llamadas.add(inv.getRawArguments());   // [sql, mapeo, Object[] con los argumentos]
+            return List.of();
+        });
+        List<String> skus = new ArrayList<>();
+        for (int i = 0; i < 600; i++) skus.add("sku" + i);
+
+        dao.productosPorSkuDeCanal(skus);
+
+        assertEquals(2, llamadas.size());
+        String sql = (String) llamadas.get(0)[0];
+        assertTrue(sql.contains("WHERE SKU_WEB IN (?"), sql);
+        assertTrue(sql.contains("OR SKU_BACKIPHONE IN (?"), sql);
+        assertTrue(sql.contains("OR SKU_AMAZON_ESIM IN (?"), sql);
+        assertFalse(sql.contains(" SKU_AMAZON IN"), "Amazon es solo SKU_AMAZON_ESIM: " + sql);
+        assertEquals(500 * 4, ((Object[]) llamadas.get(0)[2]).length);
+        assertEquals(100 * 4, ((Object[]) llamadas.get(1)[2]).length);
+        assertTrue(dao.productosPorSkuDeCanal(List.of()).isEmpty());
+    }
+
+    @Test void productosSinSkuDeCanalesMiraSiNingunoLosTiene() {
+        when(jdbc.queryForObject(NsysDAO.SQL_PRODUCTOS_SIN_SKU_DE_CANALES, Boolean.class)).thenReturn(true);
+        assertTrue(dao.productosSinSkuDeCanales());
+        when(jdbc.queryForObject(NsysDAO.SQL_PRODUCTOS_SIN_SKU_DE_CANALES, Boolean.class)).thenReturn(null);
+        assertFalse(dao.productosSinSkuDeCanales());
     }
 
     @Test void productosSinNombreMiraSiNingunoLoTiene() {

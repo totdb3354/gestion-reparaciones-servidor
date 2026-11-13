@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Los anchos de AnchosNsys contra el DDL de la migración, que es el que manda. */
 class AnchosNsysTest {
 
-    private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (Nsys_\\w+)");
+    private static final Pattern TABLA = Pattern.compile("^CREATE TABLE (?:IF NOT EXISTS )?(Nsys_\\w+)");
     private static final Pattern COLUMNA = Pattern.compile("^\\s+(\\w+)\\s+VARCHAR\\((\\d+)\\)");
     private static final Pattern ALTER = Pattern.compile("^ALTER TABLE (Nsys_\\w+)");
-    private static final Pattern ANADIDA = Pattern.compile("^\\s+ADD COLUMN (\\w+)\\s+VARCHAR\\((\\d+)\\)");
+    private static final Pattern ANADIDA = Pattern.compile("^\\s+ADD COLUMN (?:IF NOT EXISTS )?(\\w+)\\s+VARCHAR\\((\\d+)\\)");
 
     /** «Tabla.COLUMNA» → ancho de cada VARCHAR de las tablas Nsys_ del fichero. */
     private static Map<String, Integer> anchos(String fichero) throws Exception {
@@ -92,11 +92,14 @@ class AnchosNsysTest {
         assertEquals(ddl.get("Nsys_movil.LOCATION"), ddl.get("Nsys_evento.A_NSYS"));
     }
 
-    // Las migraciones posteriores al espejo que añaden columnas a las tablas Nsys_ (0.9.22: Nsys_producto.NOMBRE).
+    // Las migraciones posteriores al espejo que añaden columnas a las tablas Nsys_ (0.9.22: Nsys_producto.NOMBRE; pedidos como la hoja: los tres SKU de los canales).
     @Test void crearBdTieneLasMismasTablasDelEspejo() throws Exception {
         Map<String, Integer> migraciones = anchos("migracion-nsys-espejo.sql");
         migraciones.putAll(anadidas("migracion-nombres-y-coste-nsys.sql"));
+        migraciones.putAll(anadidas("migracion-pedidos-tabla.sql"));
         assertEquals(migraciones, anchos("crear_bd.sql"));
+        for (String c : new String[]{"SKU_AMAZON_ESIM", "SKU_PARTICULARES", "SKU_BACKIPHONE"})
+            assertEquals(AnchosNsys.SKU, migraciones.get("Nsys_producto." + c), c);
     }
 
     @Test void cortaSinPartirUnEmoji() {

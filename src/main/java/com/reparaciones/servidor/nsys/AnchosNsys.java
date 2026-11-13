@@ -3,7 +3,7 @@ package com.reparaciones.servidor.nsys;
 /** Anchos de las columnas de texto del espejo de NSYS. Manda el DDL de sql/migracion-nsys-espejo.sql, y AnchosNsysTest
  *  comprueba que coinciden. Los lectores cortan cada campo a su ancho al leer, en un solo sitio: así las claves y las
  *  comparaciones van con lo mismo que guarda la base de datos, sin eventos fantasma ni «Data too long». */
-final class AnchosNsys {
+public final class AnchosNsys {
 
     // Nsys_movil. Los eventos (Nsys_evento: DE, A, A_NSYS) solo llevan estos campos o ubicaciones, y caben.
     static final int IMEI_SN = 40;
@@ -30,7 +30,7 @@ final class AnchosNsys {
     private AnchosNsys() {}
 
     /** El texto cortado a {@code ancho} caracteres, sin partir un carácter de dos mitades (emoji); null sigue siendo null. */
-    static String corta(String texto, int ancho) {
+    public static String corta(String texto, int ancho) {
         if (texto == null || texto.length() <= ancho) return texto;
         return texto.substring(0, Character.isHighSurrogate(texto.charAt(ancho - 1)) ? ancho - 1 : ancho);
     }

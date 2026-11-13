@@ -1,0 +1,64 @@
+package com.reparaciones.servidor.pedidos;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+/** El canal de un pedido (spec pieza 2 §4.1). */
+public enum Canal {
+    AMAZON("Amazon"), AMAZON_STOCKROOM("Amazon Stockroom"), DISTRIBUIDORES("Distribuidores"), PARTICULARES("Particulares"),
+    BACKIPHONE("BackiPhone");
+
+    private static final Logger log = LoggerFactory.getLogger(Canal.class);
+    private final String etiqueta;
+
+    Canal(String etiqueta) {
+        this.etiqueta = etiqueta;
+    }
+
+    public String etiqueta() {
+        return etiqueta;
+    }
+
+    public boolean esAmazon() {
+        return this == AMAZON || this == AMAZON_STOCKROOM;
+    }
+
+    public boolean esWeb() {
+        return this == DISTRIBUIDORES || this == PARTICULARES || this == BACKIPHONE;
+    }
+
+    /** El canal de una fila del historico segun su plataforma (recortada y sin distinguir mayusculas): AMZ es Amazon; FNSK o FSNK,
+     *  Amazon Stockroom; todo lo demas (clientes, incidencias, NP, vacia), nulo. */
+    public static Canal deHistorico(String plataforma) {
+        if (plataforma == null) return null;
+        String p = plataforma.strip().toUpperCase(Locale.ROOT);
+        if (p.equals("AMZ")) return AMAZON;
+        if (p.equals("FNSK") || p.equals("FSNK")) return AMAZON_STOCKROOM;
+        return null;
+    }
+
+    /** «100:AMAZON, 200:AMAZON_STOCKROOM» → marketplace de ShippyPro → canal (ajuste pedidos.shippypro.canales). Un trozo mal
+     *  escrito o un canal desconocido se saltan con un aviso en el log. */
+    public static Map<String, Canal> deAjuste(String texto) {
+        Map<String, Canal> canales = new HashMap<>();
+        if (texto == null || texto.isBlank()) return canales;
+        for (String trozo : texto.split(",")) {
+            String[] partes = trozo.strip().split(":");
+            if (partes.length != 2 || partes[0].isBlank()) {
+                if (!trozo.isBlank()) log.warn("Pedidos: «{}» en pedidos.shippypro.canales no es «marketplace:CANAL»", trozo.strip());
+                continue;
+            }
+            try {
+                Canal c = Canal.valueOf(partes[1].strip().toUpperCase(Locale.ROOT));
+                canales.put(partes[0].strip(), c);
+            } catch (IllegalArgumentException e) {
+                log.warn("Pedidos: «{}» en pedidos.shippypro.canales no es un canal de ShippyPro", partes[1].strip());
+            }
+        }
+        return canales;
+    }
+}

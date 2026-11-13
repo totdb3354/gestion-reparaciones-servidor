@@ -1,0 +1,463 @@
+package com.reparaciones.servidor.pedidos;
+
+import com.reparaciones.servidor.nsys.AnchosNsys;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.Date;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+
+/** Pedido_fila (la tabla de pedidos como la hoja), su registro de cambios de IMEI y Pedido_lectura. Horas de Madrid sin zona. */
+@Repository
+public class FilasDAO {
+
+    static final int TANDA = 500;
+
+    static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN FROM Pedido_fila";
+    static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
+    static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
+    static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
+            + " AND (ENVIO_FECHA IS NULL OR IMPRESA_EN IS NULL OR ENVIO_ID IS NULL) AND (%s)";
+    static final String SQL_INSERTAR = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    static final String SQL_CERRAR = "UPDATE Pedido_fila SET CERRADA_EN = ? WHERE CERRADA_EN IS NULL AND ID_FILA IN (%s)";
+    /** Reabrir borra tambien los datos del envio: un pedido que vuelve a estar pendiente ya no esta enviado. */
+    static final String SQL_REABRIR = "UPDATE Pedido_fila SET CERRADA_EN = NULL, ENVIO_FECHA = NULL, TRANSPORTISTA = NULL,"
+            + " SEGUIMIENTO = NULL, ENVIO_ID = NULL, IMPRESA_EN = NULL, REABIERTA_EN = ? WHERE CERRADA_EN IS NOT NULL AND ID_FILA IN (%s)";
+    /** Un envio es definitivo: si la fila estaba viva se cierra ahora; si ya estaba cerrada conserva su hora de cierre. */
+    static final String SQL_MARCAR_ENVIO = "UPDATE Pedido_fila SET ENVIO_FECHA = ?, TRANSPORTISTA = ?, SEGUIMIENTO = ?,"
+            + " CERRADA_EN = COALESCE(CERRADA_EN, ?), ENVIO_ID = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NULL";
+    /** Una etiqueta regenerada: la fila aun sin imprimir pasa al envio mas reciente. Una fila ya impresa no se toca. */
+    static final String SQL_CAMBIAR_ENVIO = "UPDATE Pedido_fila SET ENVIO_ID = ?, ENVIO_FECHA = ?, TRANSPORTISTA = ?,"
+            + " SEGUIMIENTO = ?, IMPRESA_EN = ? WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL AND IMPRESA_EN IS NULL";
+    /** Completa el id del envio y la impresion de una fila ya enviada; lo que ya tiene no se toca ni se borra. */
+    static final String SQL_MARCAR_ETIQUETA = "UPDATE Pedido_fila SET ENVIO_ID = COALESCE(ENVIO_ID, ?),"
+            + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL";
+    static final String SQL_DEL_PERIODO = SQL_FILAS + " WHERE (FECHA BETWEEN ? AND ?) OR CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
+    /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. */
+    static final String SQL_BUSCAR = SQL_FILAS + " WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
+            + " OR IMEI LIKE ? ESCAPE '\\\\' OR PEDIDO LIKE ? ESCAPE '\\\\' ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
+    static final String SQL_POR_ID = SQL_FILAS + " WHERE ID_FILA = ?";
+    /** Filas de ShippyPro con IMEI: las vivas (de cualquier fecha) y las cerradas con FECHA desde la fecha dada. */
+    static final String SQL_SHIPPYPRO_CON_IMEI_DESDE = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
+            + " AND (CERRADA_EN IS NULL OR FECHA >= ?)";
+    static final String SQL_SHIPPYPRO_CON_IMEI = SQL_SHIPPYPRO_CON_IMEI_DESDE + " AND IMEI IN (%s) ORDER BY FECHA, ID_FILA";
+    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
+    static final String SQL_FILA_FALTA_BLOQUEADA = "SELECT ORIGEN, CANAL, ENVIO_FECHA, FALTA_ENVIAR_EN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_PONER_FALTA = "UPDATE Pedido_fila SET FALTA_ENVIAR_EN = ?, FALTA_ENVIAR_USU = ? WHERE ID_FILA = ?";
+    static final String SQL_CAMBIO_TIPO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO) VALUES (?, ?, ?, ?)";
+    static final String SQL_FILAS_DE_PEDIDO_BLOQUEADAS = "SELECT ID_FILA, IMEI, FALTA_ENVIAR_EN FROM Pedido_fila"
+            + " WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ? AND PEDIDO = ? FOR UPDATE";
+    static final String SQL_SINCRONIZAR = "UPDATE Pedido_fila SET SINCRONIZADA_EN = ? WHERE ID_FILA = ?";
+    static final String SQL_QUITAR_FALTA = "UPDATE Pedido_fila SET FALTA_ENVIAR_EN = NULL, FALTA_ENVIAR_USU = NULL WHERE ID_FILA = ?";
+    static final String SQL_CAMBIO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)";
+    /** Tope defensivo de apuntes que sirve {@link #cambiosDeFila}. */
+    static final int TOPE_CAMBIOS = 200;
+    static final String SQL_CAMBIOS_DE_FILA = "SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO FROM Pedido_fila_cambio c"
+            + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT " + TOPE_CAMBIOS;
+    /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas, con IMEI de 15 cifras, cuyo ULTIMO apunte de cambio de IMEI es
+     *  de {@code ?} en adelante; del mas reciente al mas antiguo. Una cerrada sin envio (NO_PENDIENTE) solo entra si su ultimo cambio de
+     *  IMEI es POSTERIOR al cierre (alguien tecleo el IMEI sabiendo que ya no estaba pendiente: el movil esta vendido); si el IMEI ya
+     *  estaba antes de cerrarse (pedido cancelado) no sale. Una sola consulta, con tope. */
+    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
+            // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
+            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO = 'IMEI' AND FECHA >= ? GROUP BY ID_FILA) u"
+            + " ON u.ID_FILA = f.ID_FILA"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"
+            + " AND (? IS NULL OR f.CANAL = ?)"
+            + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
+    static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
+    static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
+            + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)";
+    static final String SQL_SHIPPYPRO_BLOQUEADAS = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' ORDER BY FECHA, ID_FILA FOR UPDATE";
+    static final String SQL_TRASPASAR_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO'"
+            + " AND (IMEI IS NULL OR IMEI = '')";
+    static final String SQL_CAMBIOS_DE_HISTORICO = "SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
+            + " WHERE f.ORIGEN = 'HISTORICO'";
+    static final String SQL_EMPEZAR_LECTURA = "INSERT INTO Pedido_lectura (INICIO) VALUES (?)";
+    static final String SQL_TERMINAR_LECTURA = "UPDATE Pedido_lectura SET FIN = ?, RESULTADO = ?, FILAS = ?, SKU_DESCONOCIDOS = ?, MENSAJE = ?"
+            + " WHERE ID_LECTURA = ?";
+    static final String SQL_ULTIMA_LECTURA = "SELECT ID_LECTURA, INICIO, FIN, RESULTADO, FILAS, SKU_DESCONOCIDOS, MENSAJE"
+            + " FROM Pedido_lectura WHERE RESULTADO IN (%s) ORDER BY ID_LECTURA DESC LIMIT 1";
+    static final String SQL_PODAR = "DELETE FROM Pedido_lectura WHERE INICIO < ?";
+
+    private final JdbcTemplate jdbc;
+
+    public FilasDAO(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    // ---------------------------------------------------------------- filas
+
+    public List<FilaPedido> vivasDeShippyPro() {
+        return jdbc.query(SQL_VIVAS_SHIPPYPRO, FilasDAO::fila);
+    }
+
+    /** Las filas cerradas de origen ShippyPro de esos pedidos (canal y numero), en tandas. */
+    public List<FilaPedido> cerradasDeShippyPro(Collection<SincroShippyPro.ClavePedido> pedidos) {
+        return deShippyPro(SQL_CERRADAS_SHIPPYPRO, pedidos);
+    }
+
+    private List<FilaPedido> deShippyPro(String sql, Collection<SincroShippyPro.ClavePedido> pedidos) {
+        List<FilaPedido> filas = new ArrayList<>();
+        for (List<SincroShippyPro.ClavePedido> tanda : trozos(List.copyOf(pedidos))) {
+            List<Object> args = new ArrayList<>();
+            for (SincroShippyPro.ClavePedido c : tanda) {
+                args.add(c.canal().name());
+                args.add(c.pedido());
+            }
+            String condicion = String.join(" OR ", Collections.nCopies(tanda.size(), "(CANAL = ? AND PEDIDO = ?)"));
+            filas.addAll(jdbc.query(String.format(sql, condicion), FilasDAO::fila, args.toArray()));
+        }
+        return filas;
+    }
+
+    /** Las filas de origen ShippyPro (vivas o cerradas) de esos pedidos (canal y numero) a las que aun puede faltar algo del envio:
+     *  sin envio conocido, sin id de envio o sin impresion de la etiqueta; en tandas. */
+    public List<FilaPedido> porMarcarDeShippyPro(Collection<SincroShippyPro.ClavePedido> pedidos) {
+        return deShippyPro(SQL_POR_MARCAR_SHIPPYPRO, pedidos);
+    }
+
+    /** Pone a cada fila los datos de su envio y, si estaba viva, la cierra ahora; las que ya tenian envio no se tocan. */
+    public void marcarEnviadas(List<SincroShippyPro.MarcaEnvio> marcas, LocalDateTime ahora) {
+        if (marcas.isEmpty()) return;
+        List<Object[]> lote = new ArrayList<>();
+        for (SincroShippyPro.MarcaEnvio m : marcas)
+            lote.add(new Object[]{Timestamp.valueOf(m.fecha()), AnchosNsys.corta(m.transportista(), AnchosPedidos.TRANSPORTISTA),
+                    AnchosNsys.corta(m.seguimiento(), AnchosPedidos.SEGUIMIENTO), Timestamp.valueOf(ahora), m.envioId(),
+                    m.impresaEn() == null ? null : Timestamp.valueOf(m.impresaEn()), m.fila()});
+        jdbc.batchUpdate(SQL_MARCAR_ENVIO, lote);
+    }
+
+    /** Completa el id del envio y la impresion de las filas ya enviadas; nunca borra lo ya puesto. */
+    public void marcarEtiquetas(List<SincroShippyPro.MarcaEtiqueta> marcas) {
+        if (marcas.isEmpty()) return;
+        List<Object[]> lote = new ArrayList<>();
+        List<Object[]> cambios = new ArrayList<>();
+        for (SincroShippyPro.MarcaEtiqueta m : marcas) {
+            Timestamp impresa = m.impresaEn() == null ? null : Timestamp.valueOf(m.impresaEn());
+            if (m.nuevo() == null) lote.add(new Object[]{m.envioId(), impresa, m.fila()});
+            else cambios.add(new Object[]{m.envioId(), Timestamp.valueOf(m.nuevo().fecha()),
+                    AnchosNsys.corta(m.nuevo().transportista(), AnchosPedidos.TRANSPORTISTA),
+                    AnchosNsys.corta(m.nuevo().seguimiento(), AnchosPedidos.SEGUIMIENTO), impresa, m.fila()});
+        }
+        if (!lote.isEmpty()) jdbc.batchUpdate(SQL_MARCAR_ETIQUETA, lote);
+        if (!cambios.isEmpty()) jdbc.batchUpdate(SQL_CAMBIAR_ENVIO, cambios);
+    }
+
+    /** Inserta las filas nuevas (el id del record se ignora), con los textos cortados a los anchos del DDL. */
+    public void insertar(List<FilaPedido> nuevas) {
+        if (nuevas.isEmpty()) return;
+        List<Object[]> lote = new ArrayList<>();
+        for (FilaPedido f : nuevas)
+            lote.add(new Object[]{fecha(f.fecha()), AnchosNsys.corta(f.plataforma(), AnchosPedidos.PLATAFORMA),
+                    AnchosNsys.corta(f.sku(), AnchosPedidos.SKU), AnchosNsys.corta(f.imei(), AnchosPedidos.IMEI),
+                    AnchosNsys.corta(f.pedido(), AnchosPedidos.PEDIDO), fecha(f.fechaCompra()), f.origen(),
+                    f.canal() == null ? null : f.canal().name(), f.posicion()});
+        jdbc.batchUpdate(SQL_INSERTAR, lote);
+    }
+
+    /** Cierra (ya no pendientes) las filas indicadas; las que ya lo estaban no se tocan. */
+    public void cerrar(Collection<Integer> ids, LocalDateTime ahora) {
+        for (List<Integer> tanda : trozos(List.copyOf(ids))) {
+            List<Object> args = new ArrayList<>();
+            args.add(Timestamp.valueOf(ahora));
+            args.addAll(tanda);
+            jdbc.update(String.format(SQL_CERRAR, marcas(tanda.size())), args.toArray());
+        }
+    }
+
+    /** Vuelve a dejar vivas (sin hora de cierre ni datos de envio, y apunta cuando se reabren) las filas indicadas, con su IMEI intacto; las que ya lo estaban no se tocan. */
+    public void reabrir(Collection<Integer> ids, LocalDateTime ahora) {
+        for (List<Integer> tanda : trozos(List.copyOf(ids))) {
+            List<Object> args = new ArrayList<>();
+            args.add(Timestamp.valueOf(ahora));
+            args.addAll(tanda);
+            jdbc.update(String.format(SQL_REABRIR, marcas(tanda.size())), args.toArray());
+        }
+    }
+
+    /** Las filas con FECHA entre las dos fechas y, sea cual sea su fecha, las vivas; en orden de hoja. */
+    public List<FilaPedido> delPeriodo(LocalDate desde, LocalDate hasta) {
+        return jdbc.query(SQL_DEL_PERIODO, FilasDAO::fila, fecha(desde), fecha(hasta));
+    }
+
+    /** Las {@code tope + 1} filas mas recientes que contienen el texto en plataforma, SKU, IMEI o pedido, en orden de hoja
+     *  (la mas antigua primero). Pedir una de mas permite saber si hay mas de {@code tope}. */
+    public List<FilaPedido> buscar(String texto, int tope) {
+        String patron = "%" + texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        List<FilaPedido> filas = new ArrayList<>(
+                jdbc.query(SQL_BUSCAR, FilasDAO::fila, patron, patron, patron, patron, tope + 1));
+        Collections.reverse(filas);
+        return filas;
+    }
+
+    public Optional<FilaPedido> porId(int id) {
+        return jdbc.query(SQL_POR_ID, FilasDAO::fila, id).stream().findFirst();
+    }
+
+    /** Los apuntes del historial de una fila (IMEI y marca de falta enviar), del mas reciente al mas antiguo (hasta 200), con el nombre de quien los hizo (nulo si no hay usuario). */
+    public List<CambioImei> cambiosDeFila(int id) {
+        return jdbc.query(SQL_CAMBIOS_DE_FILA, (rs, n) -> new CambioImei(rs.getString("NOMBRE_USUARIO"),
+                rs.getTimestamp("FECHA").toLocalDateTime(), rs.getString("IMEI_ANTERIOR"), rs.getString("IMEI_NUEVO"), rs.getString("TIPO")), id);
+    }
+
+    /** Las filas de ShippyPro con alguno de esos IMEI: las vivas y las cerradas con FECHA desde {@code desde}. */
+    public List<FilaPedido> shippyProConImei(Collection<String> imeis, LocalDate desde) {
+        List<FilaPedido> filas = new ArrayList<>();
+        for (List<String> tanda : trozos(List.copyOf(imeis))) {
+            List<Object> args = new ArrayList<>();
+            args.add(fecha(desde));
+            args.addAll(tanda);
+            filas.addAll(jdbc.query(String.format(SQL_SHIPPYPRO_CON_IMEI, marcas(tanda.size())), FilasDAO::fila, args.toArray()));
+        }
+        return filas;
+    }
+
+    /** Todas las filas de ShippyPro con IMEI: las vivas y las cerradas con FECHA desde {@code desde}. */
+    public List<FilaPedido> shippyProConImeiDesde(LocalDate desde) {
+        return jdbc.query(SQL_SHIPPYPRO_CON_IMEI_DESDE + " ORDER BY FECHA, ID_FILA", FilasDAO::fila, fecha(desde));
+    }
+
+    /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI desde {@code desde}, a lo sumo {@code tope} filas, sin
+     *  IMEI repetidos: si esta en dos filas sale la del cambio mas reciente. Un IMEI quitado de la fila no sale (la fila ya no lo tiene). */
+    public List<Vendido> vendidosDesde(LocalDateTime desde, Canal canal, int tope) {
+        String nombreCanal = canal == null ? null : canal.name();
+        // El canal filtra en la consulta; el dedup por IMEI va despues, sobre lo ya filtrado.
+        List<Vendido> filas = jdbc.query(SQL_VENDIDOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
+                rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
+                Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
+        java.util.Map<String, Vendido> porImei = new java.util.LinkedHashMap<>();
+        for (Vendido v : filas) porImei.putIfAbsent(v.imei(), v);
+        return new ArrayList<>(porImei.values());
+    }
+
+    /** Resultado de {@link #ponerImei}: PUESTO, NO_EXISTE, CERRADA (del historico: no se toca) o CAMBIADA (el IMEI actual no es el que la persona esperaba). */
+    public enum Resultado { PUESTO, NO_EXISTE, CERRADA, CAMBIADA,
+        /** Solo de {@link #ponerFaltaEnviar}: la fila ya estaba como se pedia (no se escribe ni apunta nada). */
+        SIN_CAMBIO,
+        /** Solo de {@link #ponerFaltaEnviar}: no se puede marcar (no es de ShippyPro, no es de un canal web o no tiene la etiqueta generada). */
+        NO_MARCABLE }
+
+    private record Bloqueada(String imei, boolean historico) {}
+
+    /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
+     *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
+     *  con el bloqueo puesto. {@code imeiAnterior} nulo no comprueba nada; si no, debe coincidir con el IMEI actual (nulo cuenta como ""), y
+     *  si no, no escribe nada ni apunta cambio (CAMBIADA). Si no existe o es del historico, tampoco escribe nada. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
+        List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
+                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN"))), idFila);
+        if (filas.isEmpty()) return Resultado.NO_EXISTE;
+        if (filas.get(0).historico()) return Resultado.CERRADA;
+        if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
+            return Resultado.CAMBIADA;
+        String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
+        jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
+        jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
+        return Resultado.PUESTO;
+    }
+
+    private record BloqueadaFalta(String origen, String canal, boolean conEtiqueta, LocalDateTime marca) {}
+
+    /** Pone ({@code falta}) o quita la marca «falta enviar» de una fila y la apunta en el historial (FALTA_ENVIAR o YA_ENVIADO) con el usuario
+     *  y la hora. Misma transaccion que {@link #ponerImei}: READ COMMITTED y la fila bloqueada al leerla; todo se decide con el bloqueo puesto.
+     *  Orden: NO_EXISTE; CERRADA (historico); SIN_CAMBIO (ya marcada y se marca, o sin marca y se desmarca); NO_MARCABLE (solo al poner:
+     *  la fila debe ser de ShippyPro, de un canal web y con la etiqueta generada, ENVIO_FECHA no nula); si no, PUESTO. Quitar la marca
+     *  no exige nada mas. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Resultado ponerFaltaEnviar(int idFila, boolean falta, Integer idUsu, LocalDateTime ahora) {
+        List<BloqueadaFalta> filas = jdbc.query(SQL_FILA_FALTA_BLOQUEADA, (rs, n) -> new BloqueadaFalta(rs.getString("ORIGEN"),
+                rs.getString("CANAL"), rs.getTimestamp("ENVIO_FECHA") != null, hora(rs, "FALTA_ENVIAR_EN")), idFila);
+        if (filas.isEmpty()) return Resultado.NO_EXISTE;
+        BloqueadaFalta f = filas.get(0);
+        if ("HISTORICO".equals(f.origen())) return Resultado.CERRADA;
+        if (falta == (f.marca() != null)) return Resultado.SIN_CAMBIO;
+        if (falta && !(f.conEtiqueta() && "SHIPPYPRO".equals(f.origen()) && esWeb(f.canal()))) return Resultado.NO_MARCABLE;
+        jdbc.update(SQL_PONER_FALTA, falta ? Timestamp.valueOf(ahora) : null, falta ? idUsu : null, idFila);
+        jdbc.update(SQL_CAMBIO_TIPO, idFila, idUsu, Timestamp.valueOf(ahora), falta ? CambioImei.FALTA_ENVIAR : CambioImei.YA_ENVIADO);
+        return Resultado.PUESTO;
+    }
+
+    private static boolean esWeb(String canal) {
+        if (canal == null) return false;
+        try {
+            return Canal.valueOf(canal).esWeb();
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /** Un pedido del aviso del plugin de la web: el numero ya normalizado como lo guarda la lectura de ShippyPro y sus IMEI (sin repetidos). */
+    public record PedidoSincronizado(String pedido, Set<String> imeis) {}
+
+    /** Los recuentos de {@link #sincronizar}: filas puestas al dia, marcas «falta enviar» quitadas e IMEI enviados que no casaron con ninguna fila. */
+    public record InformeSincronizacion(int filasSincronizadas, int marcasQuitadas, int sinFila) {}
+
+    /** El aviso del plugin de la web, en una transaccion (READ COMMITTED, filas de cada pedido bloqueadas): para cada pedido, las filas
+     *  de ShippyPro de ese canal y numero cuyo IMEI viene en la lista se marcan con SINCRONIZADA_EN = {@code ahora} y, si tenian la marca
+     *  «falta enviar», se les quita con un apunte YA_ENVIADO sin usuario. El resto de filas del pedido no se tocan. Repetir la misma
+     *  llamada solo vuelve a poner la hora: no apunta nada que no quite. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public InformeSincronizacion sincronizar(Canal canal, List<PedidoSincronizado> pedidos, LocalDateTime ahora) {
+        int sincronizadas = 0, quitadas = 0, sinFila = 0;
+        Timestamp hora = Timestamp.valueOf(ahora);
+        for (PedidoSincronizado p : pedidos) {
+            record Cand(int id, String imei, boolean marcada) {}
+            List<Cand> filas = jdbc.query(SQL_FILAS_DE_PEDIDO_BLOQUEADAS,
+                    (rs, n) -> new Cand(rs.getInt("ID_FILA"), rs.getString("IMEI"), rs.getTimestamp("FALTA_ENVIAR_EN") != null),
+                    canal.name(), p.pedido());
+            Set<String> casados = new TreeSet<>();
+            for (Cand c : filas) {
+                if (c.imei() == null || !p.imeis().contains(c.imei())) continue;
+                casados.add(c.imei());
+                jdbc.update(SQL_SINCRONIZAR, hora, c.id());
+                sincronizadas++;
+                if (c.marcada()) {
+                    jdbc.update(SQL_QUITAR_FALTA, c.id());
+                    jdbc.update(SQL_CAMBIO_TIPO, c.id(), null, hora, CambioImei.YA_ENVIADO);
+                    quitadas++;
+                }
+            }
+            sinFila += p.imeis().size() - casados.size();
+        }
+        return new InformeSincronizacion(sincronizadas, quitadas, sinFila);
+    }
+
+    // ---------------------------------------------------------------- carga del historico (se llaman dentro de una transaccion)
+
+    /** Todas las filas de origen ShippyPro, vivas o cerradas, en orden de hoja y bloqueadas hasta el fin de la transaccion. */
+    public List<FilaPedido> todasDeShippyProBloqueadas() {
+        return jdbc.query(SQL_SHIPPYPRO_BLOQUEADAS, FilasDAO::fila);
+    }
+
+    /** Cuantos apuntes de Pedido_fila_cambio cuelgan de filas HISTORICO (deberian ser 0: borrar esas filas los borraria en cascada). */
+    public int contarCambiosDeHistorico() {
+        Integer n = jdbc.queryForObject(SQL_CAMBIOS_DE_HISTORICO, Integer.class);
+        return n == null ? 0 : n;
+    }
+
+    /** Borra las filas de origen HISTORICO y devuelve cuantas. No toca las de ShippyPro (ni Pedido_fila_cambio: el historico no se edita). */
+    public int borrarHistorico() {
+        return jdbc.update(SQL_BORRAR_HISTORICO);
+    }
+
+    /** Inserta las filas del historico en el orden dado y en lotes de {@value #TANDA}. Origen HISTORICO, sin canal ni posicion, y
+     *  cerradas a la medianoche de su fecha; los textos se cortan a los anchos del DDL. */
+    public void insertarHistorico(List<FilaPedido> filas) {
+        for (List<FilaPedido> tanda : trozos(filas)) {
+            List<Object[]> lote = new ArrayList<>();
+            for (FilaPedido f : tanda)
+                lote.add(new Object[]{fecha(f.fecha()), AnchosNsys.corta(f.plataforma(), AnchosPedidos.PLATAFORMA),
+                        AnchosNsys.corta(f.sku(), AnchosPedidos.SKU), AnchosNsys.corta(f.imei(), AnchosPedidos.IMEI),
+                        AnchosNsys.corta(f.pedido(), AnchosPedidos.PEDIDO), fecha(f.fechaCompra()),
+                        Timestamp.valueOf(f.fecha().atStartOfDay())});
+            jdbc.batchUpdate(SQL_INSERTAR_HISTORICO, lote);
+        }
+    }
+
+    /** Pone el IMEI en una fila de ShippyPro que no lo tiene y lo apunta (sin usuario, IMEI anterior nulo). Falso, sin escribir nada
+     *  mas, si la fila ya tenia IMEI o no existe. */
+    public boolean traspasarImei(int idFila, String imei, LocalDateTime ahora) {
+        String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
+        if (jdbc.update(SQL_TRASPASAR_IMEI, nuevo, idFila) == 0) return false;
+        jdbc.update(SQL_CAMBIO, idFila, null, Timestamp.valueOf(ahora), null, nuevo);
+        return true;
+    }
+
+    // ---------------------------------------------------------------- lecturas
+
+    public int empezarLectura(LocalDateTime inicio) {
+        KeyHolder claves = new GeneratedKeyHolder();
+        jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement(SQL_EMPEZAR_LECTURA, Statement.RETURN_GENERATED_KEYS);
+            ps.setTimestamp(1, Timestamp.valueOf(inicio));
+            return ps;
+        }, claves);
+        Number n = claves.getKey();
+        if (n == null) throw new IllegalStateException("La base de datos no devolvio el id");
+        return n.intValue();
+    }
+
+    /** Cierra la lectura. Los SKU desconocidos van ordenados y separados por «, », cortados a su ancho; nulo si no hay. */
+    public void terminarLectura(int id, String resultado, int filas, Collection<String> desconocidos, String mensaje, LocalDateTime fin) {
+        String skus = desconocidos.isEmpty() ? null
+                : AnchosNsys.corta(String.join(", ", new TreeSet<>(desconocidos)), AnchosPedidos.SKU_DESCONOCIDOS);
+        jdbc.update(SQL_TERMINAR_LECTURA, Timestamp.valueOf(fin), resultado, filas, skus,
+                AnchosNsys.corta(mensaje, AnchosPedidos.MENSAJE), id);
+    }
+
+    public Optional<LecturaGuardada> ultimaLectura(Set<String> resultados) {
+        if (resultados.isEmpty()) return Optional.empty();
+        return jdbc.query(String.format(SQL_ULTIMA_LECTURA, marcas(resultados.size())), FilasDAO::lectura, resultados.toArray())
+                .stream().findFirst();
+    }
+
+    public void podarLecturas(LocalDateTime antesDe) {
+        jdbc.update(SQL_PODAR, Timestamp.valueOf(antesDe));
+    }
+
+    // ---------------------------------------------------------------- ayudas
+
+    private static FilaPedido fila(ResultSet rs, int n) throws SQLException {
+        String canal = rs.getString("CANAL");
+        int posicion = rs.getInt("POSICION");
+        Integer pos = rs.wasNull() ? null : posicion;
+        long idEnvio = rs.getLong("ENVIO_ID");
+        Long envioId = rs.wasNull() ? null : idEnvio;
+        return new FilaPedido(rs.getInt("ID_FILA"), dia(rs, "FECHA"), rs.getString("PLATAFORMA"), rs.getString("SKU"),
+                rs.getString("IMEI"), rs.getString("PEDIDO"), dia(rs, "FECHA_COMPRA"), rs.getString("ORIGEN"),
+                canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
+                rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
+                hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"));
+    }
+
+    private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {
+        return new LecturaGuardada(rs.getInt("ID_LECTURA"), hora(rs, "INICIO"), hora(rs, "FIN"), rs.getString("RESULTADO"),
+                rs.getInt("FILAS"), rs.getString("SKU_DESCONOCIDOS"), rs.getString("MENSAJE"));
+    }
+
+    private static LocalDate dia(ResultSet rs, String columna) throws SQLException {
+        Date d = rs.getDate(columna);
+        return d == null ? null : d.toLocalDate();
+    }
+
+    private static LocalDateTime hora(ResultSet rs, String columna) throws SQLException {
+        Timestamp t = rs.getTimestamp(columna);
+        return t == null ? null : t.toLocalDateTime();
+    }
+
+    private static Date fecha(LocalDate d) {
+        return d == null ? null : Date.valueOf(d);
+    }
+
+    static String marcas(int n) {
+        return String.join(", ", Collections.nCopies(n, "?"));
+    }
+
+    static <T> List<List<T>> trozos(List<T> lista) {
+        List<List<T>> trozos = new ArrayList<>();
+        for (int i = 0; i < lista.size(); i += TANDA) trozos.add(lista.subList(i, Math.min(lista.size(), i + TANDA)));
+        return trozos;
+    }
+}
