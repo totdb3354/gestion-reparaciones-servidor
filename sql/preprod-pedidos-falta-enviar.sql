@@ -23,13 +23,14 @@ SELECT COUNT(*) AS YA_ESTAN FROM information_schema.COLUMNS
 
 SET SESSION lock_wait_timeout = 10;
 
--- MariaDB: ADD COLUMN / ADD CONSTRAINT IF NOT EXISTS hacen idempotente cada paso.
+-- MariaDB: ADD COLUMN IF NOT EXISTS y ADD CONSTRAINT ... FOREIGN KEY IF NOT EXISTS hacen idempotente cada paso
+-- (MariaDB no admite «ADD CONSTRAINT IF NOT EXISTS ... FOREIGN KEY»: da error 1064).
 ALTER TABLE Pedido_fila
     ADD COLUMN IF NOT EXISTS FALTA_ENVIAR_EN  DATETIME NULL COMMENT 'Cuando una persona marco que el movil falta por enviar (envio parcial de un pedido de web); NULL = sin marca' AFTER REABIERTA_EN,
     ADD COLUMN IF NOT EXISTS FALTA_ENVIAR_USU INT      NULL COMMENT 'Quien puso la marca' AFTER FALTA_ENVIAR_EN,
     ADD COLUMN IF NOT EXISTS SINCRONIZADA_EN  DATETIME NULL COMMENT 'Ultima vez que el plugin de la web aviso de que el pedido ya lleva este movil; NULL = nunca' AFTER FALTA_ENVIAR_USU;
 ALTER TABLE Pedido_fila
-    ADD CONSTRAINT IF NOT EXISTS fk_fila_falta_usuario FOREIGN KEY (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_fila_falta_usuario FOREIGN KEY IF NOT EXISTS (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL;
 ALTER TABLE Pedido_fila_cambio
     ADD COLUMN IF NOT EXISTS TIPO VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar) o YA_ENVIADO (se quito la marca)' AFTER IMEI_NUEVO;
 
