@@ -662,13 +662,18 @@ CREATE TABLE Pedido_fila (
     FALTA_ENVIAR_EN  DATETIME NULL COMMENT 'Cuando una persona marco que el movil falta por enviar (envio parcial de un pedido de web); NULL = sin marca',
     FALTA_ENVIAR_USU INT      NULL COMMENT 'Quien puso la marca',
     SINCRONIZADA_EN  DATETIME NULL COMMENT 'Ultima vez que el plugin de la web aviso de que el pedido ya lleva este movil; NULL = nunca',
+    MARCA        VARCHAR(20)  NULL COMMENT 'ESPERA_STOCK, EN_REVISION, PENDIENTE_COLOR o CANCELADO; NULL = sin marca',
+    MARCA_NOTA   VARCHAR(200) NULL COMMENT 'Nota libre de la marca',
+    MARCA_EN     DATETIME     NULL COMMENT 'Cuando se puso la marca',
+    MARCA_USU    INT          NULL COMMENT 'Quien puso la marca',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
     KEY idx_fila_viva (CERRADA_EN),
     KEY idx_fila_imei (IMEI),
     KEY idx_fila_pedido (PEDIDO),
-    CONSTRAINT fk_fila_falta_usuario FOREIGN KEY (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+    CONSTRAINT fk_fila_falta_usuario FOREIGN KEY (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
+    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 CREATE TABLE Pedido_fila_cambio (
     ID_CAMBIO     INT         NOT NULL AUTO_INCREMENT,
@@ -677,7 +682,8 @@ CREATE TABLE Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar) o YA_ENVIADO (se quito la marca)',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA o MARCA_QUITADA',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en los apuntes MARCA y MARCA_QUITADA',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,

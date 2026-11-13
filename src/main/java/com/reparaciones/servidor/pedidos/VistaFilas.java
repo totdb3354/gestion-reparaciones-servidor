@@ -178,7 +178,8 @@ public class VistaFilas {
                     !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),
                     f.impresaEn(), f.tieneEtiqueta(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
-                    aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn()));
+                    aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn(),
+                    f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor()));
         }
         return vistas;
     }
