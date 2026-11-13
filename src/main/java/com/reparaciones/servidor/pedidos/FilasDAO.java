@@ -244,20 +244,23 @@ public class FilasDAO {
         return new ArrayList<>(porImei.values());
     }
 
-    /** Resultado de {@link #ponerImei}: PUESTO, NO_EXISTE o CERRADA (del historico: no se toca). */
-    public enum Resultado { PUESTO, NO_EXISTE, CERRADA }
+    /** Resultado de {@link #ponerImei}: PUESTO, NO_EXISTE, CERRADA (del historico: no se toca) o CAMBIADA (el IMEI actual no es el que la persona esperaba). */
+    public enum Resultado { PUESTO, NO_EXISTE, CERRADA, CAMBIADA }
 
     private record Bloqueada(String imei, boolean historico) {}
 
     /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
      *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
-     *  con el bloqueo puesto. Si no existe o es del historico, no escribe nada. */
+     *  con el bloqueo puesto. {@code imeiAnterior} nulo no comprueba nada; si no, debe coincidir con el IMEI actual (nulo cuenta como ""), y
+     *  si no, no escribe nada ni apunta cambio (CAMBIADA). Si no existe o es del historico, tampoco escribe nada. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public Resultado ponerImei(int idFila, String imei, Integer idUsu, LocalDateTime ahora) {
+    public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
         List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
                 (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN"))), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         if (filas.get(0).historico()) return Resultado.CERRADA;
+        if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
+            return Resultado.CAMBIADA;
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);

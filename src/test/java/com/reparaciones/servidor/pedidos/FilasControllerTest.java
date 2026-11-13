@@ -96,16 +96,50 @@ class FilasControllerTest {
 
     // ---------------------------------------------------------------- PUT /filas/{id}/imei
 
+    @Test void imeiAnteriorSeLlevaAlDaoYUnaFilaCambiadaEs409SinElImeiAjeno() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.ponerImei(5, IMEI, "", 7, AHORA)).thenReturn(FilasDAO.Resultado.CAMBIADA);
+        org.springframework.web.server.ResponseStatusException e = org.junit.jupiter.api.Assertions.assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> controller.ponerImei(5, new PeticionImei(IMEI, ""), super_, null));
+        assertEquals(409, e.getStatusCode().value());
+        assertEquals(FilasController.MSG_CAMBIADO, e.getReason());
+        assertFalse(e.getReason().contains(IMEI));
+    }
+
+    @Test void imeiAnteriorMalFormadoEs400() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        assertEquals(400, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI, "123"), super_, null)));
+        verify(dao, never()).ponerImei(anyInt(), any(), any(), any(), any());
+    }
+
+    @Test void reintentoConLaMismaClaveYElMismoImeiAnteriorNoVuelveAEscribir() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(vista.fila(5)).thenReturn(Optional.of(mock(FilaVista.class)));
+        controller.ponerImei(5, new PeticionImei(IMEI, " "), super_, "clave-ant");
+        controller.ponerImei(5, new PeticionImei(IMEI, ""), super_, "clave-ant");
+        verify(dao, times(1)).ponerImei(5, IMEI, "", 7, AHORA);
+    }
+
+    @Test void sinImeiAnteriorNoSeComprueba() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(vista.fila(5)).thenReturn(Optional.of(mock(FilaVista.class)));
+        controller.ponerImei(5, new PeticionImei(IMEI, null), super_, null);
+        verify(dao).ponerImei(5, IMEI, null, 7, AHORA);
+    }
+
     @Test void unImeiQueNoSon15CifrasEs400SinTocarNada() {
         for (String malo : List.of("123", "35000000000000A", "3500000000000011", "3500 0000 0000 01"))
             assertEquals(400, estado(() -> controller.ponerImei(5, new PeticionImei(malo), super_, null)), malo);
-        verify(dao, never()).ponerImei(anyInt(), any(), any(), any());
+        verify(dao, never()).ponerImei(anyInt(), any(), any(), any(), any());
     }
 
     @Test void unaFilaQueNoExisteEs404() {
         when(dao.porId(5)).thenReturn(Optional.empty());
         assertEquals(404, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null)));
-        verify(dao, never()).ponerImei(anyInt(), any(), any(), any());
+        verify(dao, never()).ponerImei(anyInt(), any(), any(), any(), any());
     }
 
     @Test void unaFilaDelHistoricoEs409() {
@@ -114,26 +148,26 @@ class FilasControllerTest {
                 () -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null));
         assertEquals(409, e.getStatusCode().value());
         assertEquals("La fila es del histórico y no se edita", e.getReason());
-        verify(dao, never()).ponerImei(anyInt(), any(), any(), any());
+        verify(dao, never()).ponerImei(anyInt(), any(), any(), any(), any());
     }
 
     @Test void unaFilaDeShippyProCerradaOEnviadaSiSeEdita() {
         when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI)));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", AHORA.minusDays(1))));
         controller.ponerImei(5, new PeticionImei(IMEI), super_, null);
         when(dao.porId(5)).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
                 "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1),
                 AHORA.minusDays(2), "UPSv2", "1Z0000000000000001")));
         controller.ponerImei(5, new PeticionImei(IMEI), super_, null);
-        verify(dao, times(2)).ponerImei(5, IMEI, 7, AHORA);
+        verify(dao, times(2)).ponerImei(5, IMEI, null, 7, AHORA);
     }
 
     @Test void siElDaoDiceCerradaTrasLaComprobacionEs409YSiNoExisteEs404() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.CERRADA);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.CERRADA);
         assertEquals(409, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null)));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.NO_EXISTE);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.NO_EXISTE);
         assertEquals(404, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI), super_, null)));
         verify(vista, never()).fila(anyInt());
     }
@@ -142,35 +176,35 @@ class FilasControllerTest {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         FilaVista releida = vistaDe(IMEI);
         when(vista.fila(5)).thenReturn(Optional.of(releida));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
 
         FilaVista r = controller.ponerImei(5, new PeticionImei(" " + IMEI + " "), super_, null);
 
         assertSame(releida, r);
-        verify(dao).ponerImei(5, IMEI, 7, AHORA);
+        verify(dao).ponerImei(5, IMEI, null, 7, AHORA);
     }
 
     @Test void nuloOEnBlancoQuitaElImei() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         when(vista.fila(5)).thenReturn(Optional.of(vistaDe(null)));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
 
         controller.ponerImei(5, new PeticionImei(null), super_, null);
         controller.ponerImei(5, new PeticionImei("   "), super_, null);
 
-        verify(dao, times(2)).ponerImei(5, null, 7, AHORA);
+        verify(dao, times(2)).ponerImei(5, null, null, 7, AHORA);
     }
 
     @Test void elReintentoConLaMismaClaveNoRepiteLaEscritura() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI)));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
 
         FilaVista primera = controller.ponerImei(5, new PeticionImei(IMEI), super_, "clave-1");
         FilaVista segunda = controller.ponerImei(5, new PeticionImei(IMEI), super_, "clave-1");
 
         assertSame(primera, segunda);
-        verify(dao, times(1)).ponerImei(5, IMEI, 7, AHORA);
+        verify(dao, times(1)).ponerImei(5, IMEI, null, 7, AHORA);
     }
 
     // ---------------------------------------------------------------- fuentes

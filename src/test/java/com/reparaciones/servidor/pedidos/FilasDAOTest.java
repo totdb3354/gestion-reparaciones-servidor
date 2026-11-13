@@ -192,12 +192,45 @@ class FilasDAOTest {
 
     @Test void ponerImeiBloqueaLeeElAnteriorActualizaYApuntaElCambio() throws Exception {
         filaBloqueada("350000000000001", "SHIPPYPRO");
-        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", null, 9, AHORA));
         var orden = inOrder(jdbc);
         orden.verify(jdbc).query(eq(SQL_BLOQUEO), any(RowMapper.class), eq(5));
         orden.verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "350000000000002", 5);
         orden.verify(jdbc).update("INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)",
                 5, 9, Timestamp.valueOf(AHORA), "350000000000001", "350000000000002");
+    }
+
+    @Test void imeiAnteriorQueCoincideSePoneYApuntaElCambio() throws Exception {
+        filaBloqueada("350000000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", "350000000000001", 9, AHORA));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "350000000000002", 5);
+        verify(jdbc).update(startsWith("INSERT INTO Pedido_fila_cambio"), eq(5), eq(9), eq(Timestamp.valueOf(AHORA)), eq("350000000000001"), eq("350000000000002"));
+    }
+
+    @Test void imeiAnteriorQueCoincideSePuedeQuitar() throws Exception {
+        filaBloqueada("350000000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, null, "350000000000001", 9, AHORA));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", null, 5);
+    }
+
+    @Test void imeiAnteriorVacioCoincideConFilaSinImeiNuloOVacio() throws Exception {
+        filaBloqueada(null, "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", "", 9, AHORA));
+        filaBloqueada("", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", "", 9, AHORA));
+    }
+
+    @Test void imeiAnteriorVacioConFilaConImeiEsCambiadaYNoEscribeNada() throws Exception {
+        filaBloqueada("350000000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.CAMBIADA, dao.ponerImei(5, "350000000000002", "", 9, AHORA));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void imeiAnteriorDistintoEsCambiadaYNoEscribeNiApunta() throws Exception {
+        filaBloqueada("350000000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.CAMBIADA, dao.ponerImei(5, "350000000000002", "350000000000009", 9, AHORA));
+        assertEquals(FilasDAO.Resultado.CAMBIADA, dao.ponerImei(5, null, "350000000000009", 9, AHORA));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
     @Test void cambiosDeFilaUnaSolaConsultaConUsuarioPorLeftJoinDelMasRecienteAlMasAntiguoConTope() {
@@ -221,26 +254,26 @@ class FilasDAOTest {
 
     @Test void ponerImeiCortaYAdmiteAnteriorNuloYUsuarioNulo() throws Exception {
         filaBloqueada(null, "SHIPPYPRO");
-        dao.ponerImei(5, "9".repeat(80), null, AHORA);
+        dao.ponerImei(5, "9".repeat(80), null, null, AHORA);
         verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "9".repeat(60), 5);
         verify(jdbc).update(startsWith("INSERT INTO Pedido_fila_cambio"), eq(5), isNull(), eq(Timestamp.valueOf(AHORA)), isNull(), eq("9".repeat(60)));
     }
 
     @Test void ponerImeiDeUnaFilaQueNoExisteNoEscribeNada() {
-        assertEquals(FilasDAO.Resultado.NO_EXISTE, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        assertEquals(FilasDAO.Resultado.NO_EXISTE, dao.ponerImei(5, "350000000000002", null, 9, AHORA));
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
     @Test void ponerImeiDeUnaFilaDelHistoricoNoEscribeNadaYDiceCerrada() throws Exception {
         filaBloqueada("texto de la hoja", "HISTORICO");
-        assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", null, 9, AHORA));
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
     @Test void ponerImeiDeUnaFilaDeShippyProCerradaOEnviadaSiSePuede() throws Exception {
         // El bloqueo solo lee IMEI y ORIGEN: una fila de ShippyPro se edita se haya cerrado o enviado o no.
         filaBloqueada("350000000000001", "SHIPPYPRO");
-        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", 9, AHORA));
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "350000000000002", null, 9, AHORA));
         verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "350000000000002", 5);
     }
 
@@ -307,7 +340,7 @@ class FilasDAOTest {
     }
 
     @Test void ponerImeiVaEnReadCommitted() throws Exception {
-        var m = FilasDAO.class.getMethod("ponerImei", int.class, String.class, Integer.class, LocalDateTime.class);
+        var m = FilasDAO.class.getMethod("ponerImei", int.class, String.class, String.class, Integer.class, LocalDateTime.class);
         var t = m.getAnnotation(org.springframework.transaction.annotation.Transactional.class);
         assertNotNull(t);
         assertEquals(org.springframework.transaction.annotation.Isolation.READ_COMMITTED, t.isolation());

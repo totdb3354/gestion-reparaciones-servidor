@@ -3,6 +3,10 @@ package com.reparaciones.servidor.pedidos;
 import com.reparaciones.servidor.idempotencia.RegistroIdempotencia;
 import com.reparaciones.servidor.nsys.ImportadorNsys;
 import com.reparaciones.servidor.security.UsuarioPrincipal;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -32,6 +36,7 @@ public class FilasController {
     static final int MIN_BUSCAR = 2;
     static final String MSG_BUSCAR_CORTO = "Escribe al menos 2 caracteres";
     static final String MSG_IMEI = "Un IMEI son 15 cifras";
+    static final String MSG_CAMBIADO = "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo.";
     static final String MSG_HISTORICO = "La fila es del histórico y no se edita";
 
     private final VistaFilas vista;
@@ -77,20 +82,30 @@ public class FilasController {
     }
 
     /** Pone, cambia o quita (imei nulo o en blanco) el IMEI de una fila de ShippyPro (también enviada o no pendiente). Devuelve la fila releida con su aviso. */
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = FilaVista.class))),
+        @ApiResponse(responseCode = "400", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content),
+        @ApiResponse(responseCode = "409", content = @Content)
+    })
     @PutMapping("/filas/{id}/imei")
     public FilaVista ponerImei(@PathVariable int id, @RequestBody PeticionImei req,
                                @AuthenticationPrincipal UsuarioPrincipal principal,
                                @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
         String imei = req.imei() == null || req.imei().isBlank() ? null : req.imei().strip();
         if (imei != null && !imei.matches("\\d{15}")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_IMEI);
+        String anterior = req.imeiAnterior() == null ? null : req.imeiAnterior().strip();
+        if (anterior != null && !anterior.isEmpty() && !anterior.matches("[0-9]{15}"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_IMEI);
         FilaPedido fila = dao.porId(id).orElseThrow(() -> noExiste(id));
         if (VistaFilas.HISTORICO.equals(fila.origen()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
-        return idempotencia.ejecutar(principal.getIdUsu(), "pedido-imei", claveIdempotencia, new Cambio(id, imei), () -> {
+        return idempotencia.ejecutar(principal.getIdUsu(), "pedido-imei", claveIdempotencia, new Cambio(id, imei, anterior), () -> {
             // El origen se decide en la transaccion del DAO, con la fila bloqueada.
-            FilasDAO.Resultado r = dao.ponerImei(id, imei, principal.getIdUsu(), LocalDateTime.now(clock));
+            FilasDAO.Resultado r = dao.ponerImei(id, imei, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
             if (r != FilasDAO.Resultado.PUESTO) {
                 if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
+                if (r == FilasDAO.Resultado.CAMBIADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_CAMBIADO);
                 throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
             }
             return vista.fila(id).orElseThrow(() -> noExiste(id));
@@ -102,7 +117,7 @@ public class FilasController {
         return vista.fuentes();
     }
 
-    private record Cambio(int id, String imei) {}
+    private record Cambio(int id, String imei, String imeiAnterior) {}
 
     private static ResponseStatusException noExiste(int id) {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe la fila " + id);

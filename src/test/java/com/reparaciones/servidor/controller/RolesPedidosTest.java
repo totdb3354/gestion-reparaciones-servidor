@@ -80,7 +80,7 @@ class RolesPedidosTest {
         when(vista.fuentes()).thenReturn(List.of());
         when(dao.porId(anyInt())).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
                 "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, null)));
-        when(dao.ponerImei(anyInt(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
         when(vista.fila(anyInt())).thenReturn(Optional.of(new FilaVista(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA",
                 "350000000000001", "402-0000000-0000005", LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, null, false, null, null, null, null, "AMAZON")));
         for (String token : List.of(supertecnico(), admin()))

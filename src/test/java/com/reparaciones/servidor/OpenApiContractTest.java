@@ -374,7 +374,7 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "ListaFilas", "filas", "hayMas");
         assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo", "aviso");
         assertNoNullable(esquemas, "FuenteVista", "fuente", "filas", "nivel");
-        assertNullable(esquemas, "PeticionImei", "imei");
+        assertNullable(esquemas, "PeticionImei", "imei", "imeiAnterior");
         assertNullable(esquemas, "CambioImei", "usuario", "imeiAnterior", "imeiNuevo");
         assertNoNullable(esquemas, "CambioImei", "fecha");
         assertNoNullable(esquemas, "RecomendadorCandidato", "imei", "nivel");
@@ -411,6 +411,7 @@ class OpenApiContractTest {
         assertTrue(ruta.has("post"), "falta POST /api/pedidos/historico");
         assertTrue(ruta.has("get"), "falta GET /api/pedidos/historico");
         assertCodigos(paths, "/api/pedidos/historico", "post", "202", "400", "409");
+        assertCodigos(paths, "/api/pedidos/filas/{id}/imei", "put", "200", "400", "404", "409");
         assertTrue(ruta.path("post").path("responses").path("202").toString().contains("/CargaHistoricoEstadoCarga\""),
                 "el 202 devuelve el estado");
         assertTrue(ruta.path("get").path("responses").path("200").toString().contains("/CargaHistoricoEstadoCarga\""));

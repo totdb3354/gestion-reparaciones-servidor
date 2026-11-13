@@ -90,9 +90,9 @@ de `model/` conservan su nombre.
     `404` si la fila no existe o si no tiene etiqueta («Este pedido no tiene etiqueta generada»: pendiente sin envío, histórico, cerrada
     sin envío); `502` «No se pudo obtener la etiqueta de ShippyPro. Inténtalo de nuevo.» si ShippyPro falla, no da etiqueta o la
     descarga falla, no es un PDF o es demasiado grande (nunca el texto de ShippyPro ni la URL). SUPERTECNICO y ADMIN.
-  - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
+  - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei, imeiAnterior?}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
-    histórico (las filas de ShippyPro se editan siempre, también las enviadas). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
+    histórico (las filas de ShippyPro se editan siempre, también las enviadas). `imeiAnterior` (opcional, nullable; la web vieja no lo manda): lo que la persona veía en la fila; ausente o `null` no comprueba nada, `""` espera la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`). Si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
     `filas`, `skuDesconocidos`, `motivo`, `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`, y `aviso`). Un `ERROR` enseña un motivo
     fijo, nunca el texto de la excepción. `aviso` (nullable, campo añadido; la web que no lo conoce lo ignora) lleva un texto fijo en
