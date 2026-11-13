@@ -38,7 +38,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // La ruta del bot de stock solo admite su clave (ClaveVendidosFilter): un token de usuario no cuenta para ella.
         return ("POST".equals(request.getMethod()) && "/api/auth/login".equals(request.getRequestURI()))
-                || ClaveVendidosFilter.RUTA.equals(request.getRequestURI());
+                || ClaveVendidosFilter.RUTA.equals(request.getRequestURI())
+                || ClaveSincronizadosFilter.RUTA.equals(request.getRequestURI());
     }
 
     @Override

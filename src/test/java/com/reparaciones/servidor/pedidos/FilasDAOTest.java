@@ -25,7 +25,7 @@ class FilasDAOTest {
 
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 11, 10, 10, 0);
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
-            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN FROM Pedido_fila";
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -235,7 +235,7 @@ class FilasDAOTest {
 
     @Test void cambiosDeFilaUnaSolaConsultaConUsuarioPorLeftJoinDelMasRecienteAlMasAntiguoConTope() {
         dao.cambiosDeFila(5);
-        verify(jdbc).query(eq("SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO FROM Pedido_fila_cambio c"
+        verify(jdbc).query(eq("SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO FROM Pedido_fila_cambio c"
                 + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT 200"),
                 any(RowMapper.class), eq(5));
     }
@@ -247,6 +247,7 @@ class FilasDAOTest {
             when(rs.getTimestamp("FECHA")).thenReturn(Timestamp.valueOf(AHORA));
             when(rs.getString("IMEI_ANTERIOR")).thenReturn(null);
             when(rs.getString("IMEI_NUEVO")).thenReturn("350000000000002");
+            when(rs.getString("TIPO")).thenReturn("IMEI");
             return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
         });
         assertEquals(List.of(new CambioImei(null, AHORA, null, "350000000000002")), dao.cambiosDeFila(5));

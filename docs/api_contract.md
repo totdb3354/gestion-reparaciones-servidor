@@ -75,10 +75,16 @@ de `model/` conservan su nombre.
     (las filas del histórico llevan los textos de la hoja tal cual). Trae también `canal` (nullable): el nombre del enum `Canal`
     (`AMAZON`, `AMAZON_STOCKROOM`, `DISTRIBUIDORES`, `PARTICULARES`, `BACKIPHONE`); en las filas de ShippyPro, el guardado; en las
     del histórico se deduce al servir de `plataforma` (recortada, sin distinguir mayúsculas: `AMZ` → `AMAZON`; `FNSK` o `FSNK` →
-    `AMAZON_STOCKROOM`) y es `null` en todo lo demás (clientes, incidencias, `NP`, vacía).
-  - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo}` con los apuntes de
-    IMEI de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `usuario` (nombre de usuario),
-    `imeiAnterior` e `imeiNuevo` son nullable (`usuario` nulo en el traspaso desde la hoja; `imeiNuevo` nulo = se quitó). `404` si la
+    `AMAZON_STOCKROOM`) y es `null` en todo lo demás (clientes, incidencias, `NP`, vacía). Trae además, nullable, `faltaEnviarEn` (hora de
+    Madrid: cuándo una persona marcó que el móvil de la fila falta por enviar, en un envío parcial de un pedido de web; `null` = sin
+    marca) y `sincronizadaEn` (la última vez que el plugin de la web avisó de que el pedido ya lleva ese móvil; `null` = nunca). El
+    `estado` y el aviso no cambian: la web deriva de esos campos lo que enseña.
+  - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
+    de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
+    que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o
+    `YA_ENVIADO` (se quitó esa marca); en los dos últimos `imeiAnterior` e `imeiNuevo` son `null`. `usuario` (nombre de usuario),
+    `imeiAnterior` e `imeiNuevo` son nullable (`usuario` nulo en el traspaso desde la hoja y cuando quitó la marca el plugin de la web;
+    `imeiNuevo` nulo = se quitó). `404` si la
     fila no existe; lista vacía si es del histórico. SUPERTECNICO y ADMIN.
   - `GET /api/pedidos/filas/{id}/recomendados` → lista de `RecomendadorCandidato` `{imei, sku, caja, nivel}` (hasta cinco; `sku`
     y `caja` nullable). `404` si la fila no existe; lista vacía si es del histórico o si el maestro no conoce su SKU (las enviadas y las no pendientes
@@ -93,6 +99,26 @@ de `model/` conservan su nombre.
   - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei, imeiAnterior?}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
     histórico (las filas de ShippyPro se editan siempre, también las enviadas). `imeiAnterior` (opcional, nullable; la web vieja no lo manda): lo que la persona veía en la fila; ausente o `null` no comprueba nada, `""` espera la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`). Si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
+  - `PUT /api/pedidos/filas/{id}/falta-enviar` con `PeticionFaltaEnviar` `{falta}` (obligatorio; `null` o ausente `400`) → `FilaVista` releída.
+    `true` marca el móvil de la fila como «falta enviar» (envío parcial de un pedido de web: la etiqueta salió con todos los móviles y este
+    todavía no); `false` quita la marca. Marcar exige una fila de ShippyPro de un canal web (`DISTRIBUIDORES`, `PARTICULARES` o
+    `BACKIPHONE`) con la etiqueta generada (`envioFecha` no nula); si no, `409` "Solo se puede marcar en un pedido de web con la etiqueta ya
+    generada". `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del histórico. Marcar una fila ya marcada o
+    desmarcar una sin marca no hace nada (`200`, sin apunte nuevo); quitar la marca siempre se puede si la tiene. Poner y quitar la marca
+    quedan en el historial (`tipo` `FALTA_ENVIAR` y `YA_ENVIADO`) con quién y cuándo; la fila guarda cuándo (`faltaEnviarEn`) y quién la
+    puso. Comprobación y escritura atómicas, con la fila bloqueada. Cabecera opcional `Idempotency-Key`. SUPERTECNICO y ADMIN. La lectura
+    de ShippyPro (marcar enviada o impresa) no toca la marca, y `GET /api/pedidos/vendidos` solo mira los apuntes de tipo `IMEI`.
+  - `POST /api/pedidos/sincronizados` (no es una ruta de usuario: aviso del plugin de la web) con la cabecera `X-API-Key` y el cuerpo
+    `{canal, pedidos: [{pedido, imeis: [..]}]}` → `{filasSincronizadas, marcasQuitadas, sinFila}`. La clave es una de las del ajuste
+    `PEDIDOS_SINCRONIZADOS_CLAVE` (distinto del de los vendidos; una clave puede estar en los dos): sin ninguna válida `404` para todos,
+    clave ausente o mala `401`, un token de usuario no vale y la clave no abre ninguna otra ruta. `canal`: `DISTRIBUIDORES`, `PARTICULARES`
+    o `BACKIPHONE` (otro, `400`); hasta 500 pedidos y 50 `imeis` por pedido, cada IMEI de 15 cifras, `pedido` obligatorio (si no, `400`).
+    El número de pedido se normaliza como lo guarda la lectura de ShippyPro (sin espacios en los extremos y cortado al ancho de la columna).
+    En una transacción, para cada pedido, las filas de ShippyPro de ese canal y número cuyo IMEI viene en `imeis` reciben
+    `sincronizadaEn` = ahora y, si tenían la marca «falta enviar», la pierden con un apunte `YA_ENVIADO` sin usuario (`usuario` nulo: la
+    web lo muestra como «plugin de la web»). Las demás filas del pedido (el móvil que aún falta) no se tocan; pedidos e IMEI que no casan
+    se ignoran. `filasSincronizadas`: filas puestas al día; `marcasQuitadas`: marcas quitadas; `sinFila`: IMEI enviados (distintos, por
+    pedido) que no casaron con ninguna fila. Idempotente: repetir la llamada no crea apuntes nuevos.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
     `filas`, `skuDesconocidos`, `motivo`, `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`, y `aviso`). Un `ERROR` enseña un motivo
     fijo, nunca el texto de la excepción. `aviso` (nullable, campo añadido; la web que no lo conoce lo ignora) lleva un texto fijo en

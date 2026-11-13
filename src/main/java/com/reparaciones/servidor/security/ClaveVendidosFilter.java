@@ -39,6 +39,9 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
     public static final String ROL = "BOT_VENDIDOS";
 
     private final List<byte[]> claves;
+    private final String ruta;
+    private final String rol;
+    private final String nombre;
 
     /** Largo minimo de cada clave (caracteres, ya recortada): las de menos se ignoran; si no queda ninguna, la ruta queda apagada. */
     static final int LARGO_MINIMO = 32;
@@ -47,6 +50,14 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
 
     /** Una o varias claves separadas por comas (una por consumidor); todas dan el mismo permiso. */
     public ClaveVendidosFilter(String ajuste) {
+        this(ajuste, RUTA, ROL, "vendidos");
+    }
+
+    /** Para las otras rutas de maquina con su propio ajuste (ver {@link ClaveSincronizadosFilter}): misma regla, otra ruta, rol y nombre. */
+    protected ClaveVendidosFilter(String ajuste, String ruta, String rol, String nombre) {
+        this.ruta = ruta;
+        this.rol = rol;
+        this.nombre = nombre;
         List<byte[]> validas = new ArrayList<>();
         int ignoradas = 0;
         if (ajuste != null) {
@@ -59,7 +70,7 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
         }
         // Ni las claves ni su largo van al registro: solo cuantas se han ignorado.
         if (ignoradas > 0)
-            LOG.warn("Claves de la ruta de vendidos demasiado cortas, ignoradas: {}{}", ignoradas,
+            LOG.warn("Claves de la ruta de {} demasiado cortas, ignoradas: {}{}", nombre, ignoradas,
                     validas.isEmpty() ? " (no queda ninguna valida: la ruta queda apagada)" : "");
         this.claves = List.copyOf(validas);
     }
@@ -74,7 +85,7 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !RUTA.equals(request.getRequestURI());
+        return !ruta.equals(request.getRequestURI());
     }
 
     @Override
@@ -90,7 +101,7 @@ public class ClaveVendidosFilter extends OncePerRequestFilter {
             return;
         }
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
-                "bot-vendidos", null, List.of(new SimpleGrantedAuthority("ROLE_" + ROL))));
+                "maquina-" + nombre, null, List.of(new SimpleGrantedAuthority("ROLE_" + rol))));
         chain.doFilter(request, response);
     }
 }

@@ -38,6 +38,8 @@ public class FilasController {
     static final String MSG_IMEI = "Un IMEI son 15 cifras";
     static final String MSG_CAMBIADO = "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo.";
     static final String MSG_HISTORICO = "La fila es del histórico y no se edita";
+    static final String MSG_FALTA = "Indica si falta enviar (true o false)";
+    static final String MSG_NO_MARCABLE = "Solo se puede marcar en un pedido de web con la etiqueta ya generada";
 
     private final VistaFilas vista;
     private final FilasDAO dao;
@@ -112,12 +114,42 @@ public class FilasController {
         });
     }
 
+    /** Marca ({@code falta} true) o desmarca el movil de una fila como «falta enviar» (envio parcial de un pedido de web: la etiqueta salio
+     *  con todos los moviles y este todavia no). Marcar exige una fila de ShippyPro de un canal web con la etiqueta generada; marcar lo ya
+     *  marcado o desmarcar lo no marcado no hace nada. Devuelve la fila releida. */
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = FilaVista.class))),
+        @ApiResponse(responseCode = "400", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content),
+        @ApiResponse(responseCode = "409", content = @Content)
+    })
+    @PutMapping("/filas/{id}/falta-enviar")
+    public FilaVista ponerFaltaEnviar(@PathVariable int id, @RequestBody PeticionFaltaEnviar req,
+                                      @AuthenticationPrincipal UsuarioPrincipal principal,
+                                      @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        if (req.falta() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_FALTA);
+        boolean falta = req.falta();
+        FilaPedido fila = dao.porId(id).orElseThrow(() -> noExiste(id));
+        if (VistaFilas.HISTORICO.equals(fila.origen()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
+        return idempotencia.ejecutar(principal.getIdUsu(), "pedido-falta-enviar", claveIdempotencia, new CambioFalta(id, falta), () -> {
+            // Las reglas se deciden en la transaccion del DAO, con la fila bloqueada.
+            FilasDAO.Resultado r = dao.ponerFaltaEnviar(id, falta, principal.getIdUsu(), LocalDateTime.now(clock));
+            if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
+            if (r == FilasDAO.Resultado.CERRADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
+            if (r == FilasDAO.Resultado.NO_MARCABLE) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_NO_MARCABLE);
+            return vista.fila(id).orElseThrow(() -> noExiste(id));
+        });
+    }
+
     @GetMapping("/fuentes")
     public List<FuenteVista> fuentes() {
         return vista.fuentes();
     }
 
     private record Cambio(int id, String imei, String imeiAnterior) {}
+
+    private record CambioFalta(int id, boolean falta) {}
 
     private static ResponseStatusException noExiste(int id) {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe la fila " + id);

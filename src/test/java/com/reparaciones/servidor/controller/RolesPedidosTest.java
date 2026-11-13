@@ -66,6 +66,8 @@ class RolesPedidosTest {
             t -> get("/api/pedidos/filas/5/recomendados").header("Authorization", t),
             t -> put("/api/pedidos/filas/5/imei").header("Authorization", t)
                     .contentType(MediaType.APPLICATION_JSON).content("{\"imei\":\"350000000000001\"}"),
+            t -> put("/api/pedidos/filas/5/falta-enviar").header("Authorization", t)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"falta\":true}"),
             t -> get("/api/pedidos/filas/5/cambios").header("Authorization", t),
             t -> get("/api/pedidos/fuentes").header("Authorization", t));
 
@@ -81,6 +83,7 @@ class RolesPedidosTest {
         when(dao.porId(anyInt())).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
                 "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, null)));
         when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
+        when(dao.ponerFaltaEnviar(anyInt(), org.mockito.ArgumentMatchers.anyBoolean(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);
         when(vista.fila(anyInt())).thenReturn(Optional.of(new FilaVista(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA",
                 "350000000000001", "402-0000000-0000005", LocalDate.of(2026, 11, 4), "PENDIENTE", true, null, null, null, null, false, null, null, null, null, "AMAZON")));
         for (String token : List.of(supertecnico(), admin()))

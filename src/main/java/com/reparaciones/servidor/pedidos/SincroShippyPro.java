@@ -46,7 +46,7 @@ public final class SincroShippyPro {
     }
 
     /** El numero como se guarda (sin espacios y cortado al ancho de la columna): asi la clave coincide con la de la base. */
-    private static String numeroGuardado(String numero) {
+    static String numeroGuardado(String numero) {
         return AnchosNsys.corta(numero.strip(), AnchosPedidos.PEDIDO);
     }
 
