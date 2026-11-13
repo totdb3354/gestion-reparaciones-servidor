@@ -38,6 +38,10 @@ public class FilasController {
     static final String MSG_IMEI = "Un IMEI son 15 cifras";
     static final String MSG_CAMBIADO = "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo.";
     static final String MSG_HISTORICO = "La fila es del histórico y no se edita";
+    static final String MSG_MARCA_CAMBIADA = "Otra persona ha cambiado la marca de esta fila mientras tanto. Recarga y vuelve a intentarlo.";
+    static final String MSG_MARCA = "La marca debe ser ESPERA_STOCK, EN_REVISION, PENDIENTE_COLOR o CANCELADO (o nula para quitarla)";
+    static final String MSG_NOTA = "La nota de la marca admite como mucho 200 caracteres";
+    static final int MAX_NOTA = 200;
     static final String MSG_FALTA = "Indica si falta enviar (true o false)";
     static final String MSG_NO_MARCABLE = "Solo se puede marcar en un pedido de web con la etiqueta ya generada";
 
@@ -142,6 +146,40 @@ public class FilasController {
         });
     }
 
+    /** Pone, cambia o quita (marca nula) la marca de una fila de ShippyPro, con su nota opcional (hasta 200, recortada; vacia = sin nota).
+     *  {@code marcaAnterior} (nula = no comprueba, "" = esperaba la fila sin marca) como el {@code imeiAnterior} del IMEI: 409 si no coincide.
+     *  Poner la misma marca con otra nota es un cambio; misma marca y nota, o quitar sin marca, es un 200 sin apunte. Devuelve la fila releida. */
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = FilaVista.class))),
+        @ApiResponse(responseCode = "400", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content),
+        @ApiResponse(responseCode = "409", content = @Content)
+    })
+    @PutMapping("/filas/{id}/marca")
+    public FilaVista ponerMarca(@PathVariable int id, @RequestBody PeticionMarca req,
+                                @AuthenticationPrincipal UsuarioPrincipal principal,
+                                @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        String marca = req.marca();
+        if (marca != null && !Marca.valida(marca)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_MARCA);
+        String anterior = req.marcaAnterior();
+        if (anterior != null && !anterior.isEmpty() && !Marca.valida(anterior))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_MARCA);
+        String nota = req.nota() == null ? null : req.nota().strip();
+        if (nota != null && nota.length() > MAX_NOTA) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_NOTA);
+        String notaFinal = marca == null || nota == null || nota.isEmpty() ? null : nota;
+        FilaPedido fila = dao.porId(id).orElseThrow(() -> noExiste(id));
+        if (VistaFilas.HISTORICO.equals(fila.origen()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
+        return idempotencia.ejecutar(principal.getIdUsu(), "pedido-marca", claveIdempotencia, new CambioMarca(id, marca, notaFinal, anterior), () -> {
+            // Las reglas se deciden en la transaccion del DAO, con la fila bloqueada.
+            FilasDAO.Resultado r = dao.ponerMarca(id, marca, notaFinal, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
+            if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
+            if (r == FilasDAO.Resultado.CAMBIADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_MARCA_CAMBIADA);
+            if (r == FilasDAO.Resultado.CERRADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
+            return vista.fila(id).orElseThrow(() -> noExiste(id));
+        });
+    }
+
     @GetMapping("/fuentes")
     public List<FuenteVista> fuentes() {
         return vista.fuentes();
@@ -150,6 +188,8 @@ public class FilasController {
     private record Cambio(int id, String imei, String imeiAnterior) {}
 
     private record CambioFalta(int id, boolean falta) {}
+
+    private record CambioMarca(int id, String marca, String nota, String marcaAnterior) {}
 
     private static ResponseStatusException noExiste(int id) {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe la fila " + id);

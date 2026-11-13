@@ -107,10 +107,20 @@ class VendidosTest {
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'"), "el historico no entra");
         assertTrue(sql.contains("(f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"), "pendiente, enviada o cerrada sin envio con IMEI posterior al cierre");
         assertTrue(sql.contains("f.IMEI REGEXP '^[0-9]{15}$'"), "15 cifras exactas; sin IMEI no sale");
-        assertTrue(sql.contains("MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO = 'IMEI' AND FECHA >= ? GROUP BY ID_FILA"),
-                "el ultimo cambio de IMEI de la fila, no Pedido_fila.FECHA");
+        assertTrue(sql.contains("MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA"),
+                "el ultimo cambio de IMEI o retirada de marca de la fila, no Pedido_fila.FECHA");
         assertTrue(sql.contains("ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?"));
         assertTrue(!sql.contains("f.FECHA"), "no se mira la fecha del pedido");
+    }
+
+    @Test void ningunaFilaConMarcaSeSirveYLaRetiradaDeLaMarcaCuentaComoFechaNueva() {
+        String sql = FilasDAO.SQL_VENDIDOS;
+        // Cualquier marca (con o sin IMEI) deja la fila fuera: la condicion va en el WHERE, no depende de la marca concreta.
+        assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO' AND f.MARCA IS NULL AND (f.CERRADA_EN IS NULL"), sql);
+        assertTrue(!sql.contains("f.MARCA ="), "ninguna marca concreta: todas fuera");
+        // El MAX de los apuntes IMEI y MARCA_QUITADA es la mas reciente de las dos fechas (fechaImei y ventana de dias), con un solo parametro de ventana.
+        assertTrue(sql.contains("TIPO IN ('IMEI', 'MARCA_QUITADA')"), sql);
+        assertEquals(4, sql.chars().filter(c -> c == '?').count(), "ventana, canal (dos veces) y tope");
     }
 
     @Test void laConsultaSirveLasNoPendientesSoloSiElUltimoImeiEsPosteriorAlCierre() {
@@ -121,6 +131,6 @@ class VendidosTest {
         assertTrue(!sql.contains(">= f.CERRADA_EN") && !sql.contains("<"), sql);
         // Mismo origen, canal, formato de IMEI, ventana (subconsulta) y orden de siempre: sigue siendo una sola consulta.
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'") && sql.contains("f.IMEI REGEXP '^[0-9]{15}$'")
-                && sql.contains("WHERE TIPO = 'IMEI' AND FECHA >= ? GROUP BY ID_FILA") && sql.contains("(? IS NULL OR f.CANAL = ?)"), sql);
+                && sql.contains("WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA") && sql.contains("(? IS NULL OR f.CANAL = ?)"), sql);
     }
 }

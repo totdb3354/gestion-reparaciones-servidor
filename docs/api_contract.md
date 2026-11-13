@@ -107,7 +107,29 @@ de `model/` conservan su nombre.
     desmarcar una sin marca no hace nada (`200`, sin apunte nuevo); quitar la marca siempre se puede si la tiene. Poner y quitar la marca
     quedan en el historial (`tipo` `FALTA_ENVIAR` y `YA_ENVIADO`) con quién y cuándo; la fila guarda cuándo (`faltaEnviarEn`) y quién la
     puso. Comprobación y escritura atómicas, con la fila bloqueada. Cabecera opcional `Idempotency-Key`. SUPERTECNICO y ADMIN. La lectura
-    de ShippyPro (marcar enviada o impresa) no toca la marca, y `GET /api/pedidos/vendidos` solo mira los apuntes de tipo `IMEI`.
+    de ShippyPro (marcar enviada o impresa) no toca la marca. Es independiente de las marcas de abajo.
+  - `PUT /api/pedidos/filas/{id}/marca` con `PeticionMarca` `{marca, nota?, marcaAnterior?}` → `FilaVista` releída. `marca`: `ESPERA_STOCK`
+    («En espera de stock»), `EN_REVISION` («En revisión»), `PENDIENTE_COLOR` («Pendiente de color») o `CANCELADO` («Cancelado»), o `null`
+    para quitar la marca; otra cosa, `400`. Como mucho una marca por fila. `nota` (opcional, nullable): hasta 200 caracteres tras recortar
+    espacios (más, `400`); vacía o en blanco = sin nota; se ignora al quitar. `marcaAnterior` (opcional, nullable; como `imeiAnterior`):
+    la marca que la persona veía; `null` o ausente no comprueba nada, `""` espera la fila sin marca, una de las cuatro espera esa marca
+    (otra cosa: `400`); si no coincide con la actual, `409` "Otra persona ha cambiado la marca de esta fila mientras tanto. Recarga y vuelve
+    a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). `404` si la fila no existe; `409`
+    "La fila es del histórico y no se edita" si es del histórico. Poner otra marca, o la misma con otra nota, es un cambio (apunte `MARCA`
+    nuevo); la misma marca con la misma nota, o `marca: null` en una fila sin marca, es un `200` sin apunte. Cabecera opcional
+    `Idempotency-Key` (el registro incluye marca, nota y marcaAnterior). SUPERTECNICO y ADMIN (TECNICO `403`).
+    `FilaVista` gana al final `marca`, `marcaNota`, `marcaEn` (hora de Madrid) y `marcaPor` (nombre de usuario de quien la puso), todos
+    nullable (nulos sin marca; `marcaNota` también si la marca no lleva nota). Efectos en el servidor: poner un IMEI (no nulo) con
+    `PUT .../imei` en una fila `ESPERA_STOCK` quita la marca en la misma transacción y apunta `MARCA_QUITADA` con detalle
+    `"ESPERA_STOCK — al poner el IMEI"`; las demás marcas no se tocan al poner IMEI, y quitar el IMEI no toca ninguna. La lectura de
+    ShippyPro no toca las marcas.
+  - Historial (`GET /api/pedidos/filas/{id}/cambios`): `CambioImei` gana `detalle` (nullable; nulo en `IMEI`, `FALTA_ENVIAR` y `YA_ENVIADO`).
+    Tipos nuevos de `tipo`: `MARCA` (se puso o cambió la marca; `detalle` `"<MARCA>"` o `"<MARCA> — <nota>"`, `imeiAnterior` e `imeiNuevo`
+    nulos) y `MARCA_QUITADA` (se quitó; `detalle` = la marca que tenía, con `"<MARCA> — al poner el IMEI"` si la quitó el ERP al poner un
+    IMEI, en cuyo caso el usuario es quien puso el IMEI).
+  - `GET /api/pedidos/vendidos`: **ninguna fila con marca se sirve**, tenga o no IMEI. La fecha que cuenta para la ventana de días y es la
+    `fechaImei` de la respuesta es la más reciente entre el último apunte de tipo `IMEI` y el último `MARCA_QUITADA` de la fila: al quitar
+    la marca la fila vuelve como recién puesta aunque el IMEI sea antiguo. Los apuntes `MARCA`, `FALTA_ENVIAR` y `YA_ENVIADO` no cuentan.
   - `POST /api/pedidos/sincronizados` (no es una ruta de usuario: aviso del plugin de la web) con la cabecera `X-API-Key` y el cuerpo
     `{canal, pedidos: [{pedido, imeis: [..]}]}` → `{filasSincronizadas, marcasQuitadas, sinFila}`. La clave es una de las del ajuste
     `PEDIDOS_SINCRONIZADOS_CLAVE` (distinto del de los vendidos; una clave puede estar en los dos): sin ninguna válida `404` para todos,

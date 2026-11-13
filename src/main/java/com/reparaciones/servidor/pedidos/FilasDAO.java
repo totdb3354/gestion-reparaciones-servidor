@@ -31,7 +31,8 @@ public class FilasDAO {
     static final int TANDA = 500;
 
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
-            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN FROM Pedido_fila";
+            + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
+            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR FROM Pedido_fila";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
     static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
@@ -60,8 +61,12 @@ public class FilasDAO {
     static final String SQL_SHIPPYPRO_CON_IMEI_DESDE = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
             + " AND (CERRADA_EN IS NULL OR FECHA >= ?)";
     static final String SQL_SHIPPYPRO_CON_IMEI = SQL_SHIPPYPRO_CON_IMEI_DESDE + " AND IMEI IN (%s) ORDER BY FECHA, ID_FILA";
-    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
+    static final String SQL_FILA_MARCA_BLOQUEADA = "SELECT ORIGEN, MARCA, MARCA_NOTA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_PONER_MARCA = "UPDATE Pedido_fila SET MARCA = ?, MARCA_NOTA = ?, MARCA_EN = ?, MARCA_USU = ? WHERE ID_FILA = ?";
+    static final String SQL_QUITAR_MARCA = "UPDATE Pedido_fila SET MARCA = NULL, MARCA_NOTA = NULL, MARCA_EN = NULL, MARCA_USU = NULL WHERE ID_FILA = ?";
+    static final String SQL_CAMBIO_DETALLE = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO, DETALLE) VALUES (?, ?, ?, ?, ?)";
     static final String SQL_FILA_FALTA_BLOQUEADA = "SELECT ORIGEN, CANAL, ENVIO_FECHA, FALTA_ENVIAR_EN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_FALTA = "UPDATE Pedido_fila SET FALTA_ENVIAR_EN = ?, FALTA_ENVIAR_USU = ? WHERE ID_FILA = ?";
     static final String SQL_CAMBIO_TIPO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO) VALUES (?, ?, ?, ?)";
@@ -72,17 +77,18 @@ public class FilasDAO {
     static final String SQL_CAMBIO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO) VALUES (?, ?, ?, ?, ?)";
     /** Tope defensivo de apuntes que sirve {@link #cambiosDeFila}. */
     static final int TOPE_CAMBIOS = 200;
-    static final String SQL_CAMBIOS_DE_FILA = "SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO FROM Pedido_fila_cambio c"
+    static final String SQL_CAMBIOS_DE_FILA = "SELECT u.NOMBRE_USUARIO, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO, c.DETALLE FROM Pedido_fila_cambio c"
             + " LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU WHERE c.ID_FILA = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT " + TOPE_CAMBIOS;
     /** Los vendidos para el bot: filas de ShippyPro pendientes o enviadas, con IMEI de 15 cifras, cuyo ULTIMO apunte de cambio de IMEI es
      *  de {@code ?} en adelante; del mas reciente al mas antiguo. Una cerrada sin envio (NO_PENDIENTE) solo entra si su ultimo cambio de
      *  IMEI es POSTERIOR al cierre (alguien tecleo el IMEI sabiendo que ya no estaba pendiente: el movil esta vendido); si el IMEI ya
-     *  estaba antes de cerrarse (pedido cancelado) no sale. Una sola consulta, con tope. */
+     *  estaba antes de cerrarse (pedido cancelado) no sale. Una fila con CUALQUIER marca no sale. La fecha que cuenta es la mas reciente entre el
+     *  ultimo apunte IMEI y el ultimo MARCA_QUITADA (al quitar la marca la fila vuelve como recien puesta). Una sola consulta, con tope. */
     static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
             // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
-            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO = 'IMEI' AND FECHA >= ? GROUP BY ID_FILA) u"
+            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
-            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.MARCA IS NULL AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"
             + " AND (? IS NULL OR f.CANAL = ?)"
             + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
@@ -218,7 +224,7 @@ public class FilasDAO {
     /** Los apuntes del historial de una fila (IMEI y marca de falta enviar), del mas reciente al mas antiguo (hasta 200), con el nombre de quien los hizo (nulo si no hay usuario). */
     public List<CambioImei> cambiosDeFila(int id) {
         return jdbc.query(SQL_CAMBIOS_DE_FILA, (rs, n) -> new CambioImei(rs.getString("NOMBRE_USUARIO"),
-                rs.getTimestamp("FECHA").toLocalDateTime(), rs.getString("IMEI_ANTERIOR"), rs.getString("IMEI_NUEVO"), rs.getString("TIPO")), id);
+                rs.getTimestamp("FECHA").toLocalDateTime(), rs.getString("IMEI_ANTERIOR"), rs.getString("IMEI_NUEVO"), rs.getString("TIPO"), rs.getString("DETALLE")), id);
     }
 
     /** Las filas de ShippyPro con alguno de esos IMEI: las vivas y las cerradas con FECHA desde {@code desde}. */
@@ -258,7 +264,7 @@ public class FilasDAO {
         /** Solo de {@link #ponerFaltaEnviar}: no se puede marcar (no es de ShippyPro, no es de un canal web o no tiene la etiqueta generada). */
         NO_MARCABLE }
 
-    private record Bloqueada(String imei, boolean historico) {}
+    private record Bloqueada(String imei, boolean historico, String marca) {}
 
     /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
      *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
@@ -267,7 +273,7 @@ public class FilasDAO {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
         List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
-                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN"))), idFila);
+                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA")), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         if (filas.get(0).historico()) return Resultado.CERRADA;
         if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
@@ -275,6 +281,42 @@ public class FilasDAO {
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
+        // Un IMEI puesto resuelve «En espera de stock»; las demas marcas se quedan.
+        if (nuevo != null && Marca.ESPERA_STOCK.name().equals(filas.get(0).marca())) {
+            jdbc.update(SQL_QUITAR_MARCA, idFila);
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, Timestamp.valueOf(ahora), CambioImei.MARCA_QUITADA,
+                    Marca.ESPERA_STOCK.name() + SEP_DETALLE + "al poner el IMEI");
+        }
+        return Resultado.PUESTO;
+    }
+
+    static final String SEP_DETALLE = " \u2014 ";
+
+    private record BloqueadaMarca(String origen, String marca, String nota) {}
+
+    /** Pone, cambia o quita (marca nula) la marca de una fila de ShippyPro y la apunta en el historial: MARCA (detalle «MARCA» o «MARCA — nota»)
+     *  al poner o cambiar (tambien si solo cambia la nota), MARCA_QUITADA (detalle = la marca que tenia) al quitar. Misma transaccion que
+     *  {@link #ponerImei}: READ COMMITTED y la fila bloqueada al leerla. Orden: NO_EXISTE; CERRADA (historico); CAMBIADA ({@code marcaAnterior}
+     *  no nula y distinta de la actual; nula cuenta como ""); SIN_CAMBIO (misma marca y misma nota, o quitar sin marca: no escribe ni apunta);
+     *  si no, PUESTO. La nota ya viene validada y recortada (nula = sin nota); se ignora al quitar. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Resultado ponerMarca(int idFila, String marca, String nota, String marcaAnterior, Integer idUsu, LocalDateTime ahora) {
+        List<BloqueadaMarca> filas = jdbc.query(SQL_FILA_MARCA_BLOQUEADA, (rs, n) -> new BloqueadaMarca(rs.getString("ORIGEN"),
+                rs.getString("MARCA"), rs.getString("MARCA_NOTA")), idFila);
+        if (filas.isEmpty()) return Resultado.NO_EXISTE;
+        BloqueadaMarca f = filas.get(0);
+        if ("HISTORICO".equals(f.origen())) return Resultado.CERRADA;
+        if (marcaAnterior != null && !marcaAnterior.equals(f.marca() == null ? "" : f.marca())) return Resultado.CAMBIADA;
+        Timestamp t = Timestamp.valueOf(ahora);
+        if (marca == null) {
+            if (f.marca() == null) return Resultado.SIN_CAMBIO;
+            jdbc.update(SQL_PONER_MARCA, null, null, null, null, idFila);
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.MARCA_QUITADA, f.marca());
+            return Resultado.PUESTO;
+        }
+        if (marca.equals(f.marca()) && java.util.Objects.equals(nota, f.nota())) return Resultado.SIN_CAMBIO;
+        jdbc.update(SQL_PONER_MARCA, marca, nota, t, idUsu, idFila);
+        jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.MARCA, nota == null ? marca : marca + SEP_DETALLE + nota);
         return Resultado.PUESTO;
     }
 
@@ -429,7 +471,8 @@ public class FilasDAO {
                 rs.getString("IMEI"), rs.getString("PEDIDO"), dia(rs, "FECHA_COMPRA"), rs.getString("ORIGEN"),
                 canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
                 rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
-                hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"));
+                hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"), rs.getString("MARCA"), rs.getString("MARCA_NOTA"), hora(rs, "MARCA_EN"),
+                rs.getString("MARCA_POR"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

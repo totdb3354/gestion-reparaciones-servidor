@@ -10,7 +10,9 @@ import java.time.LocalDateTime;
  *  menos las del historico. envioFecha (hora de Madrid), transportista y seguimiento solo vienen en las ENVIADA. impresaEn: cuando ShippyPro dio la etiqueta por impresa (hora de Madrid; nulo = sin imprimir); tieneEtiqueta: la fila tiene el id del envio en ShippyPro. nivel (OK, AVISO
  *  o MAL), motivo, skuMovil y caja solo vienen en filas PENDIENTE, NO_PENDIENTE o ENVIADA sin impresion (impresaEn nulo) con IMEI; en las demas son nulos. canal: nombre del enum Canal; en el historico se deduce al servir de la plataforma (solo AMZ y FNSK/FSNK), nulo en lo demas.
  *  faltaEnviarEn: cuando una persona marco que el movil de la fila falta por enviar (hora de Madrid); nulo = sin marca.
- *  sincronizadaEn: la ultima vez que el plugin de la web aviso de que el pedido ya lleva ese movil; nulo = nunca. */
+ *  sincronizadaEn: la ultima vez que el plugin de la web aviso de que el pedido ya lleva ese movil; nulo = nunca.
+ *  marca: ESPERA_STOCK, EN_REVISION, PENDIENTE_COLOR o CANCELADO; nula = sin marca. marcaNota: nota libre de la marca (hasta 200); marcaEn: cuando se
+ *  puso (hora de Madrid); marcaPor: nombre de usuario de quien la puso; los tres nulos sin marca (marcaNota tambien si la marca no lleva nota). */
 public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(nullable = true) String sku,
                         @Schema(nullable = true) String imei, @Schema(nullable = true) String pedido,
                         @Schema(nullable = true) LocalDate fechaCompra, String estado, boolean editable,
@@ -20,7 +22,18 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                         @Schema(nullable = true) String nivel, @Schema(nullable = true) String motivo,
                         @Schema(nullable = true) String skuMovil, @Schema(nullable = true) String caja,
                         @Schema(nullable = true) String canal, @Schema(nullable = true) LocalDateTime faltaEnviarEn,
-                        @Schema(nullable = true) LocalDateTime sincronizadaEn) {
+                        @Schema(nullable = true) LocalDateTime sincronizadaEn,
+                        @Schema(nullable = true) String marca, @Schema(nullable = true) String marcaNota,
+                        @Schema(nullable = true) LocalDateTime marcaEn, @Schema(nullable = true) String marcaPor) {
+
+    /** Una fila sin marca. */
+    public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
+                     String estado, boolean editable, LocalDateTime envioFecha, String transportista, String seguimiento,
+                     LocalDateTime impresaEn, boolean tieneEtiqueta, String nivel, String motivo, String skuMovil, String caja,
+                     String canal, LocalDateTime faltaEnviarEn, LocalDateTime sincronizadaEn) {
+        this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
+                impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, faltaEnviarEn, sincronizadaEn, null, null, null, null);
+    }
 
     /** Una fila sin marca de «falta enviar» ni sincronizacion. */
     public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
@@ -28,6 +41,6 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                      LocalDateTime impresaEn, boolean tieneEtiqueta, String nivel, String motivo, String skuMovil, String caja,
                      String canal) {
         this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
-                impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, null, null);
+                impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, null, null, null, null, null, null);
     }
 }

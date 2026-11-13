@@ -354,7 +354,8 @@ class OpenApiContractTest {
         JsonNode esquemas = doc.path("components").path("schemas");
 
         for (String operacion : List.of("get /api/pedidos/filas", "get /api/pedidos/filas/{id}/recomendados",
-                "put /api/pedidos/filas/{id}/imei", "put /api/pedidos/filas/{id}/falta-enviar", "post /api/pedidos/sincronizados",
+                "put /api/pedidos/filas/{id}/imei", "put /api/pedidos/filas/{id}/falta-enviar", "put /api/pedidos/filas/{id}/marca",
+                "post /api/pedidos/sincronizados",
                 "get /api/pedidos/filas/{id}/cambios", "get /api/pedidos/fuentes",
                 "get /api/pedidos/filas/{id}/etiqueta")) {
             String[] partes = operacion.split(" ", 2);
@@ -367,11 +368,11 @@ class OpenApiContractTest {
                     () -> nombre + " debe ser opcional");
         }
         for (String esquema : List.of("FilaVista", "ListaFilas", "FuenteVista", "RecomendadorCandidato", "PeticionImei", "CambioImei",
-                "PeticionFaltaEnviar", "SincronizadosPeticion", "SincronizadosPedidoImeis", "SincronizadosRespuesta"))
+                "PeticionFaltaEnviar", "PeticionMarca", "SincronizadosPeticion", "SincronizadosPedidoImeis", "SincronizadosRespuesta"))
             assertTrue(esquemas.has(esquema), () -> "falta el esquema " + esquema + "; publicados: " + nombres(esquemas));
 
         assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "envioFecha", "transportista", "seguimiento", "impresaEn",
-                "nivel", "motivo", "skuMovil", "caja", "canal", "faltaEnviarEn", "sincronizadaEn");
+                "nivel", "motivo", "skuMovil", "caja", "canal", "faltaEnviarEn", "sincronizadaEn", "marca", "marcaNota", "marcaEn", "marcaPor");
         assertNoNullable(esquemas, "FilaVista", "idFila", "fecha", "plataforma", "estado", "editable", "tieneEtiqueta");
         assertNoNullable(esquemas, "ListaFilas", "filas", "hayMas");
         assertNullable(esquemas, "FuenteVista", "ultimaBuena", "resultado", "skuDesconocidos", "motivo", "aviso");
@@ -380,6 +381,8 @@ class OpenApiContractTest {
         assertNullable(esquemas, "CambioImei", "usuario", "imeiAnterior", "imeiNuevo");
         assertNoNullable(esquemas, "CambioImei", "fecha", "tipo");
         assertNullable(esquemas, "PeticionFaltaEnviar", "falta");
+        assertNullable(esquemas, "PeticionMarca", "marca", "nota", "marcaAnterior");
+        assertNullable(esquemas, "CambioImei", "detalle");
         assertNoNullable(esquemas, "RecomendadorCandidato", "imei", "nivel");
         assertNullable(esquemas, "RecomendadorCandidato", "sku", "caja");
     }
@@ -416,6 +419,7 @@ class OpenApiContractTest {
         assertCodigos(paths, "/api/pedidos/historico", "post", "202", "400", "409");
         assertCodigos(paths, "/api/pedidos/filas/{id}/imei", "put", "200", "400", "404", "409");
         assertCodigos(paths, "/api/pedidos/filas/{id}/falta-enviar", "put", "200", "400", "404", "409");
+        assertCodigos(paths, "/api/pedidos/filas/{id}/marca", "put", "200", "400", "404", "409");
         assertCodigos(paths, "/api/pedidos/sincronizados", "post", "200", "400", "401", "404");
         assertTrue(ruta.path("post").path("responses").path("202").toString().contains("/CargaHistoricoEstadoCarga\""),
                 "el 202 devuelve el estado");
@@ -792,7 +796,8 @@ class OpenApiContractTest {
                 "post /api/usuarios/tecnicos",
                 "post /api/reparaciones/{idRep}/incidencia",
                 "put /api/pedidos/filas/{id}/imei",
-                "put /api/pedidos/filas/{id}/falta-enviar");
+                "put /api/pedidos/filas/{id}/falta-enviar",
+                "put /api/pedidos/filas/{id}/marca");
 
         for (String operacion : conCabecera) {
             String[] partes = operacion.split(" ", 2);
