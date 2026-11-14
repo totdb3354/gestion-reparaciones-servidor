@@ -163,11 +163,11 @@ de `model/` conservan su nombre.
       (`confirmadas`; si ya lo estaba, `yaEstaban` sin tocar nada; también con la etiqueta generada); (2) X está en una fila de otro pedido
       sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar ni etiqueta (por posición), X queda confirmado y la otra
       fila recibe el IMEI que tenía la de B (o ninguno) y queda sin confirmar aunque lo estuviera (`intercambiadas`); (3) X no está en
-      ninguna fila: va a la primera fila libre de B sin confirmar ni etiqueta o, si no hay libre, a la primera sin confirmar (su IMEI sale
-      de la tabla y queda en su historial), y se confirma (`puestas`); (4) si no, no se toca nada y queda para revisar (`paraRevisar`) con
+      ninguna fila: va a la primera fila libre de B (sin IMEI, sin confirmar, sin etiqueta y no cancelada) y se confirma (`puestas`); nunca
+      saca de la tabla un IMEI que alguien leyó: sin fila libre no se toca nada, aunque B tenga filas sin confirmar con otro IMEI; (4) si no, no se toca nada y queda para revisar (`paraRevisar`) con
       su motivo: `PEDIDO_AJENO` (B no tiene filas en el ERP), `YA_SALIO` (X está en una fila con etiqueta de otro pedido), `CANCELADO` (las
       únicas filas posibles —la de B que tiene X, la de otro pedido que lo tiene o los huecos de B— tienen la marca «Cancelado») o
-      `SIN_HUECO` (B no tiene fila sin confirmar ni etiqueta). Nunca cambia el IMEI de una fila con etiqueta (`envioFecha`) ni con la marca
+      `SIN_HUECO` (en (2), B no tiene fila sin confirmar ni etiqueta; en (3), B no tiene fila libre). Nunca cambia el IMEI de una fila con etiqueta (`envioFecha`) ni con la marca
       `CANCELADO`, ni confirma una cancelada; nunca toca el histórico. Poner un IMEI en una fila `ESPERA_STOCK` le quita la marca (apunte
       `MARCA_QUITADA` `"ESPERA_STOCK — al poner el IMEI"`). Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos.
       Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban` o `paraRevisar`).

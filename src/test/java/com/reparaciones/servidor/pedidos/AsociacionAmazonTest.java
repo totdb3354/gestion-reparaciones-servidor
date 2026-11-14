@@ -349,12 +349,25 @@ class AsociacionAmazonTest {
         assertEquals(List.of(imei(22, null, X), asociada(22)), apuntes());
     }
 
-    @Test void regla3SinFilaLibrePeroConUnaSinConfirmarLePoneElImeiEnLugarDelQueTenia() {
+    @Test void regla3NuncaSacaDeLaTablaUnImeiLeidoSinFilaLibreQuedaParaRevisarSinHueco() {
         Fila b = fila(20, PB, 1, Y);
-        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
-        assertEquals(X, b.imei);
-        assertEquals(AHORA, b.asociadaEn);
-        assertEquals(List.of(imei(20, Y, X), asociada(20)), apuntes(), "el IMEI anterior queda en el historial");
+        List<String> antes = estado();
+        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
+        assertEquals(Y, b.imei, "el IMEI leido sigue en su fila");
+        assertNull(b.asociadaEn);
+        assertEquals(antes, estado());
+        assertTrue(apuntes.isEmpty());
+        assertEquals(List.of(paraRevisar(PB, X, "SIN_HUECO")), revisar());
+        verify(jdbc, never()).batchUpdate(eq(AsociacionAmazon.SQL_ACTUALIZAR), anyList());
+    }
+
+    @Test void regla3SiLaUnicaFilaLibreEstaCanceladaEsCanceladoAunqueHayaOtraSinConfirmarConImei() {
+        fila(20, PB, 1, Y);
+        fila(21, PB, 2, null).marca("CANCELADO");
+        List<String> antes = estado();
+        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
+        assertEquals(antes, estado());
+        assertEquals(List.of(paraRevisar(PB, X, "CANCELADO")), revisar());
     }
 
     @Test void regla3QuitaLaMarcaEsperaDeStockComoElPutDelImei() {

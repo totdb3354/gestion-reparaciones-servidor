@@ -28,8 +28,8 @@ import java.util.TreeSet;
  *  <li>X ya esta en una fila de B: se confirma (si ya lo estaba, «ya estaba» y no se toca nada).</li>
  *  <li>X esta en una fila de otro pedido sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar (por posicion);
  *  X queda confirmado en B y la otra fila recibe el IMEI que tenia la de B (o ninguno) y queda sin confirmar, aunque lo estuviera.</li>
- *  <li>X no esta en ninguna fila: va a la primera fila libre de B sin confirmar (o, si no hay libre, a la primera sin confirmar, cuyo IMEI
- *  sale de la tabla y queda en su historial) y se confirma.</li>
+ *  <li>X no esta en ninguna fila: va a la primera fila LIBRE de B (sin IMEI, sin confirmar, sin etiqueta) y se confirma. Nunca saca de
+ *  la tabla un IMEI que alguien leyo: sin fila libre no se toca nada, aunque B tenga filas sin confirmar con otro IMEI.</li>
  *  <li>Si no se puede, no se toca nada y queda «para revisar»: PEDIDO_AJENO (B no tiene filas), YA_SALIO (X esta en una fila con etiqueta
  *  de otro pedido), CANCELADO (las unicas filas posibles, la de X o los huecos de B, estan canceladas) o SIN_HUECO.</li>
  *  </ol>
@@ -284,11 +284,11 @@ public class AsociacionAmazon {
                 intercambiadas++;
                 return;
             }
-            // 3. No esta en ninguna fila: la primera libre y, si no hay, la primera sin confirmar.
-            Hueco destino = deB.stream().filter(h -> h.abierto() && !h.cancelada() && h.imei == null).findFirst()
-                    .or(() -> deB.stream().filter(h -> h.abierto() && !h.cancelada()).findFirst()).orElse(null);
+            // 3. No esta en ninguna fila: solo a una fila libre. Un IMEI que alguien leyo nunca sale de la tabla: sin fila libre, a revisar.
+            List<Hueco> libres = deB.stream().filter(h -> h.abierto() && h.imei == null).toList();
+            Hueco destino = libres.stream().filter(h -> !h.cancelada()).findFirst().orElse(null);
             if (destino == null) {
-                paraRevisar(pedido, imei, sinHueco(deB));
+                paraRevisar(pedido, imei, sinHueco(libres));
                 return;
             }
             ponerImei(destino, imei);
@@ -296,7 +296,8 @@ public class AsociacionAmazon {
             puestas++;
         }
 
-        /** CANCELADO si el pedido tendria hueco contando las canceladas; si no, SIN_HUECO. */
+        /** De los huecos posibles del pedido (los sin confirmar ni etiqueta en la regla 2; los libres en la 3): CANCELADO si alguno lo
+         *  seria contando las canceladas; si no, SIN_HUECO. */
         private static String sinHueco(List<Hueco> deB) {
             return deB.stream().anyMatch(h -> h.abierto() && h.cancelada()) ? CANCELADO : SIN_HUECO;
         }
