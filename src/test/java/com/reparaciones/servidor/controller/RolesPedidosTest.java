@@ -1,6 +1,8 @@
 package com.reparaciones.servidor.controller;
 
 import com.reparaciones.servidor.UsuariosOperativosTestConfig;
+import com.reparaciones.servidor.pedidos.AsociacionAmazon;
+import com.reparaciones.servidor.pedidos.EstadoAsociaciones;
 import com.reparaciones.servidor.pedidos.EtiquetaShippyPro;
 import com.reparaciones.servidor.pedidos.FilaPedido;
 import com.reparaciones.servidor.pedidos.FilaVista;
@@ -55,6 +57,7 @@ class RolesPedidosTest {
     @MockBean VistaFilas vista;
     @MockBean FilasDAO dao;
     @MockBean EtiquetaShippyPro etiquetas;
+    @MockBean AsociacionAmazon asociacion;
 
     private String tecnico()      { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(8, "tecnico2", "", "TECNICO", 4)); }
     private String supertecnico() { return "Bearer " + jwtUtil.generateToken(new UsuarioPrincipal(7, "tecnico1", "", "SUPERTECNICO", 3)); }
@@ -71,17 +74,19 @@ class RolesPedidosTest {
             t -> put("/api/pedidos/filas/5/marca").header("Authorization", t)
                     .contentType(MediaType.APPLICATION_JSON).content("{\"marca\":\"EN_REVISION\",\"nota\":\"revisar\"}"),
             t -> get("/api/pedidos/filas/5/cambios").header("Authorization", t),
-            t -> get("/api/pedidos/fuentes").header("Authorization", t));
+            t -> get("/api/pedidos/fuentes").header("Authorization", t),
+            t -> get("/api/pedidos/asociaciones").header("Authorization", t));
 
     @Test void elTecnicoRecibe403SinLlegarALaVistaNiAlDao() throws Exception {
         for (var ruta : RUTAS) mvc.perform(ruta.apply(tecnico())).andExpect(status().isForbidden());
-        verifyNoInteractions(vista, dao);
+        verifyNoInteractions(vista, dao, asociacion);
     }
 
     @Test void supertecnicoYAdminLasUsan() throws Exception {
         when(vista.filas(any(), any(), any())).thenReturn(new ListaFilas(List.of(), false));
         when(vista.recomendados(anyInt())).thenReturn(Optional.of(List.of()));
         when(vista.fuentes()).thenReturn(List.of());
+        when(asociacion.estado()).thenReturn(new EstadoAsociaciones(List.of()));
         when(dao.porId(anyInt())).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
                 "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, null)));
         when(dao.ponerImei(anyInt(), any(), any(), any(), any())).thenReturn(FilasDAO.Resultado.PUESTO);

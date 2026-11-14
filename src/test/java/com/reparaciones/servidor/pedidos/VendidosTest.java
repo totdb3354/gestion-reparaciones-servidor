@@ -133,4 +133,25 @@ class VendidosTest {
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO'") && sql.contains("f.IMEI REGEXP '^[0-9]{15}$'")
                 && sql.contains("WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA") && sql.contains("(? IS NULL OR f.CANAL = ?)"), sql);
     }
+
+    @Test void enAmazonSinAsociarElPedidoVaNuloYElImeiSeSirveIgual() {
+        String sql = FilasDAO.SQL_VENDIDOS;
+        assertTrue(sql.contains("CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO"), sql);
+        // La asociacion no filtra filas: solo cambia lo que se ve del pedido.
+        assertTrue(!sql.contains("ASOCIADA_EN IS NOT NULL") && sql.indexOf("ASOCIADA_EN") < sql.indexOf(" FROM Pedido_fila f"), sql);
+        assertEquals(4, sql.chars().filter(c -> c == '?').count());
+    }
+
+    @Test void elDaoLeeElPedidoQueDaLaConsulta() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ResultSet sinAsociar = fila("350000000000005", "i13128AzulA", 12);
+        when(sinAsociar.getString("PEDIDO")).thenReturn(null);
+        when(jdbc.query(any(String.class), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+            RowMapper<Vendido> mapa = inv.getArgument(1);
+            return List.of(mapa.mapRow(sinAsociar, 0));
+        });
+        List<Vendido> r = new FilasDAO(jdbc).vendidosDesde(LocalDateTime.of(2026, 11, 5, 0, 0), null, 5000);
+        assertEquals("350000000000005", r.get(0).imei());
+        org.junit.jupiter.api.Assertions.assertNull(r.get(0).pedido());
+    }
 }

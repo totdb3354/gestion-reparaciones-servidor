@@ -179,7 +179,7 @@ public class VistaFilas {
                     f.impresaEn(), f.tieneEtiqueta(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn(),
-                    f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor()));
+                    f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(), f.asociadaEn(), f.asociadaOrigen()));
         }
         return vistas;
     }

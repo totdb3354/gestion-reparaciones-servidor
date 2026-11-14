@@ -187,7 +187,8 @@ public class CargaHistorico {
         estado.set(new EstadoCarga(motivo == null ? Estado.OK : Estado.ERROR, empezo, LocalDateTime.now(clock), informe, motivo));
     }
 
-    /** Dentro de la transacción: las filas de ShippyPro (bloqueadas), el reparto, el borrado, los IMEI y las filas del histórico. */
+    /** Dentro de la transacción: las filas de ShippyPro (bloqueadas), el reparto, el borrado, los IMEI, las filas de Amazon que la regla A
+     *  da por asociadas (asociación de IMEI y pedido en Amazon: origen HISTORICO) y las filas del histórico. */
     private InformeCarga guardar(LectorHistorico.Lectura leida, List<LectorHistorico.FilaHoja> utiles, int pendientes, LocalDate hoy,
                                  Set<String> vendidos) {
         LocalDateTime ahora = LocalDateTime.now(clock);
@@ -199,6 +200,7 @@ public class CargaHistorico {
         for (Traspaso.Traslado t : plan.traslados())
             if (!dao.traspasarImei(t.idFila(), t.imei(), ahora))
                 throw new IllegalStateException("Una fila del ERP cambio de IMEI durante la carga");
+        if (!plan.asociadas().isEmpty()) dao.asociarHistorico(plan.asociadas(), ahora);
         List<FilaPedido> filas = new ArrayList<>();
         for (LectorHistorico.FilaHoja f : plan.historico())
             filas.add(new FilaPedido(0, f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), "HISTORICO", null,

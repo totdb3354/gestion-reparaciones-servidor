@@ -26,7 +26,8 @@ class FilasDAOTest {
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 11, 10, 10, 0);
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
-            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR FROM Pedido_fila";
+            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -97,9 +98,51 @@ class FilasDAOTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(patron), eq(patron), eq(patron), eq(patron), eq(3));
         assertTrue(sql.getValue().contains(" WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
-                + " OR IMEI LIKE ? ESCAPE '\\\\' OR PEDIDO LIKE ? ESCAPE '\\\\'"), sql.getValue());
+                + " OR IMEI LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND "), sql.getValue());
         assertTrue(sql.getValue().endsWith(" ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?"), sql.getValue());
         assertEquals(List.of(1, 2, 3), r.stream().map(FilaPedido::id).toList(), "el mas antiguo primero");
+    }
+
+    @Test void buscarPorNumeroDePedidoNoEncuentraLasFilasDeAmazonSinAsociar() {
+        // El historico tiene CANAL nulo: con NOT IN a secas su pedido dejaria de encontrarse (NULL NOT IN ... no es cierto).
+        assertTrue(FilasDAO.SQL_BUSCAR.contains("(PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
+                + " OR CANAL NOT IN ('AMAZON', 'AMAZON_STOCKROOM')))"), FilasDAO.SQL_BUSCAR);
+        assertTrue(FilasDAO.SQL_BUSCAR.contains(" OR IMEI LIKE ? ESCAPE '\\\\' OR "), "el IMEI se sigue buscando en todas");
+        assertEquals(5, FilasDAO.SQL_BUSCAR.chars().filter(c -> c == '?').count(), "los cuatro textos y el tope");
+    }
+
+    @Test void laFilaTraeSuAsociacion() throws Exception {
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+        when(rs.getString("CANAL")).thenReturn("AMAZON");
+        when(rs.getTimestamp("ASOCIADA_EN")).thenReturn(Timestamp.valueOf(AHORA));
+        when(rs.getString("ASOCIADA_ORIGEN")).thenReturn("LIBRO");
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilaPedido>>getArgument(1).mapRow(rs, 0)));
+        FilaPedido f = dao.porId(7).orElseThrow();
+        assertEquals(AHORA, f.asociadaEn());
+        assertEquals("LIBRO", f.asociadaOrigen());
+        assertNull(fila(1, "AMZ", null).asociadaEn(), "una fila nueva sale sin asociar");
+    }
+
+    @Test void asociarHistoricoMarcaLasFilasSinAsociarYApuntaAsociadaSinUsuarioEnLotes() {
+        List<Integer> ids = new ArrayList<>();
+        for (int i = 1; i <= 501; i++) ids.add(i);
+        dao.asociarHistorico(ids, AHORA);
+        ArgumentCaptor<List<Object[]>> filas = ArgumentCaptor.forClass(List.class);
+        verify(jdbc, times(2)).batchUpdate(eq("UPDATE Pedido_fila SET ASOCIADA_EN = ?, ASOCIADA_ORIGEN = 'HISTORICO'"
+                + " WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO' AND ASOCIADA_EN IS NULL"), filas.capture());
+        assertEquals(500, filas.getAllValues().get(0).size());
+        assertArrayEquals(new Object[]{Timestamp.valueOf(AHORA), 1}, filas.getAllValues().get(0).get(0));
+        ArgumentCaptor<List<Object[]>> apuntes = ArgumentCaptor.forClass(List.class);
+        verify(jdbc, times(2)).batchUpdate(eq("INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO, DETALLE) VALUES (?, ?, ?, ?, ?)"),
+                apuntes.capture());
+        assertArrayEquals(new Object[]{501, null, Timestamp.valueOf(AHORA), "ASOCIADA", "HISTORICO"}, apuntes.getAllValues().get(1).get(0));
+    }
+
+    @Test void asociarHistoricoSinFilasNoToca() {
+        dao.asociarHistorico(List.of(), AHORA);
+        verifyNoInteractions(jdbc);
     }
 
     @Test void porIdDevuelveVacioSiNoExiste() {

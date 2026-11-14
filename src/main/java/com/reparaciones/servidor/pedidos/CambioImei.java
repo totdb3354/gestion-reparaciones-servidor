@@ -5,10 +5,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
 /** Un apunte del historial de una fila (Pedido_fila_cambio). usuario: nombre de usuario de quien lo hizo; nulo si el apunte no
- *  tiene usuario (el traspaso desde la hoja o el plugin de la web). tipo: IMEI (cambio de IMEI), FALTA_ENVIAR (se marco que el movil
- *  falta por enviar), YA_ENVIADO (se quito esa marca), MARCA (se puso o cambio la marca de la fila) o MARCA_QUITADA (se quito); nunca nulo.
- *  En IMEI: imeiAnterior nulo = antes no habia; imeiNuevo nulo = se quito. En los demas tipos los dos IMEI son nulos. detalle: nulo salvo en
- *  MARCA ("<MARCA>" o "<MARCA> — <nota>") y MARCA_QUITADA (la marca que tenia, y "<MARCA> — al poner el IMEI" si la quito el ERP). */
+ *  tiene usuario (el traspaso desde la hoja, el plugin de la web o la asociacion de los libros de ventas de Amazon). tipo: IMEI (cambio
+ *  de IMEI), FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA (se puso o cambio la marca de la
+ *  fila), MARCA_QUITADA (se quito), ASOCIADA (se confirmo el pedido del IMEI en Amazon) o IMEI_INTERCAMBIADO (la asociacion intercambio el
+ *  IMEI con otra fila); nunca nulo. En IMEI: imeiAnterior nulo = antes no habia; imeiNuevo nulo = se quito. En los demas tipos los dos IMEI
+ *  son nulos. detalle: nulo salvo en MARCA ("<MARCA>" o "<MARCA> — <nota>"), MARCA_QUITADA (la marca que tenia, y "<MARCA> — al poner el
+ *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO") e IMEI_INTERCAMBIADO ("con la fila <id>"). */
 public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime fecha,
                          @Schema(nullable = true) String imeiAnterior, @Schema(nullable = true) String imeiNuevo, String tipo,
                          @Schema(nullable = true) String detalle) {
@@ -18,6 +20,8 @@ public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime 
     public static final String YA_ENVIADO = "YA_ENVIADO";
     public static final String MARCA = "MARCA";
     public static final String MARCA_QUITADA = "MARCA_QUITADA";
+    public static final String ASOCIADA = "ASOCIADA";
+    public static final String IMEI_INTERCAMBIADO = "IMEI_INTERCAMBIADO";
 
     /** Un apunte sin detalle (IMEI, FALTA_ENVIAR o YA_ENVIADO). */
     public CambioImei(String usuario, LocalDateTime fecha, String imeiAnterior, String imeiNuevo, String tipo) {

@@ -32,7 +32,8 @@ public class FilasDAO {
 
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
-            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR FROM Pedido_fila";
+            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN FROM Pedido_fila";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
     static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
@@ -53,9 +54,11 @@ public class FilasDAO {
     static final String SQL_MARCAR_ETIQUETA = "UPDATE Pedido_fila SET ENVIO_ID = COALESCE(ENVIO_ID, ?),"
             + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL";
     static final String SQL_DEL_PERIODO = SQL_FILAS + " WHERE (FECHA BETWEEN ? AND ?) OR CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
-    /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. */
+    /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. El numero de pedido de una fila de Amazon sin
+     *  asociar no se busca (la web no lo enseña); el del historico (sin canal), el de las webs y el de las de Amazon asociadas, si. */
     static final String SQL_BUSCAR = SQL_FILAS + " WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
-            + " OR IMEI LIKE ? ESCAPE '\\\\' OR PEDIDO LIKE ? ESCAPE '\\\\' ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
+            + " OR IMEI LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
+            + " OR CANAL NOT IN ('AMAZON', 'AMAZON_STOCKROOM'))) ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
     static final String SQL_POR_ID = SQL_FILAS + " WHERE ID_FILA = ?";
     /** Filas de ShippyPro con IMEI: las vivas (de cualquier fecha) y las cerradas con FECHA desde la fecha dada. */
     static final String SQL_SHIPPYPRO_CON_IMEI_DESDE = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
@@ -84,7 +87,10 @@ public class FilasDAO {
      *  IMEI es POSTERIOR al cierre (alguien tecleo el IMEI sabiendo que ya no estaba pendiente: el movil esta vendido); si el IMEI ya
      *  estaba antes de cerrarse (pedido cancelado) no sale. Una fila con CUALQUIER marca no sale. La fecha que cuenta es la mas reciente entre el
      *  ultimo apunte IMEI y el ultimo MARCA_QUITADA (al quitar la marca la fila vuelve como recien puesta). Una sola consulta, con tope. */
-    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
+    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL,"
+            // Amazon sin asociar: el pedido va nulo (el IMEI se sirve igual; el bot solo lee el IMEI).
+            + " CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO,"
+            + " u.FECHA_IMEI FROM Pedido_fila f"
             // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
             + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
@@ -97,6 +103,9 @@ public class FilasDAO {
     static final String SQL_SHIPPYPRO_BLOQUEADAS = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' ORDER BY FECHA, ID_FILA FOR UPDATE";
     static final String SQL_TRASPASAR_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO'"
             + " AND (IMEI IS NULL OR IMEI = '')";
+    /** La regla A de la carga del historico confirma la asociacion de la fila (solo si aun no lo estaba). */
+    static final String SQL_ASOCIAR_HISTORICO = "UPDATE Pedido_fila SET ASOCIADA_EN = ?, ASOCIADA_ORIGEN = 'HISTORICO'"
+            + " WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO' AND ASOCIADA_EN IS NULL";
     static final String SQL_CAMBIOS_DE_HISTORICO = "SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
             + " WHERE f.ORIGEN = 'HISTORICO'";
     static final String SQL_EMPEZAR_LECTURA = "INSERT INTO Pedido_lectura (INICIO) VALUES (?)";
@@ -427,6 +436,23 @@ public class FilasDAO {
         return true;
     }
 
+    /** Confirma la asociacion de las filas (la regla A de la carga del historico: el numero de pedido de Amazon de la hoja) con
+     *  ASOCIADA_EN = {@code ahora} y ASOCIADA_ORIGEN HISTORICO, y apunta ASOCIADA (detalle HISTORICO) sin usuario. Quien llama ya las tiene
+     *  bloqueadas y solo pasa las que no estaban asociadas. En lotes de {@value #TANDA}. */
+    public void asociarHistorico(List<Integer> ids, LocalDateTime ahora) {
+        Timestamp t = Timestamp.valueOf(ahora);
+        for (List<Integer> tanda : trozos(ids)) {
+            List<Object[]> filas = new ArrayList<>();
+            List<Object[]> apuntes = new ArrayList<>();
+            for (Integer id : tanda) {
+                filas.add(new Object[]{t, id});
+                apuntes.add(new Object[]{id, null, t, CambioImei.ASOCIADA, AsociacionAmazon.HISTORICO});
+            }
+            jdbc.batchUpdate(SQL_ASOCIAR_HISTORICO, filas);
+            jdbc.batchUpdate(SQL_CAMBIO_DETALLE, apuntes);
+        }
+    }
+
     // ---------------------------------------------------------------- lecturas
 
     public int empezarLectura(LocalDateTime inicio) {
@@ -472,7 +498,7 @@ public class FilasDAO {
                 canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
                 rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
                 hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"), rs.getString("MARCA"), rs.getString("MARCA_NOTA"), hora(rs, "MARCA_EN"),
-                rs.getString("MARCA_POR"));
+                rs.getString("MARCA_POR"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

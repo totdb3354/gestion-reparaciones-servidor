@@ -1,0 +1,337 @@
+package com.reparaciones.servidor.pedidos;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+
+/** La asociacion IMEI -> pedido de Amazon que llega de los libros de ventas (spec «asociación de IMEI y pedido en Amazon», plan B). En
+ *  Amazon y Amazon Stockroom el ERP no da por bueno el pedido de una fila hasta que el libro lo confirma (ASOCIADA_EN); hasta entonces la
+ *  fila sale «sin asociar». Cada pasada de un canal aplica, en el orden recibido y sobre las filas de ShippyPro de ESE canal, cada par
+ *  «IMEI X -> pedido B» (numero normalizado como la lectura de ShippyPro):
+ *  <ol>
+ *  <li>X ya esta en una fila de B: se confirma (si ya lo estaba, «ya estaba» y no se toca nada).</li>
+ *  <li>X esta en una fila de otro pedido sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar (por posicion);
+ *  X queda confirmado en B y la otra fila recibe el IMEI que tenia la de B (o ninguno) y queda sin confirmar, aunque lo estuviera.</li>
+ *  <li>X no esta en ninguna fila: va a la primera fila libre de B sin confirmar (o, si no hay libre, a la primera sin confirmar, cuyo IMEI
+ *  sale de la tabla y queda en su historial) y se confirma.</li>
+ *  <li>Si no se puede, no se toca nada y queda «para revisar»: PEDIDO_AJENO (B no tiene filas), YA_SALIO (X esta en una fila con etiqueta
+ *  de otro pedido), CANCELADO (las unicas filas posibles, la de X o los huecos de B, estan canceladas) o SIN_HUECO.</li>
+ *  </ol>
+ *  Nunca cambia el IMEI de una fila con la etiqueta generada (ENVIO_FECHA) ni con la marca CANCELADO, y una cancelada tampoco se confirma;
+ *  una con etiqueta si se confirma (su IMEI no cambia). Nunca toca el historico. Poner un IMEI en una fila «En espera de stock» le quita la
+ *  marca como el PUT del IMEI. Todo cambio va al historial sin usuario: IMEI, IMEI_INTERCAMBIADO («con la fila n»), ASOCIADA (LIBRO) y
+ *  MARCA_QUITADA. Si un IMEI sale varias veces en la pasada solo vale la ultima (las anteriores se descartan): asi repetir la misma pasada
+ *  no cambia nada. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos. */
+@Service
+public class AsociacionAmazon {
+
+    public static final String LIBRO = "LIBRO";
+    public static final String HISTORICO = "HISTORICO";
+    public static final String SIN_HUECO = "SIN_HUECO";
+    public static final String YA_SALIO = "YA_SALIO";
+    public static final String PEDIDO_AJENO = "PEDIDO_AJENO";
+    public static final String CANCELADO = "CANCELADO";
+
+    private static final String HUECOS = "SELECT ID_FILA, PEDIDO, POSICION, IMEI, ENVIO_FECHA, MARCA, ASOCIADA_EN, ASOCIADA_ORIGEN"
+            + " FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ? AND ";
+    static final String SQL_DE_PEDIDOS = HUECOS + "PEDIDO IN (%s) FOR UPDATE";
+    static final String SQL_CON_IMEI = HUECOS + "IMEI IN (%s) FOR UPDATE";
+    /** Lo primero de la pasada: bloquea la fila de su canal (o la crea) para que dos pasadas del mismo canal vayan una detras de otra. */
+    static final String SQL_TOMAR_PASADA = "INSERT INTO Pedido_asociacion_pasada (CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS,"
+            + " YA_ESTABAN, PARA_REVISAR, DESCARTADAS) VALUES (?, ?, 0, 0, 0, 0, 0, 0) ON DUPLICATE KEY UPDATE CANAL = CANAL";
+    static final String SQL_GUARDAR_PASADA = "UPDATE Pedido_asociacion_pasada SET CUANDO = ?, CONFIRMADAS = ?, INTERCAMBIADAS = ?,"
+            + " PUESTAS = ?, YA_ESTABAN = ?, PARA_REVISAR = ?, DESCARTADAS = ? WHERE CANAL = ?";
+    static final String SQL_ACTUALIZAR = "UPDATE Pedido_fila SET IMEI = ?, ASOCIADA_EN = ?, ASOCIADA_ORIGEN = ? WHERE ID_FILA = ?";
+    static final String SQL_QUITAR_ESPERA = "UPDATE Pedido_fila SET MARCA = NULL, MARCA_NOTA = NULL, MARCA_EN = NULL, MARCA_USU = NULL"
+            + " WHERE ID_FILA = ? AND MARCA = 'ESPERA_STOCK'";
+    static final String SQL_APUNTE = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO, TIPO, DETALLE)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?)";
+    static final String SQL_BORRAR_REVISAR = "DELETE FROM Pedido_asociacion_revisar WHERE CANAL = ?";
+    static final String SQL_INSERTAR_REVISAR = "INSERT INTO Pedido_asociacion_revisar (CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN) VALUES (?, ?, ?, ?, ?)";
+    static final String SQL_PASADAS = "SELECT CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS, YA_ESTABAN, PARA_REVISAR, DESCARTADAS"
+            + " FROM Pedido_asociacion_pasada ORDER BY CANAL";
+    static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
+
+    private final JdbcTemplate jdbc;
+
+    public AsociacionAmazon(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    /** Una pasada del libro de ventas de un canal de Amazon, en una transaccion (READ COMMITTED: MariaDB 11.6+ da el error 1020 al leer
+     *  y luego actualizar con aislamiento de instantanea; las filas afectadas se leen con FOR UPDATE). {@code pares} sin limpiar. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public RespuestaAsociaciones aplicar(Canal canal, List<PeticionAsociaciones.Par> pares, LocalDateTime ahora) {
+        if (canal == null || !canal.esAmazon()) throw new IllegalArgumentException("La asociacion solo es de Amazon");
+        Timestamp hora = Timestamp.valueOf(ahora);
+        jdbc.update(SQL_TOMAR_PASADA, canal.name(), hora);
+
+        // Limpiar: numero normalizado, IMEI de 15 cifras; si un IMEI sale varias veces, vale la ultima.
+        List<String[]> validos = new ArrayList<>();
+        int descartadas = 0;
+        for (PeticionAsociaciones.Par p : pares) {
+            String pedido = p == null || p.pedido() == null || p.pedido().isBlank() ? null : SincroShippyPro.numeroGuardado(p.pedido());
+            String imei = p == null || p.imei() == null ? "" : p.imei().strip();
+            if (pedido == null || !imei.matches("[0-9]{15}")) descartadas++;
+            else validos.add(new String[]{pedido, imei});
+        }
+        Map<String, Integer> ultima = new HashMap<>();
+        for (int i = 0; i < validos.size(); i++) ultima.put(validos.get(i)[1], i);
+        List<String[]> aplicables = new ArrayList<>();
+        for (int i = 0; i < validos.size(); i++) {
+            if (ultima.get(validos.get(i)[1]) == i) aplicables.add(validos.get(i));
+            else descartadas++;
+        }
+
+        Set<String> pedidos = new LinkedHashSet<>();
+        Set<String> imeis = new LinkedHashSet<>();
+        for (String[] p : aplicables) {
+            pedidos.add(p[0]);
+            imeis.add(p[1]);
+        }
+        Reparto reparto = new Reparto(canal, cargar(canal, pedidos, imeis), ahora);
+        for (String[] p : aplicables) reparto.aplicar(p[0], p[1]);
+
+        List<Object[]> filas = new ArrayList<>();
+        for (Hueco h : reparto.cambiadas)
+            filas.add(new Object[]{h.imei, h.asociadaEn == null ? null : Timestamp.valueOf(h.asociadaEn), h.asociadaOrigen, h.id});
+        if (!filas.isEmpty()) jdbc.batchUpdate(SQL_ACTUALIZAR, filas);
+        if (!reparto.esperasQuitadas.isEmpty()) {
+            List<Object[]> lote = new ArrayList<>();
+            for (Integer id : reparto.esperasQuitadas) lote.add(new Object[]{id});
+            jdbc.batchUpdate(SQL_QUITAR_ESPERA, lote);
+        }
+        if (!reparto.apuntes.isEmpty()) jdbc.batchUpdate(SQL_APUNTE, reparto.apuntes);
+        jdbc.update(SQL_BORRAR_REVISAR, canal.name());
+        if (!reparto.revisar.isEmpty()) jdbc.batchUpdate(SQL_INSERTAR_REVISAR, reparto.revisar);
+        RespuestaAsociaciones r = new RespuestaAsociaciones(reparto.confirmadas, reparto.intercambiadas, reparto.puestas,
+                reparto.yaEstaban, reparto.revisar.size(), descartadas);
+        jdbc.update(SQL_GUARDAR_PASADA, hora, r.confirmadas(), r.intercambiadas(), r.puestas(), r.yaEstaban(), r.paraRevisar(),
+                r.descartadas(), canal.name());
+        return r;
+    }
+
+    /** La ultima pasada de cada canal con su lista «para revisar». */
+    public EstadoAsociaciones estado() {
+        Map<String, List<EstadoAsociaciones.Revisar>> porCanal = new HashMap<>();
+        record ConCanal(String canal, EstadoAsociaciones.Revisar revisar) {}
+        for (ConCanal c : jdbc.query(SQL_REVISAR, (rs, n) -> new ConCanal(rs.getString("CANAL"), new EstadoAsociaciones.Revisar(
+                rs.getString("PEDIDO"), rs.getString("IMEI"), rs.getString("MOTIVO"), hora(rs, "VISTO_EN")))))
+            porCanal.computeIfAbsent(c.canal(), k -> new ArrayList<>()).add(c.revisar());
+        List<EstadoAsociaciones.Pasada> pasadas = jdbc.query(SQL_PASADAS, (rs, n) -> new EstadoAsociaciones.Pasada(rs.getString("CANAL"),
+                hora(rs, "CUANDO"), rs.getInt("CONFIRMADAS"), rs.getInt("INTERCAMBIADAS"), rs.getInt("PUESTAS"), rs.getInt("YA_ESTABAN"),
+                rs.getInt("PARA_REVISAR"), rs.getInt("DESCARTADAS"), List.copyOf(porCanal.getOrDefault(rs.getString("CANAL"), List.of()))));
+        return new EstadoAsociaciones(List.copyOf(pasadas));
+    }
+
+    private static LocalDateTime hora(ResultSet rs, String columna) throws SQLException {
+        Timestamp t = rs.getTimestamp(columna);
+        return t == null ? null : t.toLocalDateTime();
+    }
+
+    /** Las filas de ShippyPro del canal de esos pedidos o con esos IMEI, bloqueadas, en tandas. */
+    private List<Hueco> cargar(Canal canal, Collection<String> pedidos, Collection<String> imeis) {
+        Map<Integer, Hueco> porId = new LinkedHashMap<>();
+        leer(SQL_DE_PEDIDOS, canal, pedidos, porId);
+        leer(SQL_CON_IMEI, canal, imeis, porId);
+        return new ArrayList<>(porId.values());
+    }
+
+    private void leer(String sql, Canal canal, Collection<String> valores, Map<Integer, Hueco> porId) {
+        for (List<String> tanda : FilasDAO.trozos(List.copyOf(valores))) {
+            List<Object> args = new ArrayList<>();
+            args.add(canal.name());
+            args.addAll(tanda);
+            for (Hueco h : jdbc.query(String.format(sql, FilasDAO.marcas(tanda.size())), AsociacionAmazon::hueco, args.toArray()))
+                porId.putIfAbsent(h.id, h);
+        }
+    }
+
+    private static Hueco hueco(ResultSet rs, int n) throws SQLException {
+        return new Hueco(rs.getInt("ID_FILA"), rs.getString("PEDIDO"), rs.getObject("POSICION", Integer.class), rs.getString("IMEI"),
+                rs.getTimestamp("ENVIO_FECHA") != null, rs.getString("MARCA"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"));
+    }
+
+    /** Una fila de ShippyPro del canal, con su IMEI y su asociacion tal como van quedando en la pasada. */
+    private static final class Hueco {
+        final int id;
+        final String pedido;
+        final Integer posicion;
+        final boolean conEtiqueta;
+        String imei;
+        String marca;
+        LocalDateTime asociadaEn;
+        String asociadaOrigen;
+
+        Hueco(int id, String pedido, Integer posicion, String imei, boolean conEtiqueta, String marca, LocalDateTime asociadaEn,
+              String asociadaOrigen) {
+            this.id = id;
+            this.pedido = pedido == null ? null : pedido.strip();
+            this.posicion = posicion;
+            this.imei = imei == null || imei.isBlank() ? null : imei.strip();
+            this.conEtiqueta = conEtiqueta;
+            this.marca = marca;
+            this.asociadaEn = asociadaEn;
+            this.asociadaOrigen = asociadaOrigen;
+        }
+
+        boolean cancelada() {
+            return Marca.CANCELADO.name().equals(marca);
+        }
+
+        boolean confirmada() {
+            return asociadaEn != null;
+        }
+
+        /** Un hueco del pedido: sin confirmar y sin etiqueta (cancelado o no; eso se mira aparte). */
+        boolean abierto() {
+            return !confirmada() && !conEtiqueta;
+        }
+    }
+
+    private static final Comparator<Hueco> POR_POSICION = Comparator.<Hueco, Integer>comparing(h -> h.posicion,
+            Comparator.nullsLast(Comparator.naturalOrder())).thenComparingInt(h -> h.id);
+
+    /** Las reglas sobre las filas cargadas; acumula lo que hay que escribir. */
+    private static final class Reparto {
+        final Canal canal;
+        final LocalDateTime ahora;
+        final Timestamp hora;
+        final Map<String, List<Hueco>> porPedido = new HashMap<>();
+        final Map<String, Set<Hueco>> porImei = new HashMap<>();
+        final Set<Hueco> cambiadas = new LinkedHashSet<>();
+        final Set<Integer> esperasQuitadas = new LinkedHashSet<>();
+        final List<Object[]> apuntes = new ArrayList<>();
+        final List<Object[]> revisar = new ArrayList<>();
+        int confirmadas, intercambiadas, puestas, yaEstaban;
+
+        Reparto(Canal canal, List<Hueco> filas, LocalDateTime ahora) {
+            this.canal = canal;
+            this.ahora = ahora;
+            this.hora = Timestamp.valueOf(ahora);
+            for (Hueco h : filas) {
+                if (h.pedido != null) porPedido.computeIfAbsent(h.pedido, k -> new ArrayList<>()).add(h);
+                if (h.imei != null) conImei(h.imei).add(h);
+            }
+            porPedido.values().forEach(l -> l.sort(POR_POSICION));
+        }
+
+        private Set<Hueco> conImei(String imei) {
+            return porImei.computeIfAbsent(imei, k -> new TreeSet<>(Comparator.comparingInt(h -> h.id)));
+        }
+
+        void aplicar(String pedido, String imei) {
+            List<Hueco> deB = porPedido.getOrDefault(pedido, List.of());
+            if (deB.isEmpty()) {
+                paraRevisar(pedido, imei, PEDIDO_AJENO);
+                return;
+            }
+            // 1. Ya esta en una fila del pedido.
+            List<Hueco> enB = deB.stream().filter(h -> imei.equals(h.imei)).toList();
+            if (!enB.isEmpty()) {
+                Hueco h = enB.stream().filter(f -> !f.cancelada()).findFirst().orElse(null);
+                if (h == null) paraRevisar(pedido, imei, CANCELADO);
+                else if (h.confirmada()) yaEstaban++;
+                else {
+                    confirmar(h);
+                    confirmadas++;
+                }
+                return;
+            }
+            // 2. Esta en una fila de otro pedido.
+            Set<Hueco> fuera = porImei.getOrDefault(imei, Set.of());
+            if (!fuera.isEmpty()) {
+                if (fuera.stream().anyMatch(h -> h.conEtiqueta)) {
+                    paraRevisar(pedido, imei, YA_SALIO);
+                    return;
+                }
+                Hueco origen = fuera.stream().filter(h -> !h.cancelada()).findFirst().orElse(null);
+                if (origen == null) {
+                    paraRevisar(pedido, imei, CANCELADO);
+                    return;
+                }
+                Hueco destino = deB.stream().filter(h -> h.abierto() && !h.cancelada()).findFirst().orElse(null);
+                if (destino == null) {
+                    paraRevisar(pedido, imei, sinHueco(deB));
+                    return;
+                }
+                String delDestino = destino.imei;
+                ponerImei(destino, imei);
+                ponerImei(origen, delDestino);
+                apunte(destino.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + origen.id);
+                apunte(origen.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + destino.id);
+                if (origen.confirmada()) {
+                    origen.asociadaEn = null;
+                    origen.asociadaOrigen = null;
+                }
+                confirmar(destino);
+                intercambiadas++;
+                return;
+            }
+            // 3. No esta en ninguna fila: la primera libre y, si no hay, la primera sin confirmar.
+            Hueco destino = deB.stream().filter(h -> h.abierto() && !h.cancelada() && h.imei == null).findFirst()
+                    .or(() -> deB.stream().filter(h -> h.abierto() && !h.cancelada()).findFirst()).orElse(null);
+            if (destino == null) {
+                paraRevisar(pedido, imei, sinHueco(deB));
+                return;
+            }
+            ponerImei(destino, imei);
+            confirmar(destino);
+            puestas++;
+        }
+
+        /** CANCELADO si el pedido tendria hueco contando las canceladas; si no, SIN_HUECO. */
+        private static String sinHueco(List<Hueco> deB) {
+            return deB.stream().anyMatch(h -> h.abierto() && h.cancelada()) ? CANCELADO : SIN_HUECO;
+        }
+
+        private void ponerImei(Hueco h, String nuevo) {
+            String anterior = h.imei;
+            if (anterior != null) {
+                Set<Hueco> con = porImei.get(anterior);
+                if (con != null) con.remove(h);
+            }
+            h.imei = nuevo;
+            if (nuevo != null) conImei(nuevo).add(h);
+            cambiadas.add(h);
+            apunte(h.id, anterior, nuevo, CambioImei.IMEI, null);
+            // Un IMEI puesto resuelve «En espera de stock», como en el PUT del IMEI; las demas marcas se quedan.
+            if (nuevo != null && Marca.ESPERA_STOCK.name().equals(h.marca)) {
+                h.marca = null;
+                esperasQuitadas.add(h.id);
+                apunte(h.id, null, null, CambioImei.MARCA_QUITADA, Marca.ESPERA_STOCK.name() + FilasDAO.SEP_DETALLE + "al poner el IMEI");
+            }
+        }
+
+        private void confirmar(Hueco h) {
+            h.asociadaEn = ahora;
+            h.asociadaOrigen = LIBRO;
+            cambiadas.add(h);
+            apunte(h.id, null, null, CambioImei.ASOCIADA, LIBRO);
+        }
+
+        private void apunte(int id, String anterior, String nuevo, String tipo, String detalle) {
+            apuntes.add(new Object[]{id, null, hora, anterior, nuevo, tipo, detalle});
+        }
+
+        private void paraRevisar(String pedido, String imei, String motivo) {
+            revisar.add(new Object[]{canal.name(), pedido, imei, motivo, hora});
+        }
+    }
+}

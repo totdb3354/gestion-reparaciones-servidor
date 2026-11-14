@@ -6,11 +6,13 @@
 -- Idempotente (MariaDB 11): se puede relanzar entero si algo falla a medias (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS;
 -- los indices van dentro de los CREATE TABLE).
 -- 1) Vista previa: en la primera vez YA_EXISTEN y COLUMNAS_YA deben dar 0; al relanzar dan lo que la vez anterior ya dejo hecho
---    (hasta 3 y 3).
--- 2) Tres tablas nuevas y tres columnas en Nsys_producto. Pedido_fila ya trae FALTA_ENVIAR_EN, FALTA_ENVIAR_USU y SINCRONIZADA_EN
---    (envios parciales de pedidos de web), MARCA, MARCA_NOTA, MARCA_EN y MARCA_USU (marcas de la fila) y Pedido_fila_cambio, TIPO (IMEI,
---    FALTA_ENVIAR, YA_ENVIADO, MARCA o MARCA_QUITADA) y DETALLE. En una base que ya tiene las tablas se aplica sql/migracion-pedidos-marcas.sql.
--- 3) Comprobacion final: CREADAS debe dar 3 y COLUMNAS, 3 (tambien en una segunda vez).
+--    (hasta 5 y 3).
+-- 2) Cinco tablas nuevas y tres columnas en Nsys_producto. Pedido_fila ya trae FALTA_ENVIAR_EN, FALTA_ENVIAR_USU y SINCRONIZADA_EN
+--    (envios parciales de pedidos de web), MARCA, MARCA_NOTA, MARCA_EN y MARCA_USU (marcas de la fila), ASOCIADA_EN y ASOCIADA_ORIGEN
+--    (asociacion de IMEI y pedido en Amazon) y Pedido_fila_cambio, TIPO (IMEI, FALTA_ENVIAR, YA_ENVIADO, MARCA, MARCA_QUITADA, ASOCIADA o
+--    IMEI_INTERCAMBIADO) y DETALLE; mas Pedido_asociacion_revisar y Pedido_asociacion_pasada. En una base que ya tiene las tablas se aplican
+--    sql/migracion-pedidos-marcas.sql y sql/migracion-pedidos-asociacion.sql.
+-- 3) Comprobacion final: CREADAS debe dar 5 y COLUMNAS, 3 (tambien en una segunda vez).
 -- No lanzarla mientras corre la copia nocturna.
 -- Vuelta atras: el servidor anterior funciona con todo puesto; no hace falta quitar nada.
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -22,7 +24,8 @@ SET SESSION lock_wait_timeout = 10;
 
 -- Vista previa (no modifica nada): la primera vez las dos dan 0; al relanzar, lo ya creado
 SELECT COUNT(*) AS YA_EXISTEN FROM information_schema.TABLES
- WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura');
+ WHERE TABLE_SCHEMA = 'gestion_reparaciones'
+   AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura', 'Pedido_asociacion_revisar', 'Pedido_asociacion_pasada');
 SELECT COUNT(*) AS COLUMNAS_YA FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Nsys_producto'
    AND COLUMN_NAME IN ('SKU_AMAZON_ESIM', 'SKU_PARTICULARES', 'SKU_BACKIPHONE');
@@ -52,6 +55,8 @@ CREATE TABLE IF NOT EXISTS Pedido_fila (
     MARCA_NOTA   VARCHAR(200) NULL COMMENT 'Nota libre de la marca',
     MARCA_EN     DATETIME     NULL COMMENT 'Cuando se puso la marca',
     MARCA_USU    INT          NULL COMMENT 'Quien puso la marca',
+    ASOCIADA_EN     DATETIME    NULL COMMENT 'Amazon: cuando se confirmo el pedido del IMEI (libro de ventas o historico); NULL = sin asociar',
+    ASOCIADA_ORIGEN VARCHAR(20) NULL COMMENT 'LIBRO (libro de ventas) o HISTORICO (carga del historico de la hoja); NULL = sin asociar',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
@@ -68,12 +73,33 @@ CREATE TABLE IF NOT EXISTS Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA o MARCA_QUITADA',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en los apuntes MARCA y MARCA_QUITADA',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA o IMEI_INTERCAMBIADO',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
     CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS Pedido_asociacion_revisar (
+    ID       INT         NOT NULL AUTO_INCREMENT,
+    CANAL    VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
+    PEDIDO   VARCHAR(60) NOT NULL COMMENT 'El numero del libro, normalizado como lo guarda la lectura de ShippyPro',
+    IMEI     VARCHAR(20) NOT NULL,
+    MOTIVO   VARCHAR(30) NOT NULL COMMENT 'SIN_HUECO, YA_SALIO, PEDIDO_AJENO o CANCELADO',
+    VISTO_EN DATETIME    NOT NULL COMMENT 'La pasada que lo dejo para revisar (hora de Madrid)',
+    PRIMARY KEY (ID),
+    KEY idx_asociacion_revisar_canal (CANAL)
+);
+CREATE TABLE IF NOT EXISTS Pedido_asociacion_pasada (
+    CANAL          VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
+    CUANDO         DATETIME    NOT NULL COMMENT 'La ultima pasada de ese canal (hora de Madrid)',
+    CONFIRMADAS    INT         NOT NULL,
+    INTERCAMBIADAS INT         NOT NULL,
+    PUESTAS        INT         NOT NULL,
+    YA_ESTABAN     INT         NOT NULL,
+    PARA_REVISAR   INT         NOT NULL,
+    DESCARTADAS    INT         NOT NULL,
+    PRIMARY KEY (CANAL)
 );
 CREATE TABLE IF NOT EXISTS Pedido_lectura (
     ID_LECTURA       INT           NOT NULL AUTO_INCREMENT,
@@ -92,9 +118,10 @@ ALTER TABLE Nsys_producto
     ADD COLUMN IF NOT EXISTS SKU_PARTICULARES VARCHAR(60) NULL,
     ADD COLUMN IF NOT EXISTS SKU_BACKIPHONE   VARCHAR(60) NULL;
 
--- Comprobacion final (no modifica nada): CREADAS = 3 y COLUMNAS = 3; si no, NO desplegar el servidor.
+-- Comprobacion final (no modifica nada): CREADAS = 5 y COLUMNAS = 3; si no, NO desplegar el servidor.
 SELECT COUNT(*) AS CREADAS FROM information_schema.TABLES
- WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura');
+ WHERE TABLE_SCHEMA = 'gestion_reparaciones'
+   AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura', 'Pedido_asociacion_revisar', 'Pedido_asociacion_pasada');
 SELECT COUNT(*) AS COLUMNAS FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Nsys_producto'
    AND COLUMN_NAME IN ('SKU_AMAZON_ESIM', 'SKU_PARTICULARES', 'SKU_BACKIPHONE');

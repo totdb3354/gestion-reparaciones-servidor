@@ -12,6 +12,8 @@ SET NAMES utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Pedido_asociacion_revisar;
+DROP TABLE IF EXISTS Pedido_asociacion_pasada;
 DROP TABLE IF EXISTS Pedido_fila_cambio;
 DROP TABLE IF EXISTS Pedido_fila;
 DROP TABLE IF EXISTS Pedido_lectura;
@@ -666,6 +668,8 @@ CREATE TABLE Pedido_fila (
     MARCA_NOTA   VARCHAR(200) NULL COMMENT 'Nota libre de la marca',
     MARCA_EN     DATETIME     NULL COMMENT 'Cuando se puso la marca',
     MARCA_USU    INT          NULL COMMENT 'Quien puso la marca',
+    ASOCIADA_EN     DATETIME    NULL COMMENT 'Amazon: cuando se confirmo el pedido del IMEI (libro de ventas o historico); NULL = sin asociar',
+    ASOCIADA_ORIGEN VARCHAR(20) NULL COMMENT 'LIBRO (libro de ventas) o HISTORICO (carga del historico de la hoja); NULL = sin asociar',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
@@ -682,12 +686,35 @@ CREATE TABLE Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA o MARCA_QUITADA',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en los apuntes MARCA y MARCA_QUITADA',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA o IMEI_INTERCAMBIADO',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
     CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+-- Asociacion de IMEI y pedido en Amazon («plan B»): lo que la ultima pasada de los libros de ventas de cada canal dejo «para revisar»
+-- (se rehace en cada pasada) y la ultima pasada de cada canal con sus recuentos.
+CREATE TABLE Pedido_asociacion_revisar (
+    ID       INT         NOT NULL AUTO_INCREMENT,
+    CANAL    VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
+    PEDIDO   VARCHAR(60) NOT NULL COMMENT 'El numero del libro, normalizado como lo guarda la lectura de ShippyPro',
+    IMEI     VARCHAR(20) NOT NULL,
+    MOTIVO   VARCHAR(30) NOT NULL COMMENT 'SIN_HUECO, YA_SALIO, PEDIDO_AJENO o CANCELADO',
+    VISTO_EN DATETIME    NOT NULL COMMENT 'La pasada que lo dejo para revisar (hora de Madrid)',
+    PRIMARY KEY (ID),
+    KEY idx_asociacion_revisar_canal (CANAL)
+);
+CREATE TABLE Pedido_asociacion_pasada (
+    CANAL          VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
+    CUANDO         DATETIME    NOT NULL COMMENT 'La ultima pasada de ese canal (hora de Madrid)',
+    CONFIRMADAS    INT         NOT NULL,
+    INTERCAMBIADAS INT         NOT NULL,
+    PUESTAS        INT         NOT NULL,
+    YA_ESTABAN     INT         NOT NULL,
+    PARA_REVISAR   INT         NOT NULL,
+    DESCARTADAS    INT         NOT NULL,
+    PRIMARY KEY (CANAL)
 );
 CREATE TABLE Pedido_lectura (
     ID_LECTURA       INT           NOT NULL AUTO_INCREMENT,

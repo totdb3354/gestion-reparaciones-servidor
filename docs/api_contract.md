@@ -141,6 +141,40 @@ de `model/` conservan su nombre.
     web lo muestra como «plugin de la web»). Las demás filas del pedido (el móvil que aún falta) no se tocan; pedidos e IMEI que no casan
     se ignoran. `filasSincronizadas`: filas puestas al día; `marcasQuitadas`: marcas quitadas; `sinFila`: IMEI enviados (distintos, por
     pedido) que no casaron con ninguna fila. Idempotente: repetir la llamada no crea apuntes nuevos.
+  - Asociación de IMEI y pedido en Amazon («plan B»; spec `2026-11-13-pedidos-amazon-asociacion-design.md`): en `AMAZON` y
+    `AMAZON_STOCKROOM` el pedido de una fila solo vale cuando lo confirma el libro de ventas. `FilaVista` gana al final `asociadaEn`
+    (nullable, hora de Madrid: cuándo se confirmó; `null` = sin asociar) y `asociadaOrigen` (nullable: `LIBRO` o `HISTORICO`). En Amazon
+    `pedido` sigue viniendo aunque la fila no esté asociada (lo necesita el estado): la web enseña «sin asociar» y no el número. En las
+    webs y el histórico los dos son `null` y no significan nada. El buscador (`buscar`) no encuentra por número de pedido las filas de
+    Amazon sin asociar (sí por IMEI, SKU o plataforma). `GET /api/pedidos/vendidos`: en las filas de Amazon sin asociar `pedido` va
+    `null` (el IMEI se sirve igual). Historial: tipos nuevos `ASOCIADA` (`detalle` `LIBRO` o `HISTORICO`) e `IMEI_INTERCAMBIADO`
+    (`detalle` `"con la fila <id>"`), con `usuario` nulo (lo hace una máquina) y los dos IMEI nulos; cada cambio de IMEI que hace la
+    asociación apunta además su `IMEI` como siempre. La carga del histórico da por asociadas (`HISTORICO`) las filas de Amazon de la regla A
+    (la que recibe el IMEI por el número de pedido de la hoja y la del mismo pedido que ya lo tenía); B no asocia.
+    - `POST /api/pedidos/asociaciones` (no es una ruta de usuario: una pasada del libro de ventas) con la cabecera `X-API-Key` y el
+      cuerpo `PeticionAsociaciones` `{canal, pares: [{pedido, imei}]}` → `RespuestaAsociaciones` `{confirmadas, intercambiadas, puestas,
+      yaEstaban, paraRevisar, descartadas}`. La clave es una de las del ajuste `PEDIDOS_ASOCIACIONES_CLAVE` (propio): sin ninguna válida
+      `404` para todos, clave ausente o mala `401` (también las de vendidos o del plugin), un token de usuario no vale y la clave no abre
+      ninguna otra ruta (ni el `GET` de la misma). `canal`: `AMAZON` o `AMAZON_STOCKROOM` (otro, `400`); `pares` obligatorio, hasta
+      10.000 (si no, `400`). Los pares no dan `400`: el número se normaliza como lo guarda la lectura de ShippyPro y el IMEI debe ser de 15
+      cifras tras recortar espacios (un número JSON también vale); lo que no (pedido vacío, «CANCELADO», vacíos, otros números) cuenta en
+      `descartadas`, y si un IMEI sale varias veces solo vale la última (las anteriores, `descartadas`). En una transacción y en el orden
+      recibido, sobre las filas de ShippyPro de ese canal, cada «IMEI X → pedido B»: (1) X ya está en una fila de B: se confirma
+      (`confirmadas`; si ya lo estaba, `yaEstaban` sin tocar nada; también con la etiqueta generada); (2) X está en una fila de otro pedido
+      sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar ni etiqueta (por posición), X queda confirmado y la otra
+      fila recibe el IMEI que tenía la de B (o ninguno) y queda sin confirmar aunque lo estuviera (`intercambiadas`); (3) X no está en
+      ninguna fila: va a la primera fila libre de B sin confirmar ni etiqueta o, si no hay libre, a la primera sin confirmar (su IMEI sale
+      de la tabla y queda en su historial), y se confirma (`puestas`); (4) si no, no se toca nada y queda para revisar (`paraRevisar`) con
+      su motivo: `PEDIDO_AJENO` (B no tiene filas en el ERP), `YA_SALIO` (X está en una fila con etiqueta de otro pedido), `CANCELADO` (las
+      únicas filas posibles —la de B que tiene X, la de otro pedido que lo tiene o los huecos de B— tienen la marca «Cancelado») o
+      `SIN_HUECO` (B no tiene fila sin confirmar ni etiqueta). Nunca cambia el IMEI de una fila con etiqueta (`envioFecha`) ni con la marca
+      `CANCELADO`, ni confirma una cancelada; nunca toca el histórico. Poner un IMEI en una fila `ESPERA_STOCK` le quita la marca (apunte
+      `MARCA_QUITADA` `"ESPERA_STOCK — al poner el IMEI"`). Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos.
+      Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban` o `paraRevisar`).
+    - `GET /api/pedidos/asociaciones` (SUPERTECNICO y ADMIN; TECNICO `403`) → `EstadoAsociaciones` `{canales: [{canal, cuando,
+      confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, revisar: [{pedido, imei, motivo, vistoEn}]}]}`: un
+      elemento por canal que ha tenido alguna pasada (`AMAZON` antes que `AMAZON_STOCKROOM`; lista vacía si no hubo ninguna), con la última
+      pasada (`cuando`, hora de Madrid) y su lista «para revisar» en el orden del libro (`vistoEn`: la pasada que la dejó). Nada es nullable.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
     `filas`, `skuDesconocidos`, `motivo`, `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`, y `aviso`). Un `ERROR` enseña un motivo
     fijo, nunca el texto de la excepción. `aviso` (nullable, campo añadido; la web que no lo conoce lo ignora) lleva un texto fijo en

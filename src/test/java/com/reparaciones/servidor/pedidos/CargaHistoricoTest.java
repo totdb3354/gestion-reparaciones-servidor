@@ -301,6 +301,25 @@ class CargaHistoricoTest {
         verify(lectura).sinVueltas(any());
     }
 
+    @Test void laReglaADaPorAsociadasDesdeElHistoricoSusFilasEnLaMismaTransaccionYBYCNo() throws Exception {
+        erpDePrueba();
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(hoja());
+        carga(enSeco).iniciar();
+        InOrder orden = inOrder(dao, tm);
+        orden.verify(dao, times(3)).traspasarImei(anyInt(), anyString(), eq(AHORA));
+        orden.verify(dao).asociarHistorico(List.of(10), AHORA);
+        orden.verify(dao).insertarHistorico(any());
+        orden.verify(tm).commit(any());
+    }
+
+    @Test void sinFilasDeLaReglaANoSeAsociaNada() throws Exception {
+        erpDePrueba();
+        when(sheets.leerTodo(any(), any(), any())).thenReturn(new TablaHoja(COLS,
+                List.of(fila(2, 46332, "AMZ", "i13128AzulA", 350000000000002L), fila(3, 46300, "AMZ", "i13128AzulA", 350000000000004L))));
+        carga(enSeco).iniciar();
+        verify(dao, never()).asociarHistorico(any(), any());
+    }
+
     @Test void repetirLaCargaDaElMismoHistoricoYLaSegundaVezNoTraspasaNada() throws Exception {
         erpDePrueba();
         when(sheets.leerTodo(any(), any(), any())).thenReturn(hoja());

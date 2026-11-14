@@ -101,6 +101,19 @@ class VistaFilasTest {
         verify(nsys).porImeis(Set.of(IMEI1, IMEI2));
     }
 
+    @Test void laFilaVistaTraeLaAsociacionYElPedidoAunqueNoEsteAsociada() {
+        FilaPedido base = fila(1, null, null);
+        FilaPedido asociada = new FilaPedido(2, base.fecha(), "AMZ", base.sku(), null, "402-0000000-0000002", base.fechaCompra(), "SHIPPYPRO",
+                Canal.AMAZON, 1, null, null, null, null, null, null, null, null, null, null, null, null, null, AHORA.minusHours(1), "LIBRO");
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(base, asociada));
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+        assertNull(f.get(0).asociadaEn());
+        assertNull(f.get(0).asociadaOrigen());
+        assertEquals("402-0000000-0000001", f.get(0).pedido(), "el pedido sigue viniendo: la web decide que enseña");
+        assertEquals(AHORA.minusHours(1), f.get(1).asociadaEn());
+        assertEquals("LIBRO", f.get(1).asociadaOrigen());
+    }
+
     @Test void elEstadoLaEdicionYLosDatosDelEnvioDeCadaFila() {
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(
                 fila(1, null, null), fila(2, null, AHORA.minusDays(2)), enviada(3, null),
