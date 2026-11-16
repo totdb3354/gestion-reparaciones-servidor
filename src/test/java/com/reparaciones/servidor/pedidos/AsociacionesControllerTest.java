@@ -29,14 +29,14 @@ class AsociacionesControllerTest {
     }
 
     @Test void devuelveLosRecuentosDelServicioYLeDaLaHoraDeMadrid() {
-        RespuestaAsociaciones r = new RespuestaAsociaciones(1, 2, 3, 4, 5, 6);
+        RespuestaAsociaciones r = new RespuestaAsociaciones(1, 2, 3, 4, 5, 6, 0);
         when(servicio.aplicar(any(), any(), any())).thenReturn(r);
         assertEquals(r, controller.asociar(new PeticionAsociaciones("AMAZON", List.of(PAR))));
         verify(servicio).aplicar(Canal.AMAZON, List.of(PAR), AHORA);
     }
 
     @Test void losDosCanalesDeAmazonValen() {
-        when(servicio.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 0, 0, 0, 0));
+        when(servicio.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 0, 0, 0, 0, 0));
         controller.asociar(new PeticionAsociaciones("AMAZON", List.of()));
         controller.asociar(new PeticionAsociaciones("AMAZON_STOCKROOM", List.of()));
         verify(servicio).aplicar(Canal.AMAZON, List.of(), AHORA);
@@ -50,7 +50,7 @@ class AsociacionesControllerTest {
     }
 
     @Test void sinParesOConMasDe10000Es400YConJusto10000Vale() {
-        when(servicio.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 0, 0, 0, 0));
+        when(servicio.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 0, 0, 0, 0, 0));
         assertEquals(400, estado("AMAZON", null));
         List<PeticionAsociaciones.Par> diezMil = new ArrayList<>(Collections.nCopies(10_000, PAR));
         controller.asociar(new PeticionAsociaciones("AMAZON", diezMil));
@@ -60,7 +60,7 @@ class AsociacionesControllerTest {
     }
 
     @Test void losParesMalosNoSonUn400SinoQueLosDescartaElServicio() {
-        when(servicio.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 0, 0, 0, 3));
+        when(servicio.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 0, 0, 0, 3, 0));
         List<PeticionAsociaciones.Par> malos = new ArrayList<>();
         malos.add(new PeticionAsociaciones.Par("402-0000000-0000001", "CANCELADO"));
         malos.add(new PeticionAsociaciones.Par(null, null));

@@ -74,7 +74,7 @@ class RolesAsociacionesTest {
     }
 
     @Test void conLaClaveDeLosLibrosDevuelveLosRecuentos() throws Exception {
-        when(asociacion.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(1, 2, 3, 4, 5, 6));
+        when(asociacion.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(1, 2, 3, 4, 5, 6, 0));
         mvc.perform(pasada(LIBROS)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.confirmadas").value(1))
                 .andExpect(jsonPath("$.intercambiadas").value(2))
@@ -87,7 +87,7 @@ class RolesAsociacionesTest {
     }
 
     @Test void unImeiQueLlegaComoNumeroJsonLlegaAlServicioComoTexto() throws Exception {
-        when(asociacion.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 1, 0, 0, 0));
+        when(asociacion.aplicar(any(), any(), any())).thenReturn(new RespuestaAsociaciones(0, 0, 1, 0, 0, 0, 0));
         mvc.perform(post(RUTA).header("X-API-Key", LIBROS).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"canal\":\"AMAZON_STOCKROOM\",\"pares\":[{\"pedido\":\"402-0000000-0000001\",\"imei\":350000000000001}]}"))
                 .andExpect(status().isOk());

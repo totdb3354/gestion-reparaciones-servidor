@@ -30,9 +30,13 @@ import java.util.TreeSet;
  *  X queda confirmado en B y la otra fila recibe el IMEI que tenia la de B (o ninguno) y queda sin confirmar, aunque lo estuviera.</li>
  *  <li>X no esta en ninguna fila: va a la primera fila LIBRE de B (sin IMEI, sin confirmar, sin etiqueta) y se confirma. Nunca saca de
  *  la tabla un IMEI que alguien leyo: sin fila libre no se toca nada, aunque B tenga filas sin confirmar con otro IMEI.</li>
- *  <li>Si no se puede, no se toca nada y queda «para revisar»: PEDIDO_AJENO (B no tiene filas), YA_SALIO (X esta en una fila con etiqueta
- *  de otro pedido), CANCELADO (las unicas filas posibles, la de X o los huecos de B, estan canceladas) o SIN_HUECO.</li>
+ *  <li>Si B no tiene filas en el ERP (salio antes de que el ERP leyera ShippyPro, o es antiguo) no se toca nada y se cuenta aparte
+ *  en {@code ajenos}: no va a «para revisar». Si no se puede por otra causa, no se toca nada y queda «para revisar»: YA_SALIO (X esta en
+ *  una fila con etiqueta de otro pedido), CANCELADO (las unicas filas posibles, la de X o los huecos de B, estan canceladas) o SIN_HUECO.</li>
  *  </ol>
+ *  Un par puede quedar SIN_HUECO solo porque el hueco de B lo ocupa un IMEI que un par posterior de la misma pasada saca de ahi (regla 2):
+ *  al terminar de recorrer los pares se vuelven a intentar los SIN_HUECO, mientras alguno avance y hasta 3 vueltas, en la misma transaccion;
+ *  solo van a «para revisar» los que siguen sin hueco al final.
  *  Nunca cambia el IMEI de una fila con la etiqueta generada (ENVIO_FECHA) ni con la marca CANCELADO, y una cancelada tampoco se confirma;
  *  una con etiqueta si se confirma (su IMEI no cambia). Nunca toca el historico. Poner un IMEI en una fila «En espera de stock» le quita la
  *  marca como el PUT del IMEI. Todo cambio va al historial sin usuario: IMEI, IMEI_INTERCAMBIADO («con la fila n»), ASOCIADA (LIBRO) y
@@ -45,6 +49,7 @@ public class AsociacionAmazon {
     public static final String HISTORICO = "HISTORICO";
     public static final String SIN_HUECO = "SIN_HUECO";
     public static final String YA_SALIO = "YA_SALIO";
+    /** Ya no se guarda (un pedido sin filas en el ERP se cuenta en {@code ajenos}); queda por compatibilidad. */
     public static final String PEDIDO_AJENO = "PEDIDO_AJENO";
     public static final String CANCELADO = "CANCELADO";
 
@@ -141,6 +146,7 @@ public class AsociacionAmazon {
         }
         Reparto reparto = new Reparto(canal, cargar(canal, pedidos, imeis), ahora);
         for (String[] p : aplicables) reparto.aplicar(p[0], p[1]);
+        reparto.reintentarSinHueco();
 
         List<Object[]> filas = new ArrayList<>();
         for (Hueco h : reparto.cambiadas)
@@ -155,7 +161,7 @@ public class AsociacionAmazon {
         jdbc.update(SQL_BORRAR_REVISAR, canal.name());
         if (!reparto.revisar.isEmpty()) jdbc.batchUpdate(SQL_INSERTAR_REVISAR, reparto.revisar);
         RespuestaAsociaciones r = new RespuestaAsociaciones(reparto.confirmadas, reparto.intercambiadas, reparto.puestas,
-                reparto.yaEstaban, reparto.revisar.size(), descartadas);
+                reparto.yaEstaban, reparto.revisar.size(), descartadas, reparto.ajenos);
         jdbc.update(SQL_GUARDAR_PASADA, hora, r.confirmadas(), r.intercambiadas(), r.puestas(), r.yaEstaban(), r.paraRevisar(),
                 r.descartadas(), canal.name());
         return r;
@@ -254,7 +260,8 @@ public class AsociacionAmazon {
         final Set<Integer> esperasQuitadas = new LinkedHashSet<>();
         final List<Object[]> apuntes = new ArrayList<>();
         final List<Object[]> revisar = new ArrayList<>();
-        int confirmadas, intercambiadas, puestas, yaEstaban;
+        int confirmadas, intercambiadas, puestas, yaEstaban, ajenos;
+        final List<String[]> sinHueco = new ArrayList<>();
 
         Reparto(Canal canal, List<Hueco> filas, LocalDateTime ahora) {
             this.canal = canal;
@@ -271,40 +278,63 @@ public class AsociacionAmazon {
             return porImei.computeIfAbsent(imei, k -> new TreeSet<>(Comparator.comparingInt(h -> h.id)));
         }
 
+        /** Aplica un par de la pasada; los SIN_HUECO se dejan para el reintento del final. */
         void aplicar(String pedido, String imei) {
+            String motivo = intentar(pedido, imei);
+            if (SIN_HUECO.equals(motivo)) sinHueco.add(new String[]{pedido, imei});
+            else if (motivo != null) paraRevisar(pedido, imei, motivo);
+        }
+
+        /** Vuelve a intentar los SIN_HUECO mientras alguno avance (como mucho 3 vueltas); los que siguen sin hueco van a «para revisar». */
+        void reintentarSinHueco() {
+            List<String[]> pendientes = new ArrayList<>(sinHueco);
+            for (int vuelta = 0; vuelta < 3 && !pendientes.isEmpty(); vuelta++) {
+                List<String[]> siguen = new ArrayList<>();
+                boolean avanzo = false;
+                for (String[] p : pendientes) {
+                    String motivo = intentar(p[0], p[1]);
+                    if (motivo == null) avanzo = true;
+                    else if (SIN_HUECO.equals(motivo)) siguen.add(p);
+                    else paraRevisar(p[0], p[1], motivo);
+                }
+                pendientes = siguen;
+                if (!avanzo) break;
+            }
+            for (String[] p : pendientes) paraRevisar(p[0], p[1], SIN_HUECO);
+        }
+
+        /** Aplica las reglas a un par: null si se resolvio (o es un pedido ajeno, que solo se cuenta); si no, el motivo y no toca nada. */
+        private String intentar(String pedido, String imei) {
             List<Hueco> deB = porPedido.getOrDefault(pedido, List.of());
             if (deB.isEmpty()) {
-                paraRevisar(pedido, imei, PEDIDO_AJENO);
-                return;
+                ajenos++;
+                return null;
             }
             // 1. Ya esta en una fila del pedido.
             List<Hueco> enB = deB.stream().filter(h -> imei.equals(h.imei)).toList();
             if (!enB.isEmpty()) {
                 Hueco h = enB.stream().filter(f -> !f.cancelada()).findFirst().orElse(null);
-                if (h == null) paraRevisar(pedido, imei, CANCELADO);
-                else if (h.confirmada()) yaEstaban++;
+                if (h == null) return CANCELADO;
+                if (h.confirmada()) yaEstaban++;
                 else {
                     confirmar(h);
                     confirmadas++;
                 }
-                return;
+                return null;
             }
             // 2. Esta en una fila de otro pedido.
             Set<Hueco> fuera = porImei.getOrDefault(imei, Set.of());
             if (!fuera.isEmpty()) {
                 if (fuera.stream().anyMatch(h -> h.conEtiqueta)) {
-                    paraRevisar(pedido, imei, YA_SALIO);
-                    return;
+                    return YA_SALIO;
                 }
                 Hueco origen = fuera.stream().filter(h -> !h.cancelada()).findFirst().orElse(null);
                 if (origen == null) {
-                    paraRevisar(pedido, imei, CANCELADO);
-                    return;
+                    return CANCELADO;
                 }
                 Hueco destino = deB.stream().filter(h -> h.abierto() && !h.cancelada()).findFirst().orElse(null);
                 if (destino == null) {
-                    paraRevisar(pedido, imei, sinHueco(deB));
-                    return;
+                    return sinHueco(deB);
                 }
                 String delDestino = destino.imei;
                 ponerImei(destino, imei);
@@ -317,18 +347,18 @@ public class AsociacionAmazon {
                 }
                 confirmar(destino);
                 intercambiadas++;
-                return;
+                return null;
             }
             // 3. No esta en ninguna fila: solo a una fila libre. Un IMEI que alguien leyo nunca sale de la tabla: sin fila libre, a revisar.
             List<Hueco> libres = deB.stream().filter(h -> h.abierto() && h.imei == null).toList();
             Hueco destino = libres.stream().filter(h -> !h.cancelada()).findFirst().orElse(null);
             if (destino == null) {
-                paraRevisar(pedido, imei, sinHueco(libres));
-                return;
+                return sinHueco(libres);
             }
             ponerImei(destino, imei);
             confirmar(destino);
             puestas++;
+            return null;
         }
 
         /** De los huecos posibles del pedido (los sin confirmar ni etiqueta en la regla 2; los libres en la 3): CANCELADO si alguno lo

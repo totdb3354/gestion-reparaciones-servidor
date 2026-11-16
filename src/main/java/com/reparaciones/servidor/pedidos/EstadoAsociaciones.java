@@ -17,7 +17,7 @@ public record EstadoAsociaciones(List<Pasada> canales) {
                          @Schema(nullable = true) String error, @Schema(nullable = true) LocalDateTime errorEn, List<Revisar> revisar) {}
 
     /** Una asociacion que no se pudo aplicar. {@code motivo}: SIN_HUECO (el pedido no tiene hueco: si el IMEI esta en otra fila, ninguna sin confirmar ni etiqueta; si no esta en ninguna, ninguna libre), YA_SALIO (el IMEI
-     *  esta en una fila con etiqueta de otro pedido), PEDIDO_AJENO (el pedido no tiene filas en el ERP) o CANCELADO (las unicas filas
-     *  posibles estan canceladas). {@code vistoEn}: la pasada que la dejo para revisar. */
+     *  esta en una fila con etiqueta de otro pedido) o CANCELADO (las unicas filas
+     *  posibles estan canceladas). PEDIDO_AJENO (el pedido no tiene filas en el ERP) ya no se guarda. {@code vistoEn}: la pasada que la dejo para revisar. */
     public record Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn) {}
 }

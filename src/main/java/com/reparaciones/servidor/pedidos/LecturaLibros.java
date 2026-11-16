@@ -73,7 +73,7 @@ public class LecturaLibros {
                 Files.deleteIfExists(temporal);
             }
             RespuestaAsociaciones r = asociacion.aplicarLibro(canal, pares, LocalDateTime.now(clock), modificado);
-            log.info("Libros de ventas: {} leido (modificado el {}): {} pares; {}", canal, modificado, pares.size(), r);
+            log.info("Libros de ventas: {} leido (modificado el {}): {} pares; {} (ajenos = pedidos sin filas en el ERP, fuera de la lista)", canal, modificado, pares.size(), r);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

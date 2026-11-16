@@ -153,7 +153,7 @@ de `model/` conservan su nombre.
     (la que recibe el IMEI por el número de pedido de la hoja y la del mismo pedido que ya lo tenía); B no asocia.
     - `POST /api/pedidos/asociaciones` (no es una ruta de usuario: una pasada del libro de ventas) con la cabecera `X-API-Key` y el
       cuerpo `PeticionAsociaciones` `{canal, pares: [{pedido, imei}]}` → `RespuestaAsociaciones` `{confirmadas, intercambiadas, puestas,
-      yaEstaban, paraRevisar, descartadas}`. La clave es una de las del ajuste `PEDIDOS_ASOCIACIONES_CLAVE` (propio): sin ninguna válida
+      yaEstaban, paraRevisar, descartadas, ajenos}`. La clave es una de las del ajuste `PEDIDOS_ASOCIACIONES_CLAVE` (propio): sin ninguna válida
       `404` para todos, clave ausente o mala `401` (también las de vendidos o del plugin), un token de usuario no vale y la clave no abre
       ninguna otra ruta (ni el `GET` de la misma). `canal`: `AMAZON` o `AMAZON_STOCKROOM` (otro, `400`); `pares` obligatorio, hasta
       10.000 (si no, `400`). Los pares no dan `400`: el número se normaliza como lo guarda la lectura de ShippyPro y el IMEI debe ser de 15
@@ -164,13 +164,16 @@ de `model/` conservan su nombre.
       sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar ni etiqueta (por posición), X queda confirmado y la otra
       fila recibe el IMEI que tenía la de B (o ninguno) y queda sin confirmar aunque lo estuviera (`intercambiadas`); (3) X no está en
       ninguna fila: va a la primera fila libre de B (sin IMEI, sin confirmar, sin etiqueta y no cancelada) y se confirma (`puestas`); nunca
-      saca de la tabla un IMEI que alguien leyó: sin fila libre no se toca nada, aunque B tenga filas sin confirmar con otro IMEI; (4) si no, no se toca nada y queda para revisar (`paraRevisar`) con
-      su motivo: `PEDIDO_AJENO` (B no tiene filas en el ERP), `YA_SALIO` (X está en una fila con etiqueta de otro pedido), `CANCELADO` (las
+      saca de la tabla un IMEI que alguien leyó: sin fila libre no se toca nada, aunque B tenga filas sin confirmar con otro IMEI; (4) si B no tiene filas en el ERP (salió antes de que el ERP leyera ShippyPro, o es antiguo) no se toca nada y se cuenta aparte en `ajenos`
+      (no va a la lista ni a `paraRevisar`; el motivo `PEDIDO_AJENO` ya no se guarda); si no se puede por otra causa, no se toca nada y queda para revisar (`paraRevisar`) con
+      su motivo: `YA_SALIO` (X está en una fila con etiqueta de otro pedido), `CANCELADO` (las
       únicas filas posibles —la de B que tiene X, la de otro pedido que lo tiene o los huecos de B— tienen la marca «Cancelado») o
       `SIN_HUECO` (en (2), B no tiene fila sin confirmar ni etiqueta; en (3), B no tiene fila libre). Nunca cambia el IMEI de una fila con etiqueta (`envioFecha`) ni con la marca
       `CANCELADO`, ni confirma una cancelada; nunca toca el histórico. Poner un IMEI en una fila `ESPERA_STOCK` le quita la marca (apunte
-      `MARCA_QUITADA` `"ESPERA_STOCK — al poner el IMEI"`). Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos.
-      Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban` o `paraRevisar`).
+      `MARCA_QUITADA` `"ESPERA_STOCK — al poner el IMEI"`). Al terminar de recorrer los pares se vuelven a intentar los que quedaron `SIN_HUECO` (su hueco puede estar ocupado por un IMEI que un par posterior
+      saca de ahí con la regla 2), repitiendo mientras alguno avance y hasta 3 vueltas, en la misma transacción; solo los que siguen sin hueco van a
+      `paraRevisar`. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos (`ajenos` solo está en la respuesta del `POST`).
+      Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban`, `paraRevisar` o `ajenos`).
     - `GET /api/pedidos/asociaciones` (SUPERTECNICO y ADMIN; TECNICO `403`) → `EstadoAsociaciones` `{canales: [{canal, cuando,
       confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, libroModificado, error, errorEn, revisar: [{pedido, imei,
       motivo, vistoEn}]}]}`: un elemento por canal que ha tenido alguna pasada (`AMAZON` antes que `AMAZON_STOCKROOM`; lista vacía si no

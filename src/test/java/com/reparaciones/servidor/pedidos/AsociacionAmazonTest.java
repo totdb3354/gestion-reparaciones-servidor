@@ -177,7 +177,12 @@ class AsociacionAmazonTest {
     }
 
     private static RespuestaAsociaciones r(int confirmadas, int intercambiadas, int puestas, int yaEstaban, int paraRevisar, int descartadas) {
-        return new RespuestaAsociaciones(confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas);
+        return new RespuestaAsociaciones(confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, 0);
+    }
+
+    private static RespuestaAsociaciones r(int confirmadas, int intercambiadas, int puestas, int yaEstaban, int paraRevisar, int descartadas,
+                                           int ajenos) {
+        return new RespuestaAsociaciones(confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, ajenos);
     }
 
     /** Un apunte del historial, sin usuario (lo hace una maquina) y con la hora de la pasada. */
@@ -407,20 +412,56 @@ class AsociacionAmazonTest {
 
     // ------------------------------------------------------------------ regla 4 y bordes
 
-    @Test void regla4UnPedidoSinFilasEnElErpQuedaParaRevisarComoPedidoAjeno() {
+    @Test void regla4UnPedidoSinFilasEnElErpSeCuentaComoAjenoYNoVaAParaRevisar() {
         Fila a = fila(10, PA, 1, X);
-        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PC, X));
+        assertEquals(r(0, 0, 0, 0, 0, 0, 1), aplicar(PC, X));
         assertEquals(X, a.imei, "el IMEI no se mueve");
         assertNull(a.asociadaEn);
-        assertEquals(List.of(paraRevisar(PC, X, "PEDIDO_AJENO")), revisar());
+        assertTrue(revisar().isEmpty());
+        assertTrue(apuntes.isEmpty());
+        assertArrayEquals(new Object[]{T, 0, 0, 0, 0, 0, 0, "AMAZON"}, pasadas.get(0));
+    }
+
+    @Test void unParSinHuecoSeReintentaAlFinalCuandoUnParPosteriorLiberaElHueco() {
+        // B (PB) tiene su unica fila ocupada por Y sin confirmar; el par «X -> PB» va antes que «Y -> PC» (PC tiene una fila libre).
+        Fila b = fila(20, PB, 1, Y);
+        Fila c = fila(30, PC, 1, null);
+        assertEquals(r(0, 1, 1, 0, 0, 0, 0), aplicar(PB, X, PC, Y));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(Y, c.imei);
+        assertEquals(AHORA, c.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unParQueSigueSinHuecoTrasLasVueltasSeGuardaComoSinHueco() {
+        fila(20, PB, 1, Y);
+        fila(30, PC, 1, Z).etiqueta();
+        assertEquals(r(0, 0, 0, 0, 2, 0), aplicar(PB, W, PC, Y));
+        assertEquals(List.of(paraRevisar(PB, W, "SIN_HUECO"), paraRevisar(PC, Y, "SIN_HUECO")), revisar());
+        assertEquals(Y, porId(20).imei, "nunca se saca un IMEI leido");
+        assertEquals(Z, porId(30).imei);
+    }
+
+    @Test void unParConPedidoAjenoNoSeReintentaYRepetirLaPasadaConReintentoNoCambiaNada() {
+        fila(20, PB, 1, Y);
+        fila(30, PC, 1, null);
+        String[] pasada = {PB, X, PC, Y, "999-0000000-0000009", W};
+        assertEquals(r(0, 1, 1, 0, 0, 0, 1), aplicar(pasada));
+        List<String> trasLaPrimera = estado();
+        int apuntesPrimera = apuntes.size();
+        assertEquals(r(0, 0, 0, 2, 0, 0, 1), aplicar(pasada));
+        assertEquals(trasLaPrimera, estado());
+        assertEquals(apuntesPrimera, apuntes.size());
+        assertTrue(revisar().isEmpty());
     }
 
     @Test void soloCuentanLasFilasDelCanalDeLaPasada() {
         fila(20, PB, 1, null).canal("AMAZON_STOCKROOM");
         fila(10, PA, 1, X).canal("AMAZON_STOCKROOM");
         fila(30, PC, 1, null);
-        assertEquals(r(0, 0, 1, 0, 1, 0), aplicar(PB, Y, PC, X));
-        assertEquals(List.of(paraRevisar(PB, Y, "PEDIDO_AJENO")), revisar());
+        assertEquals(r(0, 0, 1, 0, 0, 0, 1), aplicar(PB, Y, PC, X));
+        assertTrue(revisar().isEmpty());
         assertEquals(X, porId(30).imei, "el X del otro canal no cuenta: se pone");
         assertEquals(X, porId(10).imei);
         verify(jdbc, atLeastOnce()).query(eq(String.format(AsociacionAmazon.SQL_DE_PEDIDOS, "?, ?")), any(RowMapper.class), eq("AMAZON"), eq(PB), eq(PC));
@@ -431,13 +472,13 @@ class AsociacionAmazonTest {
         fila(20, PB, 1, Y);
         fila(30, PC, 1, null);
         String[] pasada = {PB, X, PC, Z, PA, Y, "999-0000000-0000009", W};
-        assertEquals(r(1, 1, 1, 0, 1, 0), aplicar(pasada));
+        assertEquals(r(1, 1, 1, 0, 0, 0, 1), aplicar(pasada));
         List<String> trasLaPrimera = estado();
         int apuntesPrimera = apuntes.size();
-        assertEquals(r(0, 0, 0, 3, 1, 0), aplicar(pasada));
+        assertEquals(r(0, 0, 0, 3, 0, 0, 1), aplicar(pasada));
         assertEquals(trasLaPrimera, estado());
         assertEquals(apuntesPrimera, apuntes.size(), "ningun apunte nuevo");
-        assertEquals(List.of(paraRevisar("999-0000000-0000009", W, "PEDIDO_AJENO")), revisar());
+        assertTrue(revisar().isEmpty());
     }
 
     @Test void unImeiConEspaciosValeYLoQueNoEsUnImeiOUnPedidoSeDescartaYSeCuenta() {
@@ -502,11 +543,10 @@ class AsociacionAmazonTest {
         revisar.add(new Object[]{"AMAZON_STOCKROOM", PA, Y, "SIN_HUECO", Timestamp.valueOf(ANTES)});
         revisar.add(new Object[]{"AMAZON", PA, Z, "YA_SALIO", Timestamp.valueOf(ANTES)});
         fila(20, PB, 1, null);
-        assertEquals(r(0, 0, 1, 0, 1, 1), aplicar(PB, X, PC, W, PB, "CANCELADO"));
-        assertEquals(List.of(Arrays.toString(new Object[]{"AMAZON_STOCKROOM", PA, Y, "SIN_HUECO", Timestamp.valueOf(ANTES)}),
-                paraRevisar(PC, W, "PEDIDO_AJENO")), revisar());
+        assertEquals(r(0, 0, 1, 0, 0, 1, 1), aplicar(PB, X, PC, W, PB, "CANCELADO"));
+        assertEquals(List.of(Arrays.toString(new Object[]{"AMAZON_STOCKROOM", PA, Y, "SIN_HUECO", Timestamp.valueOf(ANTES)})), revisar());
         assertEquals(1, pasadas.size());
-        assertArrayEquals(new Object[]{T, 0, 0, 1, 0, 1, 1, "AMAZON"}, pasadas.get(0));
+        assertArrayEquals(new Object[]{T, 0, 0, 1, 0, 0, 1, "AMAZON"}, pasadas.get(0));
         InOrder orden = inOrder(jdbc);
         orden.verify(jdbc).update(AsociacionAmazon.SQL_TOMAR_PASADA, "AMAZON", T);
         orden.verify(jdbc, atLeastOnce()).query(anyString(), any(RowMapper.class), any(Object[].class));
@@ -528,7 +568,7 @@ class AsociacionAmazonTest {
             muchos.add(String.format("402-0000000-%07d", i));
             muchos.add(String.format("3500000000%05d", i));
         }
-        assertEquals(r(0, 0, 0, 0, 501, 0), aplicar(muchos.toArray(String[]::new)));
+        assertEquals(r(0, 0, 0, 0, 0, 0, 501), aplicar(muchos.toArray(String[]::new)));
         assertEquals(2, consultas.stream().filter(s -> s.contains("PEDIDO IN (")).count());
         assertEquals(2, consultas.stream().filter(s -> s.contains("IMEI IN (")).count());
     }
@@ -552,8 +592,8 @@ class AsociacionAmazonTest {
 
     @Test void stockroomGuardaSuPropiaPasadaYSuLista() {
         fila(20, PB, 1, null).canal("AMAZON_STOCKROOM");
-        assertEquals(r(0, 0, 1, 0, 1, 0), servicio.aplicar(Canal.AMAZON_STOCKROOM, pares(PB, X, PC, Y), AHORA));
-        assertEquals(List.of(Arrays.toString(new Object[]{"AMAZON_STOCKROOM", PC, Y, "PEDIDO_AJENO", T})), revisar());
+        assertEquals(r(0, 0, 1, 0, 0, 0, 1), servicio.aplicar(Canal.AMAZON_STOCKROOM, pares(PB, X, PC, Y), AHORA));
+        assertTrue(revisar().isEmpty());
         assertEquals("AMAZON_STOCKROOM", pasadas.get(0)[7]);
     }
 
