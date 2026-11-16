@@ -92,6 +92,14 @@ class CargaTecnicosTest {
         assertEquals(0.0, dia.get(1).pctTotal(), 0.001);
     }
 
+    // Tope de normales = 20 (decisión del usuario 2026-07-24): una normal un lunes (9h) = 5%
+    @Test void unaNormalEnLunesEsUnCincoPorCiento() {
+        assertEquals(20, CargaTecnicos.TOPE_NORMALES_9H);
+        var dia = CargaTecnicos.calcularDia(List.of(asig("A_1", 1, "WEB", false, false)),
+                List.of(), java.time.DayOfWeek.MONDAY, false);
+        assertEquals(5.0, dia.get(1).pctPendiente(), 1e-9);
+    }
+
     @Test void formateaPctEntero() {
         assertEquals("79%", CargaTecnicos.formatearPct(79.41));
         assertEquals("112%", CargaTecnicos.formatearPct(112.4));

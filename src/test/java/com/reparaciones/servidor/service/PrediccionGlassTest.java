@@ -56,7 +56,7 @@ class PrediccionGlassTest {
     }
 
     @Test void unaReparacionNormalDelMismoImeiNoExcluye() {
-        // javi: normal del mismo IMEI; jhona: normal de otro IMEI → misma carga (1/25) → empate → javi por alfabeto
+        // javi: normal del mismo IMEI; jhona: normal de otro IMEI → misma carga (1/20) → empate → javi por alfabeto
         List<ReparacionResumen> abiertas = List.of(asig("A1", IMEI, 1, "WEB"), asig("A2", "222222222222222", 2, "WEB"));
         assertSame(JAVI, PrediccionGlass.elegir(List.of(JAVI, JHONA), abiertas, List.of(), List.of(), IMEI, true));
     }
@@ -125,7 +125,7 @@ class PrediccionGlassTest {
                 new PrediccionGlass.VerdeEnModal("444444444444444", 1, REPARACION, false, true));
         assertSame(JHONA, PrediccionGlass.elegir(List.of(JAVI, JHONA), List.of(), List.of(), verdes1, IMEI, true));
 
-        // jhona: 1 glass verde (1/17 ≈ 0,0588); javi: 1 reparación verde (1/25 = 0,04) → javi gana
+        // jhona: 1 glass verde (1/17 ≈ 0,0588); javi: 1 reparación verde (1/20 = 0,05) → javi gana
         List<PrediccionGlass.VerdeEnModal> verdes2 = List.of(
                 new PrediccionGlass.VerdeEnModal("555555555555555", 1, REPARACION, false, true),
                 new PrediccionGlass.VerdeEnModal("666666666666666", 2, GLASS, false, true));
@@ -133,7 +133,7 @@ class PrediccionGlassTest {
     }
 
     @Test void unaReparacionVerdeDelMismoImeiNoExcluye() {
-        // javi: reparación verde del mismo IMEI; jhona: reparación verde de otro IMEI → misma carga (1/25) → empate → javi por alfabeto
+        // javi: reparación verde del mismo IMEI; jhona: reparación verde de otro IMEI → misma carga (1/20) → empate → javi por alfabeto
         List<PrediccionGlass.VerdeEnModal> verdes = List.of(
                 new PrediccionGlass.VerdeEnModal(IMEI, 1, REPARACION, false, true),
                 new PrediccionGlass.VerdeEnModal("222222222222222", 2, REPARACION, false, true));
