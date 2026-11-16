@@ -33,7 +33,8 @@ public class FilasDAO {
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
             + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
-            + " ASOCIADA_EN, ASOCIADA_ORIGEN FROM Pedido_fila";
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN,"
+            + " (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR FROM Pedido_fila";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
     static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
@@ -64,7 +65,10 @@ public class FilasDAO {
     static final String SQL_SHIPPYPRO_CON_IMEI_DESDE = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
             + " AND (CERRADA_EN IS NULL OR FECHA >= ?)";
     static final String SQL_SHIPPYPRO_CON_IMEI = SQL_SHIPPYPRO_CON_IMEI_DESDE + " AND IMEI IN (%s) ORDER BY FECHA, ID_FILA";
-    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_VALIDACION_BLOQUEADA = "SELECT IMEI, ORIGEN, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_PONER_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = ?, VALIDADA_EN = ?, VALIDADA_USU = ? WHERE ID_FILA = ?";
+    static final String SQL_QUITAR_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = NULL, VALIDADA_EN = NULL, VALIDADA_USU = NULL WHERE ID_FILA = ?";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
     static final String SQL_FILA_MARCA_BLOQUEADA = "SELECT ORIGEN, MARCA, MARCA_NOTA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_MARCA = "UPDATE Pedido_fila SET MARCA = ?, MARCA_NOTA = ?, MARCA_EN = ?, MARCA_USU = ? WHERE ID_FILA = ?";
@@ -273,7 +277,7 @@ public class FilasDAO {
         /** Solo de {@link #ponerFaltaEnviar}: no se puede marcar (no es de ShippyPro, no es de un canal web o no tiene la etiqueta generada). */
         NO_MARCABLE }
 
-    private record Bloqueada(String imei, boolean historico, String marca) {}
+    private record Bloqueada(String imei, boolean historico, String marca, String validadaImei) {}
 
     /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
      *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
@@ -282,7 +286,7 @@ public class FilasDAO {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
         List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
-                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA")), idFila);
+                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA"), rs.getString("VALIDADA_IMEI")), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         if (filas.get(0).historico()) return Resultado.CERRADA;
         if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
@@ -290,6 +294,11 @@ public class FilasDAO {
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
+        // La validacion vale para ese IMEI: al cambiarlo o quitarlo se borra (y se apunta), para que no reviva si el IMEI vuelve.
+        if (filas.get(0).validadaImei() != null && !filas.get(0).validadaImei().equals(nuevo)) {
+            jdbc.update(SQL_QUITAR_VALIDACION, idFila);
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, Timestamp.valueOf(ahora), CambioImei.VALIDACION_QUITADA, "al cambiar el IMEI");
+        }
         // Un IMEI puesto resuelve «En espera de stock»; las demas marcas se quedan.
         if (nuevo != null && Marca.ESPERA_STOCK.name().equals(filas.get(0).marca())) {
             jdbc.update(SQL_QUITAR_MARCA, idFila);
@@ -300,6 +309,37 @@ public class FilasDAO {
     }
 
     static final String SEP_DETALLE = " \u2014 ";
+
+    private record BloqueadaValidacion(String imei, String origen, String validadaImei) {}
+
+    /** Da por bueno ({@code validar}) el aviso de SKU del IMEI de una fila, o quita la validacion, y lo apunta (VALIDADA con el motivo como
+     *  detalle, o VALIDACION_QUITADA). Misma transaccion que {@link #ponerImei}: READ COMMITTED y la fila bloqueada al leerla. Orden:
+     *  NO_EXISTE; CERRADA (historico); CAMBIADA ({@code imeiAnterior} no nulo y distinto del IMEI actual, o, al validar, el IMEI actual no es
+     *  {@code imeiVisto}, el que se miro para decidir el motivo); SIN_CAMBIO (validar lo ya validado para ese IMEI; quitar sin validacion: una
+     *  validacion de otro IMEI se borra en silencio); si no, PUESTO. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Resultado ponerValidacion(int idFila, boolean validar, String imeiVisto, String motivo, String imeiAnterior, Integer idUsu,
+                                     LocalDateTime ahora) {
+        List<BloqueadaValidacion> filas = jdbc.query(SQL_FILA_VALIDACION_BLOQUEADA, (rs, n) -> new BloqueadaValidacion(rs.getString("IMEI"),
+                rs.getString("ORIGEN"), rs.getString("VALIDADA_IMEI")), idFila);
+        if (filas.isEmpty()) return Resultado.NO_EXISTE;
+        BloqueadaValidacion f = filas.get(0);
+        if ("HISTORICO".equals(f.origen())) return Resultado.CERRADA;
+        if (imeiAnterior != null && !imeiAnterior.equals(f.imei() == null ? "" : f.imei())) return Resultado.CAMBIADA;
+        Timestamp t = Timestamp.valueOf(ahora);
+        if (!validar) {
+            if (f.validadaImei() == null) return Resultado.SIN_CAMBIO;
+            jdbc.update(SQL_QUITAR_VALIDACION, idFila);
+            if (!f.validadaImei().equals(f.imei())) return Resultado.SIN_CAMBIO;
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.VALIDACION_QUITADA, null);
+            return Resultado.PUESTO;
+        }
+        if (f.imei() == null || !f.imei().equals(imeiVisto)) return Resultado.CAMBIADA;
+        if (f.imei().equals(f.validadaImei())) return Resultado.SIN_CAMBIO;
+        jdbc.update(SQL_PONER_VALIDACION, f.imei(), t, idUsu, idFila);
+        jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.VALIDADA, motivo);
+        return Resultado.PUESTO;
+    }
 
     private record BloqueadaMarca(String origen, String marca, String nota) {}
 
@@ -498,7 +538,8 @@ public class FilasDAO {
                 canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
                 rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
                 hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"), rs.getString("MARCA"), rs.getString("MARCA_NOTA"), hora(rs, "MARCA_EN"),
-                rs.getString("MARCA_POR"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"));
+                rs.getString("MARCA_POR"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"), rs.getString("VALIDADA_IMEI"),
+                hora(rs, "VALIDADA_EN"), rs.getString("VALIDADA_POR"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

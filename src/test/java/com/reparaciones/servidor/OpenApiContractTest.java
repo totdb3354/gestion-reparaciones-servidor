@@ -355,7 +355,7 @@ class OpenApiContractTest {
 
         for (String operacion : List.of("get /api/pedidos/filas", "get /api/pedidos/filas/{id}/recomendados",
                 "put /api/pedidos/filas/{id}/imei", "put /api/pedidos/filas/{id}/falta-enviar", "put /api/pedidos/filas/{id}/marca",
-                "post /api/pedidos/sincronizados", "post /api/pedidos/asociaciones", "get /api/pedidos/asociaciones",
+                "put /api/pedidos/filas/{id}/validacion", "post /api/pedidos/sincronizados", "post /api/pedidos/asociaciones", "get /api/pedidos/asociaciones",
                 "get /api/pedidos/filas/{id}/cambios", "get /api/pedidos/fuentes",
                 "get /api/pedidos/filas/{id}/etiqueta")) {
             String[] partes = operacion.split(" ", 2);
@@ -375,7 +375,7 @@ class OpenApiContractTest {
 
         assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "envioFecha", "transportista", "seguimiento", "impresaEn",
                 "nivel", "motivo", "skuMovil", "caja", "canal", "faltaEnviarEn", "sincronizadaEn", "marca", "marcaNota", "marcaEn", "marcaPor",
-                "asociadaEn", "asociadaOrigen");
+                "asociadaEn", "asociadaOrigen", "validadaEn", "validadaPor", "motivoValidado");
         assertNoNullable(esquemas, "PeticionAsociaciones", "canal", "pares");
         assertNullable(esquemas, "PeticionAsociacionesPar", "pedido", "imei");
         assertNoNullable(esquemas, "RespuestaAsociaciones", "confirmadas", "intercambiadas", "puestas", "yaEstaban", "paraRevisar", "descartadas", "ajenos");
@@ -395,6 +395,7 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "CambioImei", "fecha", "tipo");
         assertNullable(esquemas, "PeticionFaltaEnviar", "falta");
         assertNullable(esquemas, "PeticionMarca", "marca", "nota", "marcaAnterior");
+        assertNullable(esquemas, "PeticionValidacion", "validar", "imeiAnterior");
         assertNullable(esquemas, "CambioImei", "detalle");
         assertNoNullable(esquemas, "RecomendadorCandidato", "imei", "nivel");
         assertNullable(esquemas, "RecomendadorCandidato", "sku", "caja");
@@ -433,6 +434,7 @@ class OpenApiContractTest {
         assertCodigos(paths, "/api/pedidos/filas/{id}/imei", "put", "200", "400", "404", "409");
         assertCodigos(paths, "/api/pedidos/filas/{id}/falta-enviar", "put", "200", "400", "404", "409");
         assertCodigos(paths, "/api/pedidos/filas/{id}/marca", "put", "200", "400", "404", "409");
+        assertCodigos(paths, "/api/pedidos/filas/{id}/validacion", "put", "200", "400", "404", "409");
         assertCodigos(paths, "/api/pedidos/sincronizados", "post", "200", "400", "401", "404");
         assertCodigos(paths, "/api/pedidos/asociaciones", "post", "200", "400", "401", "404");
         assertTrue(ruta.path("post").path("responses").path("202").toString().contains("/CargaHistoricoEstadoCarga\""),
@@ -811,7 +813,8 @@ class OpenApiContractTest {
                 "post /api/reparaciones/{idRep}/incidencia",
                 "put /api/pedidos/filas/{id}/imei",
                 "put /api/pedidos/filas/{id}/falta-enviar",
-                "put /api/pedidos/filas/{id}/marca");
+                "put /api/pedidos/filas/{id}/marca",
+                "put /api/pedidos/filas/{id}/validacion");
 
         for (String operacion : conCabecera) {
             String[] partes = operacion.split(" ", 2);

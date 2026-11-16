@@ -27,7 +27,7 @@ class FilasDAOTest {
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
             + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
-            + " ASOCIADA_EN, ASOCIADA_ORIGEN FROM Pedido_fila";
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -221,7 +221,7 @@ class FilasDAOTest {
         verifyNoInteractions(jdbc);
     }
 
-    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN, MARCA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
 
     /** El mapeador del bloqueo recibe un ResultSet: se simula con la fila indicada. */
     @SuppressWarnings("unchecked")

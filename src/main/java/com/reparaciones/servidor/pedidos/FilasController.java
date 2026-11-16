@@ -42,6 +42,9 @@ public class FilasController {
     static final String MSG_MARCA = "La marca debe ser ESPERA_STOCK, EN_REVISION, PENDIENTE_COLOR o CANCELADO (o nula para quitarla)";
     static final String MSG_NOTA = "La nota de la marca admite como mucho 200 caracteres";
     static final int MAX_NOTA = 200;
+    static final String MSG_VALIDAR = "Indica si validar (true o false)";
+    static final String MSG_SIN_IMEI = "La fila no tiene IMEI: no hay nada que validar";
+    static final String MSG_NO_VALIDABLE = "Solo se puede validar un aviso de SKU (otro modelo, otro color o grado, grado que no se vende o SKU que el maestro no conoce)";
     static final String MSG_FALTA = "Indica si falta enviar (true o false)";
     static final String MSG_NO_MARCABLE = "Solo se puede marcar en un pedido de web con la etiqueta ya generada";
 
@@ -180,6 +183,47 @@ public class FilasController {
         });
     }
 
+    /** Da por bueno ({@code validar} true) el aviso naranja de SKU del IMEI de la fila, o quita la validacion (false). Validar exige IMEI y que el
+     *  aviso actual sea de SKU (MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO; si no, 409). La validacion vale solo para ese IMEI.
+     *  {@code imeiAnterior} como en el PUT del IMEI (409 si no coincide). Validar lo ya validado o quitar lo no validado: 200 sin apunte. Devuelve la fila releida. */
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = FilaVista.class))),
+        @ApiResponse(responseCode = "400", content = @Content),
+        @ApiResponse(responseCode = "404", content = @Content),
+        @ApiResponse(responseCode = "409", content = @Content)
+    })
+    @PutMapping("/filas/{id}/validacion")
+    public FilaVista ponerValidacion(@PathVariable int id, @RequestBody PeticionValidacion req,
+                                     @AuthenticationPrincipal UsuarioPrincipal principal,
+                                     @RequestHeader(value = RegistroIdempotencia.CABECERA, required = false) String claveIdempotencia) {
+        if (req.validar() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_VALIDAR);
+        boolean validar = req.validar();
+        String anterior = req.imeiAnterior() == null ? null : req.imeiAnterior().strip();
+        if (anterior != null && !anterior.isEmpty() && !anterior.matches("[0-9]{15}"))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, MSG_IMEI);
+        FilaPedido fila = dao.porId(id).orElseThrow(() -> noExiste(id));
+        if (VistaFilas.HISTORICO.equals(fila.origen()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
+        return idempotencia.ejecutar(principal.getIdUsu(), "pedido-validacion", claveIdempotencia, new CambioValidacion(id, validar, anterior), () -> {
+            String imeiVisto = null, motivo = null;
+            if (validar) {
+                // El aviso actual se calcula fuera de la transaccion; el DAO comprueba con la fila bloqueada que el IMEI siga siendo el mismo.
+                FilaVista v = vista.fila(id).orElseThrow(() -> noExiste(id));
+                if (v.imei() == null || v.imei().isBlank()) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_SIN_IMEI);
+                imeiVisto = v.imei();
+                motivo = v.motivoValidado() != null ? v.motivoValidado() : v.motivo();
+                if (motivo == null || !AvisoImei.MOTIVOS_SKU.contains(motivo))
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_NO_VALIDABLE);
+            }
+            // Las reglas se deciden en la transaccion del DAO, con la fila bloqueada.
+            FilasDAO.Resultado r = dao.ponerValidacion(id, validar, imeiVisto, motivo, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
+            if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
+            if (r == FilasDAO.Resultado.CAMBIADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_CAMBIADO);
+            if (r == FilasDAO.Resultado.CERRADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
+            return vista.fila(id).orElseThrow(() -> noExiste(id));
+        });
+    }
+
     @GetMapping("/fuentes")
     public List<FuenteVista> fuentes() {
         return vista.fuentes();
@@ -188,6 +232,8 @@ public class FilasController {
     private record Cambio(int id, String imei, String imeiAnterior) {}
 
     private record CambioFalta(int id, boolean falta) {}
+
+    private record CambioValidacion(int id, boolean validar, String imeiAnterior) {}
 
     private record CambioMarca(int id, String marca, String nota, String marcaAnterior) {}
 

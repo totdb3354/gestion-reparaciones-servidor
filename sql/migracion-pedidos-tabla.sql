@@ -9,9 +9,9 @@
 --    (hasta 5 y 3).
 -- 2) Cinco tablas nuevas y tres columnas en Nsys_producto. Pedido_fila ya trae FALTA_ENVIAR_EN, FALTA_ENVIAR_USU y SINCRONIZADA_EN
 --    (envios parciales de pedidos de web), MARCA, MARCA_NOTA, MARCA_EN y MARCA_USU (marcas de la fila), ASOCIADA_EN y ASOCIADA_ORIGEN
---    (asociacion de IMEI y pedido en Amazon) y Pedido_fila_cambio, TIPO (IMEI, FALTA_ENVIAR, YA_ENVIADO, MARCA, MARCA_QUITADA, ASOCIADA o
---    IMEI_INTERCAMBIADO) y DETALLE; mas Pedido_asociacion_revisar y Pedido_asociacion_pasada. En una base que ya tiene las tablas se aplican
---    sql/migracion-pedidos-marcas.sql y sql/migracion-pedidos-asociacion.sql.
+--    (asociacion de IMEI y pedido en Amazon), VALIDADA_IMEI, VALIDADA_EN y VALIDADA_USU (validar el SKU del IMEI) y Pedido_fila_cambio, TIPO
+--    (IMEI, FALTA_ENVIAR, YA_ENVIADO, MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA) y DETALLE; mas Pedido_asociacion_revisar y Pedido_asociacion_pasada. En una base que ya tiene las tablas se aplican
+--    sql/migracion-pedidos-marcas.sql, sql/migracion-pedidos-asociacion.sql y sql/migracion-pedidos-validacion.sql.
 -- 3) Comprobacion final: CREADAS debe dar 5 y COLUMNAS, 3 (tambien en una segunda vez).
 -- No lanzarla mientras corre la copia nocturna.
 -- Vuelta atras: el servidor anterior funciona con todo puesto; no hace falta quitar nada.
@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS Pedido_fila (
     MARCA_USU    INT          NULL COMMENT 'Quien puso la marca',
     ASOCIADA_EN     DATETIME    NULL COMMENT 'Amazon: cuando se confirmo el pedido del IMEI (libro de ventas o historico); NULL = sin asociar',
     ASOCIADA_ORIGEN VARCHAR(20) NULL COMMENT 'LIBRO (libro de ventas) o HISTORICO (carga del historico de la hoja); NULL = sin asociar',
+    VALIDADA_IMEI VARCHAR(20) NULL COMMENT 'El IMEI para el que una persona dio por bueno el aviso de SKU; solo vale mientras sea el IMEI de la fila',
+    VALIDADA_EN   DATETIME    NULL COMMENT 'Cuando se valido',
+    VALIDADA_USU  INT         NULL COMMENT 'Quien valido',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
@@ -64,7 +67,8 @@ CREATE TABLE IF NOT EXISTS Pedido_fila (
     KEY idx_fila_imei (IMEI),
     KEY idx_fila_pedido (PEDIDO),
     CONSTRAINT fk_fila_falta_usuario FOREIGN KEY (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
-    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
+    CONSTRAINT fk_fila_validada_usuario FOREIGN KEY (VALIDADA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS Pedido_fila_cambio (
     ID_CAMBIO     INT         NOT NULL AUTO_INCREMENT,
@@ -73,8 +77,8 @@ CREATE TABLE IF NOT EXISTS Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA o IMEI_INTERCAMBIADO',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,

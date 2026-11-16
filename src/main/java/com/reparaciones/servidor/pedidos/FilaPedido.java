@@ -12,13 +12,28 @@ import java.time.LocalDateTime;
  *  que el plugin de la web aviso de que el pedido ya lleva ese movil; nulo = nunca. {@code marca}: ESPERA_STOCK, EN_REVISION,
  *  PENDIENTE_COLOR o CANCELADO (nula = sin marca), con su nota, cuando se puso y el nombre de usuario de quien la puso.
  *  {@code asociadaEn}: en Amazon, cuando se confirmo el pedido del IMEI (libro de ventas o historico); nulo = sin asociar;
- *  {@code asociadaOrigen}: LIBRO o HISTORICO (nulo sin asociar). */
+ *  {@code asociadaOrigen}: LIBRO o HISTORICO (nulo sin asociar).
+ *  {@code validadaImei}: el IMEI para el que una persona dio por bueno el aviso de SKU (vale solo mientras sea el IMEI de la fila);
+ *  {@code validadaEn} y {@code validadaPor} (nombre de usuario): cuando y quien; los tres nulos = sin validar. */
 public record FilaPedido(int id, LocalDate fecha, String plataforma, String sku, String imei, String pedido,
                          LocalDate fechaCompra, String origen, Canal canal, Integer posicion, LocalDateTime cerradaEn,
                          LocalDateTime envioFecha, String transportista, String seguimiento,
                          LocalDateTime reabiertaEn, Long envioId, LocalDateTime impresaEn, LocalDateTime faltaEnviarEn,
                          LocalDateTime sincronizadaEn, String marca, String marcaNota, LocalDateTime marcaEn, String marcaPor,
-                         LocalDateTime asociadaEn, String asociadaOrigen) {
+                         LocalDateTime asociadaEn, String asociadaOrigen,
+                         String validadaImei, LocalDateTime validadaEn, String validadaPor) {
+
+    /** Una fila sin validar. */
+    public FilaPedido(int id, LocalDate fecha, String plataforma, String sku, String imei, String pedido,
+                      LocalDate fechaCompra, String origen, Canal canal, Integer posicion, LocalDateTime cerradaEn,
+                      LocalDateTime envioFecha, String transportista, String seguimiento,
+                      LocalDateTime reabiertaEn, Long envioId, LocalDateTime impresaEn, LocalDateTime faltaEnviarEn,
+                      LocalDateTime sincronizadaEn, String marca, String marcaNota, LocalDateTime marcaEn, String marcaPor,
+                      LocalDateTime asociadaEn, String asociadaOrigen) {
+        this(id, fecha, plataforma, sku, imei, pedido, fechaCompra, origen, canal, posicion, cerradaEn, envioFecha, transportista,
+                seguimiento, reabiertaEn, envioId, impresaEn, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn, marcaPor,
+                asociadaEn, asociadaOrigen, null, null, null);
+    }
 
     /** Una fila sin asociar. */
     public FilaPedido(int id, LocalDate fecha, String plataforma, String sku, String imei, String pedido,

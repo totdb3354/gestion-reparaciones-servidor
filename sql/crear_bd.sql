@@ -670,6 +670,9 @@ CREATE TABLE Pedido_fila (
     MARCA_USU    INT          NULL COMMENT 'Quien puso la marca',
     ASOCIADA_EN     DATETIME    NULL COMMENT 'Amazon: cuando se confirmo el pedido del IMEI (libro de ventas o historico); NULL = sin asociar',
     ASOCIADA_ORIGEN VARCHAR(20) NULL COMMENT 'LIBRO (libro de ventas) o HISTORICO (carga del historico de la hoja); NULL = sin asociar',
+    VALIDADA_IMEI VARCHAR(20) NULL COMMENT 'El IMEI para el que una persona dio por bueno el aviso de SKU; solo vale mientras sea el IMEI de la fila',
+    VALIDADA_EN   DATETIME    NULL COMMENT 'Cuando se valido',
+    VALIDADA_USU  INT         NULL COMMENT 'Quien valido',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
@@ -677,7 +680,8 @@ CREATE TABLE Pedido_fila (
     KEY idx_fila_imei (IMEI),
     KEY idx_fila_pedido (PEDIDO),
     CONSTRAINT fk_fila_falta_usuario FOREIGN KEY (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
-    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
+    CONSTRAINT fk_fila_validada_usuario FOREIGN KEY (VALIDADA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 CREATE TABLE Pedido_fila_cambio (
     ID_CAMBIO     INT         NOT NULL AUTO_INCREMENT,
@@ -686,8 +690,8 @@ CREATE TABLE Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA o IMEI_INTERCAMBIADO',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,

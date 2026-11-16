@@ -127,6 +127,23 @@ de `model/` conservan su nombre.
     Tipos nuevos de `tipo`: `MARCA` (se puso o cambió la marca; `detalle` `"<MARCA>"` o `"<MARCA> — <nota>"`, `imeiAnterior` e `imeiNuevo`
     nulos) y `MARCA_QUITADA` (se quitó; `detalle` = la marca que tenía, con `"<MARCA> — al poner el IMEI"` si la quitó el ERP al poner un
     IMEI, en cuyo caso el usuario es quien puso el IMEI).
+  - Validar SKU (spec `2026-11-16-pedidos-validar-sku-design.md`): `PUT /api/pedidos/filas/{id}/validacion` con `PeticionValidacion`
+    `{validar, imeiAnterior?}` → `FilaVista` releída. `validar` obligatorio (`true` da por bueno el aviso de SKU del IMEI de la fila, `false`
+    quita la validación; ausente o nulo, `400`). `imeiAnterior` (opcional, nullable) como en `PUT .../imei`: `null` no comprueba, `""` espera
+    la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`); si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de
+    esta fila mientras tanto. Recarga y vuelve a intentarlo.". Validar exige que la fila tenga IMEI (si no, `409` "La fila no tiene IMEI: no hay
+    nada que validar") y que su aviso actual sea de SKU: `motivo` `MODELO`, `COLOR_O_GRADO`, `GRADO_NO_VENDIBLE` o `SKU_DESCONOCIDO` (con
+    `NO_EN_NSYS`, `EN_OTRA_FILA`, cualquier aviso ámbar o sin aviso, `409` "Solo se puede validar un aviso de SKU ..."). `404` si la fila no
+    existe; `409` "La fila es del histórico y no se edita" si es del histórico. Validar lo ya validado para ese IMEI, o quitar lo no
+    validado, es un `200` sin apunte; quitar una validación que ya no vale (de otro IMEI) la borra sin apunte. Atómico, con la fila
+    bloqueada. Cabecera opcional `Idempotency-Key` (el registro incluye validar e imeiAnterior). SUPERTECNICO y ADMIN (TECNICO `403`).
+    `FilaVista` gana al final `validadaEn` (hora de Madrid), `validadaPor` (nombre de usuario) y `motivoValidado`, todos nullable. Al servir:
+    si la fila guarda una validación para su IMEI actual y el aviso calculado sigue siendo de uno de esos cuatro motivos, `nivel` pasa a `OK`,
+    `motivo` a `null` (`skuMovil` y `caja` se conservan) y `motivoValidado` es el motivo que tenía el aviso; con otro IMEI, o si el aviso
+    ya es otro (p. ej. `EN_OTRA_FILA`), la validación se ignora y los tres campos van `null`. Poner (`PUT .../imei`) un IMEI distinto del
+    validado, o quitarlo, borra la validación en la misma transacción y apunta `VALIDACION_QUITADA` (`detalle` `"al cambiar el IMEI"`,
+    usuario el que cambió el IMEI). Historial: tipos nuevos `VALIDADA` (`detalle` = el motivo, p. ej. `COLOR_O_GRADO`) y `VALIDACION_QUITADA`
+    (`detalle` nulo, o `"al cambiar el IMEI"`); `imeiAnterior` e `imeiNuevo` nulos. La validación no cambia `estado` ni `GET .../vendidos`.
   - `GET /api/pedidos/vendidos`: **ninguna fila con marca se sirve**, tenga o no IMEI. La fecha que cuenta para la ventana de días y es la
     `fechaImei` de la respuesta es la más reciente entre el último apunte de tipo `IMEI` y el último `MARCA_QUITADA` de la fila: al quitar
     la marca la fila vuelve como recién puesta aunque el IMEI sea antiguo. Los apuntes `MARCA`, `FALTA_ENVIAR` y `YA_ENVIADO` no cuentan.

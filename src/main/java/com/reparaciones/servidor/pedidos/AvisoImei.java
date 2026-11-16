@@ -13,6 +13,13 @@ public record AvisoImei(String nivel, String motivo, String skuMovil, String caj
     public static final String OK = "OK";
     public static final String AVISO = "AVISO";
     public static final String MAL = "MAL";
+    /** Los motivos de SKU, los unicos que una persona puede dar por buenos; NO_EN_NSYS y EN_OTRA_FILA se arreglan cambiando el IMEI. */
+    public static final java.util.Set<String> MOTIVOS_SKU = java.util.Set.of("MODELO", "COLOR_O_GRADO", "GRADO_NO_VENDIBLE", "SKU_DESCONOCIDO");
+
+    /** Si el motivo es uno de los cuatro de SKU. */
+    public boolean esDeSku() {
+        return motivo != null && MOTIVOS_SKU.contains(motivo);
+    }
 
     public static AvisoImei de(Aceptacion ac, Canal canal, MovilNsys m, LoQueVale.Valor v, List<TrabajoAbierto> trabajos,
                                boolean enOtraFilaViva) {

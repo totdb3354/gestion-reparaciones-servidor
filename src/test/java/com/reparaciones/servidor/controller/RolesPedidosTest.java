@@ -71,6 +71,8 @@ class RolesPedidosTest {
                     .contentType(MediaType.APPLICATION_JSON).content("{\"imei\":\"350000000000001\"}"),
             t -> put("/api/pedidos/filas/5/falta-enviar").header("Authorization", t)
                     .contentType(MediaType.APPLICATION_JSON).content("{\"falta\":true}"),
+            t -> put("/api/pedidos/filas/5/validacion").header("Authorization", t)
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"validar\":false}"),
             t -> put("/api/pedidos/filas/5/marca").header("Authorization", t)
                     .contentType(MediaType.APPLICATION_JSON).content("{\"marca\":\"EN_REVISION\",\"nota\":\"revisar\"}"),
             t -> get("/api/pedidos/filas/5/cambios").header("Authorization", t),

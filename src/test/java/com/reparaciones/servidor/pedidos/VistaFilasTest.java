@@ -101,6 +101,71 @@ class VistaFilasTest {
         verify(nsys).porImeis(Set.of(IMEI1, IMEI2));
     }
 
+    private static FilaPedido conValidacion(FilaPedido f, String validadaImei) {
+        return new FilaPedido(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), f.origen(), f.canal(),
+                f.posicion(), f.cerradaEn(), null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                validadaImei, AHORA.minusHours(2), "super");
+    }
+
+    /** El color del movil no es el del SKU: COLOR_O_GRADO. */
+    private void nsysConUnMovilDeOtroColor(MovilNsys m) {
+        when(nsys.porImeis(any())).thenReturn(List.of(m));
+        when(nsys.trabajosAbiertos(anyCollection())).thenReturn(Map.of());
+        when(taller.valedor(any())).thenReturn(x -> new LoQueVale.Valor("Rojo", "A", "i13128RojoA", null, null, null, false));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(
+                AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
+    }
+
+    @Test void unaValidacionDeEsteImeiPasaElAvisoDeSkuAOkYGuardaElMotivo() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), conValidacion(fila(2, IMEI2, null), IMEI2)));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of());
+        nsysConUnMovilDeOtroColor(movil(IMEI1));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI1), movil(IMEI2)));
+
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+
+        assertEquals("MAL", f.get(0).nivel());
+        assertEquals("COLOR_O_GRADO", f.get(0).motivo());
+        assertNull(f.get(0).motivoValidado());
+        assertNull(f.get(0).validadaEn());
+        assertEquals("OK", f.get(1).nivel());
+        assertNull(f.get(1).motivo());
+        assertEquals("COLOR_O_GRADO", f.get(1).motivoValidado());
+        assertEquals(AHORA.minusHours(2), f.get(1).validadaEn());
+        assertEquals("super", f.get(1).validadaPor());
+        assertEquals("i13128RojoA", f.get(1).skuMovil());
+        assertEquals("Listos", f.get(1).caja());
+    }
+
+    @Test void unaValidacionDeOtroImeiSeIgnora() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(conValidacion(fila(2, IMEI2, null), IMEI1)));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of());
+        nsysConUnMovilDeOtroColor(movil(IMEI2));
+
+        FilaVista f = vista.filas(null, null, null).filas().get(0);
+
+        assertEquals("MAL", f.nivel());
+        assertEquals("COLOR_O_GRADO", f.motivo());
+        assertNull(f.motivoValidado());
+        assertNull(f.validadaEn());
+        assertNull(f.validadaPor());
+    }
+
+    @Test void unaValidacionNoValeSiElAvisoYaNoEsDeSku() {
+        // El IMEI esta ahora en otra fila: EN_OTRA_FILA no se valida.
+        FilaPedido validada = conValidacion(fila(2, IMEI2, null), IMEI2);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(validada));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of(validada, fila(9, IMEI2, null)));
+        nsysConUnMovilDeOtroColor(movil(IMEI2));
+
+        FilaVista f = vista.filas(null, null, null).filas().get(0);
+
+        assertEquals("MAL", f.nivel());
+        assertEquals("EN_OTRA_FILA", f.motivo());
+        assertNull(f.motivoValidado());
+        assertNull(f.validadaEn());
+    }
+
     @Test void laFilaVistaTraeLaAsociacionYElPedidoAunqueNoEsteAsociada() {
         FilaPedido base = fila(1, null, null);
         FilaPedido asociada = new FilaPedido(2, base.fecha(), "AMZ", base.sku(), null, "402-0000000-0000002", base.fechaCompra(), "SHIPPYPRO",
