@@ -100,7 +100,7 @@ public class GlassController {
                 .map(v -> new PrediccionGlass.VerdeEnModal(v.imei(), v.idTec(), v.tipo(), v.esChasis(), v.conCliente()))
                 .toList();
         Tecnico t = PrediccionGlass.elegir(tecnicoDao.getAllActivos(), estado.abiertas(), estado.cerradasHoy(), verdes,
-                req.imei(), req.conCliente());
+                req.imei(), req.conCliente(), estado.inicioHoy());
         return t == null ? new PrediccionGlassRespuesta(null, null)
                          : new PrediccionGlassRespuesta(t.getIdTec(), t.getNombre());
     }

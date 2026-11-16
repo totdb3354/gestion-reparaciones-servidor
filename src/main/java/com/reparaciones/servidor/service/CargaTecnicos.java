@@ -5,6 +5,7 @@ import com.reparaciones.servidor.model.ReparacionResumen;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 
@@ -78,9 +79,38 @@ public final class CargaTecnicos {
         return (r.isPorCerrar() && tipo == TipoTrabajo.REPARACION) ? base * PESO_POR_CERRAR : base;
     }
 
+    /** «Por cerrar» de reparación marcada desde el inicio de hoy (spec 2026-11-16 §2). Sin corte o sin fecha: no. */
+    static boolean marcadaHoy(ReparacionResumen r, LocalDateTime inicioHoy) {
+        return inicioHoy != null && r.isPorCerrar() && r.getPorCerrarAt() != null
+                && TipoTrabajo.desde(r.getIdRep()) == TipoTrabajo.REPARACION
+                && !r.getPorCerrarAt().isBefore(inicioHoy);
+    }
+
+    /**
+     * {hecho, pendiente} de una asignación, en fracción de jornada de 9h (spec 2026-11-16 §2). Una «por cerrar»
+     * marcada hoy recupera lo hecho: abierta, 11/12 a hecho y 1/12 a pendiente; cerrada hoy, entera a hecho. El resto
+     * como siempre: lo abierto es pendiente y lo cerrado hoy, hecho. Package-private: la usa {@link PrediccionGlass}.
+     */
+    static double[] reparto(ReparacionResumen r, boolean esAbierta, boolean soloPedidos, LocalDateTime inicioHoy) {
+        double f = fraccion9h(r, esAbierta, soloPedidos);
+        if (f > 0 && marcadaHoy(r, inicioHoy)) {
+            double entera = f / PESO_POR_CERRAR;
+            return esAbierta ? new double[]{entera - f, f} : new double[]{entera, 0};
+        }
+        return esAbierta ? new double[]{0, f} : new double[]{f, 0};
+    }
+
+    /** Sin corte: nada cuenta como marcado «por cerrar» hoy (el cálculo de antes de la 0.9.36). */
     public static java.util.Map<Integer, DiaTecnico> calcularDia(
             List<ReparacionResumen> abiertas, List<ReparacionResumen> cerradasHoy,
             java.time.DayOfWeek dia, boolean soloPedidos) {
+        return calcularDia(abiertas, cerradasHoy, dia, soloPedidos, null);
+    }
+
+    /** @param inicioHoy inicio de hoy en Madrid, en la zona de la JVM (el mismo corte que las completadas hoy). */
+    public static java.util.Map<Integer, DiaTecnico> calcularDia(
+            List<ReparacionResumen> abiertas, List<ReparacionResumen> cerradasHoy,
+            java.time.DayOfWeek dia, boolean soloPedidos, LocalDateTime inicioHoy) {
         int horas = JORNADA_HORAS.getOrDefault(dia, 0);
         boolean sinJornada = horas == 0;
         double factor = sinJornada ? 0 : 9.0 / horas;   // pct del día = fracción9h × 9/horas × 100
@@ -89,12 +119,19 @@ public final class CargaTecnicos {
         java.util.function.BiConsumer<ReparacionResumen, Boolean> suma = (r, esAbierta) -> {
             if (TipoTrabajo.desde(r.getIdRep()) == TipoTrabajo.PULIDO) return;
             if (soloPedidos && (r.getCliente() == null || r.getCliente().isEmpty())) return;
-            double f = fraccion9h(r, esAbierta, soloPedidos);
-            int idx = esAbierta ? 1 : 0;
-            acum.computeIfAbsent(r.getIdTec(), k -> new double[2])[idx] += f;
+            double[] p = reparto(r, esAbierta, soloPedidos, inicioHoy);
+            double[] a = acum.computeIfAbsent(r.getIdTec(), k -> new double[2]);
             Desglose[] d = desg.computeIfAbsent(r.getIdTec(),
                     k -> new Desglose[]{ new Desglose(0,0,0,0,0,0), new Desglose(0,0,0,0,0,0) });
-            d[idx] = sumarDesglose(d[idx], r, esAbierta, f);
+            if (esAbierta) {
+                // Una «por cerrar» marcada hoy y abierta cuenta en los dos tramos (spec 2026-11-16 §2, desglose).
+                if (p[0] > 0) { a[0] += p[0]; d[0] = sumarDesglose(d[0], r, false, p[0]); }
+                a[1] += p[1];
+                d[1] = sumarDesglose(d[1], r, true, p[1]);
+            } else {
+                a[0] += p[0];
+                d[0] = sumarDesglose(d[0], r, false, p[0]);
+            }
         };
         cerradasHoy.forEach(r -> suma.accept(r, false));
         abiertas.forEach(r -> suma.accept(r, true));

@@ -222,4 +222,19 @@ class CargaTecnicosControllerTest {
                 .andExpect(jsonPath("$.pedidos[*].pctHecho", everyItem(is(0.0))))
                 .andExpect(jsonPath("$.total[*].pctHecho", everyItem(is(0.0))));
     }
+
+    /** El endpoint pasa el inicio de hoy: una «por cerrar» marcada ahora y abierta sale en los dos tramos. */
+    @Test void unaPorCerrarMarcadaAhoraSaleEnHechoYEnPendiente() throws Exception {
+        mockearTecnicosActivos();
+        ReparacionResumen r = asig("A_1", 1, "CLI");
+        r.setPorCerrar(true);
+        r.setPorCerrarAt(java.time.LocalDateTime.now());
+        when(dao.getAsignaciones(null)).thenReturn(List.of(r));
+        when(dao.getAsignacionesCompletadasHoy(any(Timestamp.class))).thenReturn(List.of());
+
+        mvc.perform(get("/api/reparaciones/carga-tecnicos").header("Authorization", supertecnico()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pedidos[0].hecho.porCerrar").value(1))
+                .andExpect(jsonPath("$.pedidos[0].pendiente.porCerrar").value(1));
+    }
 }

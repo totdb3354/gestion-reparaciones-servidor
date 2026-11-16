@@ -147,4 +147,16 @@ class PrediccionGlassTest {
         assertEquals(1.0 / CargaTecnicos.TOPE_CHASIS_9H + 1.0 / CargaTecnicos.TOPE_GLASS_9H,
                 PrediccionGlass.carga(1, List.of(), List.of(), verdes, true), 1e-12);
     }
+
+    // Una «por cerrar» marcada hoy y abierta pesa entera (11/12 hecho + 1/12 pendiente), como en calcularDia.
+    @Test void unaPorCerrarMarcadaHoyPesaEntera() {
+        java.time.LocalDateTime hoy = java.time.LocalDateTime.of(2026, 11, 16, 0, 0);
+        ReparacionResumen r = asig("A1", "222222222222222", 1, "WEB");
+        r.setPorCerrar(true);
+        r.setPorCerrarAt(hoy.plusHours(10));
+        assertEquals(1.0 / CargaTecnicos.TOPE_NORMALES_9H,
+                PrediccionGlass.carga(1, List.of(r), List.of(), List.of(), true, hoy), 1e-12);
+        assertEquals(1.0 / CargaTecnicos.TOPE_NORMALES_9H / 12,
+                PrediccionGlass.carga(1, List.of(r), List.of(), List.of(), true), 1e-12);   // sin corte: como antes
+    }
 }
