@@ -91,6 +91,7 @@ class AsociacionAmazonTest {
     private final List<Object[]> revisar = new ArrayList<>();
     private final List<Object[]> pasadas = new ArrayList<>();
     private final List<String> consultas = new ArrayList<>();
+    private final List<Object[]> libros = new ArrayList<>();
 
     @BeforeEach void preparar() {
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
@@ -131,6 +132,7 @@ class AsociacionAmazonTest {
             Object[] args = Arrays.copyOfRange(inv.getArguments(), 1, inv.getArguments().length);
             if (sql.equals(AsociacionAmazon.SQL_BORRAR_REVISAR)) revisar.removeIf(r -> r[0].equals(args[0]));
             else if (sql.equals(AsociacionAmazon.SQL_GUARDAR_PASADA)) pasadas.add(args);
+            else if (sql.equals(AsociacionAmazon.SQL_GUARDAR_LIBRO)) libros.add(args);
             else if (!sql.equals(AsociacionAmazon.SQL_TOMAR_PASADA)) fail(sql);
             return 1;
         });
@@ -567,6 +569,11 @@ class AsociacionAmazonTest {
         when(rs.getInt("YA_ESTABAN")).thenReturn(base + 3);
         when(rs.getInt("PARA_REVISAR")).thenReturn(base + 4);
         when(rs.getInt("DESCARTADAS")).thenReturn(base + 5);
+        if (base == 1) {
+            when(rs.getTimestamp("LIBRO_MODIFICADO")).thenReturn(Timestamp.valueOf(ANTES));
+            when(rs.getString("ERROR")).thenReturn("falta la columna IMEI en Paso 1. Meter IMEI");
+            when(rs.getTimestamp("ERROR_EN")).thenReturn(Timestamp.valueOf(AHORA));
+        }
         return rs;
     }
 
@@ -591,14 +598,57 @@ class AsociacionAmazonTest {
         });
         EstadoAsociaciones e = servicio.estado();
         assertEquals(new EstadoAsociaciones(List.of(
-                new EstadoAsociaciones.Pasada("AMAZON", AHORA, 1, 2, 3, 4, 5, 6, List.of(
+                new EstadoAsociaciones.Pasada("AMAZON", AHORA, 1, 2, 3, 4, 5, 6, ANTES, "falta la columna IMEI en Paso 1. Meter IMEI",
+                        AHORA, List.of(
                         new EstadoAsociaciones.Revisar(PB, X, "SIN_HUECO", AHORA), new EstadoAsociaciones.Revisar(PA, Y, "YA_SALIO", AHORA))),
-                new EstadoAsociaciones.Pasada("AMAZON_STOCKROOM", AHORA, 10, 11, 12, 13, 14, 15, List.of()))), e);
+                new EstadoAsociaciones.Pasada("AMAZON_STOCKROOM", AHORA, 10, 11, 12, 13, 14, 15, null, null, null, List.of()))), e);
         assertTrue(AsociacionAmazon.SQL_REVISAR.endsWith("ORDER BY CANAL, ID"));
     }
 
     @Test void sinNingunaPasadaElEstadoNoTraeCanales() {
         when(jdbc.query(anyString(), any(RowMapper.class))).thenReturn(List.of());
         assertEquals(new EstadoAsociaciones(List.of()), servicio.estado());
+    }
+
+    // ------------------------------------------------------------------ lector de los libros
+
+    @Test void laPasadaDelLectorGuardaLaFechaDelLibroYBorraElErrorEnLaMismaTransaccion() throws Exception {
+        fila(20, PB, 1, null);
+        LocalDateTime libro = LocalDateTime.of(2026, 11, 13, 9, 15, 7);
+        assertEquals(r(0, 0, 1, 0, 0, 0), servicio.aplicarLibro(Canal.AMAZON, pares(PB, X), AHORA, libro));
+        assertEquals(1, pasadas.size());
+        assertEquals(1, libros.size());
+        assertArrayEquals(new Object[]{Timestamp.valueOf(libro), "AMAZON"}, libros.get(0));
+        assertTrue(AsociacionAmazon.SQL_GUARDAR_LIBRO.contains("ERROR = NULL") && AsociacionAmazon.SQL_GUARDAR_LIBRO.contains("ERROR_EN = NULL"));
+        Transactional tx = AsociacionAmazon.class.getMethod("aplicarLibro", Canal.class, List.class, LocalDateTime.class, LocalDateTime.class)
+                .getAnnotation(Transactional.class);
+        assertEquals(Isolation.READ_COMMITTED, tx.isolation());
+    }
+
+    @Test void laPasadaDeLaRutaNoTocaLaFechaDelLibro() {
+        fila(20, PB, 1, null);
+        aplicar(PB, X);
+        assertTrue(libros.isEmpty());
+    }
+
+    @Test void laFechaDelLibroLeidoSaleDeLaPasadaDelCanal() throws Exception {
+        LocalDateTime libro = LocalDateTime.of(2026, 11, 13, 9, 15, 7);
+        when(jdbc.query(eq(AsociacionAmazon.SQL_LIBRO_LEIDO), any(RowMapper.class), eq("AMAZON"))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getTimestamp("LIBRO_MODIFICADO")).thenReturn(Timestamp.valueOf(libro));
+            return List.of(((RowMapper<Object>) inv.getArgument(1)).mapRow(rs, 0));
+        });
+        when(jdbc.query(eq(AsociacionAmazon.SQL_LIBRO_LEIDO), any(RowMapper.class), eq("AMAZON_STOCKROOM"))).thenReturn(List.of());
+        assertEquals(libro, servicio.libroLeido(Canal.AMAZON));
+        assertNull(servicio.libroLeido(Canal.AMAZON_STOCKROOM));
+    }
+
+    @Test void unErrorDelLectorSoloApuntaElErrorEnLaPasada() {
+        reset(jdbc);
+        servicio.apuntarError(Canal.AMAZON_STOCKROOM, "falta la pestaña Paso 1. Meter IMEI", AHORA);
+        verify(jdbc).update(AsociacionAmazon.SQL_APUNTAR_ERROR, "AMAZON_STOCKROOM", T, "falta la pestaña Paso 1. Meter IMEI", T);
+        verifyNoMoreInteractions(jdbc);
+        assertTrue(AsociacionAmazon.SQL_APUNTAR_ERROR.endsWith("ON DUPLICATE KEY UPDATE ERROR = VALUES(ERROR), ERROR_EN = VALUES(ERROR_EN)"),
+                "con pasada previa solo cambia el error: recuentos, CUANDO y LIBRO_MODIFICADO se quedan");
     }
 }

@@ -382,6 +382,7 @@ class OpenApiContractTest {
         assertNoNullable(esquemas, "EstadoAsociaciones", "canales");
         assertNoNullable(esquemas, "EstadoAsociacionesPasada", "canal", "cuando", "confirmadas", "intercambiadas", "puestas", "yaEstaban",
                 "paraRevisar", "descartadas", "revisar");
+        assertNullable(esquemas, "EstadoAsociacionesPasada", "libroModificado", "error", "errorEn");
         assertNoNullable(esquemas, "EstadoAsociacionesRevisar", "pedido", "imei", "motivo", "vistoEn");
         assertTrue(paths.path("/api/pedidos/asociaciones").path("get").path("responses").path("200").toString()
                 .contains("/EstadoAsociaciones\""), "el GET devuelve EstadoAsociaciones");

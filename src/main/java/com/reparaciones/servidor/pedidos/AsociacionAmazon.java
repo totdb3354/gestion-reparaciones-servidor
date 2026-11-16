@@ -64,8 +64,16 @@ public class AsociacionAmazon {
             + " VALUES (?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_BORRAR_REVISAR = "DELETE FROM Pedido_asociacion_revisar WHERE CANAL = ?";
     static final String SQL_INSERTAR_REVISAR = "INSERT INTO Pedido_asociacion_revisar (CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN) VALUES (?, ?, ?, ?, ?)";
-    static final String SQL_PASADAS = "SELECT CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS, YA_ESTABAN, PARA_REVISAR, DESCARTADAS"
-            + " FROM Pedido_asociacion_pasada ORDER BY CANAL";
+    static final String SQL_PASADAS = "SELECT CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS, YA_ESTABAN, PARA_REVISAR, DESCARTADAS,"
+            + " LIBRO_MODIFICADO, ERROR, ERROR_EN FROM Pedido_asociacion_pasada ORDER BY CANAL";
+    /** El lector de los libros: la fecha de modificacion del libro de su ultima lectura buena. */
+    static final String SQL_LIBRO_LEIDO = "SELECT LIBRO_MODIFICADO FROM Pedido_asociacion_pasada WHERE CANAL = ?";
+    static final String SQL_GUARDAR_LIBRO = "UPDATE Pedido_asociacion_pasada SET LIBRO_MODIFICADO = ?, ERROR = NULL, ERROR_EN = NULL"
+            + " WHERE CANAL = ?";
+    /** Un fallo del lector: no toca nada mas. Si el canal aun no tenia pasada, la crea con los recuentos a 0 y CUANDO = la hora del error. */
+    static final String SQL_APUNTAR_ERROR = "INSERT INTO Pedido_asociacion_pasada (CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS,"
+            + " YA_ESTABAN, PARA_REVISAR, DESCARTADAS, ERROR, ERROR_EN) VALUES (?, ?, 0, 0, 0, 0, 0, 0, ?, ?)"
+            + " ON DUPLICATE KEY UPDATE ERROR = VALUES(ERROR), ERROR_EN = VALUES(ERROR_EN)";
     static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
 
     private final JdbcTemplate jdbc;
@@ -78,6 +86,32 @@ public class AsociacionAmazon {
      *  y luego actualizar con aislamiento de instantanea; las filas afectadas se leen con FOR UPDATE). {@code pares} sin limpiar. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public RespuestaAsociaciones aplicar(Canal canal, List<PeticionAsociaciones.Par> pares, LocalDateTime ahora) {
+        return pasada(canal, pares, ahora);
+    }
+
+    /** Lo mismo que {@link #aplicar} para el lector de los libros: en la misma transaccion guarda la fecha de modificacion del libro
+     *  leido ({@code libroModificado}, hora de Madrid) y borra el error de la pasada del canal. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public RespuestaAsociaciones aplicarLibro(Canal canal, List<PeticionAsociaciones.Par> pares, LocalDateTime ahora,
+                                              LocalDateTime libroModificado) {
+        RespuestaAsociaciones r = pasada(canal, pares, ahora);
+        jdbc.update(SQL_GUARDAR_LIBRO, Timestamp.valueOf(libroModificado), canal.name());
+        return r;
+    }
+
+    /** La fecha de modificacion del libro de la ultima lectura buena del canal; null si el lector aun no lo leyo. */
+    public LocalDateTime libroLeido(Canal canal) {
+        List<LocalDateTime> f = jdbc.query(SQL_LIBRO_LEIDO, (rs, n) -> hora(rs, "LIBRO_MODIFICADO"), canal.name());
+        return f.isEmpty() ? null : f.get(0);
+    }
+
+    /** Apunta el fallo de una vuelta del lector en la pasada del canal (sin tocar recuentos, lista ni filas). */
+    public void apuntarError(Canal canal, String error, LocalDateTime ahora) {
+        Timestamp hora = Timestamp.valueOf(ahora);
+        jdbc.update(SQL_APUNTAR_ERROR, canal.name(), hora, error, hora);
+    }
+
+    private RespuestaAsociaciones pasada(Canal canal, List<PeticionAsociaciones.Par> pares, LocalDateTime ahora) {
         if (canal == null || !canal.esAmazon()) throw new IllegalArgumentException("La asociacion solo es de Amazon");
         Timestamp hora = Timestamp.valueOf(ahora);
         jdbc.update(SQL_TOMAR_PASADA, canal.name(), hora);
@@ -136,7 +170,8 @@ public class AsociacionAmazon {
             porCanal.computeIfAbsent(c.canal(), k -> new ArrayList<>()).add(c.revisar());
         List<EstadoAsociaciones.Pasada> pasadas = jdbc.query(SQL_PASADAS, (rs, n) -> new EstadoAsociaciones.Pasada(rs.getString("CANAL"),
                 hora(rs, "CUANDO"), rs.getInt("CONFIRMADAS"), rs.getInt("INTERCAMBIADAS"), rs.getInt("PUESTAS"), rs.getInt("YA_ESTABAN"),
-                rs.getInt("PARA_REVISAR"), rs.getInt("DESCARTADAS"), List.copyOf(porCanal.getOrDefault(rs.getString("CANAL"), List.of()))));
+                rs.getInt("PARA_REVISAR"), rs.getInt("DESCARTADAS"), hora(rs, "LIBRO_MODIFICADO"), rs.getString("ERROR"),
+                hora(rs, "ERROR_EN"), List.copyOf(porCanal.getOrDefault(rs.getString("CANAL"), List.of()))));
         return new EstadoAsociaciones(List.copyOf(pasadas));
     }
 

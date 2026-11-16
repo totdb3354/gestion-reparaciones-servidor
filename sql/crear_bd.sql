@@ -714,6 +714,9 @@ CREATE TABLE Pedido_asociacion_pasada (
     YA_ESTABAN     INT         NOT NULL,
     PARA_REVISAR   INT         NOT NULL,
     DESCARTADAS    INT         NOT NULL,
+    LIBRO_MODIFICADO DATETIME   NULL COMMENT 'Lector de los libros: fecha de modificacion en Drive del libro de su ultima lectura buena, en hora de Madrid; NULL = nunca leido',
+    ERROR          VARCHAR(500) NULL COMMENT 'Lector de los libros: el fallo de su ultima vuelta; NULL si la ultima fue buena',
+    ERROR_EN       DATETIME    NULL COMMENT 'Cuando fallo esa vuelta (hora de Madrid)',
     PRIMARY KEY (CANAL)
 );
 CREATE TABLE Pedido_lectura (

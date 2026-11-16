@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -135,7 +136,7 @@ class RolesAsociacionesTest {
 
     @Test void elGetLoUsanSupertecnicoYAdminConSuToken() throws Exception {
         when(asociacion.estado()).thenReturn(new EstadoAsociaciones(List.of(new EstadoAsociaciones.Pasada("AMAZON",
-                LocalDateTime.of(2026, 11, 13, 10, 0), 1, 2, 3, 4, 1, 0,
+                LocalDateTime.of(2026, 11, 13, 10, 0), 1, 2, 3, 4, 1, 0, LocalDateTime.of(2026, 11, 13, 9, 15, 7), null, null,
                 List.of(new EstadoAsociaciones.Revisar("402-0000000-0000001", "350000000000001", "SIN_HUECO",
                         LocalDateTime.of(2026, 11, 13, 10, 0)))))));
         for (String token : List.of(supertecnico(), admin()))
@@ -143,6 +144,8 @@ class RolesAsociacionesTest {
                     .andExpect(jsonPath("$.canales[0].canal").value("AMAZON"))
                     .andExpect(jsonPath("$.canales[0].cuando").value("2026-11-13T10:00:00"))
                     .andExpect(jsonPath("$.canales[0].yaEstaban").value(4))
+                    .andExpect(jsonPath("$.canales[0].libroModificado").value("2026-11-13T09:15:07"))
+                    .andExpect(jsonPath("$.canales[0].error").value(nullValue()))
                     .andExpect(jsonPath("$.canales[0].revisar[0].pedido").value("402-0000000-0000001"))
                     .andExpect(jsonPath("$.canales[0].revisar[0].imei").value("350000000000001"))
                     .andExpect(jsonPath("$.canales[0].revisar[0].motivo").value("SIN_HUECO"))

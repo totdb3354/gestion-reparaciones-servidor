@@ -70,6 +70,18 @@ class ClienteDriveTest {
         assertTrue(pedidas.get(1).uri().toString().endsWith("/files/m1?alt=media&supportsAllDrives=true"));
     }
 
+    @Test void laDescargaAUnFicheroPideElContenidoEnUnidadesCompartidas() throws Exception {
+        doReturn(respuesta(200, java.nio.file.Path.of("x"))).when(http).sendAsync(any(HttpRequest.class), any());
+        drive.descargarA("libro-1", java.nio.file.Path.of("x"));
+        assertTrue(peticiones(1).get(0).uri().toString().endsWith("/files/libro-1?alt=media&supportsAllDrives=true"));
+    }
+
+    @Test void laDescargaAUnFicheroQueNoEs200EsUnFallo() throws Exception {
+        doReturn(respuesta(403, java.nio.file.Path.of("x"))).when(http).sendAsync(any(HttpRequest.class), any());
+        IOException e = assertThrows(IOException.class, () -> drive.descargarA("libro-1", java.nio.file.Path.of("x")));
+        assertEquals("Drive respondió 403 a https://www.googleapis.com/drive/v3/files/libro-1", e.getMessage());
+    }
+
     @Test void unaRespuestaQueNoEs200EsUnFallo() throws Exception {
         doReturn(respuesta(404, "{}")).when(http).sendAsync(any(HttpRequest.class), any());
         IOException e = assertThrows(IOException.class, () -> drive.metadatos("m1"));

@@ -54,8 +54,26 @@ class DdlAsociacionTest {
         String pasada = crear(fichero(MIGRACION), "Pedido_asociacion_pasada");
         for (String trozo : new String[]{"CANAL VARCHAR(30) NOT NULL", "CUANDO DATETIME NOT NULL", "CONFIRMADAS INT NOT NULL",
                 "INTERCAMBIADAS INT NOT NULL", "PUESTAS INT NOT NULL", "YA_ESTABAN INT NOT NULL", "PARA_REVISAR INT NOT NULL",
-                "DESCARTADAS INT NOT NULL", "PRIMARY KEY (CANAL)"})
+                "DESCARTADAS INT NOT NULL", "LIBRO_MODIFICADO DATETIME NULL", "ERROR VARCHAR(500) NULL", "ERROR_EN DATETIME NULL",
+                "PRIMARY KEY (CANAL)"})
             assertTrue(pasada.contains(trozo), trozo);
+    }
+
+    /** Las tres columnas del lector de los libros: en la migracion van en el CREATE (base sin la tabla) y en un ALTER idempotente (base con
+     *  la version anterior de la tabla), con la misma definicion. */
+    @Test void lasColumnasDelLectorVanEnElCreateYEnElAlterIgual() throws Exception {
+        String sql = fichero(MIGRACION).replaceAll("(?m)^--.*$", "").replaceAll("\\s+", " ");
+        String pasada = crear(fichero(MIGRACION), "Pedido_asociacion_pasada");
+        int alter = sql.indexOf("ALTER TABLE Pedido_asociacion_pasada ");
+        assertTrue(alter > sql.indexOf("CREATE TABLE IF NOT EXISTS Pedido_asociacion_pasada ("), "el ALTER va despues del CREATE");
+        String trozoAlter = sql.substring(alter, sql.indexOf("SELECT", alter));   // los comentarios llevan «;»
+        for (String nombre : new String[]{"LIBRO_MODIFICADO", "ERROR", "ERROR_EN"}) {
+            int desde = pasada.indexOf(" " + nombre + " ");
+            String definicion = pasada.substring(desde + 1, pasada.indexOf("'", pasada.indexOf("COMMENT '", desde) + 9) + 1);
+            assertTrue(trozoAlter.contains("ADD COLUMN IF NOT EXISTS " + definicion), definicion);
+        }
+        assertTrue(fichero(MIGRACION).contains("ADD COLUMN IF NOT EXISTS LIBRO_MODIFICADO"));
+        assertTrue(fichero(MIGRACION).contains("AS NUEVAS;") && fichero(MIGRACION).contains("NUEVAS debe dar 7"));
     }
 
     @Test void lasDosColumnasDePedidoFilaSonLasMismasEnLosTresFicheros() throws Exception {
