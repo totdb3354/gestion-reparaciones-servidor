@@ -192,6 +192,7 @@ CREATE TABLE Reparacion (
     URGENTE              BOOLEAN      NOT NULL DEFAULT FALSE,
     ES_CHASIS            BOOLEAN      NOT NULL DEFAULT FALSE,
     POR_CERRAR           BOOLEAN      NOT NULL DEFAULT FALSE,
+    POR_CERRAR_AT        DATETIME     NULL COMMENT 'Cuándo se marcó «por cerrar» (0.9.36); NULL sin marca',
     ENTREGADO_AT         DATETIME     NULL,
     ENTREGADO_POR        INT          NULL,
     ID_REP_ABRIR         VARCHAR(30)  NULL COMMENT 'Solo filas AG: el R… del «Abrir» que creó su entrega (2026-10-13)',

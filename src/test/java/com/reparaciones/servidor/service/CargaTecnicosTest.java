@@ -30,6 +30,16 @@ class CargaTecnicosTest {
     }
 
     // Fracciones sobre jornada de 9h (lunes): 4 chasis + 5 glass = 4/8 + 5/17 = 79,4%
+    /** Inicio de hoy (lunes 16/11/2026) tal como lo pasa CargaAsignacionesService. */
+    private static final java.time.LocalDateTime HOY = java.time.LocalDateTime.of(2026, 11, 16, 0, 0);
+    private static final java.time.DayOfWeek LUNES = java.time.DayOfWeek.MONDAY;   // 9h: pct = fracción × 100
+
+    private ReparacionResumen porCerrar(String idRep, boolean chasis, java.time.LocalDateTime marcada) {
+        ReparacionResumen r = asig(idRep, 1, "WEB", chasis, true);
+        r.setPorCerrarAt(marcada);
+        return r;
+    }
+
     @Test void fraccionesSobreJornadaLarga() {
         List<ReparacionResumen> abiertas = new java.util.ArrayList<>();
         for (int i = 0; i < 4; i++) abiertas.add(asig("A_c" + i, 1, "WEB", true, false));
@@ -90,6 +100,95 @@ class CargaTecnicosTest {
                 List.of(), java.time.DayOfWeek.SATURDAY, false);
         assertTrue(dia.get(1).sinJornada());
         assertEquals(0.0, dia.get(1).pctTotal(), 0.001);
+    }
+
+    // Tope de normales = 20 (decisión del usuario 2026-07-24): una normal un lunes (9h) = 5%
+    @Test void unaNormalEnLunesEsUnCincoPorCiento() {
+        assertEquals(20, CargaTecnicos.TOPE_NORMALES_9H);
+        var dia = CargaTecnicos.calcularDia(List.of(asig("A_1", 1, "WEB", false, false)),
+                List.of(), java.time.DayOfWeek.MONDAY, false);
+        assertEquals(5.0, dia.get(1).pctPendiente(), 1e-9);
+    }
+
+    // ── «Por cerrar» cuenta como hecho al marcar (spec 2026-11-16-carga-por-cerrar-hecho §2) ──
+
+    @Test void marcadaHoyYAbiertaLlevaOnceDoceavosAHecho() {
+        var dia = CargaTecnicos.calcularDia(List.of(porCerrar("A_1", false, HOY.plusHours(10))),
+                List.of(), LUNES, false, HOY);
+        assertEquals(5.0 * 11 / 12, dia.get(1).pctHecho(), 1e-9);
+        assertEquals(5.0 / 12, dia.get(1).pctPendiente(), 1e-9);
+        assertEquals(1, dia.get(1).hecho().porCerrar());          // sale en los dos tramos
+        assertEquals(1, dia.get(1).pendiente().porCerrar());
+    }
+
+    @Test void marcadaHoyYAbiertaDeChasisUsaElPesoDeChasis() {
+        var dia = CargaTecnicos.calcularDia(List.of(porCerrar("A_1", true, HOY.plusHours(10))),
+                List.of(), LUNES, false, HOY);
+        assertEquals(12.5 * 11 / 12, dia.get(1).pctHecho(), 1e-9);
+        assertEquals(12.5 / 12, dia.get(1).pctPendiente(), 1e-9);
+    }
+
+    @Test void marcadaHoyYCerradaHoyCuentaEntera() {
+        var dia = CargaTecnicos.calcularDia(List.of(),
+                List.of(porCerrar("A_1", false, HOY.plusHours(10)), porCerrar("A_2", true, HOY.plusHours(11))),
+                LUNES, false, HOY);
+        assertEquals(5.0 + 12.5, dia.get(1).pctHecho(), 1e-9);
+        assertEquals(0.0, dia.get(1).pctPendiente(), 1e-9);
+        assertEquals(2, dia.get(1).hecho().porCerrar());
+    }
+
+    @Test void marcadaOtroDiaSigueComoAntes() {
+        var ayer = HOY.minusSeconds(1);
+        var abierta = CargaTecnicos.calcularDia(List.of(porCerrar("A_1", false, ayer)), List.of(), LUNES, false, HOY);
+        assertEquals(0.0, abierta.get(1).pctHecho(), 1e-9);
+        assertEquals(5.0 / 12, abierta.get(1).pctPendiente(), 1e-9);
+        var cerrada = CargaTecnicos.calcularDia(List.of(), List.of(porCerrar("A_1", false, ayer)), LUNES, false, HOY);
+        assertEquals(5.0 / 12, cerrada.get(1).pctHecho(), 1e-9);
+    }
+
+    @Test void sinFechaSigueComoAntes() {
+        var abierta = CargaTecnicos.calcularDia(List.of(porCerrar("A_1", false, null)), List.of(), LUNES, false, HOY);
+        assertEquals(0.0, abierta.get(1).pctHecho(), 1e-9);
+        assertEquals(5.0 / 12, abierta.get(1).pctPendiente(), 1e-9);
+        var cerrada = CargaTecnicos.calcularDia(List.of(), List.of(porCerrar("A_1", false, null)), LUNES, false, HOY);
+        assertEquals(5.0 / 12, cerrada.get(1).pctHecho(), 1e-9);
+    }
+
+    @Test void justoALaMedianocheYaEsHoy() {
+        var dia = CargaTecnicos.calcularDia(List.of(), List.of(porCerrar("A_1", false, HOY)), LUNES, false, HOY);
+        assertEquals(5.0, dia.get(1).pctHecho(), 1e-9);
+    }
+
+    @Test void marcadaHoyEnEsperaDePiezaNoSumaNada() {
+        ReparacionResumen r = asig("A_1", 1, "WEB", false, true, null, 1, "PENDIENTE", 0);
+        r.setPorCerrarAt(HOY.plusHours(10));
+        var dia = CargaTecnicos.calcularDia(List.of(r), List.of(), LUNES, false, HOY);
+        assertEquals(0.0, dia.get(1).pctHecho(), 1e-9);
+        assertEquals(0.0, dia.get(1).pctPendiente(), 1e-9);
+        assertEquals(0, dia.get(1).hecho().porCerrar());
+        assertEquals(1, dia.get(1).pendiente().enEsperaPieza());
+    }
+
+    @Test void marcadaHoySinClienteNoCuentaEnPedidos() {
+        ReparacionResumen r = asig("A_1", 1, null, false, true);
+        r.setPorCerrarAt(HOY.plusHours(10));
+        var pedidos = CargaTecnicos.calcularDia(List.of(r), List.of(), LUNES, true, HOY);
+        assertNull(pedidos.get(1));
+        var total = CargaTecnicos.calcularDia(List.of(r), List.of(), LUNES, false, HOY);
+        assertEquals(5.0 * 11 / 12, total.get(1).pctHecho(), 1e-9);
+    }
+
+    @Test void sinCorteNadaCuentaComoMarcadoHoy() {
+        var dia = CargaTecnicos.calcularDia(List.of(porCerrar("A_1", false, HOY.plusHours(10))),
+                List.of(), LUNES, false);
+        assertEquals(0.0, dia.get(1).pctHecho(), 1e-9);
+        assertEquals(5.0 / 12, dia.get(1).pctPendiente(), 1e-9);
+    }
+
+    @Test void laGlassNoTieneMarcaPorCerrar() {
+        ReparacionResumen g = asig("AG_1", 1, "WEB", false, true);   // no debería pasar, pero no cambia nada
+        g.setPorCerrarAt(HOY.plusHours(10));
+        assertFalse(CargaTecnicos.marcadaHoy(g, HOY));
     }
 
     @Test void formateaPctEntero() {

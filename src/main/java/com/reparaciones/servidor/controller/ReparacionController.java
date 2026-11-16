@@ -146,8 +146,8 @@ public class ReparacionController {
         DayOfWeek dia = CargaTecnicos.diaDeHoy();
         List<Tecnico> tecnicos = tecnicoDao.getAllActivos();
         return new CargaTecnicosRespuesta(
-                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true), dia, tecnicos),
-                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false), dia, tecnicos));
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, true, estado.inicioHoy()), dia, tecnicos),
+                filas(CargaTecnicos.calcularDia(abiertas, cerradasHoy, dia, false, estado.inicioHoy()), dia, tecnicos));
     }
 
     /** Una fila por técnico ACTIVO, con ceros para quien no aparezca en el mapa. Día y técnicos ya
