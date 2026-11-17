@@ -100,6 +100,21 @@ class LecturaLibrosTest {
         verify(asociacion, never()).apuntarError(any(), any(), any());
     }
 
+    @Test void siElLibroNoCambioYDriveRespondeSeBorraElErrorDeUnaVueltaAnterior() throws Exception {
+        enDrive(AMAZON, MODIFICADO, libro(LibroVentas.PESTANA));
+        when(asociacion.libroLeido(Canal.AMAZON)).thenReturn(MODIFICADO_MADRID);
+        lectura(AMAZON, "").pasada();
+        verify(asociacion).borrarError(Canal.AMAZON);
+        verify(drive, never()).descargarA(anyString(), any());
+    }
+
+    @Test void siDriveFallaNoSeBorraElError() throws Exception {
+        when(drive.metadatos(AMAZON)).thenThrow(new IOException("Network is unreachable"));
+        lectura(AMAZON, "").pasada();
+        verify(asociacion, never()).borrarError(any());
+        verify(asociacion).apuntarError(eq(Canal.AMAZON), startsWith("no se pudo leer el libro de Drive"), eq(AHORA));
+    }
+
     @Test void sinLaPestanaSeApuntaElErrorYNoSeTocaNada() throws Exception {
         enDrive(STOCKROOM, MODIFICADO, libro("Hoja1", "350000000000001", "402-0000000-0000001", "2026-11-15"));
         lectura("", STOCKROOM).pasada();

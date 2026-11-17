@@ -691,4 +691,13 @@ class AsociacionAmazonTest {
         assertTrue(AsociacionAmazon.SQL_APUNTAR_ERROR.endsWith("ON DUPLICATE KEY UPDATE ERROR = VALUES(ERROR), ERROR_EN = VALUES(ERROR_EN)"),
                 "con pasada previa solo cambia el error: recuentos, CUANDO y LIBRO_MODIFICADO se quedan");
     }
+
+    @Test void borrarElErrorSoloLimpiaElErrorDeEsaPasadaSiLoHay() {
+        reset(jdbc);
+        servicio.borrarError(Canal.AMAZON);
+        verify(jdbc).update(AsociacionAmazon.SQL_BORRAR_ERROR, "AMAZON");
+        verifyNoMoreInteractions(jdbc);
+        assertEquals("UPDATE Pedido_asociacion_pasada SET ERROR = NULL, ERROR_EN = NULL WHERE CANAL = ? AND ERROR IS NOT NULL",
+                AsociacionAmazon.SQL_BORRAR_ERROR, "recuentos, CUANDO y LIBRO_MODIFICADO se quedan");
+    }
 }

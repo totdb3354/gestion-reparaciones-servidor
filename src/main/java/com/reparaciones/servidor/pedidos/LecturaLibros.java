@@ -63,7 +63,10 @@ public class LecturaLibros {
         try {
             LocalDateTime modificado = LocalDateTime.ofInstant(drive.metadatos(id).modificado(), ImportadorNsys.MADRID)
                     .truncatedTo(ChronoUnit.SECONDS);   // DATETIME guarda segundos
-            if (modificado.equals(asociacion.libroLeido(canal))) return;
+            if (modificado.equals(asociacion.libroLeido(canal))) {
+                asociacion.borrarError(canal);   // Drive responde: un error de una vuelta anterior ya no vale
+                return;
+            }
             List<PeticionAsociaciones.Par> pares;
             Path temporal = Files.createTempFile("libro-ventas-", ".xlsm");
             try {

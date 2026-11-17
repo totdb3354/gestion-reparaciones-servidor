@@ -79,6 +79,8 @@ public class AsociacionAmazon {
     static final String SQL_APUNTAR_ERROR = "INSERT INTO Pedido_asociacion_pasada (CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS,"
             + " YA_ESTABAN, PARA_REVISAR, DESCARTADAS, ERROR, ERROR_EN) VALUES (?, ?, 0, 0, 0, 0, 0, 0, ?, ?)"
             + " ON DUPLICATE KEY UPDATE ERROR = VALUES(ERROR), ERROR_EN = VALUES(ERROR_EN)";
+    /** El libro no cambio y Drive respondio: el error de una vuelta anterior ya no vale (no toca nada mas). */
+    static final String SQL_BORRAR_ERROR = "UPDATE Pedido_asociacion_pasada SET ERROR = NULL, ERROR_EN = NULL WHERE CANAL = ? AND ERROR IS NOT NULL";
     static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
 
     private final JdbcTemplate jdbc;
@@ -114,6 +116,11 @@ public class AsociacionAmazon {
     public void apuntarError(Canal canal, String error, LocalDateTime ahora) {
         Timestamp hora = Timestamp.valueOf(ahora);
         jdbc.update(SQL_APUNTAR_ERROR, canal.name(), hora, error, hora);
+    }
+
+    /** Borra el error apuntado en la pasada del canal (Drive vuelve a responder y el libro no cambio): recuentos, lista y filas se quedan. */
+    public void borrarError(Canal canal) {
+        jdbc.update(SQL_BORRAR_ERROR, canal.name());
     }
 
     private RespuestaAsociaciones pasada(Canal canal, List<PeticionAsociaciones.Par> pares, LocalDateTime ahora) {
