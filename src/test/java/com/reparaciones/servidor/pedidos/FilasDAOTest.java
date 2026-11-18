@@ -118,6 +118,9 @@ class FilasDAOTest {
         java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
         when(rs.getString("SKU")).thenReturn("i13128AzulA");
         when(rs.getString("PAIS")).thenReturn(null);
+        when(rs.getString("CANAL")).thenReturn("PARTICULARES", (String) null);
+        when(rs.getString("PLATAFORMA")).thenReturn("Cliente 0099", (String) null);
+        when(rs.getDate("FECHA")).thenReturn(java.sql.Date.valueOf("2026-11-17"), (java.sql.Date) null);
         when(rs.getDate("FECHA_SALIDA")).thenReturn(java.sql.Date.valueOf("2026-11-19"), (java.sql.Date) null);
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
                 .thenAnswer(inv -> List.of(inv.<RowMapper<FilasDAO.PorBuscar>>getArgument(1).mapRow(rs, 0),
@@ -125,11 +128,14 @@ class FilasDAOTest {
         List<FilasDAO.PorBuscar> r = dao.porBuscar(List.of(Canal.DISTRIBUIDORES, Canal.PARTICULARES, Canal.BACKIPHONE));
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), any(RowMapper.class), eq("DISTRIBUIDORES"), eq("PARTICULARES"), eq("BACKIPHONE"));
-        assertEquals("SELECT SKU, PAIS, FECHA_SALIDA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (?, ?, ?)"
+        assertEquals("SELECT SKU, PAIS, FECHA_SALIDA, CANAL, PLATAFORMA, FECHA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (?, ?, ?)"
                 + " AND (IMEI IS NULL OR IMEI = '') AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"
                 + " AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))", sql.getValue());
-        assertEquals(new FilasDAO.PorBuscar("i13128AzulA", null, LocalDate.of(2026, 11, 19)), r.get(0));
+        assertEquals(new FilasDAO.PorBuscar("i13128AzulA", null, LocalDate.of(2026, 11, 19), Canal.PARTICULARES, "Cliente 0099", LocalDate.of(2026, 11, 17)), r.get(0));
         assertNull(r.get(1).fechaSalida());
+        assertNull(r.get(1).canal());
+        assertNull(r.get(1).cliente());
+        assertNull(r.get(1).entro());
     }
 
     @Test void porBuscarSinCanalesNoToca() {

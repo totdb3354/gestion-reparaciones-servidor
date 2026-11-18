@@ -266,12 +266,13 @@ public class FilasDAO {
         return jdbc.query(SQL_SHIPPYPRO_CON_IMEI_DESDE + " ORDER BY FECHA, ID_FILA", FilasDAO::fila, fecha(desde));
     }
 
-    /** Un movil que aun hay que buscar: su SKU, el pais del pedido y el ultimo dia para enviarlo (los dos pueden faltar). */
-    public record PorBuscar(String sku, String pais, LocalDate fechaSalida) {}
+    /** Un movil que aun hay que buscar: su SKU, el pais del pedido, el ultimo dia para enviarlo (los dos pueden faltar), el canal, el
+     *  cliente (columna PLATAFORMA) y el dia en que el ERP vio el pedido (FECHA, «Entro»). */
+    public record PorBuscar(String sku, String pais, LocalDate fechaSalida, Canal canal, String cliente, LocalDate entro) {}
 
     /** Filas de ShippyPro sin IMEI y sin marca CANCELADO que aun hay que buscar: las vivas y las enviadas con falta por enviar. {@code %s}: un {@code ?} por canal
      *  (los canales salen del enum, nunca del usuario). */
-    static final String SQL_POR_BUSCAR = "SELECT SKU, PAIS, FECHA_SALIDA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (%s)"
+    static final String SQL_POR_BUSCAR = "SELECT SKU, PAIS, FECHA_SALIDA, CANAL, PLATAFORMA, FECHA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (%s)"
             + " AND (IMEI IS NULL OR IMEI = '') AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"
             + " AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))";
 
@@ -280,7 +281,11 @@ public class FilasDAO {
         if (canales.isEmpty()) return List.of();
         Object[] args = canales.stream().map(Canal::name).toArray();
         return jdbc.query(String.format(SQL_POR_BUSCAR, marcas(canales.size())),
-                (rs, n) -> new PorBuscar(rs.getString("SKU"), rs.getString("PAIS"), fechaLocal(rs.getDate("FECHA_SALIDA"))), args);
+                (rs, n) -> {
+                    String c = rs.getString("CANAL");
+                    return new PorBuscar(rs.getString("SKU"), rs.getString("PAIS"), fechaLocal(rs.getDate("FECHA_SALIDA")),
+                            c == null ? null : Canal.valueOf(c), rs.getString("PLATAFORMA"), fechaLocal(rs.getDate("FECHA")));
+                }, args);
     }
 
     private static LocalDate fechaLocal(Date d) {

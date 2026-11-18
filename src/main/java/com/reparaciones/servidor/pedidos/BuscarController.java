@@ -24,7 +24,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-/** «Descargar para buscar»: el Excel de los moviles que aun hay que buscar de una plataforma, en dos tablas (para hoy y pueden esperar).
+/** «Descargar para buscar»: el Excel de los moviles que aun hay que buscar de una plataforma, en dos tablas (para hoy y pueden esperar); las webs, en un bloque por web y cliente.
  *  SUPERTECNICO y ADMIN. */
 @RestController
 @RequestMapping("/api/pedidos")
@@ -63,16 +63,25 @@ public class BuscarController {
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La plataforma debe ser AMZ, FNSK o WEBS");
         };
         LocalDate hoy = LocalDate.now(clock);
+        String nombre = "Buscar " + plataforma + " " + hoy.format(DIA_MES) + ".xlsx";
+        if (plataforma.equals("WEBS")) {
+            // En las webs se envia todo en el dia: sin dividir por fecha, un bloque por web con el cliente.
+            var webs = ExcelBuscar.webs(dao.porBuscar(canales));
+            return respuesta(ExcelBuscar.escribirWebs(plataforma, webs), nombre, ExcelBuscar.unidades(webs));
+        }
         List<FilasDAO.PorBuscar> paraHoy = new ArrayList<>();
         List<FilasDAO.PorBuscar> puedenEsperar = new ArrayList<>();
         for (FilasDAO.PorBuscar f : dao.porBuscar(canales)) {
             if (f.fechaSalida() == null || !f.fechaSalida().isAfter(hoy)) paraHoy.add(f); else puedenEsperar.add(f);
         }
         byte[] xlsx = ExcelBuscar.escribir(plataforma, ExcelBuscar.tabla(paraHoy), ExcelBuscar.tabla(puedenEsperar));
-        String nombre = "Buscar " + plataforma + " " + hoy.format(DIA_MES) + ".xlsx";
+        return respuesta(xlsx, nombre, paraHoy.size() + puedenEsperar.size());
+    }
+
+    private static ResponseEntity<byte[]> respuesta(byte[] xlsx, String nombre, int filas) {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(XLSX))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(nombre).build().toString())
-                .header(CABECERA_FILAS, String.valueOf(paraHoy.size() + puedenEsperar.size()))
+                .header(CABECERA_FILAS, String.valueOf(filas))
                 .body(xlsx);
     }
 }
