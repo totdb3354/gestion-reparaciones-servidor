@@ -44,6 +44,7 @@ public class LecturaFilas {
     static final String AVISO_SIN_ENVIOS = "no se pudieron leer los envíos";
     /** Principio del aviso de la lectura con pedidos descartados; {@link VistaFilas#fuentes()} lo busca en el mensaje guardado. */
     static final String AVISO_DESCARTADOS = "Pedidos sin fecha valida, saltados";
+    static final String AVISO_SALIDA = "No se pudo poner la fecha de salida";
 
     private final ClienteShippyPro shippyPro;
     private final FilasDAO dao;
@@ -160,20 +161,26 @@ public class LecturaFilas {
             // siguiente vuelta lo rehace.
             dao.insertar(plan.insertar());
             dao.reabrir(plan.reabrir(), ahora); // el inicio de la vuelta, no despues de las llamadas a ShippyPro: un envio creado entre medias es posterior
-            Set<LocalDate> festivos = calendario.festivos();
-            List<FilasDAO.Salida> salidas = new ArrayList<>();
-            for (PedidoShippyPro p : leidos.pedidos()) {
-                Canal canal = canales.get(p.marketplace());
-                if (canal == null || p.numero() == null || p.numero().isBlank()) continue;
-                String pais = p.pais() == null ? null : AnchosNsys.corta(p.pais().strip().toUpperCase(Locale.ROOT), 2);
-                salidas.add(new FilasDAO.Salida(canal, SincroShippyPro.numeroGuardado(p.numero()), FechaSalida.de(p, canal, festivos), pais));
-            }
-            dao.ponerSalidas(salidas);
             dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
             dao.marcarEtiquetas(etiquetas);
             dao.cerrar(cerrar, LocalDateTime.now(clock));
-            candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             List<String> avisos = new ArrayList<>();
+            // La fecha de salida es secundaria: va al final y, si falla, la vuelta sigue OK con un aviso.
+            try {
+                Set<LocalDate> festivos = calendario.festivos();
+                List<FilasDAO.Salida> salidas = new ArrayList<>();
+                for (PedidoShippyPro p : leidos.pedidos()) {
+                    Canal canal = canales.get(p.marketplace());
+                    if (canal == null || p.numero() == null || p.numero().isBlank()) continue;
+                    String pais = p.pais() == null ? null : AnchosNsys.corta(p.pais().strip().toUpperCase(Locale.ROOT), 2);
+                    salidas.add(new FilasDAO.Salida(canal, SincroShippyPro.numeroGuardado(p.numero()), FechaSalida.de(p, canal, festivos), pais));
+                }
+                dao.ponerSalidas(salidas);
+            } catch (RuntimeException e) {
+                log.warn("Pedidos: no se pudo poner la fecha de salida: {}", e.getClass().getSimpleName());
+                avisos.add(AVISO_SALIDA);
+            }
+            candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             if (!plan.reabrir().isEmpty()) avisos.add(plan.reabrir().size() + " filas reabiertas");
             if (!enviosLeidos) avisos.add(AVISO_SIN_ENVIOS);
             if (hayDescartados) avisos.add(AVISO_DESCARTADOS + " (no se cierra nada): "

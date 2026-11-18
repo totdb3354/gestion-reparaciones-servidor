@@ -454,10 +454,20 @@ class LecturaFilasTest {
                 LocalDate.of(2026, 11, 19), "DE")));
     }
 
-    @Test void unFalloAlPonerLasSalidasTerminaLaVueltaEnError() throws Exception {
+    @Test void unFalloAlPonerLasSalidasNoTumbaLaVueltaYDejaUnAviso() throws Exception {
         unPedidoBien();
         doThrow(new org.springframework.dao.DataAccessResourceFailureException("x")).when(dao).ponerSalidas(any());
         lectura("100:AMAZON").pasada();
-        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.ERROR), eq(0), eq(Set.of()), contains("No se pudo guardar"), any());
+        verify(dao).marcarEnviadas(any(), any());
+        verify(dao).cerrar(any(), any());
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), contains("No se pudo poner la fecha de salida"), any());
+    }
+
+    @Test void unFalloDelCalendarioTampocoTumbaLaVuelta() throws Exception {
+        unPedidoBien();
+        when(calendario.festivos()).thenThrow(new IllegalStateException("x"));
+        lectura("100:AMAZON").pasada();
+        verify(dao).cerrar(any(), any());
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), contains("No se pudo poner la fecha de salida"), any());
     }
 }
