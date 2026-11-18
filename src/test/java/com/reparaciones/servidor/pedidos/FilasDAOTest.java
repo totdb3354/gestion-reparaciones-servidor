@@ -341,9 +341,7 @@ class FilasDAOTest {
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
-    private static final String SQL_DUP = "SELECT PEDIDO, FECHA, CANAL, ASOCIADA_EN FROM Pedido_fila WHERE IMEI = ? AND ID_FILA <> ?"
-            + " AND ORIGEN = 'SHIPPYPRO' AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"
-            + " ORDER BY FECHA, ID_FILA LIMIT 1";
+    private static final String SQL_DUP = FilasDAO.SQL_DUPLICADO;
 
     /** La consulta del duplicado devuelve la otra fila indicada (su WHERE decide cuales cuentan: viva o enviada con falta, ShippyPro, no la propia). */
     @SuppressWarnings("unchecked")
@@ -373,7 +371,8 @@ class FilasDAOTest {
 
     @Test void elDuplicadoDeUnaFilaConFaltaPorEnviarTambienCuentaPorElWhere() {
         // «enviada con falta por enviar» entra por el segundo termino del WHERE; «enviada sin falta» y HISTORICO quedan fuera de el
-        assertTrue(FilasDAO.SQL_DUPLICADO.contains("(CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"));
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains(
+                "((CERRADA_EN IS NULL AND (MARCA IS NULL OR MARCA <> 'CANCELADO')) OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"));
         assertTrue(FilasDAO.SQL_DUPLICADO.contains("ORIGEN = 'SHIPPYPRO'"));
         assertTrue(FilasDAO.SQL_DUPLICADO.contains("ID_FILA <> ?"));
     }
@@ -383,6 +382,15 @@ class FilasDAOTest {
         filaBloqueada(null, "SHIPPYPRO");
         assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "009900000000001", null, 9, AHORA));
         verify(jdbc).query(eq(SQL_DUP), any(RowMapper.class), eq("009900000000001"), eq(5));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "009900000000001", 5);
+    }
+
+    @Test void unaFilaVivaCanceladaConElImeiNoLoBloquea() throws Exception {
+        // una fila viva con MARCA = 'CANCELADO' no sale en ese pedido: el telefono esta libre y la consulta no la devuelve
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("CERRADA_EN IS NULL AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"));
+        filaBloqueada(null, "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        verify(jdbc).query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), eq("009900000000001"), eq(5));
         verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "009900000000001", 5);
     }
 
