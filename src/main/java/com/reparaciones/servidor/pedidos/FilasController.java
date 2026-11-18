@@ -111,7 +111,12 @@ public class FilasController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
         return idempotencia.ejecutar(principal.getIdUsu(), "pedido-imei", claveIdempotencia, new Cambio(id, imei, anterior), () -> {
             // El origen se decide en la transaccion del DAO, con la fila bloqueada.
-            FilasDAO.Resultado r = dao.ponerImei(id, imei, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
+            FilasDAO.Resultado r;
+            try {
+                r = dao.ponerImei(id, imei, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
+            } catch (ImeiDuplicadoException e) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, e.mensaje());
+            }
             if (r != FilasDAO.Resultado.PUESTO) {
                 if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
                 if (r == FilasDAO.Resultado.CAMBIADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_CAMBIADO);

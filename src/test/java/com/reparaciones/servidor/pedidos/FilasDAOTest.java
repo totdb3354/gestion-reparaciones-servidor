@@ -316,6 +316,65 @@ class FilasDAOTest {
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 
+    private static final String SQL_DUP = "SELECT PEDIDO, FECHA, CANAL, ASOCIADA_EN FROM Pedido_fila WHERE IMEI = ? AND ID_FILA <> ?"
+            + " AND ORIGEN = 'SHIPPYPRO' AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"
+            + " ORDER BY FECHA, ID_FILA LIMIT 1";
+
+    /** La consulta del duplicado devuelve la otra fila indicada (su WHERE decide cuales cuentan: viva o enviada con falta, ShippyPro, no la propia). */
+    @SuppressWarnings("unchecked")
+    private void otraFilaConElImei(String pedido, LocalDate fecha, String canal, Timestamp asociadaEn) {
+        when(jdbc.query(eq(SQL_DUP), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
+            java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+            when(rs.getString("PEDIDO")).thenReturn(pedido);
+            when(rs.getDate("FECHA")).thenReturn(java.sql.Date.valueOf(fecha));
+            when(rs.getString("CANAL")).thenReturn(canal);
+            when(rs.getTimestamp("ASOCIADA_EN")).thenReturn(asociadaEn);
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+    }
+
+    @Test void ponerUnImeiQueEstaEnOtraFilaVivaLanzaDuplicadoYNoEscribeNada() throws Exception {
+        filaBloqueada(null, "SHIPPYPRO");
+        otraFilaConElImei("0099-1110004-0000004", LocalDate.of(2026, 11, 17), "AMAZON", Timestamp.valueOf(AHORA));
+        var e = assertThrows(ImeiDuplicadoException.class, () -> dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        assertEquals("0099-1110004-0000004", e.pedido());
+        assertEquals(LocalDate.of(2026, 11, 17), e.fecha());
+        assertEquals(Canal.AMAZON, e.canal());
+        assertFalse(e.sinAsociar());
+        // el WHERE (otra fila: ID_FILA <> ?, ShippyPro, viva o enviada con falta) lleva el IMEI y la propia fila
+        verify(jdbc).query(eq(SQL_DUP), any(RowMapper.class), eq("009900000000001"), eq(5));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void elDuplicadoDeUnaFilaConFaltaPorEnviarTambienCuentaPorElWhere() {
+        // «enviada con falta por enviar» entra por el segundo termino del WHERE; «enviada sin falta» y HISTORICO quedan fuera de el
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("(CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"));
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("ORIGEN = 'SHIPPYPRO'"));
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("ID_FILA <> ?"));
+    }
+
+    @Test void siNoHayOtraFilaPendienteConElImeiSePone() throws Exception {
+        // enviada sin falta o del historico: la consulta no devuelve nada y se pone (PUESTO)
+        filaBloqueada(null, "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        verify(jdbc).query(eq(SQL_DUP), any(RowMapper.class), eq("009900000000001"), eq(5));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "009900000000001", 5);
+    }
+
+    @Test void quitarElImeiNoComprueba() throws Exception {
+        filaBloqueada("009900000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, null, null, 9, AHORA));
+        verify(jdbc, never()).query(eq(SQL_DUP), any(RowMapper.class), any(Object[].class));
+    }
+
+    @Test void enAmazonSinAsociarElDuplicadoLoDiceSinAsociar() throws Exception {
+        filaBloqueada(null, "SHIPPYPRO");
+        otraFilaConElImei("FNSK1", LocalDate.of(2026, 11, 17), "AMAZON_STOCKROOM", null);
+        var e = assertThrows(ImeiDuplicadoException.class, () -> dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        assertTrue(e.sinAsociar());
+        assertEquals(Canal.AMAZON_STOCKROOM, e.canal());
+    }
+
     @Test void ponerImeiDeUnaFilaDeShippyProCerradaOEnviadaSiSePuede() throws Exception {
         // El bloqueo solo lee IMEI y ORIGEN: una fila de ShippyPro se edita se haya cerrado o enviado o no.
         filaBloqueada("350000000000001", "SHIPPYPRO");

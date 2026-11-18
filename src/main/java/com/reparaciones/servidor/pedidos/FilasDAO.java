@@ -74,6 +74,10 @@ public class FilasDAO {
     static final String SQL_FILA_VALIDACION_BLOQUEADA = "SELECT IMEI, ORIGEN, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = ?, VALIDADA_EN = ?, VALIDADA_USU = ? WHERE ID_FILA = ?";
     static final String SQL_QUITAR_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = NULL, VALIDADA_EN = NULL, VALIDADA_USU = NULL WHERE ID_FILA = ?";
+    /** Otra fila de ShippyPro con ese IMEI que sigue pendiente o enviada con «falta por enviar» (spec 2026-11-18 §5). */
+    static final String SQL_DUPLICADO = "SELECT PEDIDO, FECHA, CANAL, ASOCIADA_EN FROM Pedido_fila WHERE IMEI = ? AND ID_FILA <> ?"
+            + " AND ORIGEN = 'SHIPPYPRO' AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"
+            + " ORDER BY FECHA, ID_FILA LIMIT 1";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
     static final String SQL_FILA_MARCA_BLOQUEADA = "SELECT ORIGEN, MARCA, MARCA_NOTA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_MARCA = "UPDATE Pedido_fila SET MARCA = ?, MARCA_NOTA = ?, MARCA_EN = ?, MARCA_USU = ? WHERE ID_FILA = ?";
@@ -287,7 +291,7 @@ public class FilasDAO {
     /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
      *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
      *  con el bloqueo puesto. {@code imeiAnterior} nulo no comprueba nada; si no, debe coincidir con el IMEI actual (nulo cuenta como ""), y
-     *  si no, no escribe nada ni apunta cambio (CAMBIADA). Si no existe o es del historico, tampoco escribe nada. */
+     *  si no, no escribe nada ni apunta cambio (CAMBIADA). Un IMEI que ya esta en otra fila pendiente lanza {@link ImeiDuplicadoException} sin escribir. Si no existe o es del historico, tampoco escribe nada. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
         List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
@@ -297,6 +301,15 @@ public class FilasDAO {
         if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
             return Resultado.CAMBIADA;
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
+        if (nuevo != null) {
+            List<ImeiDuplicadoException> otras = jdbc.query(SQL_DUPLICADO, (rs, n) -> {
+                String c = rs.getString("CANAL");
+                Canal canal = c == null ? null : Canal.valueOf(c);
+                return new ImeiDuplicadoException(rs.getString("PEDIDO"), rs.getDate("FECHA").toLocalDate(), canal,
+                        canal != null && canal.esAmazon() && rs.getTimestamp("ASOCIADA_EN") == null);
+            }, nuevo, idFila);
+            if (!otras.isEmpty()) throw otras.get(0);
+        }
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
         // La validacion vale para ese IMEI: al cambiarlo o quitarlo se borra (y se apunta), para que no reviva si el IMEI vuelve.
