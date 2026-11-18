@@ -112,6 +112,31 @@ class FilasDAOTest {
         assertEquals(5, FilasDAO.SQL_BUSCAR.chars().filter(c -> c == '?').count(), "los cuatro textos y el tope");
     }
 
+    @Test void porBuscarPideSoloPendientesYFaltaPorEnviarSinImeiNiCancelado() throws Exception {
+        // El JdbcTemplate es un mock: la seleccion de filas (viva sin IMEI, CANCELADO fuera, enviada solo con falta, historico y
+        // otros canales fuera) la lleva el texto de la consulta; aqui se comprueba ese texto, los canales ligados y el mapeo.
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("SKU")).thenReturn("i13128AzulA");
+        when(rs.getString("PAIS")).thenReturn(null);
+        when(rs.getDate("FECHA_SALIDA")).thenReturn(java.sql.Date.valueOf("2026-11-19"), (java.sql.Date) null);
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilasDAO.PorBuscar>>getArgument(1).mapRow(rs, 0),
+                        inv.<RowMapper<FilasDAO.PorBuscar>>getArgument(1).mapRow(rs, 1)));
+        List<FilasDAO.PorBuscar> r = dao.porBuscar(List.of(Canal.DISTRIBUIDORES, Canal.PARTICULARES, Canal.BACKIPHONE));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq("DISTRIBUIDORES"), eq("PARTICULARES"), eq("BACKIPHONE"));
+        assertEquals("SELECT SKU, PAIS, FECHA_SALIDA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (?, ?, ?)"
+                + " AND (IMEI IS NULL OR IMEI = '') AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"
+                + " AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))", sql.getValue());
+        assertEquals(new FilasDAO.PorBuscar("i13128AzulA", null, LocalDate.of(2026, 11, 19)), r.get(0));
+        assertNull(r.get(1).fechaSalida());
+    }
+
+    @Test void porBuscarSinCanalesNoToca() {
+        assertTrue(dao.porBuscar(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
     @Test void laFilaTraeSuAsociacion() throws Exception {
         java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
         when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");

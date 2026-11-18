@@ -98,6 +98,16 @@ de `model/` conservan su nombre.
     `404` si la fila no existe o si no tiene etiqueta («Este pedido no tiene etiqueta generada»: pendiente sin envío, histórico, cerrada
     sin envío); `502` «No se pudo obtener la etiqueta de ShippyPro. Inténtalo de nuevo.» si ShippyPro falla, no da etiqueta o la
     descarga falla, no es un PDF o es demasiado grande (nunca el texto de ShippyPro ni la URL). SUPERTECNICO y ADMIN.
+  - `GET /api/pedidos/buscar?plataforma=AMZ|FNSK|WEBS` («Descargar para buscar») → un `.xlsx` (`200`) con una sola hoja, la del nombre de la
+    plataforma: `AMZ` = canal `AMAZON`, `FNSK` = `AMAZON_STOCKROOM`, `WEBS` = `DISTRIBUIDORES`, `PARTICULARES` y `BACKIPHONE`; otro valor, `400`.
+    Cuenta las filas de ShippyPro **sin IMEI** (vacío cuenta como sin IMEI) y **sin marca `CANCELADO`** (cualquier otra marca cuenta) que
+    siguen por buscar: las vivas (sin cerrar) y las enviadas con «falta enviar»; no cuenta las cerradas sin envío, las enviadas sin falta,
+    el histórico ni otros canales. Dos tablas, `SKU | un país por columna | Total general` (países en orden alfabético y `—` al final
+    si falta el país; SKU agrupados sin distinguir mayúsculas, con la forma más repetida; números como celdas numéricas, vacío donde es 0;
+    fila «Total general» al pie): «Para hoy» (`fechaSalida` nula o hasta hoy, hora de Madrid) y, tras una fila en blanco, «Pueden esperar»
+    (`fechaSalida` posterior a hoy). Una tabla sin móviles lleva su título y «No hay móviles que buscar». A4 vertical, ajustado a una
+    página de ancho. Cabeceras: `Content-Disposition: attachment; filename="Buscar AMZ 18-11.xlsx"` (plataforma y dd-MM de hoy) y `X-Filas`
+    (móviles contados en las dos tablas). SUPERTECNICO y ADMIN.
   - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei, imeiAnterior?}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
     histórico (las filas de ShippyPro se editan siempre, también las enviadas). `imeiAnterior` (opcional, nullable; la web vieja no lo manda): lo que la persona veía en la fila; ausente o `null` no comprueba nada, `""` espera la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`). Si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). `409` si el IMEI ya está en otra fila de ShippyPro pendiente o enviada con «falta por enviar» (la propia fila, las enviadas sin falta y el histórico no cuentan; no escribe nada): "Este IMEI ya está en el pedido X (fila del dd/mm)", o, si esa fila es de Amazon y no está asociada, "Este IMEI ya está en una fila de AMZ del dd/mm sin asociar" ("FNSK" en Stockroom). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.

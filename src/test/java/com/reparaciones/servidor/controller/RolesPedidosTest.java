@@ -77,7 +77,8 @@ class RolesPedidosTest {
                     .contentType(MediaType.APPLICATION_JSON).content("{\"marca\":\"EN_REVISION\",\"nota\":\"revisar\"}"),
             t -> get("/api/pedidos/filas/5/cambios").header("Authorization", t),
             t -> get("/api/pedidos/fuentes").header("Authorization", t),
-            t -> get("/api/pedidos/asociaciones").header("Authorization", t));
+            t -> get("/api/pedidos/asociaciones").header("Authorization", t),
+            t -> get("/api/pedidos/buscar?plataforma=AMZ").header("Authorization", t));
 
     @Test void elTecnicoRecibe403SinLlegarALaVistaNiAlDao() throws Exception {
         for (var ruta : RUTAS) mvc.perform(ruta.apply(tecnico())).andExpect(status().isForbidden());
@@ -88,6 +89,7 @@ class RolesPedidosTest {
         when(vista.filas(any(), any(), any())).thenReturn(new ListaFilas(List.of(), false));
         when(vista.recomendados(anyInt())).thenReturn(Optional.of(List.of()));
         when(vista.fuentes()).thenReturn(List.of());
+        when(dao.porBuscar(any())).thenReturn(List.of());
         when(asociacion.estado()).thenReturn(new EstadoAsociaciones(List.of()));
         when(dao.porId(anyInt())).thenReturn(Optional.of(new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", null,
                 "402-0000000-0000005", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, null)));

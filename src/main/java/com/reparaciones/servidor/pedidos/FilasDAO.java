@@ -266,6 +266,27 @@ public class FilasDAO {
         return jdbc.query(SQL_SHIPPYPRO_CON_IMEI_DESDE + " ORDER BY FECHA, ID_FILA", FilasDAO::fila, fecha(desde));
     }
 
+    /** Un movil que aun hay que buscar: su SKU, el pais del pedido y el ultimo dia para enviarlo (los dos pueden faltar). */
+    public record PorBuscar(String sku, String pais, LocalDate fechaSalida) {}
+
+    /** Filas de ShippyPro sin IMEI y sin marca CANCELADO que aun hay que buscar: las vivas y las enviadas con falta por enviar. {@code %s}: un {@code ?} por canal
+     *  (los canales salen del enum, nunca del usuario). */
+    static final String SQL_POR_BUSCAR = "SELECT SKU, PAIS, FECHA_SALIDA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (%s)"
+            + " AND (IMEI IS NULL OR IMEI = '') AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"
+            + " AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))";
+
+    /** Lo que hay que buscar en esos canales (ver {@link #SQL_POR_BUSCAR}); sin canales, nada. */
+    public List<PorBuscar> porBuscar(Collection<Canal> canales) {
+        if (canales.isEmpty()) return List.of();
+        Object[] args = canales.stream().map(Canal::name).toArray();
+        return jdbc.query(String.format(SQL_POR_BUSCAR, marcas(canales.size())),
+                (rs, n) -> new PorBuscar(rs.getString("SKU"), rs.getString("PAIS"), fechaLocal(rs.getDate("FECHA_SALIDA"))), args);
+    }
+
+    private static LocalDate fechaLocal(Date d) {
+        return d == null ? null : d.toLocalDate();
+    }
+
     /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI desde {@code desde}, a lo sumo {@code tope} filas, sin
      *  IMEI repetidos: si esta en dos filas sale la del cambio mas reciente. Un IMEI quitado de la fila no sale (la fila ya no lo tiene). */
     public List<Vendido> vendidosDesde(LocalDateTime desde, Canal canal, int tope) {
