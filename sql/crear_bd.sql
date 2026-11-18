@@ -643,6 +643,29 @@ CREATE TABLE Taller_vuelta_ignorada (
 
 -- Pedidos como la hoja: una fila por unidad pedida (la lectura de ShippyPro y el historico de la hoja), sus cambios de IMEI
 -- y las lecturas de ShippyPro. Los tres SKU de los canales nuevos van en Nsys_producto.
+-- Pedidos: calendario laboral (festivos de la Comunidad de Madrid)
+CREATE TABLE Calendario_festivo (
+    FECHA  DATE         NOT NULL,
+    NOMBRE VARCHAR(100) NOT NULL,
+    AMBITO VARCHAR(20)  NOT NULL COMMENT 'COMUNIDAD (festivos de la Comunidad de Madrid); los locales no se cargan',
+    PRIMARY KEY (FECHA)
+);
+INSERT IGNORE INTO Calendario_festivo (FECHA, NOMBRE, AMBITO) VALUES
+ ('2026-12-07', 'Traslado del Dia de la Constitucion', 'COMUNIDAD'),
+ ('2026-12-08', 'Inmaculada Concepcion', 'COMUNIDAD'),
+ ('2026-12-25', 'Natividad del Senor', 'COMUNIDAD'),
+ ('2027-01-01', 'Ano Nuevo', 'COMUNIDAD'),
+ ('2027-01-06', 'Epifania del Senor', 'COMUNIDAD'),
+ ('2027-03-19', 'San Jose', 'COMUNIDAD'),
+ ('2027-03-25', 'Jueves Santo', 'COMUNIDAD'),
+ ('2027-03-26', 'Viernes Santo', 'COMUNIDAD'),
+ ('2027-05-01', 'Fiesta del Trabajo', 'COMUNIDAD'),
+ ('2027-08-16', 'Traslado de la Asuncion de la Virgen', 'COMUNIDAD'),
+ ('2027-10-12', 'Fiesta Nacional de Espana', 'COMUNIDAD'),
+ ('2027-11-01', 'Todos los Santos', 'COMUNIDAD'),
+ ('2027-12-06', 'Dia de la Constitucion Espanola', 'COMUNIDAD'),
+ ('2027-12-08', 'Inmaculada Concepcion', 'COMUNIDAD'),
+ ('2027-12-25', 'Natividad del Senor', 'COMUNIDAD');
 CREATE TABLE Pedido_fila (
     ID_FILA      INT          NOT NULL AUTO_INCREMENT,
     FECHA        DATE         NOT NULL COMMENT 'El dia en que el ERP ve el pedido (hora de Madrid)',
@@ -673,6 +696,8 @@ CREATE TABLE Pedido_fila (
     VALIDADA_IMEI VARCHAR(20) NULL COMMENT 'El IMEI para el que una persona dio por bueno el aviso de SKU; solo vale mientras sea el IMEI de la fila',
     VALIDADA_EN   DATETIME    NULL COMMENT 'Cuando se valido',
     VALIDADA_USU  INT         NULL COMMENT 'Quien valido',
+    FECHA_SALIDA  DATE        NULL COMMENT 'Ultimo dia para enviar el pedido (Amazon: Latest ship de ShippyPro; webs: entrada + 2 o 3 dias laborables)',
+    PAIS          VARCHAR(2)  NULL COMMENT 'Pais de destino (ISO de ShippyPro)',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),

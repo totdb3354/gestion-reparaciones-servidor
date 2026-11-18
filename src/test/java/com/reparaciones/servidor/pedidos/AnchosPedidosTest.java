@@ -39,6 +39,7 @@ class AnchosPedidosTest {
         assertEquals(AnchosPedidos.PEDIDO, ddl.get("Pedido_fila.PEDIDO"));
         assertEquals(AnchosPedidos.TRANSPORTISTA, ddl.get("Pedido_fila.TRANSPORTISTA"));
         assertEquals(AnchosPedidos.SEGUIMIENTO, ddl.get("Pedido_fila.SEGUIMIENTO"));
+        assertEquals(AnchosPedidos.PAIS, ddl.get("Pedido_fila.PAIS"));
         assertEquals(AnchosPedidos.IMEI, ddl.get("Pedido_fila_cambio.IMEI_ANTERIOR"));
         assertEquals(AnchosPedidos.IMEI, ddl.get("Pedido_fila_cambio.IMEI_NUEVO"));
         assertEquals(AnchosPedidos.SKU_DESCONOCIDOS, ddl.get("Pedido_lectura.SKU_DESCONOCIDOS"));
