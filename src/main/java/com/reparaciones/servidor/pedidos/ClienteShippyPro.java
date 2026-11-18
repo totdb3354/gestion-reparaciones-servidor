@@ -245,7 +245,8 @@ public class ClienteShippyPro {
             if (!sku.isEmpty() && cantidad > 0) articulos.add(new PedidoShippyPro.Articulo(sku, cantidad));
         }
         return new PedidoShippyPro(o.path("transaction_id").asText("").strip(), o.path("marketplace_id").asText("").strip(),
-                fecha, vacioANulo(o.path("name").asText("")), vacioANulo(o.path("country").asText("")), articulos);
+                fecha, vacioANulo(o.path("name").asText("")), vacioANulo(o.path("country").asText("")), articulos,
+                vacioANulo(o.path("status").asText("")), vacioANulo(o.path("shippingservice").asText("")));
     }
 
     private static int cantidad(String texto) {
