@@ -34,7 +34,12 @@ public class FilasDAO {
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
             + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
             + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN,"
-            + " (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR FROM Pedido_fila";
+            + " (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR,"
+            + " FECHA_SALIDA, PAIS FROM Pedido_fila";
+    /** La salida de un pedido: ultimo dia para enviarlo y pais (se recalculan en cada vuelta). */
+    public record Salida(Canal canal, String pedido, LocalDate fechaSalida, String pais) {}
+    static final String SQL_PONER_SALIDA = "UPDATE Pedido_fila SET FECHA_SALIDA = ?, PAIS = ? WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ?"
+            + " AND PEDIDO = ? AND CERRADA_EN IS NULL";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
     static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
@@ -525,6 +530,15 @@ public class FilasDAO {
         jdbc.update(SQL_PODAR, Timestamp.valueOf(antesDe));
     }
 
+    /** Pone a las filas vivas de cada pedido su fecha de salida y su pais (se recalcula en cada vuelta). */
+    public void ponerSalidas(List<Salida> salidas) {
+        if (salidas.isEmpty()) return;
+        List<Object[]> lote = new ArrayList<>();
+        for (Salida s : salidas)
+            lote.add(new Object[]{s.fechaSalida() == null ? null : java.sql.Date.valueOf(s.fechaSalida()), s.pais(), s.canal().name(), s.pedido()});
+        jdbc.batchUpdate(SQL_PONER_SALIDA, lote);
+    }
+
     // ---------------------------------------------------------------- ayudas
 
     private static FilaPedido fila(ResultSet rs, int n) throws SQLException {
@@ -539,7 +553,7 @@ public class FilasDAO {
                 rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
                 hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"), rs.getString("MARCA"), rs.getString("MARCA_NOTA"), hora(rs, "MARCA_EN"),
                 rs.getString("MARCA_POR"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"), rs.getString("VALIDADA_IMEI"),
-                hora(rs, "VALIDADA_EN"), rs.getString("VALIDADA_POR"));
+                hora(rs, "VALIDADA_EN"), rs.getString("VALIDADA_POR"), dia(rs, "FECHA_SALIDA"), rs.getString("PAIS"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

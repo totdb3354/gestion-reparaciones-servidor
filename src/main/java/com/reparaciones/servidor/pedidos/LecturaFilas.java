@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.pedidos;
 
+import com.reparaciones.servidor.nsys.AnchosNsys;
 import com.reparaciones.servidor.nsys.ImportadorNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
 import org.slf4j.Logger;
@@ -11,11 +12,13 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
@@ -46,6 +49,7 @@ public class LecturaFilas {
     private final FilasDAO dao;
     private final NsysDAO nsysDao;
     private final Map<String, Canal> canales;
+    private final CalendarioLaboral calendario;
     private final Clock clock;
     private final ReentrantLock enCurso = new ReentrantLock();
     /** Filas vivas cuyo pedido falto en la ultima lectura buena (solo en memoria: tras reiniciar, la primera lectura no cierra). */
@@ -53,15 +57,16 @@ public class LecturaFilas {
 
     @Autowired
     public LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao,
-                        @Value("${pedidos.shippypro.canales:}") String canales) {
-        this(shippyPro, dao, nsysDao, canales, Clock.system(ImportadorNsys.MADRID));
+                        @Value("${pedidos.shippypro.canales:}") String canales, CalendarioLaboral calendario) {
+        this(shippyPro, dao, nsysDao, canales, calendario, Clock.system(ImportadorNsys.MADRID));
     }
 
-    LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao, String canales, Clock clock) {
+    LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao, String canales, CalendarioLaboral calendario, Clock clock) {
         this.shippyPro = shippyPro;
         this.dao = dao;
         this.nsysDao = nsysDao;
         this.canales = Canal.deAjuste(canales);
+        this.calendario = calendario;
         this.clock = clock;
     }
 
@@ -155,6 +160,15 @@ public class LecturaFilas {
             // siguiente vuelta lo rehace.
             dao.insertar(plan.insertar());
             dao.reabrir(plan.reabrir(), ahora); // el inicio de la vuelta, no despues de las llamadas a ShippyPro: un envio creado entre medias es posterior
+            Set<LocalDate> festivos = calendario.festivos();
+            List<FilasDAO.Salida> salidas = new ArrayList<>();
+            for (PedidoShippyPro p : leidos.pedidos()) {
+                Canal canal = canales.get(p.marketplace());
+                if (canal == null || p.numero() == null || p.numero().isBlank()) continue;
+                String pais = p.pais() == null ? null : AnchosNsys.corta(p.pais().strip().toUpperCase(Locale.ROOT), 2);
+                salidas.add(new FilasDAO.Salida(canal, SincroShippyPro.numeroGuardado(p.numero()), FechaSalida.de(p, canal, festivos), pais));
+            }
+            dao.ponerSalidas(salidas);
             dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
             dao.marcarEtiquetas(etiquetas);
             dao.cerrar(cerrar, LocalDateTime.now(clock));

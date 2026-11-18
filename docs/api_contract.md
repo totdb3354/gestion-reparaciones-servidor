@@ -79,6 +79,8 @@ de `model/` conservan su nombre.
     Madrid: cuándo una persona marcó que el móvil de la fila falta por enviar, en un envío parcial de un pedido de web; `null` = sin
     marca) y `sincronizadaEn` (la última vez que el plugin de la web avisó de que el pedido ya lleva ese móvil; `null` = nunca). El
     `estado` y el aviso no cambian: la web deriva de esos campos lo que enseña.
+    `FilaVista` gana al final `fechaSalida` (ISO, nullable: último día para enviar; Amazon, Latest ship de ShippyPro; webs, entrada + 2 o 3
+    días laborables; histórico, `null`) y `pais` (nullable).
   - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
     de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
     que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o

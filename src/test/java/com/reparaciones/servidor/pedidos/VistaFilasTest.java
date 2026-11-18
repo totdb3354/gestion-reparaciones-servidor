@@ -564,4 +564,17 @@ class VistaFilasTest {
         assertEquals(VistaFilas.MOTIVO_ERROR, s.motivo());
         assertNull(s.aviso());
     }
+
+    @Test void laFechaDeSalidaYElPaisDeLaFilaPasanALaVista() {
+        FilaPedido b = fila(1, null, null);
+        FilaPedido conSalida = new FilaPedido(1, b.fecha(), b.plataforma(), b.sku(), null, b.pedido(), b.fechaCompra(), "SHIPPYPRO",
+                Canal.AMAZON, 1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, LocalDate.of(2026, 11, 19), "DE");
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(conSalida, fila(2, null, null)));
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+        assertEquals(LocalDate.of(2026, 11, 19), f.get(0).fechaSalida());
+        assertEquals("DE", f.get(0).pais());
+        assertNull(f.get(1).fechaSalida());
+        assertNull(f.get(1).pais());
+    }
 }

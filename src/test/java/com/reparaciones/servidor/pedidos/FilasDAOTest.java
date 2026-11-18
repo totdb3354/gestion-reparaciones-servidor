@@ -27,7 +27,8 @@ class FilasDAOTest {
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
             + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
-            + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR FROM Pedido_fila";
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR,"
+            + " FECHA_SALIDA, PAIS FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -460,5 +461,35 @@ class FilasDAOTest {
         assertEquals(3, dao.contarCambiosDeHistorico());
         verify(jdbc).queryForObject("SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
                 + " WHERE f.ORIGEN = 'HISTORICO'", Integer.class);
+    }
+
+    @Test void ponerSalidasSoloTocaLasFilasVivasDelPedidoDeEseCanal() {
+        dao.ponerSalidas(List.of(new FilasDAO.Salida(Canal.AMAZON, "0099-1", LocalDate.of(2026, 11, 19), "DE"),
+                new FilasDAO.Salida(Canal.PARTICULARES, "0099-2", null, null)));
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq("UPDATE Pedido_fila SET FECHA_SALIDA = ?, PAIS = ? WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ?"
+                + " AND PEDIDO = ? AND CERRADA_EN IS NULL"), lote.capture());
+        assertEquals(2, lote.getValue().size());
+        assertArrayEquals(new Object[]{java.sql.Date.valueOf("2026-11-19"), "DE", "AMAZON", "0099-1"}, lote.getValue().get(0));
+        assertArrayEquals(new Object[]{null, null, "PARTICULARES", "0099-2"}, lote.getValue().get(1));
+    }
+
+    @Test void ponerSalidasSinNadaNoToca() {
+        dao.ponerSalidas(List.of());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void laFilaLeidaTraeFechaSalidaYPais() throws Exception {
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+        when(rs.getString("CANAL")).thenReturn("AMAZON");
+        when(rs.getDate("FECHA_SALIDA")).thenReturn(java.sql.Date.valueOf("2026-11-19"));
+        when(rs.getString("PAIS")).thenReturn("DE");
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilaPedido>>getArgument(1).mapRow(rs, 0)));
+        FilaPedido f = dao.porId(7).orElseThrow();
+        assertEquals(LocalDate.of(2026, 11, 19), f.fechaSalida());
+        assertEquals("DE", f.pais());
+        assertNull(fila(1, "AMZ", null).fechaSalida(), "una fila nueva sale sin fecha de salida");
     }
 }
