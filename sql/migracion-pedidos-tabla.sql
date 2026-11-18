@@ -6,13 +6,14 @@
 -- Idempotente (MariaDB 11): se puede relanzar entero si algo falla a medias (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS;
 -- los indices van dentro de los CREATE TABLE).
 -- 1) Vista previa: en la primera vez YA_EXISTEN y COLUMNAS_YA deben dar 0; al relanzar dan lo que la vez anterior ya dejo hecho
---    (hasta 5 y 3).
--- 2) Cinco tablas nuevas y tres columnas en Nsys_producto. Pedido_fila ya trae FALTA_ENVIAR_EN, FALTA_ENVIAR_USU y SINCRONIZADA_EN
+--    (hasta 6 y 3).
+-- 2) Seis tablas nuevas (con Calendario_festivo, los festivos de la Comunidad de Madrid) y tres columnas en Nsys_producto. Pedido_fila ya trae FALTA_ENVIAR_EN, FALTA_ENVIAR_USU y SINCRONIZADA_EN
 --    (envios parciales de pedidos de web), MARCA, MARCA_NOTA, MARCA_EN y MARCA_USU (marcas de la fila), ASOCIADA_EN y ASOCIADA_ORIGEN
 --    (asociacion de IMEI y pedido en Amazon), VALIDADA_IMEI, VALIDADA_EN y VALIDADA_USU (validar el SKU del IMEI) y Pedido_fila_cambio, TIPO
 --    (IMEI, FALTA_ENVIAR, YA_ENVIADO, MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA) y DETALLE; mas Pedido_asociacion_revisar y Pedido_asociacion_pasada. En una base que ya tiene las tablas se aplican
---    sql/migracion-pedidos-marcas.sql, sql/migracion-pedidos-asociacion.sql y sql/migracion-pedidos-validacion.sql.
--- 3) Comprobacion final: CREADAS debe dar 5 y COLUMNAS, 3 (tambien en una segunda vez).
+--    sql/migracion-pedidos-marcas.sql, sql/migracion-pedidos-asociacion.sql, sql/migracion-pedidos-validacion.sql y sql/migracion-pedidos-salida.sql
+--    (Calendario_festivo, FECHA_SALIDA y PAIS de Pedido_fila; en una base que ya tiene las tablas, solo las columnas faltan).
+-- 3) Comprobacion final: CREADAS debe dar 6 y COLUMNAS, 3 (tambien en una segunda vez).
 -- No lanzarla mientras corre la copia nocturna.
 -- Vuelta atras: el servidor anterior funciona con todo puesto; no hace falta quitar nada.
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -25,7 +26,7 @@ SET SESSION lock_wait_timeout = 10;
 -- Vista previa (no modifica nada): la primera vez las dos dan 0; al relanzar, lo ya creado
 SELECT COUNT(*) AS YA_EXISTEN FROM information_schema.TABLES
  WHERE TABLE_SCHEMA = 'gestion_reparaciones'
-   AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura', 'Pedido_asociacion_revisar', 'Pedido_asociacion_pasada');
+   AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura', 'Pedido_asociacion_revisar', 'Pedido_asociacion_pasada', 'Calendario_festivo');
 SELECT COUNT(*) AS COLUMNAS_YA FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Nsys_producto'
    AND COLUMN_NAME IN ('SKU_AMAZON_ESIM', 'SKU_PARTICULARES', 'SKU_BACKIPHONE');
@@ -150,10 +151,10 @@ ALTER TABLE Nsys_producto
     ADD COLUMN IF NOT EXISTS SKU_PARTICULARES VARCHAR(60) NULL,
     ADD COLUMN IF NOT EXISTS SKU_BACKIPHONE   VARCHAR(60) NULL;
 
--- Comprobacion final (no modifica nada): CREADAS = 5 y COLUMNAS = 3; si no, NO desplegar el servidor.
+-- Comprobacion final (no modifica nada): CREADAS = 6 y COLUMNAS = 3; si no, NO desplegar el servidor.
 SELECT COUNT(*) AS CREADAS FROM information_schema.TABLES
  WHERE TABLE_SCHEMA = 'gestion_reparaciones'
-   AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura', 'Pedido_asociacion_revisar', 'Pedido_asociacion_pasada');
+   AND TABLE_NAME IN ('Pedido_fila', 'Pedido_fila_cambio', 'Pedido_lectura', 'Pedido_asociacion_revisar', 'Pedido_asociacion_pasada', 'Calendario_festivo');
 SELECT COUNT(*) AS COLUMNAS FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA = 'gestion_reparaciones' AND TABLE_NAME = 'Nsys_producto'
    AND COLUMN_NAME IN ('SKU_AMAZON_ESIM', 'SKU_PARTICULARES', 'SKU_BACKIPHONE');

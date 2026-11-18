@@ -641,8 +641,6 @@ CREATE TABLE Taller_vuelta_ignorada (
     CONSTRAINT fk_taller_vuelta_ignorada_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 
--- Pedidos como la hoja: una fila por unidad pedida (la lectura de ShippyPro y el historico de la hoja), sus cambios de IMEI
--- y las lecturas de ShippyPro. Los tres SKU de los canales nuevos van en Nsys_producto.
 -- Pedidos: calendario laboral (festivos de la Comunidad de Madrid)
 CREATE TABLE Calendario_festivo (
     FECHA  DATE         NOT NULL,
@@ -666,6 +664,9 @@ INSERT IGNORE INTO Calendario_festivo (FECHA, NOMBRE, AMBITO) VALUES
  ('2027-12-06', 'Dia de la Constitucion Espanola', 'COMUNIDAD'),
  ('2027-12-08', 'Inmaculada Concepcion', 'COMUNIDAD'),
  ('2027-12-25', 'Natividad del Senor', 'COMUNIDAD');
+
+-- Pedidos como la hoja: una fila por unidad pedida (la lectura de ShippyPro y el historico de la hoja), sus cambios de IMEI
+-- y las lecturas de ShippyPro. Los tres SKU de los canales nuevos van en Nsys_producto.
 CREATE TABLE Pedido_fila (
     ID_FILA      INT          NOT NULL AUTO_INCREMENT,
     FECHA        DATE         NOT NULL COMMENT 'El dia en que el ERP ve el pedido (hora de Madrid)',
