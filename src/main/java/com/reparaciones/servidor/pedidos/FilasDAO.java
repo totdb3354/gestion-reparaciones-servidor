@@ -99,17 +99,30 @@ public class FilasDAO {
      *  de {@code ?} en adelante; del mas reciente al mas antiguo. Una cerrada sin envio (NO_PENDIENTE) solo entra si su ultimo cambio de
      *  IMEI es POSTERIOR al cierre (alguien tecleo el IMEI sabiendo que ya no estaba pendiente: el movil esta vendido); si el IMEI ya
      *  estaba antes de cerrarse (pedido cancelado) no sale. Una fila con CUALQUIER marca no sale. La fecha que cuenta es la mas reciente entre el
-     *  ultimo apunte IMEI y el ultimo MARCA_QUITADA (al quitar la marca la fila vuelve como recien puesta). Una sola consulta, con tope. */
+     *  ultimo apunte IMEI y el ultimo MARCA_QUITADA (al quitar la marca la fila vuelve como recien puesta). Una sola consulta, con tope.
+     *  <p>Pedidos web juntados en una sola etiqueta (spec §8): una fila {@link #JUNTADA_SINCRONIZADA} (de una web, ya no pendiente, sin
+     *  envio propio y sincronizada por el plugin) sale aunque el IMEI sea de antes del cierre, y su fecha es la mas reciente entre su
+     *  ultimo apunte y {@code SINCRONIZADA_EN}. Las demas filas no miran {@code SINCRONIZADA_EN}. Los dos {@code ?} de la ventana llevan
+     *  el mismo valor. */
+    static final String JUNTADA_SINCRONIZADA = "f.CANAL IN ('DISTRIBUIDORES', 'PARTICULARES', 'BACKIPHONE') AND f.CERRADA_EN IS NOT NULL"
+            + " AND f.ENVIO_FECHA IS NULL AND f.SINCRONIZADA_EN IS NOT NULL";
     static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL,"
             // Amazon sin asociar: el pedido va nulo (el IMEI se sirve igual; el bot solo lee el IMEI).
             + " CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO,"
-            + " u.FECHA_IMEI FROM Pedido_fila f"
+            // Juntada: GREATEST(ultimo apunte, sincronizacion). Con u nulo (ningun apunte en la ventana) el ultimo apunte es anterior a la
+            // ventana y la sincronizacion, si entra, es posterior: la mas reciente es SINCRONIZADA_EN. Para que todas las filas miren la
+            // sincronizacion bastaria cambiar esta linea y la condicion del WHERE.
+            + " CASE WHEN " + JUNTADA_SINCRONIZADA + " THEN GREATEST(COALESCE(u.ULTIMO, f.SINCRONIZADA_EN), f.SINCRONIZADA_EN)"
+            + " ELSE u.ULTIMO END AS FECHA_IMEI FROM Pedido_fila f"
             // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
-            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA) u"
+            // LEFT JOIN: la juntada con el IMEI antiguo (sin apunte en la ventana) entra por la sincronizacion.
+            + " LEFT JOIN (SELECT ID_FILA, MAX(FECHA) AS ULTIMO FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
-            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.MARCA IS NULL AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.MARCA IS NULL"
+            + " AND ((u.ID_FILA IS NOT NULL AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.ULTIMO > f.CERRADA_EN))"
+            + " OR (" + JUNTADA_SINCRONIZADA + " AND (u.ID_FILA IS NOT NULL OR f.SINCRONIZADA_EN >= ?)))"
             + " AND (? IS NULL OR f.CANAL = ?)"
-            + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
+            + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
     static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
             + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)";
@@ -292,14 +305,14 @@ public class FilasDAO {
         return d == null ? null : d.toLocalDate();
     }
 
-    /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI desde {@code desde}, a lo sumo {@code tope} filas, sin
+    /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI (o, en la web juntada, sincronizacion) desde {@code desde}, a lo sumo {@code tope} filas, sin
      *  IMEI repetidos: si esta en dos filas sale la del cambio mas reciente. Un IMEI quitado de la fila no sale (la fila ya no lo tiene). */
     public List<Vendido> vendidosDesde(LocalDateTime desde, Canal canal, int tope) {
         String nombreCanal = canal == null ? null : canal.name();
         // El canal filtra en la consulta; el dedup por IMEI va despues, sobre lo ya filtrado.
         List<Vendido> filas = jdbc.query(SQL_VENDIDOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
                 rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
-                Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
+                Timestamp.valueOf(desde), Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
         java.util.Map<String, Vendido> porImei = new java.util.LinkedHashMap<>();
         for (Vendido v : filas) porImei.putIfAbsent(v.imei(), v);
         return new ArrayList<>(porImei.values());

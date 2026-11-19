@@ -55,7 +55,12 @@ de `model/` conservan su nombre.
   `NO_PENDIENTE` (cerradas sin envío) solo si su último cambio de IMEI es posterior a su cierre (`CERRADA_EN`): alguien tecleó el IMEI
   sabiendo que el pedido ya no estaba pendiente, así que el móvil está vendido; una cerrada que ya tenía el IMEI antes de cerrarse
   (pedido cancelado) no sale; con IMEI de 15 cifras cuyo último apunte de `Pedido_fila_cambio` cae en hoy o en los `dias - 1` días de Madrid
-  anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
+  anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. Pedidos web juntados en una sola etiqueta: una fila de
+  `DISTRIBUIDORES`, `PARTICULARES` o `BACKIPHONE` cerrada sin envío propio (`CERRADA_EN` puesto, `ENVIO_FECHA` nulo) que el plugin de
+  la web ha sincronizado (`SINCRONIZADA_EN` puesto) y sin marca sale **aunque el IMEI se pusiera antes del cierre**; para ella la fecha
+  de la ventana y su `fechaImei` es la más reciente entre su último apunte (`IMEI` o `MARCA_QUITADA`) y `SINCRONIZADA_EN` (una
+  sincronización tardía entra en la ventana aunque el IMEI sea antiguo; si el plugin la vuelve a sincronizar, vuelve a entrar). Sin
+  sincronizar sigue sin salir; Amazon no cambia; las demás filas no miran `SINCRONIZADA_EN`. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
   numérico, `400`. Autenticación: solo la clave (ajuste `pedidos.vendidos.clave`, variable `PEDIDOS_VENDIDOS_CLAVE`): ajuste
   admite varias claves separadas por comas (una por consumidor, todas con el mismo permiso; las de menos de 32 caracteres se
   ignoran); sin ninguna válida, `404` para todos; sin cabecera o con otra clave, `401` (comparación en tiempo constante); un token de usuario, del rol que
