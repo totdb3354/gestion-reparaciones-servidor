@@ -35,9 +35,10 @@ class ExcelBuscarTest {
     @Test void escribeLasDosTablasEnUnaHoja() throws Exception {
         var hoy = ExcelBuscar.tabla(List.of(f("i13128AzulA", "FR"), f("i13128AzulA", "DE"), f("i12128AzulA", null), f("i13128AzulA", "FR")));
         var despues = ExcelBuscar.tabla(List.of());
-        byte[] xlsx = ExcelBuscar.escribir("AMZ", hoy, despues);
+        var vacia = ExcelBuscar.tabla(List.of());
+        byte[] xlsx = ExcelBuscar.escribirListado(hoy, despues, vacia, vacia, ExcelBuscar.webs(List.of()));
         try (var libro = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
-            assertThat(libro.getNumberOfSheets()).isEqualTo(1);
+            assertThat(libro.getNumberOfSheets()).isEqualTo(3);
             XSSFSheet h = libro.getSheetAt(0);
             assertThat(h.getSheetName()).isEqualTo("AMZ");
             assertThat(h.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Para hoy");
@@ -100,11 +101,12 @@ class ExcelBuscarTest {
         var datos = ExcelBuscar.webs(List.of(
             w(Canal.PARTICULARES, "Ana", "i13128AzulA", D17), w(Canal.PARTICULARES, "Ana", "i13128AzulA", D17),
             w(Canal.DISTRIBUIDORES, "Alfa SL", "i12128AzulA", D16)));
-        byte[] xlsx = ExcelBuscar.escribirWebs("WEBS", datos);
+        var vacia = ExcelBuscar.tabla(List.of());
+        byte[] xlsx = ExcelBuscar.escribirListado(vacia, vacia, vacia, vacia, datos);
         try (var libro = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
-            assertThat(libro.getNumberOfSheets()).isEqualTo(1);
-            XSSFSheet h = libro.getSheetAt(0);
-            assertThat(h.getSheetName()).isEqualTo("WEBS");
+            assertThat(libro.getNumberOfSheets()).isEqualTo(3);
+            XSSFSheet h = libro.getSheetAt(2);
+            assertThat(h.getSheetName()).isEqualTo("Webs");
             assertThat(h.getRow(0).getCell(0).getStringCellValue()).isEqualTo("Fonestockroom (distribuidores)");
             assertThat(h.getRow(0).getCell(0).getCellStyle().getFont().getBold()).isTrue();
             var cab = h.getRow(1);

@@ -78,7 +78,7 @@ class RolesPedidosTest {
             t -> get("/api/pedidos/filas/5/cambios").header("Authorization", t),
             t -> get("/api/pedidos/fuentes").header("Authorization", t),
             t -> get("/api/pedidos/asociaciones").header("Authorization", t),
-            t -> get("/api/pedidos/buscar?plataforma=AMZ").header("Authorization", t));
+            t -> get("/api/pedidos/buscar").header("Authorization", t));
 
     @Test void elTecnicoRecibe403SinLlegarALaVistaNiAlDao() throws Exception {
         for (var ruta : RUTAS) mvc.perform(ruta.apply(tecnico())).andExpect(status().isForbidden());

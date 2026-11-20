@@ -26,8 +26,9 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-/** El Excel de «Descargar para buscar»: una hoja con dos tablas (SKU por pais con el total) de los moviles que aun hay que buscar,
- *  «Para hoy» y «Pueden esperar». Estilos y ajuste de impresion como {@code HojaImprimible}. */
+/** El «Listado»: un Excel con una pestaña por plataforma (AMZ, FNSK y Webs) de los moviles que aun hay que buscar. AMZ y FNSK, con dos
+ *  tablas (SKU por pais con el total), «Para hoy» y «Pueden esperar»; Webs, un bloque por web y cliente. Estilos y ajuste de impresion
+ *  como {@code HojaImprimible}; cada pestaña se imprime en A4 ajustada al ancho. */
 final class ExcelBuscar {
 
     static final String SIN_PAIS = "—";
@@ -100,9 +101,21 @@ final class ExcelBuscar {
         return webs.values().stream().flatMap(List::stream).mapToInt(FilaWeb::uds).sum();
     }
 
-    /** El Excel de las webs: una hoja con un bloque por web (titulo, {@code Cliente | SKU | Uds | Entro}, filas y «Total»), una fila en blanco entre bloques. */
-    static byte[] escribirWebs(String nombreHoja, Map<Canal, List<FilaWeb>> webs) {
+    /** El libro del «Listado»: las pestañas AMZ, FNSK y Webs, en este orden. */
+    static byte[] escribirListado(Tabla amzHoy, Tabla amzEsperar, Tabla fnskHoy, Tabla fnskEsperar, Map<Canal, List<FilaWeb>> webs) {
         try (XSSFWorkbook libro = new XSSFWorkbook(); ByteArrayOutputStream salida = new ByteArrayOutputStream()) {
+            hojaTablas(libro, "AMZ", amzHoy, amzEsperar);
+            hojaTablas(libro, "FNSK", fnskHoy, fnskEsperar);
+            hojaWebs(libro, "Webs", webs);
+            libro.write(salida);
+            return salida.toByteArray();
+        } catch (IOException e) {
+            throw new UncheckedIOException("No se pudo escribir el Excel", e);
+        }
+    }
+
+    /** La pestaña de las webs: un bloque por web (titulo, {@code Cliente | SKU | Uds | Entro}, filas y «Total»), una fila en blanco entre bloques. */
+    private static void hojaWebs(XSSFWorkbook libro, String nombreHoja, Map<Canal, List<FilaWeb>> webs) {
             XSSFSheet hoja = libro.createSheet(nombreHoja);
             Estilos estilos = new Estilos(estilo(libro, true, false), estilo(libro, true, true), estilo(libro, false, true));
             XSSFCellStyle fecha = estilo(libro, false, true);
@@ -153,11 +166,6 @@ final class ExcelBuscar {
                 hoja.setColumnWidth(c, (ancho + 2) * 256);
             }
             ajustarImpresion(hoja);
-            libro.write(salida);
-            return salida.toByteArray();
-        } catch (IOException e) {
-            throw new UncheckedIOException("No se pudo escribir el Excel", e);
-        }
     }
 
     private static void ajustarImpresion(XSSFSheet hoja) {
@@ -202,8 +210,8 @@ final class ExcelBuscar {
         return new Tabla(paises, filasTabla);
     }
 
-    static byte[] escribir(String nombreHoja, Tabla paraHoy, Tabla puedenEsperar) {
-        try (XSSFWorkbook libro = new XSSFWorkbook(); ByteArrayOutputStream salida = new ByteArrayOutputStream()) {
+    /** La pestaña de una cuenta de Amazon: «Para hoy» y, debajo, «Pueden esperar». */
+    private static void hojaTablas(XSSFWorkbook libro, String nombreHoja, Tabla paraHoy, Tabla puedenEsperar) {
             XSSFSheet hoja = libro.createSheet(nombreHoja);
             Estilos estilos = new Estilos(estilo(libro, true, false), estilo(libro, true, true), estilo(libro, false, true));
             int[] anchos = new int[Math.max(paraHoy.paises().size(), puedenEsperar.paises().size()) + 2];
@@ -214,11 +222,6 @@ final class ExcelBuscar {
                 hoja.setColumnWidth(c, (ancho + 2) * 256);
             }
             ajustarImpresion(hoja);
-            libro.write(salida);
-            return salida.toByteArray();
-        } catch (IOException e) {
-            throw new UncheckedIOException("No se pudo escribir el Excel", e);
-        }
     }
 
     private record Estilos(XSSFCellStyle titulo, XSSFCellStyle cabecera, XSSFCellStyle normal) {}

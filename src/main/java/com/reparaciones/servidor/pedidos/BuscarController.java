@@ -8,33 +8,33 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-/** «Descargar para buscar»: el Excel de los moviles que aun hay que buscar de una plataforma, en dos tablas (para hoy y pueden esperar); las webs, en un bloque por web y cliente.
- *  SUPERTECNICO y ADMIN. */
+/** El «Listado» (antes «Descargar para buscar»): un Excel con una pestaña por plataforma (AMZ, FNSK y Webs) de los moviles que aun hay
+ *  que buscar; AMZ y FNSK en dos tablas (para hoy y pueden esperar), las webs en un bloque por web y cliente. SUPERTECNICO y ADMIN. */
 @RestController
 @RequestMapping("/api/pedidos")
 @PreAuthorize("hasAnyRole('SUPERTECNICO', 'ADMIN')")
 public class BuscarController {
 
     static final String XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    /** Cuantos moviles lleva el Excel entre las dos tablas (mismo nombre que en las plantillas de «Por pasar a NSYS»). */
+    /** Cuantos moviles lleva el Excel entre todas las pestañas (mismo nombre que en las plantillas de «Por pasar a NSYS»). */
     static final String CABECERA_FILAS = "X-Filas";
-    private static final DateTimeFormatter DIA_MES = DateTimeFormatter.ofPattern("dd-MM");
+    /** «Listado 18-11 09h30.xlsx»: dia y hora de Madrid, sin «:» (Windows no lo admite en nombres de fichero). */
+    private static final DateTimeFormatter NOMBRE = DateTimeFormatter.ofPattern("'Listado 'dd-MM HH'h'mm'.xlsx'");
+    private static final List<Canal> WEBS = List.of(Canal.DISTRIBUIDORES, Canal.PARTICULARES, Canal.BACKIPHONE);
 
     private final FilasDAO dao;
     private final Clock clock;
@@ -52,30 +52,35 @@ public class BuscarController {
     @GetMapping(value = "/buscar", produces = XLSX)
     @ApiResponses({
         @ApiResponse(responseCode = "200", content = @Content(mediaType = XLSX,
-                schema = @Schema(type = "string", format = "binary"))),
-        @ApiResponse(responseCode = "400", content = @Content)
+                schema = @Schema(type = "string", format = "binary")))
     })
-    public ResponseEntity<byte[]> buscar(@RequestParam String plataforma) {
-        List<Canal> canales = switch (plataforma) {
-            case "AMZ" -> List.of(Canal.AMAZON);
-            case "FNSK" -> List.of(Canal.AMAZON_STOCKROOM);
-            case "WEBS" -> List.of(Canal.DISTRIBUIDORES, Canal.PARTICULARES, Canal.BACKIPHONE);
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La plataforma debe ser AMZ, FNSK o WEBS");
-        };
-        LocalDate hoy = LocalDate.now(clock);
-        String nombre = "Buscar " + plataforma + " " + hoy.format(DIA_MES) + ".xlsx";
-        if (plataforma.equals("WEBS")) {
-            // En las webs se envia todo en el dia: sin dividir por fecha, un bloque por web con el cliente.
-            var webs = ExcelBuscar.webs(dao.porBuscar(canales));
-            return respuesta(ExcelBuscar.escribirWebs(plataforma, webs), nombre, ExcelBuscar.unidades(webs));
-        }
+    public ResponseEntity<byte[]> buscar() {
+        LocalDateTime ahora = LocalDateTime.now(clock);
+        LocalDate hoy = ahora.toLocalDate();
+        List<Canal> canales = new ArrayList<>(List.of(Canal.AMAZON, Canal.AMAZON_STOCKROOM));
+        canales.addAll(WEBS);
+        List<FilasDAO.PorBuscar> todas = dao.porBuscar(canales);
+        Partes amz = partir(todas, Canal.AMAZON, hoy);
+        Partes fnsk = partir(todas, Canal.AMAZON_STOCKROOM, hoy);
+        // En las webs se envia todo en el dia: sin dividir por fecha, un bloque por web con el cliente.
+        var bloques = ExcelBuscar.webs(todas.stream().filter(f -> WEBS.contains(f.canal())).toList());
+        byte[] xlsx = ExcelBuscar.escribirListado(ExcelBuscar.tabla(amz.hoy()), ExcelBuscar.tabla(amz.esperar()),
+                ExcelBuscar.tabla(fnsk.hoy()), ExcelBuscar.tabla(fnsk.esperar()), bloques);
+        int filas = amz.hoy().size() + amz.esperar().size() + fnsk.hoy().size() + fnsk.esperar().size() + ExcelBuscar.unidades(bloques);
+        return respuesta(xlsx, ahora.format(NOMBRE), filas);
+    }
+
+    private record Partes(List<FilasDAO.PorBuscar> hoy, List<FilasDAO.PorBuscar> esperar) {}
+
+    /** Las filas de una cuenta de Amazon, partidas por su fecha de salida: hasta hoy (o sin fecha), para hoy; despues, pueden esperar. */
+    private static Partes partir(List<FilasDAO.PorBuscar> todas, Canal canal, LocalDate hoy) {
         List<FilasDAO.PorBuscar> paraHoy = new ArrayList<>();
         List<FilasDAO.PorBuscar> puedenEsperar = new ArrayList<>();
-        for (FilasDAO.PorBuscar f : dao.porBuscar(canales)) {
+        for (FilasDAO.PorBuscar f : todas) {
+            if (f.canal() != canal) continue;
             if (f.fechaSalida() == null || !f.fechaSalida().isAfter(hoy)) paraHoy.add(f); else puedenEsperar.add(f);
         }
-        byte[] xlsx = ExcelBuscar.escribir(plataforma, ExcelBuscar.tabla(paraHoy), ExcelBuscar.tabla(puedenEsperar));
-        return respuesta(xlsx, nombre, paraHoy.size() + puedenEsperar.size());
+        return new Partes(paraHoy, puedenEsperar);
     }
 
     private static ResponseEntity<byte[]> respuesta(byte[] xlsx, String nombre, int filas) {
