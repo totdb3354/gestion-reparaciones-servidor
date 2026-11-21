@@ -26,10 +26,11 @@ class LecturaFilasTest {
     private final ClienteShippyPro shippy = mock(ClienteShippyPro.class);
     private final FilasDAO dao = mock(FilasDAO.class);
     private final NsysDAO nsys = mock(NsysDAO.class);
+    private final CalendarioLaboral calendario = mock(CalendarioLaboral.class);
     private final Clock reloj = Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID);
 
     private LecturaFilas lectura(String canales) {
-        return new LecturaFilas(shippy, dao, nsys, canales, reloj);
+        return new LecturaFilas(shippy, dao, nsys, canales, calendario, reloj);
     }
 
     private static PedidoShippyPro pedido(String numero) {
@@ -430,8 +431,43 @@ class LecturaFilasTest {
         when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(AceptaSkuTest.producto("Azul", "A", "i13128AzulA",
                 "i13128AzulA", "i13128AzulAP", "bk-azul-a")));
 
-        new LecturaFilas(shippy, dao, nsys, "100:AMAZON", relojQueAvanza()).pasada();
+        new LecturaFilas(shippy, dao, nsys, "100:AMAZON", calendario, relojQueAvanza()).pasada();
 
         verify(dao).reabrir(List.of(4), AHORA);
+    }
+
+    @Test void cadaVueltaPoneLaFechaDeSalidaYElPaisDeLosPedidosPendientes() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(calendario.festivos()).thenReturn(Set.of());
+        PedidoShippyPro amazon = new PedidoShippyPro("402-0000000-0000011", "100", AHORA.minusDays(1), null, "de",
+                List.of(new PedidoShippyPro.Articulo("i13128AzulA", 1)), "Unshipped Latest ship: 2026-11-19", null);
+        PedidoShippyPro otro = new PedidoShippyPro("0099-9", "999", AHORA.minusDays(1), null, "ES",
+                List.of(new PedidoShippyPro.Articulo("i13128AzulA", 1)));
+        when(shippy.pendientes()).thenReturn(new ClienteShippyPro.Leidos(List.of(amazon, otro), List.of()));
+        when(dao.vivasDeShippyPro()).thenReturn(List.of());
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(AceptaSkuTest.producto("Azul", "A", "i13128AzulA",
+                "i13128AzulA", "i13128AzulAP", "bk-azul-a")));
+
+        lectura("100:AMAZON").pasada();
+
+        verify(dao).ponerSalidas(List.of(new FilasDAO.Salida(Canal.AMAZON, SincroShippyPro.numeroGuardado("402-0000000-0000011"),
+                LocalDate.of(2026, 11, 19), "DE")));
+    }
+
+    @Test void unFalloAlPonerLasSalidasNoTumbaLaVueltaYDejaUnAviso() throws Exception {
+        unPedidoBien();
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("x")).when(dao).ponerSalidas(any());
+        lectura("100:AMAZON").pasada();
+        verify(dao).marcarEnviadas(any(), any());
+        verify(dao).cerrar(any(), any());
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), contains("No se pudo poner la fecha de salida"), any());
+    }
+
+    @Test void unFalloDelCalendarioTampocoTumbaLaVuelta() throws Exception {
+        unPedidoBien();
+        when(calendario.festivos()).thenThrow(new IllegalStateException("x"));
+        lectura("100:AMAZON").pasada();
+        verify(dao).cerrar(any(), any());
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), contains("No se pudo poner la fecha de salida"), any());
     }
 }

@@ -174,12 +174,17 @@ public class VistaFilas {
                 aviso = AvisoImei.de(ac, f.canal(), m, v, trabajos.getOrDefault(clave, List.of()), enOtraFila);
             }
             String estado = estado(f);
+            // Validada: una persona dio por bueno el aviso de SKU de ESTE IMEI; con otro IMEI, o si el aviso ya no es de SKU, no vale.
+            boolean validada = aviso != null && f.validadaImei() != null && f.validadaImei().equals(f.imei()) && aviso.esDeSku();
+            String motivoValidado = validada ? aviso.motivo() : null;
+            if (validada) aviso = new AvisoImei(AvisoImei.OK, null, aviso.skuMovil(), aviso.caja());
             vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), estado,
                     !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),
                     f.impresaEn(), f.tieneEtiqueta(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn(),
-                    f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor()));
+                    f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(), f.asociadaEn(), f.asociadaOrigen(),
+                    validada ? f.validadaEn() : null, validada ? f.validadaPor() : null, motivoValidado, f.fechaSalida(), f.pais()));
         }
         return vistas;
     }

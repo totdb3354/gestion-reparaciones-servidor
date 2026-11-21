@@ -107,6 +107,29 @@ class FilasControllerTest {
         assertFalse(e.getReason().contains(IMEI));
     }
 
+    @Test void unImeiDuplicadoEs409ConElTextoDelPedidoYUnReintentoConLaMismaClaveVuelveAdar409() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.ponerImei(5, IMEI, null, 7, AHORA)).thenThrow(
+                new ImeiDuplicadoException("0099-1110004-0000004", LocalDate.of(2026, 11, 17), Canal.AMAZON, false));
+        for (int i = 0; i < 2; i++) {
+            ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                    () -> controller.ponerImei(5, new PeticionImei(IMEI, null), super_, "clave-dup"));
+            assertEquals(409, e.getStatusCode().value());
+            assertEquals("Este IMEI ya está en el pedido 0099-1110004-0000004 (fila del 17/11)", e.getReason());
+        }
+        verify(dao, times(2)).ponerImei(5, IMEI, null, 7, AHORA);
+    }
+
+    @Test void unImeiDuplicadoSinAsociarEnStockroomDiceFnsk() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
+        when(dao.ponerImei(5, IMEI, null, 7, AHORA)).thenThrow(
+                new ImeiDuplicadoException("FNSK1", LocalDate.of(2026, 11, 17), Canal.AMAZON_STOCKROOM, true));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> controller.ponerImei(5, new PeticionImei(IMEI, null), super_, null));
+        assertEquals(409, e.getStatusCode().value());
+        assertEquals("Este IMEI ya está en una fila de FNSK del 17/11 sin asociar", e.getReason());
+    }
+
     @Test void imeiAnteriorMalFormadoEs400() {
         when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO", null)));
         assertEquals(400, estado(() -> controller.ponerImei(5, new PeticionImei(IMEI, "123"), super_, null)));

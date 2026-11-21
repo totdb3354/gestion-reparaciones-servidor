@@ -50,8 +50,10 @@ public final class Traspaso {
      *  días antes que esa fila: una venta anterior del mismo móvil (se carga como histórico). */
     public record Recuentos(int a, int b, int c, int yaPuesto, int conflicto, int casadasSinImei, int sinPareja, int yaVendido, int ventaAnterior) {}
 
-    /** {@code historico}: las filas de la hoja que se cargan como histórico, en el orden de la hoja. */
-    public record Plan(List<Traslado> traslados, List<FilaHoja> historico, Recuentos recuentos) {}
+    /** {@code historico}: las filas de la hoja que se cargan como histórico, en el orden de la hoja. {@code asociadas}: las filas de Amazon
+     *  del ERP cuyo pedido confirma la regla A (la que recibe el IMEI y la del mismo pedido que ya lo tenía, «ya puesto»), sin repetir y
+     *  solo las que aún no estaban asociadas: la carga las marca como asociadas desde el histórico. */
+    public record Plan(List<Traslado> traslados, List<FilaHoja> historico, Recuentos recuentos, List<Integer> asociadas) {}
 
     private Traspaso() {}
 
@@ -135,6 +137,7 @@ public final class Traspaso {
         boolean[] fuera = new boolean[hoja.size()]; // true = no se carga como historico
         List<Traslado> traslados = new ArrayList<>();
         int a = 0, b = 0, c = 0, yaPuesto = 0, conflicto = 0, sinImei = 0, sinPareja = 0, yaVendido = 0;
+        Set<Integer> asociadas = new java.util.LinkedHashSet<>();
 
         // Pasada 1: A, con toda la hoja.
         for (int i = 0; i < hoja.size(); i++) {
@@ -147,9 +150,11 @@ public final class Traspaso {
                 sinImei++;
                 continue;
             }
-            // Mismo numero de pedido = misma venta: si una fila del propio pedido ya tiene el IMEI, «ya puesto».
-            if (grupo.stream().anyMatch(d -> f.imei().equals(d.imei))) {
+            // Mismo numero de pedido = misma venta: si una fila del propio pedido ya tiene el IMEI, «ya puesto» (y su pedido, confirmado).
+            Destino mismo = grupo.stream().filter(d -> f.imei().equals(d.imei)).findFirst().orElse(null);
+            if (mismo != null) {
                 yaPuesto++;
+                if (mismo.fila.asociadaEn() == null) asociadas.add(mismo.fila.id());
                 continue;
             }
             // El IMEI esta en una fila de OTRO pedido: si esa fila es mas de 7 dias anterior a la fila de la hoja, es una venta anterior
@@ -169,6 +174,7 @@ public final class Traspaso {
             libre.imei = f.imei();
             puestos.merge(f.imei(), libre.fila.fecha() == null ? SIN_FECHA : libre.fila.fecha(), Traspaso::masAntigua);
             traslados.add(new Traslado(libre.fila.id(), f.imei(), Via.A));
+            if (libre.fila.asociadaEn() == null) asociadas.add(libre.fila.id());
             a++;
         }
 
@@ -261,6 +267,6 @@ public final class Traspaso {
         List<FilaHoja> historico = new ArrayList<>();
         for (int i = 0; i < hoja.size(); i++) if (!fuera[i]) historico.add(hoja.get(i));
         return new Plan(List.copyOf(traslados), List.copyOf(historico),
-                new Recuentos(a, b, c, yaPuesto, conflicto, sinImei, sinPareja, yaVendido, ventaAnterior));
+                new Recuentos(a, b, c, yaPuesto, conflicto, sinImei, sinPareja, yaVendido, ventaAnterior), List.copyOf(asociadas));
     }
 }

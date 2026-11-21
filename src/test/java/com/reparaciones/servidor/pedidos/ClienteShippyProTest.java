@@ -56,6 +56,21 @@ class ClienteShippyProTest {
         assertEquals(ClienteShippyPro.AGENTE, p.headers().firstValue("User-Agent").orElseThrow());
     }
 
+    @Test void elEstadoYElServicioSeLeenSiVienenYSonNulosSiNo() throws Exception {
+        responde(200, """
+                {"Result":"OK","Orders":[
+                 {"transaction_id":"0099-1","date":"1793629400","marketplace_id":"100","status":"Unshipped Latest ship: 2026-11-19",
+                  "shippingservice":"Standard","items":[{"sku":"i13128AzulA","quantity":"1"}]},
+                 {"transaction_id":"0099-2","date":"1793629400","marketplace_id":"100","status":"","items":[{"sku":"i13128AzulA","quantity":"1"}]}]}""");
+
+        List<PedidoShippyPro> pedidos = cliente.pendientes().pedidos();
+
+        assertEquals("Unshipped Latest ship: 2026-11-19", pedidos.get(0).estado());
+        assertEquals("Standard", pedidos.get(0).servicio());
+        assertNull(pedidos.get(1).estado());
+        assertNull(pedidos.get(1).servicio());
+    }
+
     @Test void unaRespuestaQueNoEs200OUnResultQueNoEsOkEsUnFallo() {
         responde(403, "<html>");
         assertEquals("ShippyPro respondió 403", assertThrows(IOException.class, cliente::pendientes).getMessage());

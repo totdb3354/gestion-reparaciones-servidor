@@ -116,6 +116,12 @@ public class ClienteDrive {
                 esperaDescarga);
     }
 
+    /** Descarga el fichero a {@code destino} (que ya existe y está vacío) sin pasar por memoria: los libros de ventas de Amazon pesan
+     *  decenas de MB. Admite unidades compartidas, como las demás llamadas. */
+    public void descargarA(String id, Path destino) throws IOException, InterruptedException {
+        pedir(API + "/" + codificar(id) + "?alt=media&supportsAllDrives=true", HttpResponse.BodyHandlers.ofFile(destino), esperaDescarga);
+    }
+
     /** Una petición con plazo para todo, cuerpo incluido. HttpRequest.timeout solo cubre la espera de las cabeceras, y la
      *  importación, el histórico y la tarea de medianoche comparten el único hilo del planificador de Spring: un cuerpo
      *  que no acaba los congelaría a todos. */

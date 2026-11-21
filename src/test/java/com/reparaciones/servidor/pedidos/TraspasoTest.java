@@ -131,6 +131,28 @@ class TraspasoTest {
         assertEquals(1, p.recuentos().yaPuesto());
     }
 
+    // ------------------------------------------------------------------ A: asociacion de IMEI y pedido en Amazon (origen HISTORICO)
+
+    @Test void aDaPorAsociadaLaFilaQueRecibeElImeiYLaDelMismoPedidoQueYaLoTenia() {
+        Plan p = planear(List.of(hoja(HOY, "AMZ", SKU, IMEI1, PED1), hoja(HOY, "AMZ", SKU, IMEI2, "402-0000000-0000002"),
+                        hoja(HOY, "AMZ", SKU, IMEI1, PED1)),
+                List.of(amazon(10, SKU, null, PED1, 1), amazon(11, SKU, IMEI2, "402-0000000-0000002", 1)), HOY);
+        assertEquals(List.of(new Traslado(10, IMEI1, Via.A)), traslados(p));
+        assertEquals(List.of(10, 11), p.asociadas(), "sin repetir la 10 aunque su IMEI salga dos veces");
+    }
+
+    @Test void aNoVuelveAAsociarLaYaAsociadaNiAsociaBNiCNiLosConflictos() {
+        FilaPedido asociada = new FilaPedido(10, HOY.minusDays(1), "AMZ", SKU, IMEI1, PED1, null, "SHIPPYPRO", Canal.AMAZON, 1, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, LocalDateTime.of(2026, 11, 10, 9, 0), "LIBRO");
+        Plan p = planear(List.of(hoja(HOY, "AMZ", SKU, IMEI1, PED1), hoja(HOY, "AMZ", SKU, IMEI2, null),
+                        hoja(HOY, "AMZ", SKU, IMEI3, "402-0000000-0000003")),
+                List.of(asociada, amazon(11, SKU, null, "402-0000000-0000002", 1), amazon(12, SKU, "350000000000009", "402-0000000-0000003", 1)),
+                HOY);
+        assertEquals(List.of(new Traslado(11, IMEI2, Via.B)), traslados(p));
+        assertEquals(1, p.recuentos().conflicto());
+        assertTrue(p.asociadas().isEmpty(), p.asociadas().toString());
+    }
+
     @Test void aSiHayMasFilasDeLaHojaQueDelErpLasQueSobranSonConflicto() {
         Plan p = planear(List.of(hoja(HOY, "AMZ", SKU, IMEI1, PED1), hoja(HOY, "AMZ", SKU, IMEI2, PED1)),
                 List.of(amazon(10, SKU, null, PED1, 1)), HOY);

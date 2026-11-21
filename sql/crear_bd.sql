@@ -12,6 +12,8 @@ SET NAMES utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS Pedido_asociacion_revisar;
+DROP TABLE IF EXISTS Pedido_asociacion_pasada;
 DROP TABLE IF EXISTS Pedido_fila_cambio;
 DROP TABLE IF EXISTS Pedido_fila;
 DROP TABLE IF EXISTS Pedido_lectura;
@@ -640,6 +642,30 @@ CREATE TABLE Taller_vuelta_ignorada (
     CONSTRAINT fk_taller_vuelta_ignorada_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 
+-- Pedidos: calendario laboral (festivos de la Comunidad de Madrid)
+CREATE TABLE Calendario_festivo (
+    FECHA  DATE         NOT NULL,
+    NOMBRE VARCHAR(100) NOT NULL,
+    AMBITO VARCHAR(20)  NOT NULL COMMENT 'COMUNIDAD (festivos de la Comunidad de Madrid); los locales no se cargan',
+    PRIMARY KEY (FECHA)
+);
+INSERT IGNORE INTO Calendario_festivo (FECHA, NOMBRE, AMBITO) VALUES
+ ('2026-12-07', 'Traslado del Dia de la Constitucion', 'COMUNIDAD'),
+ ('2026-12-08', 'Inmaculada Concepcion', 'COMUNIDAD'),
+ ('2026-12-25', 'Natividad del Senor', 'COMUNIDAD'),
+ ('2027-01-01', 'Ano Nuevo', 'COMUNIDAD'),
+ ('2027-01-06', 'Epifania del Senor', 'COMUNIDAD'),
+ ('2027-03-19', 'San Jose', 'COMUNIDAD'),
+ ('2027-03-25', 'Jueves Santo', 'COMUNIDAD'),
+ ('2027-03-26', 'Viernes Santo', 'COMUNIDAD'),
+ ('2027-05-01', 'Fiesta del Trabajo', 'COMUNIDAD'),
+ ('2027-08-16', 'Traslado de la Asuncion de la Virgen', 'COMUNIDAD'),
+ ('2027-10-12', 'Fiesta Nacional de Espana', 'COMUNIDAD'),
+ ('2027-11-01', 'Todos los Santos', 'COMUNIDAD'),
+ ('2027-12-06', 'Dia de la Constitucion Espanola', 'COMUNIDAD'),
+ ('2027-12-08', 'Inmaculada Concepcion', 'COMUNIDAD'),
+ ('2027-12-25', 'Natividad del Senor', 'COMUNIDAD');
+
 -- Pedidos como la hoja: una fila por unidad pedida (la lectura de ShippyPro y el historico de la hoja), sus cambios de IMEI
 -- y las lecturas de ShippyPro. Los tres SKU de los canales nuevos van en Nsys_producto.
 CREATE TABLE Pedido_fila (
@@ -667,6 +693,13 @@ CREATE TABLE Pedido_fila (
     MARCA_NOTA   VARCHAR(200) NULL COMMENT 'Nota libre de la marca',
     MARCA_EN     DATETIME     NULL COMMENT 'Cuando se puso la marca',
     MARCA_USU    INT          NULL COMMENT 'Quien puso la marca',
+    ASOCIADA_EN     DATETIME    NULL COMMENT 'Amazon: cuando se confirmo el pedido del IMEI (libro de ventas o historico); NULL = sin asociar',
+    ASOCIADA_ORIGEN VARCHAR(20) NULL COMMENT 'LIBRO (libro de ventas) o HISTORICO (carga del historico de la hoja); NULL = sin asociar',
+    VALIDADA_IMEI VARCHAR(20) NULL COMMENT 'El IMEI para el que una persona dio por bueno el aviso de SKU; solo vale mientras sea el IMEI de la fila',
+    VALIDADA_EN   DATETIME    NULL COMMENT 'Cuando se valido',
+    VALIDADA_USU  INT         NULL COMMENT 'Quien valido',
+    FECHA_SALIDA  DATE        NULL COMMENT 'Ultimo dia para enviar el pedido (Amazon: Latest ship de ShippyPro; webs: entrada + 2 o 3 dias laborables)',
+    PAIS          VARCHAR(2)  NULL COMMENT 'Pais de destino (ISO de ShippyPro)',
     PRIMARY KEY (ID_FILA),
     UNIQUE KEY uq_fila_pedido (CANAL, PEDIDO, POSICION),
     KEY idx_fila_fecha (FECHA, ID_FILA),
@@ -674,7 +707,8 @@ CREATE TABLE Pedido_fila (
     KEY idx_fila_imei (IMEI),
     KEY idx_fila_pedido (PEDIDO),
     CONSTRAINT fk_fila_falta_usuario FOREIGN KEY (FALTA_ENVIAR_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
-    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+    CONSTRAINT fk_fila_marca_usuario FOREIGN KEY (MARCA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL,
+    CONSTRAINT fk_fila_validada_usuario FOREIGN KEY (VALIDADA_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
 CREATE TABLE Pedido_fila_cambio (
     ID_CAMBIO     INT         NOT NULL AUTO_INCREMENT,
@@ -683,12 +717,38 @@ CREATE TABLE Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA o MARCA_QUITADA',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en los apuntes MARCA y MARCA_QUITADA',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
     CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
+);
+-- Asociacion de IMEI y pedido en Amazon («plan B»): lo que la ultima pasada de los libros de ventas de cada canal dejo «para revisar»
+-- (se rehace en cada pasada) y la ultima pasada de cada canal con sus recuentos.
+CREATE TABLE Pedido_asociacion_revisar (
+    ID       INT         NOT NULL AUTO_INCREMENT,
+    CANAL    VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
+    PEDIDO   VARCHAR(60) NOT NULL COMMENT 'El numero del libro, normalizado como lo guarda la lectura de ShippyPro',
+    IMEI     VARCHAR(20) NOT NULL,
+    MOTIVO   VARCHAR(30) NOT NULL COMMENT 'SIN_HUECO, YA_SALIO, PEDIDO_AJENO o CANCELADO',
+    VISTO_EN DATETIME    NOT NULL COMMENT 'La pasada que lo dejo para revisar (hora de Madrid)',
+    PRIMARY KEY (ID),
+    KEY idx_asociacion_revisar_canal (CANAL)
+);
+CREATE TABLE Pedido_asociacion_pasada (
+    CANAL          VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
+    CUANDO         DATETIME    NOT NULL COMMENT 'La ultima pasada de ese canal (hora de Madrid)',
+    CONFIRMADAS    INT         NOT NULL,
+    INTERCAMBIADAS INT         NOT NULL,
+    PUESTAS        INT         NOT NULL,
+    YA_ESTABAN     INT         NOT NULL,
+    PARA_REVISAR   INT         NOT NULL,
+    DESCARTADAS    INT         NOT NULL,
+    LIBRO_MODIFICADO DATETIME   NULL COMMENT 'Lector de los libros: fecha de modificacion en Drive del libro de su ultima lectura buena, en hora de Madrid; NULL = nunca leido',
+    ERROR          VARCHAR(500) NULL COMMENT 'Lector de los libros: el fallo de su ultima vuelta; NULL si la ultima fue buena',
+    ERROR_EN       DATETIME    NULL COMMENT 'Cuando fallo esa vuelta (hora de Madrid)',
+    PRIMARY KEY (CANAL)
 );
 CREATE TABLE Pedido_lectura (
     ID_LECTURA       INT           NOT NULL AUTO_INCREMENT,

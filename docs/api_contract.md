@@ -55,7 +55,12 @@ de `model/` conservan su nombre.
   `NO_PENDIENTE` (cerradas sin envío) solo si su último cambio de IMEI es posterior a su cierre (`CERRADA_EN`): alguien tecleó el IMEI
   sabiendo que el pedido ya no estaba pendiente, así que el móvil está vendido; una cerrada que ya tenía el IMEI antes de cerrarse
   (pedido cancelado) no sale; con IMEI de 15 cifras cuyo último apunte de `Pedido_fila_cambio` cae en hoy o en los `dias - 1` días de Madrid
-  anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
+  anteriores (no se mira `Pedido_fila.FECHA`); como mucho 5000. Pedidos web juntados en una sola etiqueta: una fila de
+  `DISTRIBUIDORES`, `PARTICULARES` o `BACKIPHONE` cerrada sin envío propio (`CERRADA_EN` puesto, `ENVIO_FECHA` nulo) que el plugin de
+  la web ha sincronizado (`SINCRONIZADA_EN` puesto) y sin marca sale **aunque el IMEI se pusiera antes del cierre**; para ella la fecha
+  de la ventana y su `fechaImei` es la más reciente entre su último apunte (`IMEI` o `MARCA_QUITADA`) y `SINCRONIZADA_EN` (una
+  sincronización tardía entra en la ventana aunque el IMEI sea antiguo; si el plugin la vuelve a sincronizar, vuelve a entrar). Sin
+  sincronizar sigue sin salir; Amazon no cambia; las demás filas no miran `SINCRONIZADA_EN`. `dias`: entero de 1 a 31 (por defecto 7); fuera de rango o no
   numérico, `400`. Autenticación: solo la clave (ajuste `pedidos.vendidos.clave`, variable `PEDIDOS_VENDIDOS_CLAVE`): ajuste
   admite varias claves separadas por comas (una por consumidor, todas con el mismo permiso; las de menos de 32 caracteres se
   ignoran); sin ninguna válida, `404` para todos; sin cabecera o con otra clave, `401` (comparación en tiempo constante); un token de usuario, del rol que
@@ -79,6 +84,8 @@ de `model/` conservan su nombre.
     Madrid: cuándo una persona marcó que el móvil de la fila falta por enviar, en un envío parcial de un pedido de web; `null` = sin
     marca) y `sincronizadaEn` (la última vez que el plugin de la web avisó de que el pedido ya lleva ese móvil; `null` = nunca). El
     `estado` y el aviso no cambian: la web deriva de esos campos lo que enseña.
+    `FilaVista` gana al final `fechaSalida` (ISO, nullable: último día para enviar; Amazon, Latest ship de ShippyPro; webs, entrada + 2 o 3
+    días laborables; histórico, `null`) y `pais` (nullable).
   - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
     de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
     que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o
@@ -96,9 +103,25 @@ de `model/` conservan su nombre.
     `404` si la fila no existe o si no tiene etiqueta («Este pedido no tiene etiqueta generada»: pendiente sin envío, histórico, cerrada
     sin envío); `502` «No se pudo obtener la etiqueta de ShippyPro. Inténtalo de nuevo.» si ShippyPro falla, no da etiqueta o la
     descarga falla, no es un PDF o es demasiado grande (nunca el texto de ShippyPro ni la URL). SUPERTECNICO y ADMIN.
+  - `GET /api/pedidos/buscar` (el «Listado», sin parámetros) → un `.xlsx` (`200`) con tres hojas, en este orden: `AMZ` (canal `AMAZON`),
+    `FNSK` (`AMAZON_STOCKROOM`) y `Webs` (`DISTRIBUIDORES`, `PARTICULARES` y `BACKIPHONE`), cada una con lo descrito abajo.
+    Cuenta las filas de ShippyPro **sin IMEI** (vacío cuenta como sin IMEI) y **sin marca `CANCELADO`** (cualquier otra marca cuenta) que
+    siguen por buscar: las vivas (sin cerrar) y las enviadas con «falta enviar»; no cuenta las cerradas sin envío, las enviadas sin falta,
+    el histórico ni otros canales. `AMZ` y `FNSK`: dos tablas, `SKU | un país por columna | Total general` (países en orden alfabético y `—` al final
+    si falta el país; SKU agrupados sin distinguir mayúsculas, con la forma más repetida; números como celdas numéricas, vacío donde es 0;
+    fila «Total general» al pie): «Para hoy» (`fechaSalida` nula o hasta hoy, hora de Madrid) y, tras una fila en blanco, «Pueden esperar»
+    (`fechaSalida` posterior a hoy). Una tabla sin móviles lleva su título y «No hay móviles que buscar». `Webs` va distinto (en las webs se envía
+    todo en el día): **no se divide por fecha** y lleva un bloque por web en este orden: «Fonestockroom (distribuidores)», «Fonestore (particulares)»
+    y «BackiPhone»; cada bloque: título en negrita, cabecera `Cliente | SKU | Uds | Entró`, una fila por cliente (columna `PLATAFORMA`; vacío =
+    «(sin cliente)»), SKU (sin distinguir mayúsculas, forma más repetida) y día de entrada, con las unidades (`Uds` numérica), y una fila «Total» con
+    la suma de `Uds`; «Entró» = la columna `FECHA` de la fila (día en que el ERP vio el pedido) como celda de fecha con formato `dd/mm/yyyy`; orden por
+    «Entró» (lo más antiguo primero), cliente y SKU; una fila en blanco entre bloques; un bloque sin móviles lleva su título y «No hay móviles que
+    buscar». Sin número de pedido, país ni envío. Cada hoja, A4 vertical, ajustada a una página de ancho. Cabeceras:
+    `Content-Disposition: attachment; filename="Listado 18-11 09h30.xlsx"` (dd-MM y HHhmm de ahora, hora de Madrid; sin «:») y `X-Filas` (móviles
+    contados entre las tres hojas: las dos tablas de AMZ y FNSK y las unidades de los bloques de Webs). SUPERTECNICO y ADMIN.
   - `PUT /api/pedidos/filas/{id}/imei` con `PeticionImei` `{imei, imeiAnterior?}` → `FilaVista` releída, con su aviso y su `canal`. `imei` nulo o en blanco
     lo quita; si no, 15 cifras (`400` "Un IMEI son 15 cifras"). `404` si la fila no existe; `409` "La fila es del histórico y no se edita" si es del
-    histórico (las filas de ShippyPro se editan siempre, también las enviadas). `imeiAnterior` (opcional, nullable; la web vieja no lo manda): lo que la persona veía en la fila; ausente o `null` no comprueba nada, `""` espera la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`). Si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
+    histórico (las filas de ShippyPro se editan siempre, también las enviadas). `imeiAnterior` (opcional, nullable; la web vieja no lo manda): lo que la persona veía en la fila; ausente o `null` no comprueba nada, `""` espera la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`). Si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de esta fila mientras tanto. Recarga y vuelve a intentarlo." sin escribir ni apuntar nada (comprobación y escritura atómicas, con la fila bloqueada). `409` si el IMEI ya está en otra fila de ShippyPro pendiente o enviada con «falta por enviar» (la propia fila, las pendientes con marca CANCELADO, las enviadas sin falta y el histórico no cuentan; no escribe nada): "Este IMEI ya está en el pedido X (fila del dd/mm)", o, si esa fila es de Amazon y no está asociada, "Este IMEI ya está en una fila de AMZ del dd/mm sin asociar" ("FNSK" en Stockroom). Cabecera opcional `Idempotency-Key`; el cambio queda apuntado con el usuario del token.
   - `PUT /api/pedidos/filas/{id}/falta-enviar` con `PeticionFaltaEnviar` `{falta}` (obligatorio; `null` o ausente `400`) → `FilaVista` releída.
     `true` marca el móvil de la fila como «falta enviar» (envío parcial de un pedido de web: la etiqueta salió con todos los móviles y este
     todavía no); `false` quita la marca. Marcar exige una fila de ShippyPro de un canal web (`DISTRIBUIDORES`, `PARTICULARES` o
@@ -127,6 +150,23 @@ de `model/` conservan su nombre.
     Tipos nuevos de `tipo`: `MARCA` (se puso o cambió la marca; `detalle` `"<MARCA>"` o `"<MARCA> — <nota>"`, `imeiAnterior` e `imeiNuevo`
     nulos) y `MARCA_QUITADA` (se quitó; `detalle` = la marca que tenía, con `"<MARCA> — al poner el IMEI"` si la quitó el ERP al poner un
     IMEI, en cuyo caso el usuario es quien puso el IMEI).
+  - Validar SKU (spec `2026-11-16-pedidos-validar-sku-design.md`): `PUT /api/pedidos/filas/{id}/validacion` con `PeticionValidacion`
+    `{validar, imeiAnterior?}` → `FilaVista` releída. `validar` obligatorio (`true` da por bueno el aviso de SKU del IMEI de la fila, `false`
+    quita la validación; ausente o nulo, `400`). `imeiAnterior` (opcional, nullable) como en `PUT .../imei`: `null` no comprueba, `""` espera
+    la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`); si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de
+    esta fila mientras tanto. Recarga y vuelve a intentarlo.". Validar exige que la fila tenga IMEI (si no, `409` "La fila no tiene IMEI: no hay
+    nada que validar") y que su aviso actual sea de SKU: `motivo` `MODELO`, `COLOR_O_GRADO`, `GRADO_NO_VENDIBLE` o `SKU_DESCONOCIDO` (con
+    `NO_EN_NSYS`, `EN_OTRA_FILA`, cualquier aviso ámbar o sin aviso, `409` "Solo se puede validar un aviso de SKU ..."). `404` si la fila no
+    existe; `409` "La fila es del histórico y no se edita" si es del histórico. Validar lo ya validado para ese IMEI, o quitar lo no
+    validado, es un `200` sin apunte; quitar una validación que ya no vale (de otro IMEI) la borra sin apunte. Atómico, con la fila
+    bloqueada. Cabecera opcional `Idempotency-Key` (el registro incluye validar e imeiAnterior). SUPERTECNICO y ADMIN (TECNICO `403`).
+    `FilaVista` gana al final `validadaEn` (hora de Madrid), `validadaPor` (nombre de usuario) y `motivoValidado`, todos nullable. Al servir:
+    si la fila guarda una validación para su IMEI actual y el aviso calculado sigue siendo de uno de esos cuatro motivos, `nivel` pasa a `OK`,
+    `motivo` a `null` (`skuMovil` y `caja` se conservan) y `motivoValidado` es el motivo que tenía el aviso; con otro IMEI, o si el aviso
+    ya es otro (p. ej. `EN_OTRA_FILA`), la validación se ignora y los tres campos van `null`. Poner (`PUT .../imei`) un IMEI distinto del
+    validado, o quitarlo, borra la validación en la misma transacción y apunta `VALIDACION_QUITADA` (`detalle` `"al cambiar el IMEI"`,
+    usuario el que cambió el IMEI). Historial: tipos nuevos `VALIDADA` (`detalle` = el motivo, p. ej. `COLOR_O_GRADO`) y `VALIDACION_QUITADA`
+    (`detalle` nulo, o `"al cambiar el IMEI"`); `imeiAnterior` e `imeiNuevo` nulos. La validación no cambia `estado` ni `GET .../vendidos`.
   - `GET /api/pedidos/vendidos`: **ninguna fila con marca se sirve**, tenga o no IMEI. La fecha que cuenta para la ventana de días y es la
     `fechaImei` de la respuesta es la más reciente entre el último apunte de tipo `IMEI` y el último `MARCA_QUITADA` de la fila: al quitar
     la marca la fila vuelve como recién puesta aunque el IMEI sea antiguo. Los apuntes `MARCA`, `FALTA_ENVIAR` y `YA_ENVIADO` no cuentan.
@@ -141,6 +181,57 @@ de `model/` conservan su nombre.
     web lo muestra como «plugin de la web»). Las demás filas del pedido (el móvil que aún falta) no se tocan; pedidos e IMEI que no casan
     se ignoran. `filasSincronizadas`: filas puestas al día; `marcasQuitadas`: marcas quitadas; `sinFila`: IMEI enviados (distintos, por
     pedido) que no casaron con ninguna fila. Idempotente: repetir la llamada no crea apuntes nuevos.
+  - Asociación de IMEI y pedido en Amazon («plan B»; spec `2026-11-13-pedidos-amazon-asociacion-design.md`): en `AMAZON` y
+    `AMAZON_STOCKROOM` el pedido de una fila solo vale cuando lo confirma el libro de ventas. `FilaVista` gana al final `asociadaEn`
+    (nullable, hora de Madrid: cuándo se confirmó; `null` = sin asociar) y `asociadaOrigen` (nullable: `LIBRO` o `HISTORICO`). En Amazon
+    `pedido` sigue viniendo aunque la fila no esté asociada (lo necesita el estado): la web enseña «sin asociar» y no el número. En las
+    webs y el histórico los dos son `null` y no significan nada. El buscador (`buscar`) no encuentra por número de pedido las filas de
+    Amazon sin asociar (sí por IMEI, SKU o plataforma). `GET /api/pedidos/vendidos`: en las filas de Amazon sin asociar `pedido` va
+    `null` (el IMEI se sirve igual). Historial: tipos nuevos `ASOCIADA` (`detalle` `LIBRO` o `HISTORICO`) e `IMEI_INTERCAMBIADO`
+    (`detalle` `"con la fila <id>"`), con `usuario` nulo (lo hace una máquina) y los dos IMEI nulos; cada cambio de IMEI que hace la
+    asociación apunta además su `IMEI` como siempre. La carga del histórico da por asociadas (`HISTORICO`) las filas de Amazon de la regla A
+    (la que recibe el IMEI por el número de pedido de la hoja y la del mismo pedido que ya lo tenía); B no asocia.
+    - `POST /api/pedidos/asociaciones` (no es una ruta de usuario: una pasada del libro de ventas) con la cabecera `X-API-Key` y el
+      cuerpo `PeticionAsociaciones` `{canal, pares: [{pedido, imei}]}` → `RespuestaAsociaciones` `{confirmadas, intercambiadas, puestas,
+      yaEstaban, paraRevisar, descartadas, ajenos}`. La clave es una de las del ajuste `PEDIDOS_ASOCIACIONES_CLAVE` (propio): sin ninguna válida
+      `404` para todos, clave ausente o mala `401` (también las de vendidos o del plugin), un token de usuario no vale y la clave no abre
+      ninguna otra ruta (ni el `GET` de la misma). `canal`: `AMAZON` o `AMAZON_STOCKROOM` (otro, `400`); `pares` obligatorio, hasta
+      10.000 (si no, `400`). Los pares no dan `400`: el número se normaliza como lo guarda la lectura de ShippyPro y el IMEI debe ser de 15
+      cifras tras recortar espacios (un número JSON también vale); lo que no (pedido vacío, «CANCELADO», vacíos, otros números) cuenta en
+      `descartadas`, y si un IMEI sale varias veces solo vale la última (las anteriores, `descartadas`). En una transacción y en el orden
+      recibido, sobre las filas de ShippyPro de ese canal, cada «IMEI X → pedido B»: (1) X ya está en una fila de B: se confirma
+      (`confirmadas`; si ya lo estaba, `yaEstaban` sin tocar nada; también con la etiqueta generada); (2) X está en una fila de otro pedido
+      sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar ni etiqueta (por posición), X queda confirmado y la otra
+      fila recibe el IMEI que tenía la de B (o ninguno) y queda sin confirmar aunque lo estuviera (`intercambiadas`); (3) X no está en
+      ninguna fila: va a la primera fila libre de B (sin IMEI, sin confirmar, sin etiqueta y no cancelada) y se confirma (`puestas`); nunca
+      saca de la tabla un IMEI que alguien leyó: sin fila libre no se toca nada, aunque B tenga filas sin confirmar con otro IMEI; (4) si B no tiene filas en el ERP (salió antes de que el ERP leyera ShippyPro, o es antiguo) no se toca nada y se cuenta aparte en `ajenos`
+      (no va a la lista ni a `paraRevisar`; el motivo `PEDIDO_AJENO` ya no se guarda); si no se puede por otra causa, no se toca nada y queda para revisar (`paraRevisar`) con
+      su motivo: `YA_SALIO` (X está en una fila con etiqueta de otro pedido), `CANCELADO` (las
+      únicas filas posibles —la de B que tiene X, la de otro pedido que lo tiene o los huecos de B— tienen la marca «Cancelado») o
+      `SIN_HUECO` (en (2), B no tiene fila sin confirmar ni etiqueta; en (3), B no tiene fila libre). Nunca cambia el IMEI de una fila con etiqueta (`envioFecha`) ni con la marca
+      `CANCELADO`, ni confirma una cancelada; nunca toca el histórico. Poner un IMEI en una fila `ESPERA_STOCK` le quita la marca (apunte
+      `MARCA_QUITADA` `"ESPERA_STOCK — al poner el IMEI"`). Al terminar de recorrer los pares se vuelven a intentar los que quedaron `SIN_HUECO` (su hueco puede estar ocupado por un IMEI que un par posterior
+      saca de ahí con la regla 2), repitiendo mientras alguno avance y hasta 3 vueltas, en la misma transacción; solo los que siguen sin hueco van a
+      `paraRevisar`. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos (`ajenos` solo está en la respuesta del `POST`).
+      Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban`, `paraRevisar` o `ajenos`).
+    - `GET /api/pedidos/asociaciones` (SUPERTECNICO y ADMIN; TECNICO `403`) → `EstadoAsociaciones` `{canales: [{canal, cuando,
+      confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, libroModificado, error, errorEn, revisar: [{pedido, imei,
+      motivo, vistoEn}]}]}`: un elemento por canal que ha tenido alguna pasada (`AMAZON` antes que `AMAZON_STOCKROOM`; lista vacía si no
+      hubo ninguna), con la última pasada (`cuando`, hora de Madrid) y su lista «para revisar» en el orden del libro (`vistoEn`: la pasada
+      que la dejó). Campos añadidos con el lector de los libros (nullable; la web que no los conoce los ignora): `libroModificado`, la
+      fecha de modificación en Drive (hora de Madrid, al segundo) del libro de la última lectura buena del lector (`null` si el lector
+      nunca lo leyó; las pasadas por `POST` no la cambian); `error` y `errorEn`, el fallo de la última vuelta del lector en ese canal y
+      cuándo (`null` si la última fue buena: una lectura buena los borra). `error` es un texto para la píldora, p. ej. «falta la columna
+      IMEI en Paso 1. Meter IMEI», «falta la pestaña Paso 1. Meter IMEI» o «no se pudo leer el libro de Drive: …». Si la primera vuelta
+      del lector en un canal falla, el canal aparece con `cuando` = la hora del error, los recuentos a 0 y `error`. El resto no es
+      nullable.
+    - Lector de los libros (ajuste `PEDIDOS_LIBROS_ACTIVA`, apagado por defecto; ver `docs/deployment.md`): cada 10 minutos, por canal
+      con libro (`PEDIDOS_LIBRO_AMAZON`, `PEDIDOS_LIBRO_STOCKROOM`), si el fichero cambió en Drive desde su última lectura buena, lee la
+      pestaña «Paso 1. Meter IMEI» (cabecera en la fila 6; columnas «order id», «purchase-date» e «IMEI» por su nombre, sin mayúsculas ni
+      espacios de los extremos) y aplica, como una pasada del `POST`, los pares de las filas con IMEI y «purchase-date» de los últimos 30
+      días (fecha de Excel o texto `2026-11-13T10:22:33+00:00` —el día en Madrid—, `2026-11-13` o `13/11/2026`). Un IMEI numérico se
+      toma de su valor guardado, con sus 15 cifras exactas; uno en texto, sin espacios. No es una ruta: no cambia el contrato salvo
+      los tres campos de arriba.
   - `GET /api/pedidos/fuentes` → `[FuenteVista]`, siempre dos y en este orden: `SHIPPYPRO` y `NSYS` (`ultimaBuena`, `resultado`,
     `filas`, `skuDesconocidos`, `motivo`, `nivel` de datos antiguos: `OK`, `RETRASO` o `SIN_DATOS`, y `aviso`). Un `ERROR` enseña un motivo
     fijo, nunca el texto de la excepción. `aviso` (nullable, campo añadido; la web que no lo conoce lo ignora) lleva un texto fijo en

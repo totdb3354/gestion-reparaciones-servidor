@@ -1,5 +1,6 @@
 package com.reparaciones.servidor.pedidos;
 
+import com.reparaciones.servidor.nsys.AnchosNsys;
 import com.reparaciones.servidor.nsys.ImportadorNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
 import org.slf4j.Logger;
@@ -11,11 +12,13 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
@@ -41,11 +44,13 @@ public class LecturaFilas {
     static final String AVISO_SIN_ENVIOS = "no se pudieron leer los envíos";
     /** Principio del aviso de la lectura con pedidos descartados; {@link VistaFilas#fuentes()} lo busca en el mensaje guardado. */
     static final String AVISO_DESCARTADOS = "Pedidos sin fecha valida, saltados";
+    static final String AVISO_SALIDA = "No se pudo poner la fecha de salida";
 
     private final ClienteShippyPro shippyPro;
     private final FilasDAO dao;
     private final NsysDAO nsysDao;
     private final Map<String, Canal> canales;
+    private final CalendarioLaboral calendario;
     private final Clock clock;
     private final ReentrantLock enCurso = new ReentrantLock();
     /** Filas vivas cuyo pedido falto en la ultima lectura buena (solo en memoria: tras reiniciar, la primera lectura no cierra). */
@@ -53,15 +58,16 @@ public class LecturaFilas {
 
     @Autowired
     public LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao,
-                        @Value("${pedidos.shippypro.canales:}") String canales) {
-        this(shippyPro, dao, nsysDao, canales, Clock.system(ImportadorNsys.MADRID));
+                        @Value("${pedidos.shippypro.canales:}") String canales, CalendarioLaboral calendario) {
+        this(shippyPro, dao, nsysDao, canales, calendario, Clock.system(ImportadorNsys.MADRID));
     }
 
-    LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao, String canales, Clock clock) {
+    LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao, String canales, CalendarioLaboral calendario, Clock clock) {
         this.shippyPro = shippyPro;
         this.dao = dao;
         this.nsysDao = nsysDao;
         this.canales = Canal.deAjuste(canales);
+        this.calendario = calendario;
         this.clock = clock;
     }
 
@@ -158,8 +164,23 @@ public class LecturaFilas {
             dao.marcarEnviadas(marcas, LocalDateTime.now(clock));
             dao.marcarEtiquetas(etiquetas);
             dao.cerrar(cerrar, LocalDateTime.now(clock));
-            candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             List<String> avisos = new ArrayList<>();
+            // La fecha de salida es secundaria: va al final y, si falla, la vuelta sigue OK con un aviso.
+            try {
+                Set<LocalDate> festivos = calendario.festivos();
+                List<FilasDAO.Salida> salidas = new ArrayList<>();
+                for (PedidoShippyPro p : leidos.pedidos()) {
+                    Canal canal = canales.get(p.marketplace());
+                    if (canal == null || p.numero() == null || p.numero().isBlank()) continue;
+                    String pais = p.pais() == null ? null : AnchosNsys.corta(p.pais().strip().toUpperCase(Locale.ROOT), 2);
+                    salidas.add(new FilasDAO.Salida(canal, SincroShippyPro.numeroGuardado(p.numero()), FechaSalida.de(p, canal, festivos), pais));
+                }
+                dao.ponerSalidas(salidas);
+            } catch (RuntimeException e) {
+                log.warn("Pedidos: no se pudo poner la fecha de salida: {}", e.getClass().getSimpleName());
+                avisos.add(AVISO_SALIDA);
+            }
+            candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             if (!plan.reabrir().isEmpty()) avisos.add(plan.reabrir().size() + " filas reabiertas");
             if (!enviosLeidos) avisos.add(AVISO_SIN_ENVIOS);
             if (hayDescartados) avisos.add(AVISO_DESCARTADOS + " (no se cierra nada): "

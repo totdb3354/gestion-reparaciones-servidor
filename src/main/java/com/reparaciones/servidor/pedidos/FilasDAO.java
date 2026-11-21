@@ -32,7 +32,14 @@ public class FilasDAO {
 
     static final String SQL_FILAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
-            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR FROM Pedido_fila";
+            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN,"
+            + " (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR,"
+            + " FECHA_SALIDA, PAIS FROM Pedido_fila";
+    /** La salida de un pedido: ultimo dia para enviarlo y pais (se recalculan en cada vuelta). */
+    public record Salida(Canal canal, String pedido, LocalDate fechaSalida, String pais) {}
+    static final String SQL_PONER_SALIDA = "UPDATE Pedido_fila SET FECHA_SALIDA = ?, PAIS = ? WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ?"
+            + " AND PEDIDO = ? AND CERRADA_EN IS NULL";
     static final String SQL_VIVAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     static final String SQL_CERRADAS_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NOT NULL AND (%s)";
     static final String SQL_POR_MARCAR_SHIPPYPRO = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO'"
@@ -53,15 +60,24 @@ public class FilasDAO {
     static final String SQL_MARCAR_ETIQUETA = "UPDATE Pedido_fila SET ENVIO_ID = COALESCE(ENVIO_ID, ?),"
             + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL";
     static final String SQL_DEL_PERIODO = SQL_FILAS + " WHERE (FECHA BETWEEN ? AND ?) OR CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
-    /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. */
+    /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. El numero de pedido de una fila de Amazon sin
+     *  asociar no se busca (la web no lo enseña); el del historico (sin canal), el de las webs y el de las de Amazon asociadas, si. */
     static final String SQL_BUSCAR = SQL_FILAS + " WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
-            + " OR IMEI LIKE ? ESCAPE '\\\\' OR PEDIDO LIKE ? ESCAPE '\\\\' ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
+            + " OR IMEI LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
+            + " OR CANAL NOT IN ('AMAZON', 'AMAZON_STOCKROOM'))) ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
     static final String SQL_POR_ID = SQL_FILAS + " WHERE ID_FILA = ?";
     /** Filas de ShippyPro con IMEI: las vivas (de cualquier fecha) y las cerradas con FECHA desde la fecha dada. */
     static final String SQL_SHIPPYPRO_CON_IMEI_DESDE = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
             + " AND (CERRADA_EN IS NULL OR FECHA >= ?)";
     static final String SQL_SHIPPYPRO_CON_IMEI = SQL_SHIPPYPRO_CON_IMEI_DESDE + " AND IMEI IN (%s) ORDER BY FECHA, ID_FILA";
-    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_VALIDACION_BLOQUEADA = "SELECT IMEI, ORIGEN, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_PONER_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = ?, VALIDADA_EN = ?, VALIDADA_USU = ? WHERE ID_FILA = ?";
+    static final String SQL_QUITAR_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = NULL, VALIDADA_EN = NULL, VALIDADA_USU = NULL WHERE ID_FILA = ?";
+    /** Otra fila de ShippyPro con ese IMEI que sigue pendiente (y no cancelada: ese movil no sale en ese pedido) o enviada con «falta por enviar» (spec 2026-11-18 §5). */
+    static final String SQL_DUPLICADO = "SELECT PEDIDO, FECHA, CANAL, ASOCIADA_EN FROM Pedido_fila WHERE IMEI = ? AND ID_FILA <> ?"
+            + " AND ORIGEN = 'SHIPPYPRO' AND ((CERRADA_EN IS NULL AND (MARCA IS NULL OR MARCA <> 'CANCELADO')) OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"
+            + " ORDER BY FECHA, ID_FILA LIMIT 1";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
     static final String SQL_FILA_MARCA_BLOQUEADA = "SELECT ORIGEN, MARCA, MARCA_NOTA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_MARCA = "UPDATE Pedido_fila SET MARCA = ?, MARCA_NOTA = ?, MARCA_EN = ?, MARCA_USU = ? WHERE ID_FILA = ?";
@@ -83,20 +99,39 @@ public class FilasDAO {
      *  de {@code ?} en adelante; del mas reciente al mas antiguo. Una cerrada sin envio (NO_PENDIENTE) solo entra si su ultimo cambio de
      *  IMEI es POSTERIOR al cierre (alguien tecleo el IMEI sabiendo que ya no estaba pendiente: el movil esta vendido); si el IMEI ya
      *  estaba antes de cerrarse (pedido cancelado) no sale. Una fila con CUALQUIER marca no sale. La fecha que cuenta es la mas reciente entre el
-     *  ultimo apunte IMEI y el ultimo MARCA_QUITADA (al quitar la marca la fila vuelve como recien puesta). Una sola consulta, con tope. */
-    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL, f.PEDIDO, u.FECHA_IMEI FROM Pedido_fila f"
+     *  ultimo apunte IMEI y el ultimo MARCA_QUITADA (al quitar la marca la fila vuelve como recien puesta). Una sola consulta, con tope.
+     *  <p>Pedidos web juntados en una sola etiqueta (spec §8): una fila {@link #JUNTADA_SINCRONIZADA} (de una web, ya no pendiente, sin
+     *  envio propio y sincronizada por el plugin) sale aunque el IMEI sea de antes del cierre, y su fecha es la mas reciente entre su
+     *  ultimo apunte y {@code SINCRONIZADA_EN}. Las demas filas no miran {@code SINCRONIZADA_EN}. Los dos {@code ?} de la ventana llevan
+     *  el mismo valor. */
+    static final String JUNTADA_SINCRONIZADA = "f.CANAL IN ('DISTRIBUIDORES', 'PARTICULARES', 'BACKIPHONE') AND f.CERRADA_EN IS NOT NULL"
+            + " AND f.ENVIO_FECHA IS NULL AND f.SINCRONIZADA_EN IS NOT NULL";
+    static final String SQL_VENDIDOS = "SELECT f.IMEI, f.SKU, f.CANAL,"
+            // Amazon sin asociar: el pedido va nulo (el IMEI se sirve igual; el bot solo lee el IMEI).
+            + " CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO,"
+            // Juntada: GREATEST(ultimo apunte, sincronizacion). Con u nulo (ningun apunte en la ventana) el ultimo apunte es anterior a la
+            // ventana y la sincronizacion, si entra, es posterior: la mas reciente es SINCRONIZADA_EN. Para que todas las filas miren la
+            // sincronizacion bastaria cambiar esta linea y la condicion del WHERE.
+            + " CASE WHEN " + JUNTADA_SINCRONIZADA + " THEN GREATEST(COALESCE(u.ULTIMO, f.SINCRONIZADA_EN), f.SINCRONIZADA_EN)"
+            + " ELSE u.ULTIMO END AS FECHA_IMEI FROM Pedido_fila f"
             // El filtro dentro de la subconsulta da lo mismo que HAVING MAX(FECHA) >= ?: entra si algun apunte es de la ventana y el MAX de los de la ventana es el MAX de todos.
-            + " JOIN (SELECT ID_FILA, MAX(FECHA) AS FECHA_IMEI FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA) u"
+            // LEFT JOIN: la juntada con el IMEI antiguo (sin apunte en la ventana) entra por la sincronizacion.
+            + " LEFT JOIN (SELECT ID_FILA, MAX(FECHA) AS ULTIMO FROM Pedido_fila_cambio WHERE TIPO IN ('IMEI', 'MARCA_QUITADA') AND FECHA >= ? GROUP BY ID_FILA) u"
             + " ON u.ID_FILA = f.ID_FILA"
-            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.MARCA IS NULL AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.FECHA_IMEI > f.CERRADA_EN)"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.MARCA IS NULL"
+            + " AND ((u.ID_FILA IS NOT NULL AND (f.CERRADA_EN IS NULL OR f.ENVIO_FECHA IS NOT NULL OR u.ULTIMO > f.CERRADA_EN))"
+            + " OR (" + JUNTADA_SINCRONIZADA + " AND (u.ID_FILA IS NOT NULL OR f.SINCRONIZADA_EN >= ?)))"
             + " AND (? IS NULL OR f.CANAL = ?)"
-            + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY u.FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
+            + " AND f.IMEI REGEXP '^[0-9]{15}$' ORDER BY FECHA_IMEI DESC, f.ID_FILA DESC LIMIT ?";
     static final String SQL_BORRAR_HISTORICO = "DELETE FROM Pedido_fila WHERE ORIGEN = 'HISTORICO'";
     static final String SQL_INSERTAR_HISTORICO = "INSERT INTO Pedido_fila (FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN,"
             + " CANAL, POSICION, CERRADA_EN) VALUES (?, ?, ?, ?, ?, ?, 'HISTORICO', NULL, NULL, ?)";
     static final String SQL_SHIPPYPRO_BLOQUEADAS = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' ORDER BY FECHA, ID_FILA FOR UPDATE";
     static final String SQL_TRASPASAR_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO'"
             + " AND (IMEI IS NULL OR IMEI = '')";
+    /** La regla A de la carga del historico confirma la asociacion de la fila (solo si aun no lo estaba). */
+    static final String SQL_ASOCIAR_HISTORICO = "UPDATE Pedido_fila SET ASOCIADA_EN = ?, ASOCIADA_ORIGEN = 'HISTORICO'"
+            + " WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO' AND ASOCIADA_EN IS NULL";
     static final String SQL_CAMBIOS_DE_HISTORICO = "SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
             + " WHERE f.ORIGEN = 'HISTORICO'";
     static final String SQL_EMPEZAR_LECTURA = "INSERT INTO Pedido_lectura (INICIO) VALUES (?)";
@@ -244,14 +279,40 @@ public class FilasDAO {
         return jdbc.query(SQL_SHIPPYPRO_CON_IMEI_DESDE + " ORDER BY FECHA, ID_FILA", FilasDAO::fila, fecha(desde));
     }
 
-    /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI desde {@code desde}, a lo sumo {@code tope} filas, sin
+    /** Un movil que aun hay que buscar: su SKU, el pais del pedido, el ultimo dia para enviarlo (los dos pueden faltar), el canal, el
+     *  cliente (columna PLATAFORMA) y el dia en que el ERP vio el pedido (FECHA, «Entro»). */
+    public record PorBuscar(String sku, String pais, LocalDate fechaSalida, Canal canal, String cliente, LocalDate entro) {}
+
+    /** Filas de ShippyPro sin IMEI y sin marca CANCELADO que aun hay que buscar: las vivas y las enviadas con falta por enviar. {@code %s}: un {@code ?} por canal
+     *  (los canales salen del enum, nunca del usuario). */
+    static final String SQL_POR_BUSCAR = "SELECT SKU, PAIS, FECHA_SALIDA, CANAL, PLATAFORMA, FECHA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (%s)"
+            + " AND (IMEI IS NULL OR IMEI = '') AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"
+            + " AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))";
+
+    /** Lo que hay que buscar en esos canales (ver {@link #SQL_POR_BUSCAR}); sin canales, nada. */
+    public List<PorBuscar> porBuscar(Collection<Canal> canales) {
+        if (canales.isEmpty()) return List.of();
+        Object[] args = canales.stream().map(Canal::name).toArray();
+        return jdbc.query(String.format(SQL_POR_BUSCAR, marcas(canales.size())),
+                (rs, n) -> {
+                    String c = rs.getString("CANAL");
+                    return new PorBuscar(rs.getString("SKU"), rs.getString("PAIS"), fechaLocal(rs.getDate("FECHA_SALIDA")),
+                            c == null ? null : Canal.valueOf(c), rs.getString("PLATAFORMA"), fechaLocal(rs.getDate("FECHA")));
+                }, args);
+    }
+
+    private static LocalDate fechaLocal(Date d) {
+        return d == null ? null : d.toLocalDate();
+    }
+
+    /** Los IMEI vendidos (ver {@link #SQL_VENDIDOS}) con ultimo cambio de IMEI (o, en la web juntada, sincronizacion) desde {@code desde}, a lo sumo {@code tope} filas, sin
      *  IMEI repetidos: si esta en dos filas sale la del cambio mas reciente. Un IMEI quitado de la fila no sale (la fila ya no lo tiene). */
     public List<Vendido> vendidosDesde(LocalDateTime desde, Canal canal, int tope) {
         String nombreCanal = canal == null ? null : canal.name();
         // El canal filtra en la consulta; el dedup por IMEI va despues, sobre lo ya filtrado.
         List<Vendido> filas = jdbc.query(SQL_VENDIDOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
                 rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
-                Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
+                Timestamp.valueOf(desde), Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
         java.util.Map<String, Vendido> porImei = new java.util.LinkedHashMap<>();
         for (Vendido v : filas) porImei.putIfAbsent(v.imei(), v);
         return new ArrayList<>(porImei.values());
@@ -264,23 +325,37 @@ public class FilasDAO {
         /** Solo de {@link #ponerFaltaEnviar}: no se puede marcar (no es de ShippyPro, no es de un canal web o no tiene la etiqueta generada). */
         NO_MARCABLE }
 
-    private record Bloqueada(String imei, boolean historico, String marca) {}
+    private record Bloqueada(String imei, boolean historico, String marca, String validadaImei) {}
 
     /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
      *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
      *  con el bloqueo puesto. {@code imeiAnterior} nulo no comprueba nada; si no, debe coincidir con el IMEI actual (nulo cuenta como ""), y
-     *  si no, no escribe nada ni apunta cambio (CAMBIADA). Si no existe o es del historico, tampoco escribe nada. */
+     *  si no, no escribe nada ni apunta cambio (CAMBIADA). Un IMEI que ya esta en otra fila pendiente lanza {@link ImeiDuplicadoException} sin escribir. Si no existe o es del historico, tampoco escribe nada. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
         List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
-                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA")), idFila);
+                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA"), rs.getString("VALIDADA_IMEI")), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         if (filas.get(0).historico()) return Resultado.CERRADA;
         if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
             return Resultado.CAMBIADA;
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
+        if (nuevo != null) {
+            List<ImeiDuplicadoException> otras = jdbc.query(SQL_DUPLICADO, (rs, n) -> {
+                String c = rs.getString("CANAL");
+                Canal canal = c == null ? null : Canal.valueOf(c);
+                return new ImeiDuplicadoException(rs.getString("PEDIDO"), rs.getDate("FECHA").toLocalDate(), canal,
+                        canal != null && canal.esAmazon() && rs.getTimestamp("ASOCIADA_EN") == null);
+            }, nuevo, idFila);
+            if (!otras.isEmpty()) throw otras.get(0);
+        }
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
+        // La validacion vale para ese IMEI: al cambiarlo o quitarlo se borra (y se apunta), para que no reviva si el IMEI vuelve.
+        if (filas.get(0).validadaImei() != null && !filas.get(0).validadaImei().equals(nuevo)) {
+            jdbc.update(SQL_QUITAR_VALIDACION, idFila);
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, Timestamp.valueOf(ahora), CambioImei.VALIDACION_QUITADA, "al cambiar el IMEI");
+        }
         // Un IMEI puesto resuelve «En espera de stock»; las demas marcas se quedan.
         if (nuevo != null && Marca.ESPERA_STOCK.name().equals(filas.get(0).marca())) {
             jdbc.update(SQL_QUITAR_MARCA, idFila);
@@ -291,6 +366,37 @@ public class FilasDAO {
     }
 
     static final String SEP_DETALLE = " \u2014 ";
+
+    private record BloqueadaValidacion(String imei, String origen, String validadaImei) {}
+
+    /** Da por bueno ({@code validar}) el aviso de SKU del IMEI de una fila, o quita la validacion, y lo apunta (VALIDADA con el motivo como
+     *  detalle, o VALIDACION_QUITADA). Misma transaccion que {@link #ponerImei}: READ COMMITTED y la fila bloqueada al leerla. Orden:
+     *  NO_EXISTE; CERRADA (historico); CAMBIADA ({@code imeiAnterior} no nulo y distinto del IMEI actual, o, al validar, el IMEI actual no es
+     *  {@code imeiVisto}, el que se miro para decidir el motivo); SIN_CAMBIO (validar lo ya validado para ese IMEI; quitar sin validacion: una
+     *  validacion de otro IMEI se borra en silencio); si no, PUESTO. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Resultado ponerValidacion(int idFila, boolean validar, String imeiVisto, String motivo, String imeiAnterior, Integer idUsu,
+                                     LocalDateTime ahora) {
+        List<BloqueadaValidacion> filas = jdbc.query(SQL_FILA_VALIDACION_BLOQUEADA, (rs, n) -> new BloqueadaValidacion(rs.getString("IMEI"),
+                rs.getString("ORIGEN"), rs.getString("VALIDADA_IMEI")), idFila);
+        if (filas.isEmpty()) return Resultado.NO_EXISTE;
+        BloqueadaValidacion f = filas.get(0);
+        if ("HISTORICO".equals(f.origen())) return Resultado.CERRADA;
+        if (imeiAnterior != null && !imeiAnterior.equals(f.imei() == null ? "" : f.imei())) return Resultado.CAMBIADA;
+        Timestamp t = Timestamp.valueOf(ahora);
+        if (!validar) {
+            if (f.validadaImei() == null) return Resultado.SIN_CAMBIO;
+            jdbc.update(SQL_QUITAR_VALIDACION, idFila);
+            if (!f.validadaImei().equals(f.imei())) return Resultado.SIN_CAMBIO;
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.VALIDACION_QUITADA, null);
+            return Resultado.PUESTO;
+        }
+        if (f.imei() == null || !f.imei().equals(imeiVisto)) return Resultado.CAMBIADA;
+        if (f.imei().equals(f.validadaImei())) return Resultado.SIN_CAMBIO;
+        jdbc.update(SQL_PONER_VALIDACION, f.imei(), t, idUsu, idFila);
+        jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.VALIDADA, motivo);
+        return Resultado.PUESTO;
+    }
 
     private record BloqueadaMarca(String origen, String marca, String nota) {}
 
@@ -427,6 +533,23 @@ public class FilasDAO {
         return true;
     }
 
+    /** Confirma la asociacion de las filas (la regla A de la carga del historico: el numero de pedido de Amazon de la hoja) con
+     *  ASOCIADA_EN = {@code ahora} y ASOCIADA_ORIGEN HISTORICO, y apunta ASOCIADA (detalle HISTORICO) sin usuario. Quien llama ya las tiene
+     *  bloqueadas y solo pasa las que no estaban asociadas. En lotes de {@value #TANDA}. */
+    public void asociarHistorico(List<Integer> ids, LocalDateTime ahora) {
+        Timestamp t = Timestamp.valueOf(ahora);
+        for (List<Integer> tanda : trozos(ids)) {
+            List<Object[]> filas = new ArrayList<>();
+            List<Object[]> apuntes = new ArrayList<>();
+            for (Integer id : tanda) {
+                filas.add(new Object[]{t, id});
+                apuntes.add(new Object[]{id, null, t, CambioImei.ASOCIADA, AsociacionAmazon.HISTORICO});
+            }
+            jdbc.batchUpdate(SQL_ASOCIAR_HISTORICO, filas);
+            jdbc.batchUpdate(SQL_CAMBIO_DETALLE, apuntes);
+        }
+    }
+
     // ---------------------------------------------------------------- lecturas
 
     public int empezarLectura(LocalDateTime inicio) {
@@ -459,6 +582,15 @@ public class FilasDAO {
         jdbc.update(SQL_PODAR, Timestamp.valueOf(antesDe));
     }
 
+    /** Pone a las filas vivas de cada pedido su fecha de salida y su pais (se recalcula en cada vuelta). */
+    public void ponerSalidas(List<Salida> salidas) {
+        if (salidas.isEmpty()) return;
+        List<Object[]> lote = new ArrayList<>();
+        for (Salida s : salidas)
+            lote.add(new Object[]{s.fechaSalida() == null ? null : java.sql.Date.valueOf(s.fechaSalida()), s.pais(), s.canal().name(), s.pedido()});
+        jdbc.batchUpdate(SQL_PONER_SALIDA, lote);
+    }
+
     // ---------------------------------------------------------------- ayudas
 
     private static FilaPedido fila(ResultSet rs, int n) throws SQLException {
@@ -472,7 +604,8 @@ public class FilasDAO {
                 canal == null ? null : Canal.valueOf(canal), pos, hora(rs, "CERRADA_EN"), hora(rs, "ENVIO_FECHA"),
                 rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
                 hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"), rs.getString("MARCA"), rs.getString("MARCA_NOTA"), hora(rs, "MARCA_EN"),
-                rs.getString("MARCA_POR"));
+                rs.getString("MARCA_POR"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"), rs.getString("VALIDADA_IMEI"),
+                hora(rs, "VALIDADA_EN"), rs.getString("VALIDADA_POR"), dia(rs, "FECHA_SALIDA"), rs.getString("PAIS"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

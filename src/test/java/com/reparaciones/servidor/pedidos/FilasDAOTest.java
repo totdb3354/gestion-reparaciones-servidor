@@ -26,7 +26,9 @@ class FilasDAOTest {
     private static final LocalDateTime AHORA = LocalDateTime.of(2026, 11, 10, 10, 0);
     private static final String COLUMNAS = "SELECT ID_FILA, FECHA, PLATAFORMA, SKU, IMEI, PEDIDO, FECHA_COMPRA, ORIGEN, CANAL, POSICION, CERRADA_EN,"
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
-            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR FROM Pedido_fila";
+            + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
+            + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR,"
+            + " FECHA_SALIDA, PAIS FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -97,9 +99,82 @@ class FilasDAOTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(patron), eq(patron), eq(patron), eq(patron), eq(3));
         assertTrue(sql.getValue().contains(" WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
-                + " OR IMEI LIKE ? ESCAPE '\\\\' OR PEDIDO LIKE ? ESCAPE '\\\\'"), sql.getValue());
+                + " OR IMEI LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND "), sql.getValue());
         assertTrue(sql.getValue().endsWith(" ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?"), sql.getValue());
         assertEquals(List.of(1, 2, 3), r.stream().map(FilaPedido::id).toList(), "el mas antiguo primero");
+    }
+
+    @Test void buscarPorNumeroDePedidoNoEncuentraLasFilasDeAmazonSinAsociar() {
+        // El historico tiene CANAL nulo: con NOT IN a secas su pedido dejaria de encontrarse (NULL NOT IN ... no es cierto).
+        assertTrue(FilasDAO.SQL_BUSCAR.contains("(PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
+                + " OR CANAL NOT IN ('AMAZON', 'AMAZON_STOCKROOM')))"), FilasDAO.SQL_BUSCAR);
+        assertTrue(FilasDAO.SQL_BUSCAR.contains(" OR IMEI LIKE ? ESCAPE '\\\\' OR "), "el IMEI se sigue buscando en todas");
+        assertEquals(5, FilasDAO.SQL_BUSCAR.chars().filter(c -> c == '?').count(), "los cuatro textos y el tope");
+    }
+
+    @Test void porBuscarPideSoloPendientesYFaltaPorEnviarSinImeiNiCancelado() throws Exception {
+        // El JdbcTemplate es un mock: la seleccion de filas (viva sin IMEI, CANCELADO fuera, enviada solo con falta, historico y
+        // otros canales fuera) la lleva el texto de la consulta; aqui se comprueba ese texto, los canales ligados y el mapeo.
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("SKU")).thenReturn("i13128AzulA");
+        when(rs.getString("PAIS")).thenReturn(null);
+        when(rs.getString("CANAL")).thenReturn("PARTICULARES", (String) null);
+        when(rs.getString("PLATAFORMA")).thenReturn("Cliente 0099", (String) null);
+        when(rs.getDate("FECHA")).thenReturn(java.sql.Date.valueOf("2026-11-17"), (java.sql.Date) null);
+        when(rs.getDate("FECHA_SALIDA")).thenReturn(java.sql.Date.valueOf("2026-11-19"), (java.sql.Date) null);
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilasDAO.PorBuscar>>getArgument(1).mapRow(rs, 0),
+                        inv.<RowMapper<FilasDAO.PorBuscar>>getArgument(1).mapRow(rs, 1)));
+        List<FilasDAO.PorBuscar> r = dao.porBuscar(List.of(Canal.DISTRIBUIDORES, Canal.PARTICULARES, Canal.BACKIPHONE));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq("DISTRIBUIDORES"), eq("PARTICULARES"), eq("BACKIPHONE"));
+        assertEquals("SELECT SKU, PAIS, FECHA_SALIDA, CANAL, PLATAFORMA, FECHA FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL IN (?, ?, ?)"
+                + " AND (IMEI IS NULL OR IMEI = '') AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"
+                + " AND (CERRADA_EN IS NULL OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))", sql.getValue());
+        assertEquals(new FilasDAO.PorBuscar("i13128AzulA", null, LocalDate.of(2026, 11, 19), Canal.PARTICULARES, "Cliente 0099", LocalDate.of(2026, 11, 17)), r.get(0));
+        assertNull(r.get(1).fechaSalida());
+        assertNull(r.get(1).canal());
+        assertNull(r.get(1).cliente());
+        assertNull(r.get(1).entro());
+    }
+
+    @Test void porBuscarSinCanalesNoToca() {
+        assertTrue(dao.porBuscar(List.of()).isEmpty());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void laFilaTraeSuAsociacion() throws Exception {
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+        when(rs.getString("CANAL")).thenReturn("AMAZON");
+        when(rs.getTimestamp("ASOCIADA_EN")).thenReturn(Timestamp.valueOf(AHORA));
+        when(rs.getString("ASOCIADA_ORIGEN")).thenReturn("LIBRO");
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilaPedido>>getArgument(1).mapRow(rs, 0)));
+        FilaPedido f = dao.porId(7).orElseThrow();
+        assertEquals(AHORA, f.asociadaEn());
+        assertEquals("LIBRO", f.asociadaOrigen());
+        assertNull(fila(1, "AMZ", null).asociadaEn(), "una fila nueva sale sin asociar");
+    }
+
+    @Test void asociarHistoricoMarcaLasFilasSinAsociarYApuntaAsociadaSinUsuarioEnLotes() {
+        List<Integer> ids = new ArrayList<>();
+        for (int i = 1; i <= 501; i++) ids.add(i);
+        dao.asociarHistorico(ids, AHORA);
+        ArgumentCaptor<List<Object[]>> filas = ArgumentCaptor.forClass(List.class);
+        verify(jdbc, times(2)).batchUpdate(eq("UPDATE Pedido_fila SET ASOCIADA_EN = ?, ASOCIADA_ORIGEN = 'HISTORICO'"
+                + " WHERE ID_FILA = ? AND ORIGEN = 'SHIPPYPRO' AND ASOCIADA_EN IS NULL"), filas.capture());
+        assertEquals(500, filas.getAllValues().get(0).size());
+        assertArrayEquals(new Object[]{Timestamp.valueOf(AHORA), 1}, filas.getAllValues().get(0).get(0));
+        ArgumentCaptor<List<Object[]>> apuntes = ArgumentCaptor.forClass(List.class);
+        verify(jdbc, times(2)).batchUpdate(eq("INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO, DETALLE) VALUES (?, ?, ?, ?, ?)"),
+                apuntes.capture());
+        assertArrayEquals(new Object[]{501, null, Timestamp.valueOf(AHORA), "ASOCIADA", "HISTORICO"}, apuntes.getAllValues().get(1).get(0));
+    }
+
+    @Test void asociarHistoricoSinFilasNoToca() {
+        dao.asociarHistorico(List.of(), AHORA);
+        verifyNoInteractions(jdbc);
     }
 
     @Test void porIdDevuelveVacioSiNoExiste() {
@@ -178,7 +253,7 @@ class FilasDAOTest {
         verifyNoInteractions(jdbc);
     }
 
-    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN, MARCA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
 
     /** El mapeador del bloqueo recibe un ResultSet: se simula con la fila indicada. */
     @SuppressWarnings("unchecked")
@@ -270,6 +345,73 @@ class FilasDAOTest {
         filaBloqueada("texto de la hoja", "HISTORICO");
         assertEquals(FilasDAO.Resultado.CERRADA, dao.ponerImei(5, "350000000000002", null, 9, AHORA));
         verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    private static final String SQL_DUP = FilasDAO.SQL_DUPLICADO;
+
+    /** La consulta del duplicado devuelve la otra fila indicada (su WHERE decide cuales cuentan: viva o enviada con falta, ShippyPro, no la propia). */
+    @SuppressWarnings("unchecked")
+    private void otraFilaConElImei(String pedido, LocalDate fecha, String canal, Timestamp asociadaEn) {
+        when(jdbc.query(eq(SQL_DUP), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
+            java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+            when(rs.getString("PEDIDO")).thenReturn(pedido);
+            when(rs.getDate("FECHA")).thenReturn(java.sql.Date.valueOf(fecha));
+            when(rs.getString("CANAL")).thenReturn(canal);
+            when(rs.getTimestamp("ASOCIADA_EN")).thenReturn(asociadaEn);
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+    }
+
+    @Test void ponerUnImeiQueEstaEnOtraFilaVivaLanzaDuplicadoYNoEscribeNada() throws Exception {
+        filaBloqueada(null, "SHIPPYPRO");
+        otraFilaConElImei("0099-1110004-0000004", LocalDate.of(2026, 11, 17), "AMAZON", Timestamp.valueOf(AHORA));
+        var e = assertThrows(ImeiDuplicadoException.class, () -> dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        assertEquals("0099-1110004-0000004", e.pedido());
+        assertEquals(LocalDate.of(2026, 11, 17), e.fecha());
+        assertEquals(Canal.AMAZON, e.canal());
+        assertFalse(e.sinAsociar());
+        // el WHERE (otra fila: ID_FILA <> ?, ShippyPro, viva o enviada con falta) lleva el IMEI y la propia fila
+        verify(jdbc).query(eq(SQL_DUP), any(RowMapper.class), eq("009900000000001"), eq(5));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void elDuplicadoDeUnaFilaConFaltaPorEnviarTambienCuentaPorElWhere() {
+        // «enviada con falta por enviar» entra por el segundo termino del WHERE; «enviada sin falta» y HISTORICO quedan fuera de el
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains(
+                "((CERRADA_EN IS NULL AND (MARCA IS NULL OR MARCA <> 'CANCELADO')) OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"));
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("ORIGEN = 'SHIPPYPRO'"));
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("ID_FILA <> ?"));
+    }
+
+    @Test void siNoHayOtraFilaPendienteConElImeiSePone() throws Exception {
+        // enviada sin falta o del historico: la consulta no devuelve nada y se pone (PUESTO)
+        filaBloqueada(null, "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        verify(jdbc).query(eq(SQL_DUP), any(RowMapper.class), eq("009900000000001"), eq(5));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "009900000000001", 5);
+    }
+
+    @Test void unaFilaVivaCanceladaConElImeiNoLoBloquea() throws Exception {
+        // una fila viva con MARCA = 'CANCELADO' no sale en ese pedido: el telefono esta libre y la consulta no la devuelve
+        assertTrue(FilasDAO.SQL_DUPLICADO.contains("CERRADA_EN IS NULL AND (MARCA IS NULL OR MARCA <> 'CANCELADO')"));
+        filaBloqueada(null, "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        verify(jdbc).query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), eq("009900000000001"), eq(5));
+        verify(jdbc).update("UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?", "009900000000001", 5);
+    }
+
+    @Test void quitarElImeiNoComprueba() throws Exception {
+        filaBloqueada("009900000000001", "SHIPPYPRO");
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerImei(5, null, null, 9, AHORA));
+        verify(jdbc, never()).query(eq(SQL_DUP), any(RowMapper.class), any(Object[].class));
+    }
+
+    @Test void enAmazonSinAsociarElDuplicadoLoDiceSinAsociar() throws Exception {
+        filaBloqueada(null, "SHIPPYPRO");
+        otraFilaConElImei("FNSK1", LocalDate.of(2026, 11, 17), "AMAZON_STOCKROOM", null);
+        var e = assertThrows(ImeiDuplicadoException.class, () -> dao.ponerImei(5, "009900000000001", null, 9, AHORA));
+        assertTrue(e.sinAsociar());
+        assertEquals(Canal.AMAZON_STOCKROOM, e.canal());
     }
 
     @Test void ponerImeiDeUnaFilaDeShippyProCerradaOEnviadaSiSePuede() throws Exception {
@@ -417,5 +559,35 @@ class FilasDAOTest {
         assertEquals(3, dao.contarCambiosDeHistorico());
         verify(jdbc).queryForObject("SELECT COUNT(*) FROM Pedido_fila_cambio c JOIN Pedido_fila f ON f.ID_FILA = c.ID_FILA"
                 + " WHERE f.ORIGEN = 'HISTORICO'", Integer.class);
+    }
+
+    @Test void ponerSalidasSoloTocaLasFilasVivasDelPedidoDeEseCanal() {
+        dao.ponerSalidas(List.of(new FilasDAO.Salida(Canal.AMAZON, "0099-1", LocalDate.of(2026, 11, 19), "DE"),
+                new FilasDAO.Salida(Canal.PARTICULARES, "0099-2", null, null)));
+        ArgumentCaptor<List<Object[]>> lote = ArgumentCaptor.forClass(List.class);
+        verify(jdbc).batchUpdate(eq("UPDATE Pedido_fila SET FECHA_SALIDA = ?, PAIS = ? WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ?"
+                + " AND PEDIDO = ? AND CERRADA_EN IS NULL"), lote.capture());
+        assertEquals(2, lote.getValue().size());
+        assertArrayEquals(new Object[]{java.sql.Date.valueOf("2026-11-19"), "DE", "AMAZON", "0099-1"}, lote.getValue().get(0));
+        assertArrayEquals(new Object[]{null, null, "PARTICULARES", "0099-2"}, lote.getValue().get(1));
+    }
+
+    @Test void ponerSalidasSinNadaNoToca() {
+        dao.ponerSalidas(List.of());
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test void laFilaLeidaTraeFechaSalidaYPais() throws Exception {
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+        when(rs.getString("CANAL")).thenReturn("AMAZON");
+        when(rs.getDate("FECHA_SALIDA")).thenReturn(java.sql.Date.valueOf("2026-11-19"));
+        when(rs.getString("PAIS")).thenReturn("DE");
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilaPedido>>getArgument(1).mapRow(rs, 0)));
+        FilaPedido f = dao.porId(7).orElseThrow();
+        assertEquals(LocalDate.of(2026, 11, 19), f.fechaSalida());
+        assertEquals("DE", f.pais());
+        assertNull(fila(1, "AMZ", null).fechaSalida(), "una fila nueva sale sin fecha de salida");
     }
 }
