@@ -79,7 +79,7 @@ public class FilasDAO {
             + " AND ORIGEN = 'SHIPPYPRO' AND ((CERRADA_EN IS NULL AND (MARCA IS NULL OR MARCA <> 'CANCELADO')) OR (ENVIO_FECHA IS NOT NULL AND FALTA_ENVIAR_EN IS NOT NULL))"
             + " ORDER BY FECHA, ID_FILA LIMIT 1";
     static final String SQL_PONER_IMEI = "UPDATE Pedido_fila SET IMEI = ? WHERE ID_FILA = ?";
-    static final String SQL_FILA_MARCA_BLOQUEADA = "SELECT ORIGEN, MARCA, MARCA_NOTA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_MARCA_BLOQUEADA = "SELECT ORIGEN, MARCA, MARCA_NOTA, IMEI, FALTA_ENVIAR_EN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_MARCA = "UPDATE Pedido_fila SET MARCA = ?, MARCA_NOTA = ?, MARCA_EN = ?, MARCA_USU = ? WHERE ID_FILA = ?";
     static final String SQL_QUITAR_MARCA = "UPDATE Pedido_fila SET MARCA = NULL, MARCA_NOTA = NULL, MARCA_EN = NULL, MARCA_USU = NULL WHERE ID_FILA = ?";
     static final String SQL_CAMBIO_DETALLE = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO, DETALLE) VALUES (?, ?, ?, ?, ?)";
@@ -327,6 +327,17 @@ public class FilasDAO {
 
     private record Bloqueada(String imei, boolean historico, String marca, String validadaImei) {}
 
+    /** Lanza {@link ImeiDuplicadoException} (sin escribir nada) si el IMEI esta en otra fila que cuenta segun {@link #SQL_DUPLICADO}. */
+    private void comprobarDuplicado(String imei, int idFila) {
+        List<ImeiDuplicadoException> otras = jdbc.query(SQL_DUPLICADO, (rs, n) -> {
+            String c = rs.getString("CANAL");
+            Canal canal = c == null ? null : Canal.valueOf(c);
+            return new ImeiDuplicadoException(rs.getString("PEDIDO"), rs.getDate("FECHA").toLocalDate(), canal,
+                    canal != null && canal.esAmazon() && rs.getTimestamp("ASOCIADA_EN") == null);
+        }, imei, idFila);
+        if (!otras.isEmpty()) throw otras.get(0);
+    }
+
     /** Cambia el IMEI de una fila de ShippyPro (pendiente, no pendiente o enviada) y apunta el cambio con el IMEI anterior. READ COMMITTED y la fila bloqueada al leerla
      *  (MariaDB 11.6+: leer y luego actualizar con aislamiento de instantanea da el error 1020); el estado de la fila se decide
      *  con el bloqueo puesto. {@code imeiAnterior} nulo no comprueba nada; si no, debe coincidir con el IMEI actual (nulo cuenta como ""), y
@@ -340,15 +351,7 @@ public class FilasDAO {
         if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
             return Resultado.CAMBIADA;
         String nuevo = AnchosNsys.corta(imei, AnchosPedidos.IMEI);
-        if (nuevo != null) {
-            List<ImeiDuplicadoException> otras = jdbc.query(SQL_DUPLICADO, (rs, n) -> {
-                String c = rs.getString("CANAL");
-                Canal canal = c == null ? null : Canal.valueOf(c);
-                return new ImeiDuplicadoException(rs.getString("PEDIDO"), rs.getDate("FECHA").toLocalDate(), canal,
-                        canal != null && canal.esAmazon() && rs.getTimestamp("ASOCIADA_EN") == null);
-            }, nuevo, idFila);
-            if (!otras.isEmpty()) throw otras.get(0);
-        }
+        if (nuevo != null) comprobarDuplicado(nuevo, idFila);
         jdbc.update(SQL_PONER_IMEI, nuevo, idFila);
         jdbc.update(SQL_CAMBIO, idFila, idUsu, Timestamp.valueOf(ahora), filas.get(0).imei(), nuevo);
         // La validacion vale para ese IMEI: al cambiarlo o quitarlo se borra (y se apunta), para que no reviva si el IMEI vuelve.
@@ -398,21 +401,27 @@ public class FilasDAO {
         return Resultado.PUESTO;
     }
 
-    private record BloqueadaMarca(String origen, String marca, String nota) {}
+    private record BloqueadaMarca(String origen, String marca, String nota, String imei, boolean conFalta) {}
 
     /** Pone, cambia o quita (marca nula) la marca de una fila de ShippyPro y la apunta en el historial: MARCA (detalle «MARCA» o «MARCA — nota»)
      *  al poner o cambiar (tambien si solo cambia la nota), MARCA_QUITADA (detalle = la marca que tenia) al quitar. Misma transaccion que
      *  {@link #ponerImei}: READ COMMITTED y la fila bloqueada al leerla. Orden: NO_EXISTE; CERRADA (historico); CAMBIADA ({@code marcaAnterior}
-     *  no nula y distinta de la actual; nula cuenta como ""); SIN_CAMBIO (misma marca y misma nota, o quitar sin marca: no escribe ni apunta);
-     *  si no, PUESTO. La nota ya viene validada y recortada (nula = sin nota); se ignora al quitar. */
+     *  no nula y distinta de la actual; nula cuenta como ""); salir de CANCELADO (a sin marca o a otra marca) con IMEI comprueba el duplicado
+     *  como {@link #ponerImei} y lanza {@link ImeiDuplicadoException} sin escribir; SIN_CAMBIO (misma marca y misma nota, o quitar sin marca:
+     *  no escribe ni apunta); si no, PUESTO. Poner CANCELADO en una fila con «falta por enviar» la quita y apunta YA_ENVIADO «al cancelar»
+     *  (spec 2026-11-23). La nota ya viene validada y recortada (nula = sin nota); se ignora al quitar. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerMarca(int idFila, String marca, String nota, String marcaAnterior, Integer idUsu, LocalDateTime ahora) {
         List<BloqueadaMarca> filas = jdbc.query(SQL_FILA_MARCA_BLOQUEADA, (rs, n) -> new BloqueadaMarca(rs.getString("ORIGEN"),
-                rs.getString("MARCA"), rs.getString("MARCA_NOTA")), idFila);
+                rs.getString("MARCA"), rs.getString("MARCA_NOTA"), rs.getString("IMEI"), rs.getTimestamp("FALTA_ENVIAR_EN") != null), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         BloqueadaMarca f = filas.get(0);
         if ("HISTORICO".equals(f.origen())) return Resultado.CERRADA;
         if (marcaAnterior != null && !marcaAnterior.equals(f.marca() == null ? "" : f.marca())) return Resultado.CAMBIADA;
+        String cancelado = Marca.CANCELADO.name();
+        // Mientras estaba cancelada su IMEI estaba libre: al quitar la cancelacion no puede quedar en dos filas vivas.
+        if (cancelado.equals(f.marca()) && !cancelado.equals(marca) && f.imei() != null && !f.imei().isBlank())
+            comprobarDuplicado(f.imei().strip(), idFila);
         Timestamp t = Timestamp.valueOf(ahora);
         if (marca == null) {
             if (f.marca() == null) return Resultado.SIN_CAMBIO;
@@ -423,6 +432,11 @@ public class FilasDAO {
         if (marca.equals(f.marca()) && java.util.Objects.equals(nota, f.nota())) return Resultado.SIN_CAMBIO;
         jdbc.update(SQL_PONER_MARCA, marca, nota, t, idUsu, idFila);
         jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.MARCA, nota == null ? marca : marca + SEP_DETALLE + nota);
+        // Cancelado y «falta por enviar» no pueden ir juntos: cancelar se la come (no vuelve al quitar la cancelacion).
+        if (cancelado.equals(marca) && f.conFalta()) {
+            jdbc.update(SQL_QUITAR_FALTA, idFila);
+            jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, t, CambioImei.YA_ENVIADO, "al cancelar");
+        }
         return Resultado.PUESTO;
     }
 
