@@ -167,4 +167,96 @@ class MarcaDAOTest {
         assertTrue(FilasDAO.SQL_VENDIDOS.contains("TIPO IN ('IMEI', 'MARCA_QUITADA')"));
         assertFalse(FilasDAO.SQL_VENDIDOS.contains("TIPO = 'IMEI'"));
     }
+
+    private static final String QUITAR_FALTA = "UPDATE Pedido_fila SET FALTA_ENVIAR_EN = NULL, FALTA_ENVIAR_USU = NULL WHERE ID_FILA = ?";
+    private static final String IMEI = "350000000000001";
+
+    /** La fila bloqueada con su marca, su IMEI y si tiene «falta por enviar» (ShippyPro, sin nota). */
+    private void filaCompleta(String marca, String imei, boolean conFalta) {
+        when(jdbc.query(eq(FilasDAO.SQL_FILA_MARCA_BLOQUEADA), any(RowMapper.class), eq(5))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+            when(rs.getString("MARCA")).thenReturn(marca);
+            when(rs.getString("IMEI")).thenReturn(imei);
+            when(rs.getTimestamp("FALTA_ENVIAR_EN")).thenReturn(conFalta ? Timestamp.valueOf(AHORA.minusDays(1)) : null);
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+    }
+
+    /** La consulta del duplicado devuelve otra fila viva con el IMEI (pedido 37400 de webs, del 20/11). */
+    private void otraFilaConElImei() {
+        when(jdbc.query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("PEDIDO")).thenReturn("37400");
+            when(rs.getDate("FECHA")).thenReturn(java.sql.Date.valueOf("2026-11-20"));
+            when(rs.getString("CANAL")).thenReturn("PARTICULARES");
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+    }
+
+    @Test void elBloqueoDeLaMarcaLeeTambienElImeiYLaFalta() {
+        assertTrue(FilasDAO.SQL_FILA_MARCA_BLOQUEADA.contains("IMEI"));
+        assertTrue(FilasDAO.SQL_FILA_MARCA_BLOQUEADA.contains("FALTA_ENVIAR_EN"));
+        assertTrue(FilasDAO.SQL_FILA_MARCA_BLOQUEADA.endsWith("FOR UPDATE"));
+    }
+
+    @Test void cancelarUnaFilaConFaltaLaQuitaYApuntaYaEnviadoAlCancelar() {
+        filaCompleta(null, IMEI, true);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerMarca(5, "CANCELADO", "no cabe", "", 9, AHORA));
+        var orden = inOrder(jdbc);
+        orden.verify(jdbc).update(UPD, "CANCELADO", "no cabe", T_AHORA, 9, 5);
+        orden.verify(jdbc).update(INS, 5, 9, T_AHORA, "MARCA", "CANCELADO — no cabe");
+        orden.verify(jdbc).update(QUITAR_FALTA, 5);
+        orden.verify(jdbc).update(INS, 5, 9, T_AHORA, "YA_ENVIADO", "al cancelar");
+    }
+
+    @Test void cancelarSinFaltaNoTocaLaFalta() {
+        filaCompleta(null, IMEI, false);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerMarca(5, "CANCELADO", null, "", 9, AHORA));
+        verify(jdbc, never()).update(QUITAR_FALTA, 5);
+        verify(jdbc, never()).update(eq(INS), eq(5), any(), any(), eq("YA_ENVIADO"), any());
+    }
+
+    @Test void otraMarcaEnUnaFilaConFaltaNoLaQuita() {
+        filaCompleta(null, IMEI, true);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerMarca(5, "EN_REVISION", null, "", 9, AHORA));
+        verify(jdbc, never()).update(QUITAR_FALTA, 5);
+    }
+
+    @Test void quitarLaCancelacionConElImeiEnOtraFilaLanzaDuplicadoYNoEscribe() {
+        filaCompleta("CANCELADO", IMEI, false);
+        otraFilaConElImei();
+        ImeiDuplicadoException e = assertThrows(ImeiDuplicadoException.class,
+                () -> dao.ponerMarca(5, null, null, "CANCELADO", 9, AHORA));
+        assertEquals("Este IMEI ya está en el pedido 37400 (fila del 20/11)", e.mensaje());
+        verify(jdbc).query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), eq(IMEI), eq(5));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void pasarDeCanceladoAOtraMarcaTambienCompruebaElDuplicado() {
+        filaCompleta("CANCELADO", IMEI, false);
+        otraFilaConElImei();
+        assertThrows(ImeiDuplicadoException.class, () -> dao.ponerMarca(5, "EN_REVISION", null, "CANCELADO", 9, AHORA));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void quitarLaCancelacionSinDuplicadoQuitaLaMarca() {
+        filaCompleta("CANCELADO", IMEI, false);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerMarca(5, null, null, "CANCELADO", 9, AHORA));
+        verify(jdbc).query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), eq(IMEI), eq(5));
+        verify(jdbc).update(UPD, null, null, null, null, 5);
+        verify(jdbc).update(INS, 5, 9, T_AHORA, "MARCA_QUITADA", "CANCELADO");
+    }
+
+    @Test void quitarLaCancelacionSinImeiNoConsultaElDuplicado() {
+        filaCompleta("CANCELADO", null, false);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerMarca(5, null, null, "CANCELADO", 9, AHORA));
+        verify(jdbc, never()).query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), any(Object[].class));
+    }
+
+    @Test void cambiarSoloLaNotaDeUnaCanceladaNoConsultaElDuplicado() {
+        filaCompleta("CANCELADO", IMEI, false);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerMarca(5, "CANCELADO", "otra nota", "CANCELADO", 9, AHORA));
+        verify(jdbc, never()).query(eq(FilasDAO.SQL_DUPLICADO), any(RowMapper.class), any(Object[].class));
+    }
 }

@@ -168,4 +168,33 @@ class FaltaEnviarDAOTest {
         assertTrue(FilasDAO.SQL_FILAS_DE_PEDIDO_BLOQUEADAS.contains("ORIGEN = 'SHIPPYPRO' AND CANAL = ? AND PEDIDO = ?"));
         assertTrue(FilasDAO.SQL_FILAS_DE_PEDIDO_BLOQUEADAS.endsWith("FOR UPDATE"));
     }
+
+    /** Fila web con etiqueta generada, sin falta, marcada CANCELADO (o con falta y cancelada, datos viejos). */
+    private void filaCancelada(LocalDateTime falta) {
+        when(jdbc.query(eq(FilasDAO.SQL_FILA_FALTA_BLOQUEADA), any(RowMapper.class), eq(5))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+            when(rs.getString("CANAL")).thenReturn("PARTICULARES");
+            when(rs.getTimestamp("ENVIO_FECHA")).thenReturn(Timestamp.valueOf(ENVIO));
+            when(rs.getTimestamp("FALTA_ENVIAR_EN")).thenReturn(falta == null ? null : Timestamp.valueOf(falta));
+            when(rs.getString("MARCA")).thenReturn("CANCELADO");
+            return new ArrayList<>(List.of(inv.<RowMapper<Object>>getArgument(1).mapRow(rs, 0)));
+        });
+    }
+
+    @Test void elBloqueoDeLaFaltaLeeTambienLaMarca() {
+        assertTrue(FilasDAO.SQL_FILA_FALTA_BLOQUEADA.contains("MARCA"));
+    }
+
+    @Test void marcarFaltaEnUnaCanceladaEsCanceladaNoMarcableYNoEscribe() {
+        filaCancelada(null);
+        assertEquals(FilasDAO.Resultado.CANCELADA_NO_MARCABLE, dao.ponerFaltaEnviar(5, true, 9, AHORA));
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test void quitarLaFaltaDeUnaCanceladaSiSePuede() {
+        filaCancelada(ENVIO);
+        assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerFaltaEnviar(5, false, 9, AHORA));
+        verify(jdbc).update(UPD_FALTA, null, null, 5);
+    }
 }

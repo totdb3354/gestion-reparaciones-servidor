@@ -6,12 +6,12 @@ import java.time.LocalDateTime;
 
 /** Un apunte del historial de una fila (Pedido_fila_cambio). usuario: nombre de usuario de quien lo hizo; nulo si el apunte no
  *  tiene usuario (el traspaso desde la hoja, el plugin de la web o la asociacion de los libros de ventas de Amazon). tipo: IMEI (cambio
- *  de IMEI), FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA (se puso o cambio la marca de la
+ *  de IMEI), FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca; detalle «al cancelar» si la quito el ERP al cancelar la fila), MARCA (se puso o cambio la marca de la
  *  fila), MARCA_QUITADA (se quito), ASOCIADA (se confirmo el pedido del IMEI en Amazon) o IMEI_INTERCAMBIADO (la asociacion intercambio el
  *  IMEI con otra fila), VALIDADA (una persona dio por bueno el aviso de SKU del IMEI) o VALIDACION_QUITADA (se quito esa validacion, o
  *  la quito el ERP al cambiar el IMEI); nunca nulo. En IMEI: imeiAnterior nulo = antes no habia; imeiNuevo nulo = se quito. En los demas tipos los dos IMEI
  *  son nulos. detalle: nulo salvo en MARCA ("<MARCA>" o "<MARCA> — <nota>"), MARCA_QUITADA (la marca que tenia, y "<MARCA> — al poner el
- *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO"), IMEI_INTERCAMBIADO ("con la fila <id>"), VALIDADA (el motivo del aviso: MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO) y
+ *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO"), IMEI_INTERCAMBIADO ("con la fila <id>"), YA_ENVIADO (nulo, o "al cancelar"), VALIDADA (el motivo del aviso: MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO) y
  *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP). */
 public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime fecha,
                          @Schema(nullable = true) String imeiAnterior, @Schema(nullable = true) String imeiNuevo, String tipo,
