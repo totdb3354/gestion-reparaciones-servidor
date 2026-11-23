@@ -1,42 +1,27 @@
 package com.reparaciones.servidor.nsys;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 
-/** Aviso de datos antiguos (spec pieza 1 §5.7). Solo cuentan los minutos de 07:00 a 23:00, cuando el bot exporta: más
- *  de 60 es RETRASO y más de 180, SIN_DATOS. */
+/** Aviso de datos antiguos (spec pieza 1 §5.7). Desde la 0.9.43 cuentan todos los minutos, también de noche: NSYS publica un
+ *  Items cada 10 min las 24 h (desde el 23/11/2026; antes, cada 30 min de 07:00 a 23:00, y solo contaba ese horario). Lo
+ *  normal es tener el último Items de hace 10-20 min (el ERP lo importa cada 5 min, con 2 de espera); un ciclo saltado llega a
+ *  unos 30. Más de 40 es RETRASO y más de 60, SIN_DATOS. Pedidos usa la misma regla para ShippyPro, que se lee cada 5 min. */
 public final class AvisoNsys {
 
-    static final LocalTime ABRE = LocalTime.of(7, 0);
-    static final LocalTime CIERRA = LocalTime.of(23, 0);
-    static final long RETRASO = 60;
-    static final long SIN_DATOS = 180;
+    static final long RETRASO = 40;
+    static final long SIN_DATOS = 60;
 
     private AvisoNsys() {}
 
     public static String nivel(LocalDateTime ultima, LocalDateTime ahora) {
         if (ultima == null) return "SIN_DATOS";
-        long minutos = minutosHabiles(ultima, ahora);
+        long minutos = minutos(ultima, ahora);
         return minutos > SIN_DATOS ? "SIN_DATOS" : minutos > RETRASO ? "RETRASO" : "OK";
     }
 
-    static long minutosHabiles(LocalDateTime desde, LocalDateTime hasta) {
-        long total = 0;
-        for (LocalDate dia = desde.toLocalDate(); !dia.isAfter(hasta.toLocalDate()); dia = dia.plusDays(1)) {
-            LocalDateTime inicio = mayor(desde, dia.atTime(ABRE));
-            LocalDateTime fin = menor(hasta, dia.atTime(CIERRA));
-            if (fin.isAfter(inicio)) total += Duration.between(inicio, fin).toMinutes();
-        }
-        return total;
-    }
-
-    private static LocalDateTime mayor(LocalDateTime a, LocalDateTime b) {
-        return a.isAfter(b) ? a : b;
-    }
-
-    private static LocalDateTime menor(LocalDateTime a, LocalDateTime b) {
-        return a.isBefore(b) ? a : b;
+    /** Minutos de {@code desde} a {@code hasta}; 0 si {@code desde} es posterior. */
+    static long minutos(LocalDateTime desde, LocalDateTime hasta) {
+        return Math.max(0, Duration.between(desde, hasta).toMinutes());
     }
 }
