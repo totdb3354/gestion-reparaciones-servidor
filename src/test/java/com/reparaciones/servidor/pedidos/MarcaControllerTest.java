@@ -141,4 +141,15 @@ class MarcaControllerTest {
         controller.ponerMarca(5, new PeticionMarca("CANCELADO", "a", null), super_, "clave-m");
         verify(dao, times(1)).ponerMarca(5, "CANCELADO", "a", null, 7, AHORA);
     }
+
+    @Test void elImeiDuplicadoAlQuitarLaCancelacionEsUn409ConElMensaje() {
+        filaExiste();
+        when(dao.ponerMarca(5, null, null, "CANCELADO", 7, AHORA))
+                .thenThrow(new ImeiDuplicadoException("37400", LocalDate.of(2026, 11, 20), Canal.PARTICULARES, false));
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> controller.ponerMarca(5, new PeticionMarca(null, null, "CANCELADO"), super_, null));
+        assertEquals(409, e.getStatusCode().value());
+        assertEquals("Este IMEI ya está en el pedido 37400 (fila del 20/11)", e.getReason());
+        verify(vista, never()).fila(anyInt());
+    }
 }

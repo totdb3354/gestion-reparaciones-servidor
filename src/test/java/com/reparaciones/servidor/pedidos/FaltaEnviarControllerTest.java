@@ -110,4 +110,14 @@ class FaltaEnviarControllerTest {
         controller.ponerFaltaEnviar(5, new PeticionFaltaEnviar(true), super_, "clave-falta");
         verify(dao, times(1)).ponerFaltaEnviar(5, true, 7, AHORA);
     }
+
+    @Test void canceladaEsUn409ConSuMensaje() {
+        when(dao.porId(5)).thenReturn(Optional.of(fila("SHIPPYPRO")));
+        when(dao.ponerFaltaEnviar(anyInt(), anyBoolean(), any(), any())).thenReturn(FilasDAO.Resultado.CANCELADA_NO_MARCABLE);
+        ResponseStatusException e = assertThrows(ResponseStatusException.class,
+                () -> controller.ponerFaltaEnviar(5, new PeticionFaltaEnviar(true), super_, null));
+        assertEquals(409, e.getStatusCode().value());
+        assertEquals("Este móvil está cancelado: quita la cancelación antes de marcar «Falta por enviar»", e.getReason());
+        verify(vista, never()).fila(anyInt());
+    }
 }

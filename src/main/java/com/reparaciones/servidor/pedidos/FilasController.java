@@ -46,6 +46,7 @@ public class FilasController {
     static final String MSG_SIN_IMEI = "La fila no tiene IMEI: no hay nada que validar";
     static final String MSG_NO_VALIDABLE = "Solo se puede validar un aviso de SKU (otro modelo, otro color o grado, grado que no se vende o SKU que el maestro no conoce)";
     static final String MSG_FALTA = "Indica si falta enviar (true o false)";
+    static final String MSG_FALTA_CANCELADA = "Este móvil está cancelado: quita la cancelación antes de marcar «Falta por enviar»";
     static final String MSG_NO_MARCABLE = "Solo se puede marcar en un pedido de web con la etiqueta ya generada";
 
     private final VistaFilas vista;
@@ -150,13 +151,15 @@ public class FilasController {
             if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
             if (r == FilasDAO.Resultado.CERRADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
             if (r == FilasDAO.Resultado.NO_MARCABLE) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_NO_MARCABLE);
+            if (r == FilasDAO.Resultado.CANCELADA_NO_MARCABLE) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_FALTA_CANCELADA);
             return vista.fila(id).orElseThrow(() -> noExiste(id));
         });
     }
 
     /** Pone, cambia o quita (marca nula) la marca de una fila de ShippyPro, con su nota opcional (hasta 200, recortada; vacia = sin nota).
      *  {@code marcaAnterior} (nula = no comprueba, "" = esperaba la fila sin marca) como el {@code imeiAnterior} del IMEI: 409 si no coincide.
-     *  Poner la misma marca con otra nota es un cambio; misma marca y nota, o quitar sin marca, es un 200 sin apunte. Devuelve la fila releida. */
+     *  Poner la misma marca con otra nota es un cambio; misma marca y nota, o quitar sin marca, es un 200 sin apunte. Devuelve la fila releida.
+     *  409 con el mensaje del IMEI duplicado si se quita la cancelacion y el IMEI ya esta en otra fila. */
     @ApiResponses({
         @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = FilaVista.class))),
         @ApiResponse(responseCode = "400", content = @Content),
@@ -180,7 +183,13 @@ public class FilasController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);
         return idempotencia.ejecutar(principal.getIdUsu(), "pedido-marca", claveIdempotencia, new CambioMarca(id, marca, notaFinal, anterior), () -> {
             // Las reglas se deciden en la transaccion del DAO, con la fila bloqueada.
-            FilasDAO.Resultado r = dao.ponerMarca(id, marca, notaFinal, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
+            FilasDAO.Resultado r;
+            try {
+                r = dao.ponerMarca(id, marca, notaFinal, anterior, principal.getIdUsu(), LocalDateTime.now(clock));
+            } catch (ImeiDuplicadoException e) {
+                // Quitar la cancelacion de una fila cuyo IMEI ya se puso en otra (spec 2026-11-23 §3).
+                throw new ResponseStatusException(HttpStatus.CONFLICT, e.mensaje());
+            }
             if (r == FilasDAO.Resultado.NO_EXISTE) throw noExiste(id);
             if (r == FilasDAO.Resultado.CAMBIADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_MARCA_CAMBIADA);
             if (r == FilasDAO.Resultado.CERRADA) throw new ResponseStatusException(HttpStatus.CONFLICT, MSG_HISTORICO);

@@ -83,7 +83,7 @@ public class FilasDAO {
     static final String SQL_PONER_MARCA = "UPDATE Pedido_fila SET MARCA = ?, MARCA_NOTA = ?, MARCA_EN = ?, MARCA_USU = ? WHERE ID_FILA = ?";
     static final String SQL_QUITAR_MARCA = "UPDATE Pedido_fila SET MARCA = NULL, MARCA_NOTA = NULL, MARCA_EN = NULL, MARCA_USU = NULL WHERE ID_FILA = ?";
     static final String SQL_CAMBIO_DETALLE = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO, DETALLE) VALUES (?, ?, ?, ?, ?)";
-    static final String SQL_FILA_FALTA_BLOQUEADA = "SELECT ORIGEN, CANAL, ENVIO_FECHA, FALTA_ENVIAR_EN FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_FALTA_BLOQUEADA = "SELECT ORIGEN, CANAL, ENVIO_FECHA, FALTA_ENVIAR_EN, MARCA FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_FALTA = "UPDATE Pedido_fila SET FALTA_ENVIAR_EN = ?, FALTA_ENVIAR_USU = ? WHERE ID_FILA = ?";
     static final String SQL_CAMBIO_TIPO = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, TIPO) VALUES (?, ?, ?, ?)";
     static final String SQL_FILAS_DE_PEDIDO_BLOQUEADAS = "SELECT ID_FILA, IMEI, FALTA_ENVIAR_EN FROM Pedido_fila"
@@ -323,7 +323,9 @@ public class FilasDAO {
         /** Solo de {@link #ponerFaltaEnviar}: la fila ya estaba como se pedia (no se escribe ni apunta nada). */
         SIN_CAMBIO,
         /** Solo de {@link #ponerFaltaEnviar}: no se puede marcar (no es de ShippyPro, no es de un canal web o no tiene la etiqueta generada). */
-        NO_MARCABLE }
+        NO_MARCABLE,
+        /** Solo de {@link #ponerFaltaEnviar}: la fila esta cancelada; hay que quitar la cancelacion antes de marcar (spec 2026-11-23). */
+        CANCELADA_NO_MARCABLE }
 
     private record Bloqueada(String imei, boolean historico, String marca, String validadaImei) {}
 
@@ -440,21 +442,23 @@ public class FilasDAO {
         return Resultado.PUESTO;
     }
 
-    private record BloqueadaFalta(String origen, String canal, boolean conEtiqueta, LocalDateTime marca) {}
+    private record BloqueadaFalta(String origen, String canal, boolean conEtiqueta, LocalDateTime marca, boolean cancelada) {}
 
     /** Pone ({@code falta}) o quita la marca «falta enviar» de una fila y la apunta en el historial (FALTA_ENVIAR o YA_ENVIADO) con el usuario
      *  y la hora. Misma transaccion que {@link #ponerImei}: READ COMMITTED y la fila bloqueada al leerla; todo se decide con el bloqueo puesto.
-     *  Orden: NO_EXISTE; CERRADA (historico); SIN_CAMBIO (ya marcada y se marca, o sin marca y se desmarca); NO_MARCABLE (solo al poner:
-     *  la fila debe ser de ShippyPro, de un canal web y con la etiqueta generada, ENVIO_FECHA no nula); si no, PUESTO. Quitar la marca
+     *  Orden: NO_EXISTE; CERRADA (historico); SIN_CAMBIO (ya marcada y se marca, o sin marca y se desmarca); CANCELADA_NO_MARCABLE (solo al
+     *  poner: la fila tiene la marca CANCELADO); NO_MARCABLE (solo al poner: la fila debe ser de ShippyPro, de un canal web y con la etiqueta generada, ENVIO_FECHA no nula); si no, PUESTO. Quitar la marca
      *  no exige nada mas. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerFaltaEnviar(int idFila, boolean falta, Integer idUsu, LocalDateTime ahora) {
         List<BloqueadaFalta> filas = jdbc.query(SQL_FILA_FALTA_BLOQUEADA, (rs, n) -> new BloqueadaFalta(rs.getString("ORIGEN"),
-                rs.getString("CANAL"), rs.getTimestamp("ENVIO_FECHA") != null, hora(rs, "FALTA_ENVIAR_EN")), idFila);
+                rs.getString("CANAL"), rs.getTimestamp("ENVIO_FECHA") != null, hora(rs, "FALTA_ENVIAR_EN"),
+                Marca.CANCELADO.name().equals(rs.getString("MARCA"))), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         BloqueadaFalta f = filas.get(0);
         if ("HISTORICO".equals(f.origen())) return Resultado.CERRADA;
         if (falta == (f.marca() != null)) return Resultado.SIN_CAMBIO;
+        if (falta && f.cancelada()) return Resultado.CANCELADA_NO_MARCABLE;
         if (falta && !(f.conEtiqueta() && "SHIPPYPRO".equals(f.origen()) && esWeb(f.canal()))) return Resultado.NO_MARCABLE;
         jdbc.update(SQL_PONER_FALTA, falta ? Timestamp.valueOf(ahora) : null, falta ? idUsu : null, idFila);
         jdbc.update(SQL_CAMBIO_TIPO, idFila, idUsu, Timestamp.valueOf(ahora), falta ? CambioImei.FALTA_ENVIAR : CambioImei.YA_ENVIADO);
