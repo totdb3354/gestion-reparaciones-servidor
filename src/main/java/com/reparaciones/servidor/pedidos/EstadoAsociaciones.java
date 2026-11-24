@@ -19,7 +19,7 @@ public record EstadoAsociaciones(List<Pasada> canales) {
     /** Una asociacion que no se pudo aplicar. {@code motivo}: SIN_HUECO (el pedido no tiene hueco), YA_SALIO (el IMEI esta en una fila con
      *  etiqueta de otro pedido), CANCELADO (las unicas filas posibles estan canceladas), REPETIDO_EN_LIBRO (el libro pone el IMEI en dos
      *  pedidos), NO_EN_NSYS (el IMEI no esta en NSYS) u OTRO_MODELO (el movil no cuadra con el pedido), y PEDIDO_AJENO solo como herencia
-     *  (ya no se guarda); {@code detalle}: en OTRO_MODELO dice cual es el modelo del pedido y cual el del movil, nulo en los demas;
+     *  (ya no se guarda); {@code detalle}: en OTRO_MODELO, que no cuadra, que es el movil y donde esta; en YA_SALIO y CANCELADO, en que pedido esta el IMEI; nulo en los demas;
      *  {@code vistoEn}: la pasada que la dejo para revisar. */
     public record Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn,
                           @Schema(nullable = true) String detalle) {
