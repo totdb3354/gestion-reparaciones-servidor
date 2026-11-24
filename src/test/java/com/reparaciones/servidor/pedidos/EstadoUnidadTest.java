@@ -99,9 +99,9 @@ class EstadoUnidadTest {
         Aceptacion conFilaNa = new AceptaSku(List.of(
                 AceptaSkuTest.producto("Azul", "A", "i13128AzulA", null, "i13128AzulX", null),
                 AceptaSkuTest.producto("Azul", "n/a", null, null, "i13128AzulX", null))).para(Canal.PARTICULARES, "i13128AzulX");
-        assertEquals(r("CON_AVISO", null, null, true, false, null),
+        assertEquals(new EstadoUnidad.Resultado("CUADRA", null),
                 de(conFilaNa, movil("13", "n/a"), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.PARTICULARES),
-                "un n/a del color del pedido: aviso N/A");
+                "un n/a de un pedido con fila n/a cuadra");
         assertEquals(r("CON_AVISO", null, null, true, false, null),
                 de(WEB_A, movil("13", "n/a"), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.DISTRIBUIDORES),
                 "un n/a solo mira el color, haya o no fila n/a en el pedido");

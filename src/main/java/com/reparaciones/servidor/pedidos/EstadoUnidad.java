@@ -40,6 +40,9 @@ public final class EstadoUnidad {
         if (trabajos != null && !trabajos.isEmpty()) return new Resultado("EN_TALLER", null, sim, false, false, null);
         if (cSinReparar(v)) return new Resultado("NECESITA_TALLER", "GRADO", sim, false, false, "C");
         if (SkuNa.esNa(v.grade())) {
+            // Si el pedido acepta ese n/a (fila n/a), es lo pedido: cuadra.
+            if ((v.sku() != null && ac.acepta(v.sku())) || ac.aceptaColorYGrado(v.color(), v.grade()))
+                return sim != null ? new Resultado("CON_AVISO", null, sim, false, false, null) : new Resultado("CUADRA", null);
             // Sin grado: solo se puede comprobar el color.
             if (ac.aceptaColor(v.color())) return new Resultado("CON_AVISO", null, sim, true, false, null);
             return new Resultado("NECESITA_TALLER", "COLOR", sim, true, false, v.color());
