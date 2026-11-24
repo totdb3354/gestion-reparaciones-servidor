@@ -44,8 +44,9 @@ public final class Reparto {
             return !na && (letra.equals("B") || letra.equals("C"));
         }
 
+        /** ID en cualquier caja (también en Devolución o sin caja, donde cuenta como N/A). */
         boolean id() {
-            return !na && letra.equals("ID");
+            return letra.equals("ID");
         }
     }
 
@@ -127,25 +128,28 @@ public final class Reparto {
      *  móvil no vale para la fila. Con un trabajo del taller abierto, solo el puesto 1 y con su SKU entre los aceptados. */
     static Integer puestoAmazon(Fila f, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
         Aceptacion ac = f.aceptacion();
-        if (ac == null || !mismoModelo(ac, m)) return null;
+        if (!sirve(ac) || !mismoModelo(ac, m)) return null;
         Grado g = grado(m, v);
         if (g.id()) return null;
         Atributos pide = ac.pide();
         boolean mismoFormato = m.esEsim() == pide.esEsim();
-        boolean mismoColor = igual(v.color(), pide.color());
-        boolean encajaONa = g.na() || (!g.ms() && encaja(ac, v));
+        boolean mismoColor = igualDato(v.color(), pide.color());
         Integer puesto;
-        if (mismoFormato && mismoColor && encajaONa) puesto = 1;
-        else if (mismoFormato && g.bOC() && !g.ms()) puesto = 2;
-        else if (!mismoFormato && mismoColor && encajaONa) puesto = 3;
-        else if (!mismoFormato && g.bOC() && !g.ms()) puesto = 4;
-        else if (mismoFormato && !mismoColor && g.na()) puesto = 5;
-        else if (!mismoFormato && !mismoColor && g.na()) puesto = 6;
-        else if (mismoFormato && !mismoColor && g.familiaA() && !g.ms()) puesto = 7;
-        else if (!mismoFormato && !mismoColor && g.familiaA() && !g.ms()) puesto = 8;
-        // Ms: último recurso, solo a España, mismo formato y color, y que encaje quitándole el «Ms».
-        else if (mismoFormato && mismoColor && g.ms() && esEspana(f.pais()) && encajaSinMs(ac, v)) puesto = 9;
-        else puesto = null;
+        // Ms (también en Devolución o sin caja): último recurso, solo a España, mismo formato y color, y que encaje quitándole
+        // el «Ms». Que un MsB o MsC no entre está pendiente de confirmar con Imad (el prototipo los dejaba).
+        if (g.ms()) puesto = mismoFormato && mismoColor && esEspana(f.pais()) && encajaSinMs(ac, v) ? 9 : null;
+        else {
+            boolean encajaONa = g.na() || encaja(ac, v);
+            if (mismoFormato && mismoColor && encajaONa) puesto = 1;
+            else if (mismoFormato && g.bOC()) puesto = 2;
+            else if (!mismoFormato && mismoColor && encajaONa) puesto = 3;
+            else if (!mismoFormato && g.bOC()) puesto = 4;
+            else if (mismoFormato && !mismoColor && g.na()) puesto = 5;
+            else if (!mismoFormato && !mismoColor && g.na()) puesto = 6;
+            else if (mismoFormato && !mismoColor && g.familiaA()) puesto = 7;
+            else if (!mismoFormato && !mismoColor && g.familiaA()) puesto = 8;
+            else puesto = null;
+        }
         return conTrabajo(puesto, conTrabajo, ac, v);
     }
 
@@ -154,12 +158,12 @@ public final class Reparto {
      *  aún no está revisado. Con un trabajo del taller abierto, solo el puesto 1. */
     static Integer puestoWeb(Fila f, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
         Aceptacion ac = f.aceptacion();
-        if (ac == null || !mismoModelo(ac, m)) return null;
+        if (!sirve(ac) || !mismoModelo(ac, m)) return null;
         Grado g = grado(m, v);
         Atributos pide = ac.pide();
-        if (g.id() || g.ms() || g.naPorCaja() || m.esEsim() != pide.esEsim() || !igual(v.color(), pide.color())) return null;
+        if (g.id() || g.ms() || g.naPorCaja() || m.esEsim() != pide.esEsim() || !igualDato(v.color(), pide.color())) return null;
         Integer puesto;
-        if (v.sku() != null && ac.acepta(v.sku())) puesto = 1;
+        if (aceptaSku(ac, v)) puesto = 1;
         else if (pedidoA(pide.grado()) && g.bOC()) puesto = 2;
         else puesto = null;
         return conTrabajo(puesto, conTrabajo, ac, v);
@@ -167,21 +171,31 @@ public final class Reparto {
 
     private static Integer conTrabajo(Integer puesto, boolean conTrabajo, Aceptacion ac, LoQueVale.Valor v) {
         if (puesto == null || !conTrabajo) return puesto;
-        return puesto == 1 && v.sku() != null && ac.acepta(v.sku()) ? puesto : null;
+        return puesto == 1 && aceptaSku(ac, v) ? puesto : null;
+    }
+
+    /** Una aceptación con la que se puede repartir: sin productos no hay qué pide. */
+    private static boolean sirve(Aceptacion ac) {
+        return ac != null && !ac.productos().isEmpty();
+    }
+
+    /** ¿Su SKU que vale es uno de los que acepta el pedido? */
+    private static boolean aceptaSku(Aceptacion ac, LoQueVale.Valor v) {
+        return v.sku() != null && ac.acepta(v.sku());
     }
 
     /** «Encaja tal cual» en el abanico del maestro: su SKU, o su color y grado; si el maestro no trae el grado con la batería
      *  («A-100»), el grado sin ella. aceptaColorYGrado no mira el formato: sirve también para el puesto 3. */
     private static boolean encaja(Aceptacion ac, LoQueVale.Valor v) {
         String grade = v.grade() == null ? null : v.grade().strip();
-        return (v.sku() != null && ac.acepta(v.sku())) || ac.aceptaColorYGrado(v.color(), grade)
+        return aceptaSku(ac, v) || ac.aceptaColorYGrado(v.color(), grade)
                 || ac.aceptaColorYGrado(v.color(), Normalizacion.gradoSinBateria(grade));
     }
 
     /** Un Ms que encajaría sin el «Ms» (o cuyo SKU ya está en el abanico, como hace {@link EstadoUnidad}). */
     private static boolean encajaSinMs(Aceptacion ac, LoQueVale.Valor v) {
         String sinMs = v.grade().strip().substring(2);
-        return (v.sku() != null && ac.acepta(v.sku())) || ac.aceptaColorYGrado(v.color(), v.grade().strip())
+        return aceptaSku(ac, v) || ac.aceptaColorYGrado(v.color(), v.grade().strip())
                 || ac.aceptaColorYGrado(v.color(), sinMs) || ac.aceptaColorYGrado(v.color(), Normalizacion.gradoSinBateria(sinMs));
     }
 
@@ -196,20 +210,21 @@ public final class Reparto {
 
     private static boolean mismoModelo(Aceptacion ac, MovilNsys m) {
         Atributos pide = ac.pide();
-        return igual(pide.modelo(), m.modeloMaestro()) && igual(pide.capacidad(), m.capacidad());
+        return igualDato(pide.modelo(), m.modeloMaestro()) && igualDato(pide.capacidad(), m.capacidad());
     }
 
-    /** El grado que cuenta (§3): N/A si NSYS no lo sabe («n/a» o en blanco) o si el móvil está en Devolución o sin caja. */
+    /** El grado que cuenta (§3): N/A si NSYS no lo sabe («n/a» o en blanco) o si el móvil está en Devolución o sin caja. El Ms y
+     *  la letra (el ID) salen siempre del grado de verdad: la caja no los cambia. */
     private static Grado grado(MovilNsys m, LoQueVale.Valor v) {
         String caja = Normalizacion.caja(m.location());
         boolean naPorCaja = caja.isEmpty() || caja.equals(DEVOLUCION);
-        if (naPorCaja || SkuNa.esNa(v.grade())) return new Grado(true, naPorCaja, false, "N/A", false);
+        if (SkuNa.esNa(v.grade())) return new Grado(true, naPorCaja, false, "N/A", false);
         String g = v.grade().strip();
         boolean ms = g.length() > 2 && g.substring(0, 2).equalsIgnoreCase("Ms");
         if (ms) g = g.substring(2);
         boolean bateria = Normalizacion.bateriaNueva(g);
         String letra = Normalizacion.gradoSinBateria(g).toUpperCase(Locale.ROOT);
-        return new Grado(false, false, ms, letra, bateria);
+        return new Grado(naPorCaja, naPorCaja, ms, letra, bateria);
     }
 
     /** §4.3 paso 2: A- → A-100 → A / A+ → A100 / A+100 → N/A; B → C (con la batería, detrás de su letra). Con Ms, el mismo
@@ -251,7 +266,9 @@ public final class Reparto {
         return "Puesto " + puesto + " · " + caja.nombre() + " · " + grado;
     }
 
-    private static boolean igual(String a, String b) {
-        return (a == null ? "" : a.strip()).equalsIgnoreCase(b == null ? "" : b.strip());
+    /** Mismo color, modelo o capacidad: sin espacios a los lados ni mayúsculas. En blanco en cualquiera de los dos lados no es el
+     *  mismo (no se sabe). */
+    private static boolean igualDato(String a, String b) {
+        return a != null && b != null && !a.isBlank() && a.strip().equalsIgnoreCase(b.strip());
     }
 }

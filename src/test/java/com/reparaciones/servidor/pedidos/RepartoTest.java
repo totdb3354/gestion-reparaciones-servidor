@@ -163,7 +163,7 @@ class RepartoTest {
         assertEquals(List.of(2, 2, 3), puestos(r));
     }
 
-    @Test void puestos5a8EnOrdenAunqueLaCajaSeaPeor() {
+    @Test void puestos4a8EnOrdenAunqueLaCajaSeaPeor() {
         MovilNsys naRojo = movil("005", false, "Rojo", "n/a", GLASS, D1);
         MovilNsys naRojoEsim = movil("006", true, "Rojo", "n/a", GLASS, D1);
         MovilNsys aRojo = movil("007", false, "Rojo", "A", LISTOS, D1);
@@ -249,6 +249,60 @@ class RepartoTest {
         List<Reparto.Resultado> r = de(amazonN(1, AMZ_AZUL_A), List.of(aDevolucion));
         assertEquals("Puesto 1 · Devolución · N/A (es A)", r.get(0).porque());
         assertEquals("Puesto 1 · En revisión · N/A (es A)", de(amazonN(1, AMZ_AZUL_A), List.of(aSinCaja)).get(0).porque());
+    }
+
+    @Test void idEnDevolucionOSinCajaNoSeReserva() {
+        MovilNsys idDevolucion = movil("001", false, "Azul", "ID", DEVOLUCION, D1);
+        MovilNsys idSinCaja = movil("002", false, "Azul", "id", SIN_CAJA, D1);
+        MovilNsys idRojoDevolucion = movil("003", false, "Rojo", "ID", DEVOLUCION, D1);
+        for (MovilNsys m : List.of(idDevolucion, idSinCaja, idRojoDevolucion)) {
+            assertNull(puestoAmazon(AMZ_AZUL_A, "ES", m), m.imeiSn());
+            assertNull(puestoWeb(ac(false, "Azul", "ID"), m), m.imeiSn());
+        }
+        assertEquals(Arrays.asList(null, null, null),
+                imeis(de(amazonN(3, AMZ_AZUL_A), List.of(idDevolucion, idSinCaja, idRojoDevolucion))));
+    }
+
+    @Test void msEnDevolucionOSinCajaSoloPuesto9() {
+        MovilNsys msDevolucion = movil("001", false, "Azul", "MsA", DEVOLUCION, D1);
+        MovilNsys msSinCaja = movil("002", false, "Azul", "MsA-", SIN_CAJA, D1);
+        MovilNsys msRojoDevolucion = movil("003", false, "Rojo", "MsA", DEVOLUCION, D1);
+        MovilNsys msEsimDevolucion = movil("004", true, "Azul", "MsA", DEVOLUCION, D1);
+        assertNull(puestoAmazon(AMZ_AZUL_A, "DE", msDevolucion));
+        assertNull(puestoAmazon(AMZ_AZUL_A, "DE", msSinCaja));
+        assertEquals(9, puestoAmazon(AMZ_AZUL_A, "ES", msDevolucion));
+        assertEquals(9, puestoAmazon(AMZ_AZUL_A, "ES", msSinCaja));
+        assertNull(puestoAmazon(AMZ_AZUL_A, "ES", msRojoDevolucion), "ni como N/A de otro color");
+        assertNull(puestoAmazon(AMZ_AZUL_A, "ES", msEsimDevolucion), "ni como N/A de otro formato");
+        assertNull(puestoWeb(ac(false, "Azul", "MsA"), msDevolucion));
+
+        assertEquals(Arrays.asList((String) null), imeis(de(amazonN(1, AMZ_AZUL_A), List.of(msDevolucion, msRojoDevolucion))));
+        List<Reparto.Resultado> espana = de(List.of(fila(1, Canal.AMAZON, "ES", HOY, AMZ_AZUL_A)), List.of(msDevolucion));
+        assertEquals(9, espana.get(0).puesto());
+        assertEquals("Puesto 9 · Devolución · N/A (es MsA)", espana.get(0).porque());
+    }
+
+    @Test void colorOModeloEnBlancoNoCuentanComoIguales() {
+        Aceptacion sinColor = ac(false, null, "A");
+        MovilNsys aSinColor = movil("001", null, "A", D1);
+        assertNull(puestoWeb(sinColor, aSinColor), "null == null no es el mismo color");
+        assertEquals(7, puestoAmazon(sinColor, "DE", aSinColor), "A de otro color, no puesto 1");
+        assertNull(puestoWeb(ac(false, "Azul", "A"), movil("002", " ", "A", D1)));
+
+        ProductoMaestro sinModelo = new ProductoMaestro("c", "13", null, null, "Azul", "A", "i13128AzulA", null, "i13128Azul", false);
+        Aceptacion acSinModelo = new Aceptacion(List.of(sinModelo), List.of());
+        MovilNsys movilSinModelo = new MovilNsys("003", "BT-1", "x", "A", "Available", LISTOS, "P", D1, null, "i13128AzulA", "13",
+                null, null, "Azul", "A", false, null, null, EstadoMovil.STOCK, null, null);
+        assertNull(puestoAmazon(acSinModelo, "ES", movilSinModelo));
+        assertNull(puestoWeb(acSinModelo, movilSinModelo));
+    }
+
+    @Test void aceptacionSinProductosNoReservaNiFalla() {
+        Aceptacion vacia = new Aceptacion(List.of(), List.of());
+        MovilNsys a = movil("001", "Azul", "A", D1);
+        assertNull(puestoAmazon(vacia, "ES", a));
+        assertNull(puestoWeb(vacia, a));
+        assertEquals(List.of(new Reparto.Resultado(1, null, null, null)), de(List.of(amazon(1, vacia)), List.of(a)));
     }
 
     // ── Web ──
