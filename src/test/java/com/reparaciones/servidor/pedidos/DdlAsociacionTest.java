@@ -50,6 +50,10 @@ class DdlAsociacionTest {
             assertEquals(migracion.replaceAll("MOTIVO VARCHAR\\(30\\) NOT NULL COMMENT '[^']*'", "MOTIVO VARCHAR(30) NOT NULL"), enCrear);
             assertEquals(migracion, crear(fichero("migracion-pedidos-tabla.sql"), tabla));
         }
+        // Lo que de verdad cambio en la 0.9.45 y no esta en las creaciones de antes: la columna DETALLE y el comentario de MOTIVO.
+        String revisarCrear = crear(fichero("crear_bd.sql"), "Pedido_asociacion_revisar");
+        assertEquals(columna(fichero("migracion-asociacion-detalle.sql"), "DETALLE"), columna(revisarCrear, "DETALLE"));
+        assertTrue(revisarCrear.contains("COMMENT 'SIN_HUECO, YA_SALIO, PEDIDO_AJENO, CANCELADO, REPETIDO_EN_LIBRO, NO_EN_NSYS u OTRO_MODELO'"));
         String revisar = crear(fichero(MIGRACION), "Pedido_asociacion_revisar");
         for (String trozo : new String[]{"ID INT NOT NULL AUTO_INCREMENT", "CANAL VARCHAR(30) NOT NULL", "PEDIDO VARCHAR(60) NOT NULL",
                 "IMEI VARCHAR(20) NOT NULL", "MOTIVO VARCHAR(30) NOT NULL", "VISTO_EN DATETIME NOT NULL", "PRIMARY KEY (ID)",
