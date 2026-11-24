@@ -188,7 +188,10 @@ public class VistaFilas {
             LocalDate salidaDesde = null;
             if (f.fechaSalida() != null && f.canal() != null && f.canal().esWeb() && !HISTORICO.equals(f.origen())) {
                 if (festivos == null) festivos = calendario == null ? Set.of() : calendario.festivos();
-                salidaDesde = FechaSalida.desde(f.canal(), f.fecha(), festivos);
+                // La fecha del pedido en ShippyPro (FECHA_COMPRA), la misma de la que sale el limite; FECHA (cuando lo vio el ERP)
+                // solo si falta.
+                LocalDate pedido = f.fechaCompra() != null ? f.fechaCompra() : f.fecha();
+                salidaDesde = FechaSalida.desde(f.canal(), pedido, festivos);
             }
             vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), estado,
                     !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),

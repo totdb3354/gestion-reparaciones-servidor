@@ -579,9 +579,11 @@ class VistaFilasTest {
         assertNull(f.get(1).pais());
     }
 
+    /** {@code entrada} es la fecha del pedido en ShippyPro (FECHA_COMPRA, la que usa el limite); la fila la vio el ERP un dia despues
+     *  (FECHA), para comprobar que «desde» sale de la fecha del pedido y no de FECHA. */
     private static FilaPedido conSalida(int id, LocalDate entrada, Canal canal, String origen, LocalDate salida) {
         FilaPedido b = fila(id, null, null);
-        return new FilaPedido(id, entrada, b.plataforma(), b.sku(), null, "0099-" + id, b.fechaCompra(), origen,
+        return new FilaPedido(id, entrada.plusDays(1), b.plataforma(), b.sku(), null, "0099-" + id, entrada, origen,
                 canal, 1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 null, salida, "ES");
     }
