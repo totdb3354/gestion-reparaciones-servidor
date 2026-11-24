@@ -617,6 +617,19 @@ class AsociacionAmazonTest {
         assertEquals(List.of(paraRevisar(PB, X, "REPETIDO_EN_LIBRO"), paraRevisar(PC, X, "REPETIDO_EN_LIBRO")), revisar());
     }
 
+    @Test void unImeiEnDosPedidosQueElErpNoTieneSonDosAjenosYNoVanALaLista() {
+        assertEquals(new RespuestaAsociaciones(0, 0, 0, 0, 0, 0, 2), aplicar(PA, X, PB, X));
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void siDeLosDosPedidosSoloUnoEstaEnElErpElLibroSeAplicaAEseYElOtroEsAjeno() {
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(new RespuestaAsociaciones(0, 0, 1, 0, 0, 0, 1), aplicar(PA, X, PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
     @Test void elMismoParRepetidoNoEsRepetidoYLasRepeticionesSeDescartan() {
         Fila b = fila(20, PB, 1, null);
         assertEquals(r(0, 0, 1, 0, 0, 1), aplicar(PB, X, PB, X));
@@ -626,6 +639,7 @@ class AsociacionAmazonTest {
 
     @Test void unImeiRepetidoEnDosPedidosNoImpideQueLosDemasParesSeApliquen() {
         fila(10, PA, 1, null);
+        fila(20, PB, 1, null);
         Fila c = fila(30, PC, 1, null);
         assertEquals(r(0, 0, 1, 0, 2, 0), aplicar(PA, X, PB, X, PC, Y));
         assertEquals(Y, c.imei);

@@ -173,10 +173,12 @@ public class AsociacionAmazon {
         // Un IMEI en varios pedidos del libro (decision de Imad, 24/11): los pedidos que ya lo tienen confirmado se quedan como estan
         // (su linea cuenta como «ya estaba»). Si solo queda uno sin confirmar, es una reventa (devuelto y vuelto a vender): ese se
         // aplica como cualquier par y los confirmados no pierden el IMEI. Si quedan dos o mas sin confirmar, van a revisar.
+        // Solo cuentan los pedidos que el ERP tiene: los demas son ajenos (se cuentan y no van a la lista), como un par suelto.
         List<String[]> aplicables = new ArrayList<>();
         for (String[] v : unicos) {
-            Set<String> todos = pedidosPorImei.get(v[1]);
-            if (todos.size() == 1) {
+            Set<String> todos = new LinkedHashSet<>(pedidosPorImei.get(v[1]));
+            todos.removeIf(p -> !reparto.tieneFilas(p));
+            if (todos.size() <= 1) {
                 aplicables.add(v);
                 continue;
             }
@@ -342,6 +344,11 @@ public class AsociacionAmazon {
 
         /** Reventas de la pasada: IMEI → los pedidos que ya lo tenian confirmado, que no se tocan. */
         final Map<String, Set<String>> revendidos = new HashMap<>();
+
+        /** Si el ERP tiene alguna fila de ese pedido en el canal. */
+        boolean tieneFilas(String pedido) {
+            return !porPedido.getOrDefault(pedido, List.of()).isEmpty();
+        }
 
         /** Los pedidos con una fila (no cancelada) que tiene ese IMEI confirmado. */
         Set<String> pedidosConfirmadosCon(String imei) {
