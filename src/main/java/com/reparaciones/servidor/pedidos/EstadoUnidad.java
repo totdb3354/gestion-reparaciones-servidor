@@ -38,7 +38,8 @@ public final class EstadoUnidad {
             return new Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE", sim, false, false, original);
         // Con un técnico, el color y el grado aún pueden cambiar: no se miran (ni n/a ni Ms).
         if (trabajos != null && !trabajos.isEmpty()) return new Resultado("EN_TALLER", null, sim, false, false, null);
-        if (cSinReparar(v)) return new Resultado("NECESITA_TALLER", "GRADO", sim, false, false, "C");
+        boolean ms = grado.startsWith("MS");
+        if (cSinReparar(v)) return new Resultado("NECESITA_TALLER", "GRADO", sim, false, ms, "C");
         if (SkuNa.esNa(v.grade())) {
             // Si el pedido acepta ese n/a (fila n/a), es lo pedido: cuadra.
             if ((v.sku() != null && ac.acepta(v.sku())) || ac.aceptaColorYGrado(v.color(), v.grade()))
@@ -47,7 +48,6 @@ public final class EstadoUnidad {
             if (ac.aceptaColor(v.color())) return new Resultado("CON_AVISO", null, sim, true, false, null);
             return new Resultado("NECESITA_TALLER", "COLOR", sim, true, false, v.color());
         }
-        boolean ms = grado.startsWith("MS");
         String base = ms ? original.substring(2) : original;
         // El SKU que vale o, si no está entre los del pedido, el color y el grado: desde la 0.9.29 un n/a lleva SKU (el «SKU sin
         // grado» + «NA»), que no es el SKU web de ninguna fila del maestro.

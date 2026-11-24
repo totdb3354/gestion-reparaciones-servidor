@@ -76,7 +76,7 @@ class EstadoUnidadTest {
                 "solo la bateria no lo hace A");
         assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "GRADO", null, false, false, "C"),
                 de(AMAZON_A, movil("13", "C100"), vale("Azul", "C", "i13128AzulA", "C100"), NINGUNO, Canal.AMAZON));
-        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "GRADO", null, false, false, "C"),
+        assertEquals(r("NECESITA_TALLER", "GRADO", null, false, true, "C"),
                 de(AMAZON_A, movil("13", "MsC"), vale("Azul", "MsC", "i13128AzulA", null), NINGUNO, Canal.AMAZON));
         assertTrue(EstadoUnidad.cSinReparar(vale("Azul", "C100", null, "C")));
         assertFalse(EstadoUnidad.cSinReparar(vale("Azul", "A", null, "C")));
@@ -102,6 +102,9 @@ class EstadoUnidadTest {
         assertEquals(new EstadoUnidad.Resultado("CUADRA", null),
                 de(conFilaNa, movil("13", "n/a"), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.PARTICULARES),
                 "un n/a de un pedido con fila n/a cuadra");
+        assertEquals(r("CON_AVISO", null, "ESIM", false, false, null),
+                de(conFilaNa, movil("13", "128GB", "n/a", true), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.PARTICULARES),
+                "un n/a aceptado por el pedido pero con otra SIM: solo el aviso de SIM");
         assertEquals(r("CON_AVISO", null, null, true, false, null),
                 de(WEB_A, movil("13", "n/a"), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.DISTRIBUIDORES),
                 "un n/a solo mira el color, haya o no fila n/a en el pedido");
