@@ -34,7 +34,7 @@ import java.util.function.Function;
  *  destino); si no, a «para revisar» con NO_EN_NSYS u OTRO_MODELO (y su detalle) y no se toca nada. La fila destino es la primera por
  *  posicion con etiqueta, sin confirmar ni cancelar, cuyo IMEI (o ninguno) no lo pone el libro en B en esta pasada; sin ella, SIN_HUECO.
  *  Si X esta en una fila de otro pedido O: O confirmada → YA_SALIO; O cancelada → CANCELADO; O con etiqueta se queda sin IMEI y sin
- *  asociar (el ERP no inventa que fue en O); O pendiente (sin etiqueta) recibe por intercambio el IMEI que tenia la fila de B. La fila
+ *  asociar (el ERP no inventa que fue en O) solo si su pedido esta en el libro de esta pasada (si no, YA_SALIO y no se toca nada); O pendiente (sin etiqueta) recibe por intercambio el IMEI que tenia la fila de B. La fila
  *  de B recibe X y se confirma. Las reglas siguientes solo valen si no se da este caso.</li>
  *  <li>X esta en una fila de otro pedido sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar (por posicion);
  *  X queda confirmado en B y la otra fila recibe el IMEI que tenia la de B (o ninguno) y queda sin confirmar, aunque lo estuviera.</li>
@@ -464,6 +464,8 @@ public class AsociacionAmazon {
             Set<Hueco> fuera = porImei.getOrDefault(imei, Set.of());
             if (fuera.stream().anyMatch(Hueco::confirmada)) return YA_SALIO;
             if (fuera.stream().anyMatch(Hueco::cancelada)) return CANCELADO;
+            // O con etiqueta solo pierde X si su pedido esta en el libro de esta pasada (su linea lo corregira); si no, no se toca nada.
+            if (fuera.stream().anyMatch(h -> h.conEtiqueta && !delLibro.containsKey(h.pedido))) return YA_SALIO;
             if (destino == null) return SIN_HUECO;
             String delDestino = destino.imei;
             List<Hueco> otros = List.copyOf(fuera);                       // copia: ponerImei cambia porImei

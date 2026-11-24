@@ -688,15 +688,24 @@ class AsociacionAmazonTest {
         assertEquals(List.of(paraRevisar(PB, X, "NO_EN_NSYS")), revisar());
     }
 
-    @Test void elImeiDeOtroPedidoConEtiquetaSeLeQuitaYEseSeQuedaSinImeiNiAsociar() {
+    @Test void elImeiDeOtroPedidoConEtiquetaSeLeQuitaSiEsePedidoEstaEnElLibroDeLaPasada() {
         Fila o = fila(10, PA, 1, X).etiqueta();
         Fila b = fila(20, PB, 1, Y).etiqueta();
-        assertEquals(r(0, 1, 0, 0, 0, 0), aplicar(PB, X));
+        assertEquals(r(0, 1, 1, 0, 0, 0), aplicar(PB, X, PA, W));
         assertEquals(X, b.imei);
         assertEquals(AHORA, b.asociadaEn);
-        assertNull(o.imei, "el ERP no inventa que fue en PA: lo dira su linea del libro");
-        assertNull(o.asociadaEn);
-        assertEquals(List.of(libro(20, Y, X), libro(10, X, null), asociada(20)), apuntes());
+        assertEquals(W, o.imei, "PA pierde X y su linea del libro le pone W");
+        assertEquals(List.of(libro(20, Y, X), libro(10, X, null), asociada(20), libro(10, null, W), asociada(10)), apuntes());
+    }
+
+    @Test void elImeiDeOtroPedidoConEtiquetaQueNoEstaEnElLibroDeLaPasadaEsYaSalioYNoSeToca() {
+        Fila o = fila(10, PA, 1, X).etiqueta();
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        List<String> antes = estado();
+        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
+        assertEquals(antes, estado());
+        assertEquals(List.of(paraRevisar(PB, X, "YA_SALIO")), revisar());
+        assertTrue(apuntes.isEmpty());
     }
 
     @Test void unCruceDeDosPedidosConEtiquetaSeResuelveEnLaMismaPasada() {
