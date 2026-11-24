@@ -573,6 +573,50 @@ class AsociacionAmazonTest {
         assertEquals(List.of(paraRevisar(PA, X, "REPETIDO_EN_LIBRO"), paraRevisar(PB, X, "REPETIDO_EN_LIBRO")), revisar());
     }
 
+    /** Devuelto y revendido (decision de Imad, 24/11): X ya confirmado en PA y el libro lo pone tambien en PB, sin confirmar. PB lo
+     *  recibe como cualquier otro par; PA se queda como estaba. */
+    @Test void unImeiYaConfirmadoEnUnPedidoYNuevoEnOtroEsUnaReventaYElNuevoSeAplica() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 0, 1, 1, 0, 0), aplicar(PA, X, PB, X));
+        assertEquals(X, a.imei, "el pedido viejo conserva su IMEI");
+        assertNotNull(a.asociadaEn);
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(List.of(libro(20, Y, X), asociada(20)), apuntes());
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unaReventaEnUnPedidoPendienteVaASuFilaLibre() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("HISTORICO");
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(r(0, 0, 1, 1, 0, 0), aplicar(PB, X, PA, X));
+        assertEquals(X, a.imei);
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unImeiYaConfirmadoEnLosDosPedidosNoEsRepetido() {
+        fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        fila(20, PB, 1, X).etiqueta().asociada("LIBRO");
+        List<String> antes = estado();
+        assertEquals(r(0, 0, 0, 2, 0, 0), aplicar(PA, X, PB, X));
+        assertEquals(antes, estado());
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void conDosPedidosNuevosParaElMismoImeiLosNuevosVanARevisarAunqueOtroLoTengaConfirmado() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        fila(20, PB, 1, null);
+        fila(30, PC, 1, null);
+        List<String> antes = estado();
+        assertEquals(r(0, 0, 0, 1, 2, 0), aplicar(PA, X, PB, X, PC, X));
+        assertEquals(antes, estado());
+        assertEquals(X, a.imei);
+        assertEquals(List.of(paraRevisar(PB, X, "REPETIDO_EN_LIBRO"), paraRevisar(PC, X, "REPETIDO_EN_LIBRO")), revisar());
+    }
+
     @Test void elMismoParRepetidoNoEsRepetidoYLasRepeticionesSeDescartan() {
         Fila b = fila(20, PB, 1, null);
         assertEquals(r(0, 0, 1, 0, 0, 1), aplicar(PB, X, PB, X));

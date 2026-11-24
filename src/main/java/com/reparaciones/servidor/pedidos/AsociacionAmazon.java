@@ -152,29 +152,42 @@ public class AsociacionAmazon {
             if (pedido == null || !imei.matches("[0-9]{15}")) descartadas++;
             else validos.add(new String[]{pedido, imei});
         }
-        // Un IMEI en dos pedidos distintos: todas sus lineas a revisar y no se aplica ninguna. El mismo par repetido cuenta una vez.
+        // El mismo par repetido cuenta una vez (las repeticiones, descartadas).
         Map<String, Set<String>> pedidosPorImei = new HashMap<>();
-        for (String[] v : validos) pedidosPorImei.computeIfAbsent(v[1], k -> new LinkedHashSet<>()).add(v[0]);
-        List<Object[]> repetidos = new ArrayList<>();
         Set<String> vistos = new HashSet<>();
-        List<String[]> aplicables = new ArrayList<>();
+        List<String[]> unicos = new ArrayList<>();
         for (String[] v : validos) {
-            if (!vistos.add(v[0] + "|" + v[1])) {
-                descartadas++;
-                continue;
+            if (!vistos.add(v[0] + "|" + v[1])) descartadas++;
+            else {
+                unicos.add(v);
+                pedidosPorImei.computeIfAbsent(v[1], k -> new LinkedHashSet<>()).add(v[0]);
             }
-            if (pedidosPorImei.get(v[1]).size() > 1) repetidos.add(new Object[]{canal.name(), v[0], v[1], REPETIDO_EN_LIBRO, null, hora});
-            else aplicables.add(v);
         }
-
         Set<String> pedidos = new LinkedHashSet<>();
         Set<String> imeis = new LinkedHashSet<>();
-        for (String[] p : aplicables) {
+        for (String[] p : unicos) {
             pedidos.add(p[0]);
             imeis.add(p[1]);
         }
         Reparto reparto = new Reparto(canal, cargar(canal, pedidos, imeis), ahora);
-        reparto.revisar.addAll(repetidos);
+        // Un IMEI en varios pedidos del libro (decision de Imad, 24/11): los pedidos que ya lo tienen confirmado se quedan como estan
+        // (su linea cuenta como «ya estaba»). Si solo queda uno sin confirmar, es una reventa (devuelto y vuelto a vender): ese se
+        // aplica como cualquier par y los confirmados no pierden el IMEI. Si quedan dos o mas sin confirmar, van a revisar.
+        List<String[]> aplicables = new ArrayList<>();
+        for (String[] v : unicos) {
+            Set<String> todos = pedidosPorImei.get(v[1]);
+            if (todos.size() == 1) {
+                aplicables.add(v);
+                continue;
+            }
+            Set<String> confirmados = reparto.pedidosConfirmadosCon(v[1]);
+            long nuevos = todos.stream().filter(p -> !confirmados.contains(p)).count();
+            if (confirmados.contains(v[0])) aplicables.add(v);
+            else if (nuevos == 1 && todos.stream().anyMatch(confirmados::contains)) {
+                aplicables.add(v);
+                reparto.revendidos.put(v[1], confirmados);
+            } else reparto.paraRevisar(v[0], v[1], REPETIDO_EN_LIBRO);
+        }
         // Los IMEI que el libro pone en cada pedido, y la comprobacion de los que pueden ir a una fila con etiqueta (una lectura).
         Map<String, Set<String>> delLibro = new HashMap<>();
         for (String[] p : aplicables) delLibro.computeIfAbsent(p[0], k -> new HashSet<>()).add(p[1]);
@@ -327,6 +340,26 @@ public class AsociacionAmazon {
             porPedido.values().forEach(l -> l.sort(POR_POSICION));
         }
 
+        /** Reventas de la pasada: IMEI → los pedidos que ya lo tenian confirmado, que no se tocan. */
+        final Map<String, Set<String>> revendidos = new HashMap<>();
+
+        /** Los pedidos con una fila (no cancelada) que tiene ese IMEI confirmado. */
+        Set<String> pedidosConfirmadosCon(String imei) {
+            Set<String> s = new HashSet<>();
+            for (Hueco h : porImei.getOrDefault(imei, Set.of())) if (h.confirmada() && !h.cancelada() && h.pedido != null) s.add(h.pedido);
+            return s;
+        }
+
+        /** Las filas de otros pedidos con ese IMEI, sin las de los pedidos que ya lo vendieron si es una reventa. */
+        private Set<Hueco> fuera(String imei) {
+            Set<Hueco> con = porImei.getOrDefault(imei, Set.of());
+            Set<String> vendieron = revendidos.get(imei);
+            if (vendieron == null) return con;
+            Set<Hueco> f = new LinkedHashSet<>();
+            for (Hueco h : con) if (!(h.confirmada() && vendieron.contains(h.pedido))) f.add(h);
+            return f;
+        }
+
         private Set<Hueco> conImei(String imei) {
             return porImei.computeIfAbsent(imei, k -> new TreeSet<>(Comparator.comparingInt(h -> h.id)));
         }
@@ -415,7 +448,7 @@ public class AsociacionAmazon {
             if (deB.stream().noneMatch(h -> h.abierto() && !h.cancelada()) && deB.stream().anyMatch(Hueco::corregible))
                 return conEtiqueta(pedido, imei);
             // 2. Esta en una fila de otro pedido.
-            Set<Hueco> fuera = porImei.getOrDefault(imei, Set.of());
+            Set<Hueco> fuera = fuera(imei);
             if (!fuera.isEmpty()) {
                 if (fuera.stream().anyMatch(h -> h.conEtiqueta)) {
                     return YA_SALIO;
@@ -461,7 +494,7 @@ public class AsociacionAmazon {
                 paraRevisar(pedido, imei, rechazo.motivo(), rechazo.detalle());
                 return null;
             }
-            Set<Hueco> fuera = porImei.getOrDefault(imei, Set.of());
+            Set<Hueco> fuera = fuera(imei);
             if (fuera.stream().anyMatch(Hueco::confirmada)) return YA_SALIO;
             if (fuera.stream().anyMatch(Hueco::cancelada)) return CANCELADO;
             // O con etiqueta solo pierde X si su pedido esta en el libro de esta pasada (su linea lo corregira); si no, no se toca nada.
