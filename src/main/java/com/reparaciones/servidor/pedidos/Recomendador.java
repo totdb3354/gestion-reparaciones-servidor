@@ -40,7 +40,11 @@ public final class Recomendador {
             EstadoUnidad.Resultado r = EstadoUnidad.de(ac, m, v, trabajos.get(clave), canal);
             // Una SIM distinta no se propone (antes era MODELO); un n/a hay que transformarlo aunque el color cuadre.
             if (r.sim() != null) continue;
-            int nivel = r.na() ? 3 : switch (r.estado()) {
+            // Con un técnico, como antes de la 0.9.46.1: solo si acabará como pide el pedido (su SKU lo acepta), y nunca si es otro
+            // modelo, capacidad o no se vende.
+            List<TrabajoAbierto> conTecnico = trabajos.get(clave);
+            int nivel = conTecnico != null && !conTecnico.isEmpty() ? ("NO_CUADRA".equals(r.estado()) || !ac.acepta(v.sku()) ? 0 : 2)
+                    : r.na() ? 3 : switch (r.estado()) {
                 case "CUADRA", "CON_AVISO" -> 1;
                 case "EN_TALLER" -> ac.acepta(v.sku()) ? 2 : 0;
                 case "NECESITA_TALLER" -> 3;

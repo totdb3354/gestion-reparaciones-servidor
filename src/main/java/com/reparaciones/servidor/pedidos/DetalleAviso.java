@@ -7,7 +7,7 @@ import java.util.List;
 
 /** Lo que acompaña al motivo del aviso de un IMEI (spec 2026-11-24 §3). sim: ESIM (el móvil es eSIM y el pedido no), SIM_FISICA
  *  (al revés) o null. na: el grado que cuenta es n/a. ms: es un Ms. dato: lo que es el móvil para el motivo (modelo, capacidad,
- *  color o grado). trabajos: las asignaciones abiertas, solo con motivo EN_TALLER (si no, vacía). */
+ *  color o grado). trabajos: las asignaciones abiertas (quién lo tiene), con cualquier motivo. */
 public record DetalleAviso(@Schema(nullable = true) String sim, boolean na, boolean ms, @Schema(nullable = true) String dato,
                            List<TrabajoAbierto> trabajos) {
 
@@ -21,8 +21,8 @@ public record DetalleAviso(@Schema(nullable = true) String sim, boolean na, bool
         return vacio ? null : new DetalleAviso(sim, na, ms, dato, trabajos);
     }
 
-    /** Lo que queda al validar el SKU: la SIM, el n/a y el Ms se siguen viendo; el dato del motivo no. */
+    /** Lo que queda al validar el SKU: la SIM, el n/a, el Ms y quién lo tiene se siguen viendo; el dato del motivo no. */
     DetalleAviso validado() {
-        return de(sim, na, ms, null, List.of());
+        return de(sim, na, ms, null, trabajos);
     }
 }

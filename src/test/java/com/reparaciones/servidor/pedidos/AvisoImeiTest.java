@@ -76,9 +76,18 @@ class AvisoImeiTest {
         esperado("MAL", "GRADO", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), NINGUNO, false));
     }
 
-    @Test void enTallerEsAviso() {
+    @Test void enTallerEsAvisoSoloSiCuadraYQuienLoTieneVaSiempre() {
         TrabajoAbierto glass = new TrabajoAbierto("GLASS", "Tecnico 1", LocalDateTime.of(2026, 11, 1, 9, 0), null);
-        esperado("AVISO", "EN_TALLER", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), List.of(glass), false));
+        AvisoImei cuadra = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "A"), vale("Azul", "A", "i13128AzulA", null), List.of(glass), false);
+        esperado("AVISO", "EN_TALLER", cuadra);
+        assertEquals(List.of(glass), cuadra.detalle().trabajos());
+        AvisoImei grado = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), List.of(glass), false);
+        esperado("MAL", "GRADO", grado);
+        assertEquals(List.of(glass), grado.detalle().trabajos(), "el grado que no cuadra y quién lo tiene");
+        AvisoImei modelo = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("14", "A"), vale("Azul", "A", "x", null), List.of(glass), false);
+        esperado("MAL", "MODELO", modelo);
+        assertEquals(List.of(glass), modelo.detalle().trabajos());
+        assertEquals(List.of(glass), grado.detalle().validado().trabajos(), "al validar el SKU se sigue viendo quién lo tiene");
     }
 
     @Test void conAvisoMsYBPorA() {

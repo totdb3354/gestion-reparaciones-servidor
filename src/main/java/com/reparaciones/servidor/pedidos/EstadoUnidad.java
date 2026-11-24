@@ -25,7 +25,18 @@ public final class EstadoUnidad {
 
     private EstadoUnidad() {}
 
+    /** Con un técnico (decisión de Imad, 24/11): se compara todo igual; si cuadra (o solo hay avisos), «EN_TALLER» con la SIM, el
+     *  n/a y el Ms; si no cuadra, el motivo de verdad (la celda añade quién lo tiene, que va en el detalle del aviso). */
     public static Resultado de(Aceptacion ac, MovilNsys m, LoQueVale.Valor v, List<TrabajoAbierto> trabajos, Canal canal) {
+        Resultado r = comparar(ac, m, v, canal);
+        if (trabajos == null || trabajos.isEmpty()) return r;
+        return switch (r.estado()) {
+            case "CUADRA", "CON_AVISO" -> new Resultado("EN_TALLER", null, r.sim(), r.na(), r.ms(), null);
+            default -> r;
+        };
+    }
+
+    private static Resultado comparar(Aceptacion ac, MovilNsys m, LoQueVale.Valor v, Canal canal) {
         if (m == null) return new Resultado("NO_EN_NSYS", null);
         if (ac == null) return new Resultado("NO_CUADRA", "SKU_DESCONOCIDO");
         Atributos pide = ac.pide();
@@ -38,8 +49,6 @@ public final class EstadoUnidad {
         String grado = original.toUpperCase(Locale.ROOT);
         if (EstadoMovil.NO_VENDIBLES.contains(grado) || (canal.esAmazon() && grado.equals("ID")))
             return new Resultado("NO_CUADRA", "GRADO_NO_VENDIBLE", sim, false, false, original);
-        // Con un técnico, el color y el grado aún pueden cambiar: no se miran (ni n/a ni Ms).
-        if (trabajos != null && !trabajos.isEmpty()) return new Resultado("EN_TALLER", null, sim, false, false, null);
         boolean ms = grado.startsWith("MS");
         if (cSinReparar(v)) return new Resultado("NECESITA_TALLER", "GRADO", sim, false, ms, "C");
         if (SkuNa.esNa(v.grade())) {
