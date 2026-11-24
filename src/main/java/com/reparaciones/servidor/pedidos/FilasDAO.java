@@ -35,7 +35,7 @@ public class FilasDAO {
             + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
             + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN,"
             + " (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR,"
-            + " FECHA_SALIDA, PAIS FROM Pedido_fila";
+            + " FECHA_SALIDA, PAIS, IMEI_RESERVADO, RESERVADA_EN, SIN_STOCK_EN FROM Pedido_fila";
     /** La salida de un pedido: ultimo dia para enviarlo y pais (se recalculan en cada vuelta). */
     public record Salida(Canal canal, String pedido, LocalDate fechaSalida, String pais) {}
     static final String SQL_PONER_SALIDA = "UPDATE Pedido_fila SET FECHA_SALIDA = ?, PAIS = ? WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ?"
@@ -623,7 +623,8 @@ public class FilasDAO {
                 rs.getString("TRANSPORTISTA"), rs.getString("SEGUIMIENTO"), hora(rs, "REABIERTA_EN"), envioId, hora(rs, "IMPRESA_EN"),
                 hora(rs, "FALTA_ENVIAR_EN"), hora(rs, "SINCRONIZADA_EN"), rs.getString("MARCA"), rs.getString("MARCA_NOTA"), hora(rs, "MARCA_EN"),
                 rs.getString("MARCA_POR"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"), rs.getString("VALIDADA_IMEI"),
-                hora(rs, "VALIDADA_EN"), rs.getString("VALIDADA_POR"), dia(rs, "FECHA_SALIDA"), rs.getString("PAIS"));
+                hora(rs, "VALIDADA_EN"), rs.getString("VALIDADA_POR"), dia(rs, "FECHA_SALIDA"), rs.getString("PAIS"),
+                rs.getString("IMEI_RESERVADO"), hora(rs, "RESERVADA_EN"), hora(rs, "SIN_STOCK_EN"));
     }
 
     private static LecturaGuardada lectura(ResultSet rs, int n) throws SQLException {

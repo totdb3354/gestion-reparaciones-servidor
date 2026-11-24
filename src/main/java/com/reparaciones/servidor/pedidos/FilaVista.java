@@ -23,7 +23,9 @@ import java.time.LocalDateTime;
  *  entrada; historico: nulo).
  *  salidaDesde: en las webs, primer dia en que el pedido ya «sale hoy» (la entrada, o el primer laborable si entro en festivo o fin de
  *  semana); nulo en Amazon, en el historico y sin fecha de salida.
- *  pais: pais de destino (2 letras), nulo si no se conoce. */
+ *  pais: pais de destino (2 letras), nulo si no se conoce.
+ *  imeiReservado: el IMEI que el ERP aparta para la fila (reserva; nulo = sin reserva; la fila sigue contando como sin IMEI);
+ *  reservadaEn: cuando se reservo (hora de Madrid). */
 public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(nullable = true) String sku,
                         @Schema(nullable = true) String imei, @Schema(nullable = true) String pedido,
                         @Schema(nullable = true) LocalDate fechaCompra, String estado, boolean editable,
@@ -40,7 +42,21 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                         @Schema(nullable = true) LocalDateTime validadaEn, @Schema(nullable = true) String validadaPor,
                         @Schema(nullable = true) String motivoValidado,
                         @Schema(nullable = true) LocalDate fechaSalida, @Schema(nullable = true) String pais,
-                        @Schema(nullable = true) LocalDate salidaDesde) {
+                        @Schema(nullable = true) LocalDate salidaDesde,
+                        @Schema(nullable = true) String imeiReservado, @Schema(nullable = true) LocalDateTime reservadaEn) {
+
+    /** Una fila sin reserva de IMEI. */
+    public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
+                     String estado, boolean editable, LocalDateTime envioFecha, String transportista, String seguimiento,
+                     LocalDateTime impresaEn, boolean tieneEtiqueta, String nivel, String motivo, String skuMovil, String caja,
+                     String canal, LocalDateTime faltaEnviarEn, LocalDateTime sincronizadaEn, String marca, String marcaNota,
+                     LocalDateTime marcaEn, String marcaPor, LocalDateTime asociadaEn, String asociadaOrigen,
+                     LocalDateTime validadaEn, String validadaPor, String motivoValidado, LocalDate fechaSalida, String pais,
+                     LocalDate salidaDesde) {
+        this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
+                impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn,
+                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, salidaDesde, null, null);
+    }
 
     /** Una fila sin {@code salidaDesde} (Amazon, historico o tests). */
     public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
@@ -51,7 +67,7 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                      LocalDateTime validadaEn, String validadaPor, String motivoValidado, LocalDate fechaSalida, String pais) {
         this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
                 impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn,
-                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, null);
+                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, null, null, null);
     }
 
     /** Una fila sin fecha de salida ni pais. */

@@ -610,4 +610,17 @@ class VistaFilasTest {
                 conSalida(1, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", LocalDate.of(2026, 11, 10))));
         assertEquals(LocalDate.of(2026, 11, 9), vista.filas(null, null, null).filas().get(0).salidaDesde());
     }
+
+    @Test void laVistaLlevaLaReservaDeImeiYNulosSinReserva() {
+        FilaPedido base = conSalida(1, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", null);
+        FilaPedido reservada = new FilaPedido(base.id(), base.fecha(), base.plataforma(), base.sku(), null, "0099-1", base.fechaCompra(),
+                base.origen(), base.canal(), 1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, "ES", "356000000000001", LocalDateTime.of(2026, 11, 24, 10, 0), null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(reservada, conSalida(2, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", null)));
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+        assertEquals("356000000000001", f.get(0).imeiReservado());
+        assertEquals(LocalDateTime.of(2026, 11, 24, 10, 0), f.get(0).reservadaEn());
+        assertNull(f.get(1).imeiReservado());
+        assertNull(f.get(1).reservadaEn());
+    }
 }

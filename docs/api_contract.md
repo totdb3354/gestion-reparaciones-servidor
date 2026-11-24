@@ -89,6 +89,9 @@ de `model/` conservan su nombre.
     0.9.44: `FilaVista` gana al final `salidaDesde` (ISO, nullable): en las webs, primer día en que el pedido ya «sale hoy» (la entrada,
     o el primer laborable si entró en festivo o fin de semana); nulo en Amazon, en el histórico y sin `fechaSalida`. Desde la 0.9.44 la
     `fechaSalida` de las webs es el laborable siguiente a `salidaDesde`, sin mirar el servicio de envío (antes, entrada + 2 o 3 laborables).
+    Reserva de IMEI: `FilaVista` gana al final `imeiReservado` (nullable: el IMEI que el ERP aparta para la fila; `null` = sin reserva; la fila
+    sigue contando como sin IMEI) y `reservadaEn` (nullable, hora de Madrid sin zona: cuándo se reservó). `CambioImei.tipo` admite además
+    `RESERVADO`, `RESERVA_CONFIRMADA`, `RESERVA_SUSTITUIDA`, `RESERVA_QUITADA` y `SIN_STOCK`.
   - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
     de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
     que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o

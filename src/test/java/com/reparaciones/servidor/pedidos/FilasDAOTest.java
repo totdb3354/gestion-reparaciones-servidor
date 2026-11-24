@@ -28,7 +28,7 @@ class FilasDAOTest {
             + " ENVIO_FECHA, TRANSPORTISTA, SEGUIMIENTO, REABIERTA_EN, ENVIO_ID, IMPRESA_EN, FALTA_ENVIAR_EN, SINCRONIZADA_EN,"
             + " MARCA, MARCA_NOTA, MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.MARCA_USU) AS MARCA_POR,"
             + " ASOCIADA_EN, ASOCIADA_ORIGEN, VALIDADA_IMEI, VALIDADA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = Pedido_fila.VALIDADA_USU) AS VALIDADA_POR,"
-            + " FECHA_SALIDA, PAIS FROM Pedido_fila";
+            + " FECHA_SALIDA, PAIS, IMEI_RESERVADO, RESERVADA_EN, SIN_STOCK_EN FROM Pedido_fila";
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final FilasDAO dao = new FilasDAO(jdbc);
 
@@ -589,5 +589,21 @@ class FilasDAOTest {
         assertEquals(LocalDate.of(2026, 11, 19), f.fechaSalida());
         assertEquals("DE", f.pais());
         assertNull(fila(1, "AMZ", null).fechaSalida(), "una fila nueva sale sin fecha de salida");
+    }
+
+    @Test void laFilaLeidaTraeLaReservaDeImei() throws Exception {
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+        when(rs.getString("CANAL")).thenReturn("AMAZON");
+        when(rs.getString("IMEI_RESERVADO")).thenReturn("356000000000001");
+        when(rs.getTimestamp("RESERVADA_EN")).thenReturn(java.sql.Timestamp.valueOf("2026-11-24 10:00:00"));
+        when(rs.getTimestamp("SIN_STOCK_EN")).thenReturn(java.sql.Timestamp.valueOf("2026-11-24 09:00:00"));
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(inv -> List.of(inv.<RowMapper<FilaPedido>>getArgument(1).mapRow(rs, 0)));
+        FilaPedido f = dao.porId(7).orElseThrow();
+        assertEquals("356000000000001", f.imeiReservado());
+        assertEquals(LocalDateTime.of(2026, 11, 24, 10, 0), f.reservadaEn());
+        assertEquals(LocalDateTime.of(2026, 11, 24, 9, 0), f.sinStockEn());
+        assertNull(fila(1, "AMZ", null).imeiReservado(), "una fila nueva sale sin reserva");
     }
 }

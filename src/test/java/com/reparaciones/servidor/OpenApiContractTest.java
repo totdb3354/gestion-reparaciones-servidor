@@ -375,7 +375,7 @@ class OpenApiContractTest {
 
         assertNullable(esquemas, "FilaVista", "sku", "imei", "pedido", "fechaCompra", "envioFecha", "transportista", "seguimiento", "impresaEn",
                 "nivel", "motivo", "skuMovil", "caja", "canal", "faltaEnviarEn", "sincronizadaEn", "marca", "marcaNota", "marcaEn", "marcaPor",
-                "asociadaEn", "asociadaOrigen", "validadaEn", "validadaPor", "motivoValidado");
+                "asociadaEn", "asociadaOrigen", "validadaEn", "validadaPor", "motivoValidado", "imeiReservado", "reservadaEn");
         assertNoNullable(esquemas, "PeticionAsociaciones", "canal", "pares");
         assertNullable(esquemas, "PeticionAsociacionesPar", "pedido", "imei");
         assertNoNullable(esquemas, "RespuestaAsociaciones", "confirmadas", "intercambiadas", "puestas", "yaEstaban", "paraRevisar", "descartadas", "ajenos");

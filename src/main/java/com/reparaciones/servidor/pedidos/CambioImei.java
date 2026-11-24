@@ -12,7 +12,11 @@ import java.time.LocalDateTime;
  *  la quito el ERP al cambiar el IMEI); nunca nulo. En IMEI: imeiAnterior nulo = antes no habia; imeiNuevo nulo = se quito. En los demas tipos los dos IMEI
  *  son nulos. detalle: nulo salvo en MARCA ("<MARCA>" o "<MARCA> — <nota>"), MARCA_QUITADA (la marca que tenia, y "<MARCA> — al poner el
  *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO"), IMEI_INTERCAMBIADO ("con la fila <id>"), YA_ENVIADO (nulo, o "al cancelar"), VALIDADA (el motivo del aviso: MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO) y
- *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP). */
+ *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP).
+ *  Reserva de IMEI (imeiAnterior/imeiNuevo son el IMEI reservado, segun el caso): RESERVADO (el ERP aparto un IMEI para la fila: imeiNuevo),
+ *  RESERVA_CONFIRMADA (una persona o el bot puso ese mismo IMEI y la reserva paso a ser el IMEI de la fila), RESERVA_SUSTITUIDA (se puso
+ *  otro IMEI distinto y la reserva se solto: imeiAnterior), RESERVA_QUITADA (la reserva se solto sin poner IMEI: imeiAnterior) y SIN_STOCK
+ *  (no habia IMEI libre que reservar; una vez hasta que reserve; sin IMEI). */
 public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime fecha,
                          @Schema(nullable = true) String imeiAnterior, @Schema(nullable = true) String imeiNuevo, String tipo,
                          @Schema(nullable = true) String detalle) {
@@ -26,6 +30,16 @@ public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime 
     public static final String IMEI_INTERCAMBIADO = "IMEI_INTERCAMBIADO";
     public static final String VALIDADA = "VALIDADA";
     public static final String VALIDACION_QUITADA = "VALIDACION_QUITADA";
+    /** El ERP aparto un IMEI para la fila. */
+    public static final String RESERVADO = "RESERVADO";
+    /** La reserva paso a ser el IMEI de la fila (se puso ese mismo IMEI). */
+    public static final String RESERVA_CONFIRMADA = "RESERVA_CONFIRMADA";
+    /** Se puso otro IMEI y la reserva se solto. */
+    public static final String RESERVA_SUSTITUIDA = "RESERVA_SUSTITUIDA";
+    /** La reserva se solto sin poner IMEI. */
+    public static final String RESERVA_QUITADA = "RESERVA_QUITADA";
+    /** No habia IMEI libre que reservar. */
+    public static final String SIN_STOCK = "SIN_STOCK";
 
     /** Un apunte sin detalle (IMEI, FALTA_ENVIAR o YA_ENVIADO). */
     public CambioImei(String usuario, LocalDateTime fecha, String imeiAnterior, String imeiNuevo, String tipo) {
