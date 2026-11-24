@@ -60,8 +60,19 @@ class AsociacionAmazonTest {
             this.imei = imei;
         }
 
+        LocalDateTime impresa;
+
+        /** Con etiqueta impresa (empaquetado). */
         Fila etiqueta() {
             envio = ANTES;
+            impresa = ANTES;
+            return this;
+        }
+
+        /** Con la etiqueta generada pero sin imprimir (aún no empaquetado). */
+        Fila sinImprimir() {
+            envio = ANTES;
+            impresa = null;
             return this;
         }
 
@@ -164,6 +175,7 @@ class AsociacionAmazonTest {
         when(rs.getObject("POSICION", Integer.class)).thenReturn(f.posicion);
         when(rs.getString("IMEI")).thenReturn(f.imei);
         when(rs.getTimestamp("ENVIO_FECHA")).thenReturn(ts(f.envio));
+        when(rs.getTimestamp("IMPRESA_EN")).thenReturn(ts(f.impresa));
         when(rs.getString("MARCA")).thenReturn(f.marca);
         when(rs.getTimestamp("ASOCIADA_EN")).thenReturn(ts(f.asociadaEn));
         when(rs.getString("ASOCIADA_ORIGEN")).thenReturn(f.asociadaOrigen);
@@ -764,6 +776,38 @@ class AsociacionAmazonTest {
         assertEquals(antes, estado());
         assertEquals(List.of(paraRevisar(PB, X, "YA_SALIO")), revisar());
         assertTrue(apuntes.isEmpty());
+    }
+
+    /** Peticion de Imad (24/11): O con etiqueta SIN imprimir (no empaquetado) y fuera del libro de la pasada: el movil X ya salio en
+     *  B, asi que O recibe el que tenia B, como un pendiente, con aviso de comprobar el movil. */
+    @Test void elImeiDeOtroPedidoConEtiquetaSinImprimirQueNoEstaEnElLibroSeIntercambia() {
+        Fila o = fila(10, PA, 1, X).sinImprimir();
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 1, 0, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(Y, o.imei, "O recibe el que tenia B");
+        assertNull(o.asociadaEn);
+        assertEquals(List.of(libro(20, Y, X), libro(10, X, Y),
+                apunte(20, null, null, "IMEI_INTERCAMBIADO", "con la fila 10"),
+                apunte(10, null, null, "IMEI_INTERCAMBIADO", "con la fila 20 · por el libro: comprobar el móvil"),
+                asociada(20)), apuntes());
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unaCadenaDeEtiquetasSinImprimirSeResuelveEnLaPasada() {
+        // O tiene X sin imprimir; el libro pone X en B (que tenia Z) y Z en C (que tenia W).
+        Fila o = fila(10, PA, 1, X).sinImprimir();
+        Fila b = fila(20, PB, 1, Z).etiqueta();
+        Fila c = fila(30, PC, 1, W).etiqueta();
+        aplicar(PB, X, PC, Z);
+        assertEquals(X, b.imei);
+        assertEquals(Z, c.imei);
+        assertEquals(W, o.imei, "al final O tiene el que tenia C, que sigue en casa");
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(AHORA, c.asociadaEn);
+        assertNull(o.asociadaEn);
+        assertTrue(revisar().isEmpty());
     }
 
     @Test void unCruceDeDosPedidosConEtiquetaSeResuelveEnLaMismaPasada() {

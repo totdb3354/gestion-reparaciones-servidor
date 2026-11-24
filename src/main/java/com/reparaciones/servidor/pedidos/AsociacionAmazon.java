@@ -65,7 +65,7 @@ public class AsociacionAmazon {
     /** El libro pone el mismo IMEI en dos pedidos distintos: no se aplica ninguno (spec «el libro manda» §1). */
     public static final String REPETIDO_EN_LIBRO = "REPETIDO_EN_LIBRO";
 
-    private static final String HUECOS = "SELECT ID_FILA, PEDIDO, POSICION, SKU, IMEI, ENVIO_FECHA, MARCA, ASOCIADA_EN, ASOCIADA_ORIGEN"
+    private static final String HUECOS = "SELECT ID_FILA, PEDIDO, POSICION, SKU, IMEI, ENVIO_FECHA, IMPRESA_EN, MARCA, ASOCIADA_EN, ASOCIADA_ORIGEN"
             + " FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ? AND ";
     static final String SQL_DE_PEDIDOS = HUECOS + "PEDIDO IN (%s) FOR UPDATE";
     static final String SQL_CON_IMEI = HUECOS + "IMEI IN (%s) FOR UPDATE";
@@ -260,8 +260,8 @@ public class AsociacionAmazon {
 
     private static Hueco hueco(ResultSet rs, int n) throws SQLException {
         return new Hueco(rs.getInt("ID_FILA"), rs.getString("PEDIDO"), rs.getObject("POSICION", Integer.class), rs.getString("SKU"),
-                rs.getString("IMEI"), rs.getTimestamp("ENVIO_FECHA") != null, rs.getString("MARCA"), hora(rs, "ASOCIADA_EN"),
-                rs.getString("ASOCIADA_ORIGEN"));
+                rs.getString("IMEI"), rs.getTimestamp("ENVIO_FECHA") != null, rs.getTimestamp("IMPRESA_EN") != null, rs.getString("MARCA"),
+                hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"));
     }
 
     /** Una fila de ShippyPro del canal, con su IMEI y su asociacion tal como van quedando en la pasada. */
@@ -271,12 +271,14 @@ public class AsociacionAmazon {
         final Integer posicion;
         final String sku;
         final boolean conEtiqueta;
+        /** La etiqueta impresa: el pedido ya se empaqueto. */
+        final boolean impresa;
         String imei;
         String marca;
         LocalDateTime asociadaEn;
         String asociadaOrigen;
 
-        Hueco(int id, String pedido, Integer posicion, String sku, String imei, boolean conEtiqueta, String marca,
+        Hueco(int id, String pedido, Integer posicion, String sku, String imei, boolean conEtiqueta, boolean impresa, String marca,
               LocalDateTime asociadaEn, String asociadaOrigen) {
             this.id = id;
             this.pedido = pedido == null ? null : pedido.strip();
@@ -284,6 +286,7 @@ public class AsociacionAmazon {
             this.sku = sku;
             this.imei = imei == null || imei.isBlank() ? null : imei.strip();
             this.conEtiqueta = conEtiqueta;
+            this.impresa = impresa;
             this.marca = marca;
             this.asociadaEn = asociadaEn;
             this.asociadaOrigen = asociadaOrigen;
@@ -504,22 +507,25 @@ public class AsociacionAmazon {
             Set<Hueco> fuera = fuera(imei);
             if (fuera.stream().anyMatch(Hueco::confirmada)) return YA_SALIO;
             if (fuera.stream().anyMatch(Hueco::cancelada)) return CANCELADO;
-            // O con etiqueta solo pierde X si su pedido esta en el libro de esta pasada (su linea lo corregira); si no, no se toca nada.
-            if (fuera.stream().anyMatch(h -> h.conEtiqueta && !delLibro.containsKey(h.pedido))) return YA_SALIO;
+            // O con etiqueta solo pierde X si su pedido esta en el libro de esta pasada (su linea lo corregira). Fuera del libro: con la
+            // etiqueta impresa (ya empaquetado; p. ej. un pedido viejo con el movil devuelto y revendido) no se toca nada; sin imprimir,
+            // X ya salio en B y O aun no se empaqueto: se trata como un pendiente (peticion de Imad, 24/11).
+            if (fuera.stream().anyMatch(h -> h.conEtiqueta && h.impresa && !delLibro.containsKey(h.pedido))) return YA_SALIO;
             if (destino == null) return SIN_HUECO;
             String delDestino = destino.imei;
             List<Hueco> otros = List.copyOf(fuera);                       // copia: ponerImei cambia porImei
             ponerImei(destino, imei);
             Hueco pendiente = null;
             for (Hueco o : otros) {
-                if (o.conEtiqueta) ponerImei(o, null);                     // el ERP no inventa que fue en O
+                if (o.conEtiqueta && delLibro.containsKey(o.pedido)) ponerImei(o, null);   // el ERP no inventa que fue en O
                 else if (pendiente == null) pendiente = o;
                 else ponerImei(o, null);
             }
             if (pendiente != null) {
                 ponerImei(pendiente, delDestino);
                 apunte(destino.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + pendiente.id);
-                apunte(pendiente.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + destino.id);
+                apunte(pendiente.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + destino.id
+                        + (pendiente.conEtiqueta ? " · por el libro: comprobar el móvil" : ""));
             }
             confirmar(destino);
             if (otros.isEmpty()) puestas++;
