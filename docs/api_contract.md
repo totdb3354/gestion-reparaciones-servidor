@@ -225,7 +225,7 @@ de `model/` conservan su nombre.
       Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban`, `paraRevisar` o `ajenos`).
     - `GET /api/pedidos/asociaciones` (SUPERTECNICO y ADMIN; TECNICO `403`) → `EstadoAsociaciones` `{canales: [{canal, cuando,
       confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, libroModificado, error, errorEn, revisar: [{pedido, imei,
-      motivo, vistoEn}]}]}`: un elemento por canal que ha tenido alguna pasada (`AMAZON` antes que `AMAZON_STOCKROOM`; lista vacía si no
+      motivo, vistoEn, detalle}]}]}`: un elemento por canal que ha tenido alguna pasada (`AMAZON` antes que `AMAZON_STOCKROOM`; lista vacía si no
       hubo ninguna), con la última pasada (`cuando`, hora de Madrid) y su lista «para revisar» en el orden del libro (`vistoEn`: la pasada
       que la dejó). Campos añadidos con el lector de los libros (nullable; la web que no los conoce los ignora): `libroModificado`, la
       fecha de modificación en Drive (hora de Madrid, al segundo) del libro de la última lectura buena del lector (`null` si el lector
@@ -234,6 +234,11 @@ de `model/` conservan su nombre.
       IMEI en Paso 1. Meter IMEI», «falta la pestaña Paso 1. Meter IMEI» o «no se pudo leer el libro de Drive: …». Si la primera vuelta
       del lector en un canal falla, el canal aparece con `cuando` = la hora del error, los recuentos a 0 y `error`. El resto no es
       nullable.
+      Cada elemento de `revisar` es `{pedido, imei, motivo, vistoEn, detalle}`; `detalle` es `null` salvo en `OTRO_MODELO`. Motivos:
+      `SIN_HUECO` (no hay fila libre donde poner el IMEI), `YA_SALIO` (el IMEI está en una fila con etiqueta de otro pedido), `CANCELADO`
+      (la fila afectada tiene la marca «Cancelado»), `REPETIDO_EN_LIBRO` (el libro pone el IMEI en dos pedidos), `NO_EN_NSYS` (el IMEI del
+      libro no está en NSYS) y `OTRO_MODELO` (el móvil no cuadra con el pedido: modelo, capacidad, color, grado o SKU).
+      Desde la 0.9.45 el libro también corrige el IMEI de pedidos con etiqueta (spec 2026-11-24-asociacion-libro-manda-design.md).
     - Lector de los libros (ajuste `PEDIDOS_LIBROS_ACTIVA`, apagado por defecto; ver `docs/deployment.md`): cada 10 minutos, por canal
       con libro (`PEDIDOS_LIBRO_AMAZON`, `PEDIDOS_LIBRO_STOCKROOM`), si el fichero cambió en Drive desde su última lectura buena, lee la
       pestaña «Paso 1. Meter IMEI» (cabecera en la fila 6; columnas «order id», «purchase-date» e «IMEI» por su nombre, sin mayúsculas ni
