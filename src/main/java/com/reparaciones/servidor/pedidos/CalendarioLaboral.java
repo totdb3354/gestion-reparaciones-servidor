@@ -65,4 +65,11 @@ public class CalendarioLaboral {
         }
         return d;
     }
+
+    /** {@code d} si es laborable; si no, el primer laborable despues (spec 2026-11-23 «salida web 24 h»). */
+    public static LocalDate primerLaborable(LocalDate d, Set<LocalDate> festivos) {
+        LocalDate x = d;
+        while (!esLaborable(x, festivos)) x = x.plusDays(1);
+        return x;
+    }
 }

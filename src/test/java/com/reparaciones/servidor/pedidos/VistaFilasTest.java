@@ -32,6 +32,7 @@ class VistaFilasTest {
     private final FilasDAO dao = mock(FilasDAO.class);
     private final NsysDAO nsys = mock(NsysDAO.class);
     private final TallerNsys taller = mock(TallerNsys.class);
+    private final CalendarioLaboral calendario = mock(CalendarioLaboral.class);
     private final VistaFilas vista = new VistaFilas(dao, nsys, taller, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID));
 
     private static FilaPedido fila(int id, String imei, LocalDateTime cerradaEn) {
@@ -576,5 +577,37 @@ class VistaFilasTest {
         assertEquals("DE", f.get(0).pais());
         assertNull(f.get(1).fechaSalida());
         assertNull(f.get(1).pais());
+    }
+
+    /** {@code entrada} es la fecha del pedido en ShippyPro (FECHA_COMPRA, la que usa el limite); la fila la vio el ERP un dia despues
+     *  (FECHA), para comprobar que «desde» sale de la fecha del pedido y no de FECHA. */
+    private static FilaPedido conSalida(int id, LocalDate entrada, Canal canal, String origen, LocalDate salida) {
+        FilaPedido b = fila(id, null, null);
+        return new FilaPedido(id, entrada.plusDays(1), b.plataforma(), b.sku(), null, "0099-" + id, entrada, origen,
+                canal, 1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, salida, "ES");
+    }
+
+    @Test void enLasWebsLaVistaLlevaElPrimerDiaEnQueSaleHoyYEnAmazonYElHistoricoNo() {
+        when(calendario.festivos()).thenReturn(Set.of());
+        VistaFilas conCalendario = new VistaFilas(dao, nsys, taller, Clock.fixed(AHORA.atZone(MADRID).toInstant(), MADRID), calendario);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(
+                conSalida(1, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", LocalDate.of(2026, 11, 10)), // sabado
+                conSalida(2, LocalDate.of(2026, 11, 5), Canal.PARTICULARES, "SHIPPYPRO", LocalDate.of(2026, 11, 6)),   // jueves
+                conSalida(3, LocalDate.of(2026, 11, 7), Canal.AMAZON, "SHIPPYPRO", LocalDate.of(2026, 11, 10)),
+                conSalida(4, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", null),
+                conSalida(5, LocalDate.of(2026, 11, 7), null, "HISTORICO", null)));
+        List<FilaVista> f = conCalendario.filas(null, null, null).filas();
+        assertEquals(LocalDate.of(2026, 11, 9), f.get(0).salidaDesde());
+        assertEquals(LocalDate.of(2026, 11, 5), f.get(1).salidaDesde());
+        assertNull(f.get(2).salidaDesde());
+        assertNull(f.get(3).salidaDesde(), "sin fecha de salida, sin desde");
+        assertNull(f.get(4).salidaDesde());
+    }
+
+    @Test void sinCalendarioLaVistaNoFallaYCuentaSinFestivos() {
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(
+                conSalida(1, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", LocalDate.of(2026, 11, 10))));
+        assertEquals(LocalDate.of(2026, 11, 9), vista.filas(null, null, null).filas().get(0).salidaDesde());
     }
 }

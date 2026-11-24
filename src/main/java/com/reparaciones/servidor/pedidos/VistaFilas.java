@@ -50,17 +50,23 @@ public class VistaFilas {
     private final NsysDAO nsysDao;
     private final TallerNsys taller;
     private final Clock clock;
+    private final CalendarioLaboral calendario;
 
     @Autowired
-    public VistaFilas(FilasDAO dao, NsysDAO nsysDao, TallerNsys taller) {
-        this(dao, nsysDao, taller, Clock.system(ImportadorNsys.MADRID));
+    public VistaFilas(FilasDAO dao, NsysDAO nsysDao, TallerNsys taller, CalendarioLaboral calendario) {
+        this(dao, nsysDao, taller, Clock.system(ImportadorNsys.MADRID), calendario);
     }
 
     VistaFilas(FilasDAO dao, NsysDAO nsysDao, TallerNsys taller, Clock clock) {
+        this(dao, nsysDao, taller, clock, null);
+    }
+
+    VistaFilas(FilasDAO dao, NsysDAO nsysDao, TallerNsys taller, Clock clock, CalendarioLaboral calendario) {
         this.dao = dao;
         this.nsysDao = nsysDao;
         this.taller = taller;
         this.clock = clock;
+        this.calendario = calendario;
     }
 
     /** Sin {@code buscar}: las del periodo (por defecto, el ultimo mes hasta hoy) y las vivas. Con {@code buscar}: las 500 mas
@@ -161,6 +167,7 @@ public class VistaFilas {
             puestos = puestos(dao.shippyProConImei(imeis, desdePuestos()));
             acepta = new AceptaSku(nsysDao.productosPorSkuDeCanal(AceptaSku.conVariantes(skus)));
         }
+        Set<LocalDate> festivos = null; // se leen una sola vez, y solo si hay alguna fila web con fecha de salida
         List<FilaVista> vistas = new ArrayList<>();
         for (FilaPedido f : filas) {
             AvisoImei aviso = null;
@@ -178,13 +185,21 @@ public class VistaFilas {
             boolean validada = aviso != null && f.validadaImei() != null && f.validadaImei().equals(f.imei()) && aviso.esDeSku();
             String motivoValidado = validada ? aviso.motivo() : null;
             if (validada) aviso = new AvisoImei(AvisoImei.OK, null, aviso.skuMovil(), aviso.caja());
+            LocalDate salidaDesde = null;
+            if (f.fechaSalida() != null && f.canal() != null && f.canal().esWeb() && !HISTORICO.equals(f.origen())) {
+                if (festivos == null) festivos = calendario == null ? Set.of() : calendario.festivos();
+                // La fecha del pedido en ShippyPro (FECHA_COMPRA), la misma de la que sale el limite; FECHA (cuando lo vio el ERP)
+                // solo si falta.
+                LocalDate pedido = f.fechaCompra() != null ? f.fechaCompra() : f.fecha();
+                salidaDesde = FechaSalida.desde(f.canal(), pedido, festivos);
+            }
             vistas.add(new FilaVista(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), estado,
                     !HISTORICO.equals(estado), f.envioFecha(), f.transportista(), f.seguimiento(),
                     f.impresaEn(), f.tieneEtiqueta(),
                     aviso == null ? null : aviso.nivel(), aviso == null ? null : aviso.motivo(),
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn(),
                     f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(), f.asociadaEn(), f.asociadaOrigen(),
-                    validada ? f.validadaEn() : null, validada ? f.validadaPor() : null, motivoValidado, f.fechaSalida(), f.pais()));
+                    validada ? f.validadaEn() : null, validada ? f.validadaPor() : null, motivoValidado, f.fechaSalida(), f.pais(), salidaDesde));
         }
         return vistas;
     }

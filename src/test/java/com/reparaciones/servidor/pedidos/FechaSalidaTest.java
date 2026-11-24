@@ -30,22 +30,42 @@ class FechaSalidaTest {
     }
 
     @Test
-    void enLasWebsEsLaEntradaMasDosOTresDiasLaborablesSegunElEnvio() {
-        LocalDateTime lunes = LocalDateTime.of(2026, 11, 16, 23, 30);
-        assertThat(FechaSalida.de(pedido("processing", "Rápido (Entrega en 24/48 horas laborables)", lunes), Canal.DISTRIBUIDORES, FESTIVOS))
-                .isEqualTo(LocalDate.of(2026, 11, 18));
-        assertThat(FechaSalida.de(pedido("processing", "Envío gratis en 24/72 horas laborables", lunes), Canal.PARTICULARES, FESTIVOS))
-                .isEqualTo(LocalDate.of(2026, 11, 19));
-        assertThat(FechaSalida.de(pedido("processing", "Recogida en tienda", lunes), Canal.BACKIPHONE, FESTIVOS))
-                .isEqualTo(LocalDate.of(2026, 11, 19)); // otro texto: 3 dias
-        assertThat(FechaSalida.de(pedido("processing", null, lunes), Canal.DISTRIBUIDORES, FESTIVOS))
-                .isEqualTo(LocalDate.of(2026, 11, 19));
+    void enLasWebsEsElLaborableSiguienteAlPrimerLaborableSinMirarElEnvio() {
+        LocalDateTime lunesNoche = LocalDateTime.of(2026, 11, 16, 23, 30);
+        assertThat(FechaSalida.de(pedido("processing", "Rápido (Entrega en 24/48 horas laborables)", lunesNoche), Canal.DISTRIBUIDORES, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 11, 17));
+        assertThat(FechaSalida.de(pedido("processing", "Envío gratis en 24/72 horas laborables", lunesNoche), Canal.PARTICULARES, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 11, 17));
+        assertThat(FechaSalida.de(pedido("processing", null, lunesNoche), Canal.BACKIPHONE, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 11, 17));
+    }
+
+    @Test
+    void enLasWebsElViernesVenceElLunesYElFinDeSemanaElMartes() {
+        assertThat(FechaSalida.de(pedido("processing", "24/48", LocalDateTime.of(2026, 11, 20, 10, 0)), Canal.DISTRIBUIDORES, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 11, 23));
+        assertThat(FechaSalida.de(pedido("processing", "24/48", LocalDateTime.of(2026, 11, 21, 10, 0)), Canal.DISTRIBUIDORES, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 11, 24));
+        assertThat(FechaSalida.de(pedido("processing", "24/48", LocalDateTime.of(2026, 11, 22, 18, 0)), Canal.DISTRIBUIDORES, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 11, 24));
     }
 
     @Test
     void enLasWebsSeSaltanLosFestivos() {
-        // lunes 7/12 + 2 laborables: martes 8 festivo -> miercoles 9 y jueves 10
+        // lunes 7/12 (vispera de festivo): desde lunes 7, el laborable siguiente es el miercoles 9 (martes 8 festivo)
         assertThat(FechaSalida.de(pedido("processing", "24/48", LocalDateTime.of(2026, 12, 7, 10, 0)), Canal.DISTRIBUIDORES, FESTIVOS))
+                .isEqualTo(LocalDate.of(2026, 12, 9));
+        // entra el martes 8 (festivo): desde miercoles 9, vence el jueves 10
+        assertThat(FechaSalida.de(pedido("processing", "24/48", LocalDateTime.of(2026, 12, 8, 10, 0)), Canal.DISTRIBUIDORES, FESTIVOS))
                 .isEqualTo(LocalDate.of(2026, 12, 10));
+    }
+
+    @Test
+    void desdeEsElPrimerLaborableEnLasWebsYNuloEnAmazon() {
+        assertThat(FechaSalida.desde(Canal.PARTICULARES, LocalDate.of(2026, 11, 21), FESTIVOS)).isEqualTo(LocalDate.of(2026, 11, 23));
+        assertThat(FechaSalida.desde(Canal.DISTRIBUIDORES, LocalDate.of(2026, 11, 20), FESTIVOS)).isEqualTo(LocalDate.of(2026, 11, 20));
+        assertThat(FechaSalida.desde(Canal.AMAZON, LocalDate.of(2026, 11, 21), FESTIVOS)).isNull();
+        assertThat(FechaSalida.desde(null, LocalDate.of(2026, 11, 21), FESTIVOS)).isNull();
+        assertThat(FechaSalida.desde(Canal.PARTICULARES, null, FESTIVOS)).isNull();
     }
 }
