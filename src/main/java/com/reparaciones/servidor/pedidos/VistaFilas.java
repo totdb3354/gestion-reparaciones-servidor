@@ -190,7 +190,8 @@ public class VistaFilas {
             // Validada: una persona dio por bueno el aviso de SKU de ESTE IMEI; con otro IMEI, o si el aviso ya no es de SKU, no vale.
             boolean validada = aviso != null && f.validadaImei() != null && f.validadaImei().equals(f.imei()) && aviso.esDeSku();
             String motivoValidado = validada ? aviso.motivo() : null;
-            if (validada) aviso = new AvisoImei(AvisoImei.OK, null, aviso.skuMovil(), aviso.caja());
+            if (validada) aviso = new AvisoImei(AvisoImei.OK, null, aviso.skuMovil(), aviso.caja(),
+                    aviso.detalle() == null ? null : aviso.detalle().validado());
             LocalDate salidaDesde = null;
             if (f.fechaSalida() != null && f.canal() != null && f.canal().esWeb() && !HISTORICO.equals(f.origen())) {
                 if (festivos == null) festivos = calendario == null ? Set.of() : calendario.festivos();
@@ -206,7 +207,7 @@ public class VistaFilas {
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn(),
                     f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(), f.asociadaEn(), f.asociadaOrigen(),
                     validada ? f.validadaEn() : null, validada ? f.validadaPor() : null, motivoValidado, f.fechaSalida(), f.pais(), salidaDesde,
-                    f.imeiReservado(), f.reservadaEn()));
+                    aviso == null ? null : aviso.detalle(), f.imeiReservado(), f.reservadaEn()));
         }
         return vistas;
     }

@@ -108,7 +108,7 @@ class VistaFilasTest {
                 validadaImei, AHORA.minusHours(2), "super");
     }
 
-    /** El color del movil no es el del SKU: COLOR_O_GRADO. */
+    /** El color del movil no es el del SKU: COLOR. */
     private void nsysConUnMovilDeOtroColor(MovilNsys m) {
         when(nsys.porImeis(any())).thenReturn(List.of(m));
         when(nsys.trabajosAbiertos(anyCollection())).thenReturn(Map.of());
@@ -126,16 +126,35 @@ class VistaFilasTest {
         List<FilaVista> f = vista.filas(null, null, null).filas();
 
         assertEquals("MAL", f.get(0).nivel());
-        assertEquals("COLOR_O_GRADO", f.get(0).motivo());
+        assertEquals("COLOR", f.get(0).motivo());
         assertNull(f.get(0).motivoValidado());
         assertNull(f.get(0).validadaEn());
         assertEquals("OK", f.get(1).nivel());
         assertNull(f.get(1).motivo());
-        assertEquals("COLOR_O_GRADO", f.get(1).motivoValidado());
+        assertEquals("COLOR", f.get(1).motivoValidado());
         assertEquals(AHORA.minusHours(2), f.get(1).validadaEn());
         assertEquals("super", f.get(1).validadaPor());
         assertEquals("i13128RojoA", f.get(1).skuMovil());
         assertEquals("Listos", f.get(1).caja());
+    }
+
+    @Test void laFilaVistaTraeElDetalleYUnaValidadaConservaLaSim() {
+        MovilNsys esimRojo = new MovilNsys(IMEI2, "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS", "Proveedor A",
+                LocalDate.of(2026, 9, 1), null, "i13128AzulA", "13", "13", "128GB", "Azul", "A", true, "Listos", "Listos",
+                EstadoMovil.STOCK, null, null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(fila(1, IMEI1, null), conValidacion(fila(2, IMEI2, null), IMEI2)));
+        when(dao.shippyProConImei(any(), any())).thenReturn(List.of());
+        nsysConUnMovilDeOtroColor(movil(IMEI1));
+        when(nsys.porImeis(any())).thenReturn(List.of(movil(IMEI1), esimRojo));
+
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+
+        assertEquals("COLOR", f.get(0).motivo());
+        assertEquals("Rojo", f.get(0).detalle().dato());
+        assertEquals("OK", f.get(1).nivel());
+        assertEquals("COLOR", f.get(1).motivoValidado());
+        assertEquals("ESIM", f.get(1).detalle().sim(), "la SIM se sigue viendo aunque el SKU esté validado");
+        assertNull(f.get(1).detalle().dato());
     }
 
     @Test void unaValidacionDeOtroImeiSeIgnora() {
@@ -146,7 +165,7 @@ class VistaFilasTest {
         FilaVista f = vista.filas(null, null, null).filas().get(0);
 
         assertEquals("MAL", f.nivel());
-        assertEquals("COLOR_O_GRADO", f.motivo());
+        assertEquals("COLOR", f.motivo());
         assertNull(f.motivoValidado());
         assertNull(f.validadaEn());
         assertNull(f.validadaPor());

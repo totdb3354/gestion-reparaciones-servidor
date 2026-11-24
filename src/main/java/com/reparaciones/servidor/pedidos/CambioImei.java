@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
  *  IMEI con otra fila), VALIDADA (una persona dio por bueno el aviso de SKU del IMEI) o VALIDACION_QUITADA (se quito esa validacion, o
  *  la quito el ERP al cambiar el IMEI); nunca nulo. En IMEI: imeiAnterior nulo = antes no habia; imeiNuevo nulo = se quito. En los demas tipos los dos IMEI
  *  son nulos. detalle: nulo salvo en MARCA ("<MARCA>" o "<MARCA> — <nota>"), MARCA_QUITADA (la marca que tenia, y "<MARCA> — al poner el
- *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO"), IMEI_INTERCAMBIADO ("con la fila <id>"), YA_ENVIADO (nulo, o "al cancelar"), VALIDADA (el motivo del aviso: MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO) y
+ *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO"), IMEI_INTERCAMBIADO ("con la fila <id>"), YA_ENVIADO (nulo, o "al cancelar"), VALIDADA (el motivo del aviso: MODELO, CAPACIDAD, COLOR, GRADO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO) y
  *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP).
  *  Reserva de IMEI (imeiAnterior/imeiNuevo son el IMEI reservado, segun el caso): RESERVADO (el ERP aparto un IMEI para la fila: imeiNuevo),
  *  RESERVA_CONFIRMADA (una persona o el bot puso ese mismo IMEI y la reserva paso a ser el IMEI de la fila), RESERVA_SUSTITUIDA (se puso
