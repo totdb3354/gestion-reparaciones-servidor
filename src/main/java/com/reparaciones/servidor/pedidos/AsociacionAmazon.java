@@ -68,7 +68,8 @@ public class AsociacionAmazon {
     static final String SQL_APUNTE = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO, TIPO, DETALLE)"
             + " VALUES (?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_BORRAR_REVISAR = "DELETE FROM Pedido_asociacion_revisar WHERE CANAL = ?";
-    static final String SQL_INSERTAR_REVISAR = "INSERT INTO Pedido_asociacion_revisar (CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN) VALUES (?, ?, ?, ?, ?)";
+    static final String SQL_INSERTAR_REVISAR = "INSERT INTO Pedido_asociacion_revisar (CANAL, PEDIDO, IMEI, MOTIVO, DETALLE, VISTO_EN)"
+            + " VALUES (?, ?, ?, ?, ?, ?)";
     static final String SQL_PASADAS = "SELECT CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS, YA_ESTABAN, PARA_REVISAR, DESCARTADAS,"
             + " LIBRO_MODIFICADO, ERROR, ERROR_EN FROM Pedido_asociacion_pasada ORDER BY CANAL";
     /** El lector de los libros: la fecha de modificacion del libro de su ultima lectura buena. */
@@ -81,7 +82,7 @@ public class AsociacionAmazon {
             + " ON DUPLICATE KEY UPDATE ERROR = VALUES(ERROR), ERROR_EN = VALUES(ERROR_EN)";
     /** El libro no cambio y Drive respondio: el error de una vuelta anterior ya no vale (no toca nada mas). */
     static final String SQL_BORRAR_ERROR = "UPDATE Pedido_asociacion_pasada SET ERROR = NULL, ERROR_EN = NULL WHERE CANAL = ? AND ERROR IS NOT NULL";
-    static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
+    static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, DETALLE, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
 
     private final JdbcTemplate jdbc;
 
@@ -179,7 +180,7 @@ public class AsociacionAmazon {
         Map<String, List<EstadoAsociaciones.Revisar>> porCanal = new HashMap<>();
         record ConCanal(String canal, EstadoAsociaciones.Revisar revisar) {}
         for (ConCanal c : jdbc.query(SQL_REVISAR, (rs, n) -> new ConCanal(rs.getString("CANAL"), new EstadoAsociaciones.Revisar(
-                rs.getString("PEDIDO"), rs.getString("IMEI"), rs.getString("MOTIVO"), hora(rs, "VISTO_EN")))))
+                rs.getString("PEDIDO"), rs.getString("IMEI"), rs.getString("MOTIVO"), hora(rs, "VISTO_EN"), rs.getString("DETALLE")))))
             porCanal.computeIfAbsent(c.canal(), k -> new ArrayList<>()).add(c.revisar());
         List<EstadoAsociaciones.Pasada> pasadas = jdbc.query(SQL_PASADAS, (rs, n) -> new EstadoAsociaciones.Pasada(rs.getString("CANAL"),
                 hora(rs, "CUANDO"), rs.getInt("CONFIRMADAS"), rs.getInt("INTERCAMBIADAS"), rs.getInt("PUESTAS"), rs.getInt("YA_ESTABAN"),
@@ -404,7 +405,11 @@ public class AsociacionAmazon {
         }
 
         private void paraRevisar(String pedido, String imei, String motivo) {
-            revisar.add(new Object[]{canal.name(), pedido, imei, motivo, hora});
+            paraRevisar(pedido, imei, motivo, null);
+        }
+
+        private void paraRevisar(String pedido, String imei, String motivo, String detalle) {
+            revisar.add(new Object[]{canal.name(), pedido, imei, motivo, detalle, hora});
         }
     }
 }

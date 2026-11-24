@@ -43,7 +43,11 @@ class DdlAsociacionTest {
     @Test void lasDosTablasSonLasMismasEnLosTresFicheros() throws Exception {
         for (String tabla : new String[]{"Pedido_asociacion_revisar", "Pedido_asociacion_pasada"}) {
             String migracion = crear(fichero(MIGRACION), tabla);
-            assertEquals(migracion, crear(fichero("crear_bd.sql"), tabla));
+            // crear_bd.sql lleva ademas la columna DETALLE de la 0.9.45, que anade migracion-asociacion-detalle.sql; las otras dos creaciones
+            // son las de antes. Los comentarios de MOTIVO tambien cambiaron: se comparan sin ellos.
+            String enCrear = crear(fichero("crear_bd.sql"), tabla).replaceAll(" DETALLE VARCHAR\\(250\\) NULL COMMENT '[^']*',", "")
+                    .replaceAll("MOTIVO VARCHAR\\(30\\) NOT NULL COMMENT '[^']*'", "MOTIVO VARCHAR(30) NOT NULL");
+            assertEquals(migracion.replaceAll("MOTIVO VARCHAR\\(30\\) NOT NULL COMMENT '[^']*'", "MOTIVO VARCHAR(30) NOT NULL"), enCrear);
             assertEquals(migracion, crear(fichero("migracion-pedidos-tabla.sql"), tabla));
         }
         String revisar = crear(fichero(MIGRACION), "Pedido_asociacion_revisar");

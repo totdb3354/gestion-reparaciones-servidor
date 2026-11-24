@@ -211,7 +211,33 @@ class AsociacionAmazonTest {
     }
 
     private static String paraRevisar(String pedido, String imei, String motivo) {
-        return Arrays.toString(new Object[]{"AMAZON", pedido, imei, motivo, T});
+        return paraRevisar(pedido, imei, motivo, null);
+    }
+
+    private static String paraRevisar(String pedido, String imei, String motivo, String detalle) {
+        return Arrays.toString(new Object[]{"AMAZON", pedido, imei, motivo, detalle, T});
+    }
+
+    @Test void elEstadoLeeElDetalleDeParaRevisar() {
+        when(jdbc.query(eq(AsociacionAmazon.SQL_REVISAR), any(RowMapper.class))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("CANAL")).thenReturn("AMAZON");
+            when(rs.getString("PEDIDO")).thenReturn(PB);
+            when(rs.getString("IMEI")).thenReturn(X);
+            when(rs.getString("MOTIVO")).thenReturn("OTRO_MODELO");
+            when(rs.getString("DETALLE")).thenReturn("el pedido es a y el móvil es b");
+            when(rs.getTimestamp("VISTO_EN")).thenReturn(T);
+            return List.of(((RowMapper<Object>) inv.getArgument(1)).mapRow(rs, 0));
+        });
+        when(jdbc.query(eq(AsociacionAmazon.SQL_PASADAS), any(RowMapper.class))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("CANAL")).thenReturn("AMAZON");
+            when(rs.getTimestamp("CUANDO")).thenReturn(T);
+            return List.of(((RowMapper<Object>) inv.getArgument(1)).mapRow(rs, 0));
+        });
+        EstadoAsociaciones e = servicio.estado();
+        assertEquals(new EstadoAsociaciones.Revisar(PB, X, "OTRO_MODELO", AHORA, "el pedido es a y el móvil es b"),
+                e.canales().get(0).revisar().get(0));
     }
 
     private List<String> estado() {

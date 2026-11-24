@@ -731,7 +731,8 @@ CREATE TABLE Pedido_asociacion_revisar (
     CANAL    VARCHAR(30) NOT NULL COMMENT 'AMAZON o AMAZON_STOCKROOM',
     PEDIDO   VARCHAR(60) NOT NULL COMMENT 'El numero del libro, normalizado como lo guarda la lectura de ShippyPro',
     IMEI     VARCHAR(20) NOT NULL,
-    MOTIVO   VARCHAR(30) NOT NULL COMMENT 'SIN_HUECO, YA_SALIO, PEDIDO_AJENO o CANCELADO',
+    MOTIVO   VARCHAR(30) NOT NULL COMMENT 'SIN_HUECO, YA_SALIO, PEDIDO_AJENO, CANCELADO, REPETIDO_EN_LIBRO, NO_EN_NSYS u OTRO_MODELO',
+    DETALLE  VARCHAR(250) NULL COMMENT 'OTRO_MODELO: «el pedido es X y el movil es Y»; nulo en los demas',
     VISTO_EN DATETIME    NOT NULL COMMENT 'La pasada que lo dejo para revisar (hora de Madrid)',
     PRIMARY KEY (ID),
     KEY idx_asociacion_revisar_canal (CANAL)
