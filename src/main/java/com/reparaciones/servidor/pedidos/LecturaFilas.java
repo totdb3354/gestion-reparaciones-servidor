@@ -45,12 +45,15 @@ public class LecturaFilas {
     /** Principio del aviso de la lectura con pedidos descartados; {@link VistaFilas#fuentes()} lo busca en el mensaje guardado. */
     static final String AVISO_DESCARTADOS = "Pedidos sin fecha valida, saltados";
     static final String AVISO_SALIDA = "No se pudo poner la fecha de salida";
+    static final String AVISO_RESERVAS = "No se pudieron hacer las reservas de IMEI";
 
     private final ClienteShippyPro shippyPro;
     private final FilasDAO dao;
     private final NsysDAO nsysDao;
     private final Map<String, Canal> canales;
     private final CalendarioLaboral calendario;
+    /** La pasada de reservas de IMEI; null en las pruebas que no la usan (no se hace). */
+    private final Reservas reservas;
     private final Clock clock;
     private final ReentrantLock enCurso = new ReentrantLock();
     /** Filas vivas cuyo pedido falto en la ultima lectura buena (solo en memoria: tras reiniciar, la primera lectura no cierra). */
@@ -58,16 +61,23 @@ public class LecturaFilas {
 
     @Autowired
     public LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao,
-                        @Value("${pedidos.shippypro.canales:}") String canales, CalendarioLaboral calendario) {
-        this(shippyPro, dao, nsysDao, canales, calendario, Clock.system(ImportadorNsys.MADRID));
+                        @Value("${pedidos.shippypro.canales:}") String canales, CalendarioLaboral calendario, Reservas reservas) {
+        this(shippyPro, dao, nsysDao, canales, calendario, reservas, Clock.system(ImportadorNsys.MADRID));
     }
 
+    /** Sin la pasada de reservas (pruebas). */
     LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao, String canales, CalendarioLaboral calendario, Clock clock) {
+        this(shippyPro, dao, nsysDao, canales, calendario, null, clock);
+    }
+
+    LecturaFilas(ClienteShippyPro shippyPro, FilasDAO dao, NsysDAO nsysDao, String canales, CalendarioLaboral calendario,
+                 Reservas reservas, Clock clock) {
         this.shippyPro = shippyPro;
         this.dao = dao;
         this.nsysDao = nsysDao;
         this.canales = Canal.deAjuste(canales);
         this.calendario = calendario;
+        this.reservas = reservas;
         this.clock = clock;
     }
 
@@ -179,6 +189,15 @@ public class LecturaFilas {
             } catch (RuntimeException e) {
                 log.warn("Pedidos: no se pudo poner la fecha de salida: {}", e.getClass().getSimpleName());
                 avisos.add(AVISO_SALIDA);
+            }
+            // La pasada de reservas de IMEI (spec reserva §5), despues de las salidas: tambien secundaria.
+            if (reservas != null) {
+                try {
+                    reservas.pasada(LocalDateTime.now(clock));
+                } catch (RuntimeException e) {
+                    log.warn("Pedidos: no se pudieron hacer las reservas de IMEI", e);
+                    avisos.add(AVISO_RESERVAS);
+                }
             }
             candidatasAntes = hayDescartados ? Set.of() : new HashSet<>(plan.cerrar());
             if (!plan.reabrir().isEmpty()) avisos.add(plan.reabrir().size() + " filas reabiertas");

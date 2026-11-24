@@ -1,6 +1,7 @@
 package com.reparaciones.servidor.pedidos;
 
 import com.reparaciones.servidor.nsys.AnchosNsys;
+import com.reparaciones.servidor.nsys.NsysDAO;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -140,6 +141,21 @@ public class FilasDAO {
     static final String SQL_ULTIMA_LECTURA = "SELECT ID_LECTURA, INICIO, FIN, RESULTADO, FILAS, SKU_DESCONOCIDOS, MENSAJE"
             + " FROM Pedido_lectura WHERE RESULTADO IN (%s) ORDER BY ID_LECTURA DESC LIMIT 1";
     static final String SQL_PODAR = "DELETE FROM Pedido_lectura WHERE INICIO < ?";
+    /** Reserva de IMEI (spec reserva §5): las filas de ShippyPro que esperan telefono (vivas, sin marca y sin IMEI) y todas las que
+     *  tienen una reserva, esten como esten. */
+    static final String SQL_CON_RESERVA_O_ESPERANDO = SQL_FILAS + " WHERE (ORIGEN = 'SHIPPYPRO' AND CERRADA_EN IS NULL AND MARCA IS NULL"
+            + " AND (IMEI IS NULL OR IMEI = '')) OR IMEI_RESERVADO IS NOT NULL ORDER BY ID_FILA";
+    static final String SQL_FILA_RESERVA_BLOQUEADA = "SELECT ORIGEN, IMEI, MARCA, CERRADA_EN, IMEI_RESERVADO, SIN_STOCK_EN FROM Pedido_fila"
+            + " WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_RESERVAR = "UPDATE Pedido_fila SET IMEI_RESERVADO = ?, RESERVADA_EN = ?, SIN_STOCK_EN = NULL WHERE ID_FILA = ?";
+    static final String SQL_QUITAR_RESERVA = "UPDATE Pedido_fila SET IMEI_RESERVADO = NULL, RESERVADA_EN = NULL WHERE ID_FILA = ?";
+    static final String SQL_SIN_STOCK = "UPDATE Pedido_fila SET SIN_STOCK_EN = ? WHERE ID_FILA = ?";
+    static final String SQL_CAMBIO_RESERVA = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO, TIPO, DETALLE)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?)";
+    /** Ancho de Pedido_fila.IMEI_RESERVADO: un IMEI/SN mas largo no se reserva (cortarlo lo haria otro movil). */
+    static final int ANCHO_RESERVADO = 20;
+    /** Ancho de Pedido_fila_cambio.DETALLE. */
+    static final int ANCHO_DETALLE = 250;
 
     private final JdbcTemplate jdbc;
 
@@ -607,6 +623,85 @@ public class FilasDAO {
         for (Salida s : salidas)
             lote.add(new Object[]{s.fechaSalida() == null ? null : java.sql.Date.valueOf(s.fechaSalida()), s.pais(), s.canal().name(), s.pedido()});
         jdbc.batchUpdate(SQL_PONER_SALIDA, lote);
+    }
+
+    // ---------------------------------------------------------------- reserva de IMEI (spec reserva §5 y §8)
+
+    /** Las filas que mira la pasada de reservas (ver {@link #SQL_CON_RESERVA_O_ESPERANDO}), por id. */
+    public List<FilaPedido> conReservaOEsperando() {
+        return jdbc.query(SQL_CON_RESERVA_O_ESPERANDO, FilasDAO::fila);
+    }
+
+    private record BloqueadaReserva(String origen, String imei, String marca, LocalDateTime cerradaEn, String reservado,
+                                    LocalDateTime sinStockEn) {
+        boolean sinImei() {
+            return imei == null || imei.isBlank();
+        }
+
+        /** Viva, de ShippyPro, sin marca, sin IMEI y sin reserva: la que puede reservar. */
+        boolean esperando() {
+            return "SHIPPYPRO".equals(origen) && cerradaEn == null && marca == null && sinImei() && reservado == null;
+        }
+    }
+
+    /** La fila bloqueada para la reserva (READ COMMITTED en el metodo que llama, como {@link #ponerImei}); vacio si no existe. */
+    private Optional<BloqueadaReserva> bloquearParaReserva(int idFila) {
+        return jdbc.query(SQL_FILA_RESERVA_BLOQUEADA, (rs, n) -> new BloqueadaReserva(rs.getString("ORIGEN"), rs.getString("IMEI"),
+                rs.getString("MARCA"), hora(rs, "CERRADA_EN"), rs.getString("IMEI_RESERVADO"), hora(rs, "SIN_STOCK_EN")), idFila)
+                .stream().findFirst();
+    }
+
+    /** Aparta {@code imei} para la fila: solo si, con la fila bloqueada, sigue esperando telefono (viva, de ShippyPro, sin marca, sin
+     *  IMEI y sin reserva) y el IMEI cabe en la columna. Pone IMEI_RESERVADO y RESERVADA_EN, borra SIN_STOCK_EN y apunta RESERVADO
+     *  (IMEI_NUEVO = el reservado, DETALLE = el porque). Sin usuario: lo hace la pasada. true si reservo. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public boolean reservar(int idFila, String imei, String porque, LocalDateTime ahora) {
+        String limpio = imei == null ? "" : imei.strip();
+        if (limpio.isEmpty() || limpio.length() > ANCHO_RESERVADO) return false;
+        Optional<BloqueadaReserva> f = bloquearParaReserva(idFila);
+        if (f.isEmpty() || !f.get().esperando()) return false;
+        Timestamp t = Timestamp.valueOf(ahora);
+        jdbc.update(SQL_RESERVAR, limpio, t, idFila);
+        jdbc.update(SQL_CAMBIO_RESERVA, idFila, null, t, null, limpio, CambioImei.RESERVADO, AnchosNsys.corta(porque, ANCHO_DETALLE));
+        return true;
+    }
+
+    /** Suelta la reserva de la fila sin poner IMEI: borra IMEI_RESERVADO y RESERVADA_EN y apunta RESERVA_QUITADA (IMEI_ANTERIOR = el
+     *  reservado, DETALLE = {@code motivo}: CANCELADA, NO_ENCONTRADO o NO_DISPONIBLE). Sin reserva (o sin fila) no hace nada. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void soltarReserva(int idFila, String motivo, LocalDateTime ahora) {
+        Optional<BloqueadaReserva> f = bloquearParaReserva(idFila);
+        if (f.isEmpty() || f.get().reservado() == null) return;
+        jdbc.update(SQL_QUITAR_RESERVA, idFila);
+        jdbc.update(SQL_CAMBIO_RESERVA, idFila, null, Timestamp.valueOf(ahora), f.get().reservado(), null, CambioImei.RESERVA_QUITADA,
+                motivo);
+    }
+
+    /** Una fila con IMEI puesto y reserva: RESERVA_CONFIRMADA si el puesto es el reservado (por {@link NsysDAO#claveCruce}),
+     *  RESERVA_SUSTITUIDA si no (el reservado vuelve a stock); en los dos, IMEI_ANTERIOR = el reservado e IMEI_NUEVO = el puesto, y se
+     *  borra la reserva. {@code idUsu} nulo cuando lo resuelve la pasada; con usuario, desde la celda (spec §7). Sin IMEI o sin
+     *  reserva no hace nada. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void resolverReservaPuesta(int idFila, Integer idUsu, LocalDateTime ahora) {
+        Optional<BloqueadaReserva> f = bloquearParaReserva(idFila);
+        if (f.isEmpty() || f.get().reservado() == null || f.get().sinImei()) return;
+        String reservado = f.get().reservado();
+        String puesto = f.get().imei();
+        String tipo = NsysDAO.claveCruce(puesto).equals(NsysDAO.claveCruce(reservado)) ? CambioImei.RESERVA_CONFIRMADA
+                : CambioImei.RESERVA_SUSTITUIDA;
+        jdbc.update(SQL_QUITAR_RESERVA, idFila);
+        jdbc.update(SQL_CAMBIO_RESERVA, idFila, idUsu, Timestamp.valueOf(ahora), reservado, puesto, tipo, null);
+    }
+
+    /** Apunta una sola vez que la fila no encontro telefono: solo si, con la fila bloqueada, sigue esperando (como en
+     *  {@link #reservar}) y SIN_STOCK_EN es nulo. Pone SIN_STOCK_EN y apunta SIN_STOCK sin usuario. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void apuntarSinStock(int idFila, LocalDateTime ahora) {
+        Optional<BloqueadaReserva> f = bloquearParaReserva(idFila);
+        if (f.isEmpty() || !f.get().esperando() || f.get().sinStockEn() != null) return;
+        Timestamp t = Timestamp.valueOf(ahora);
+        jdbc.update(SQL_SIN_STOCK, t, idFila);
+        jdbc.update(SQL_CAMBIO_TIPO, idFila, null, t, CambioImei.SIN_STOCK);
     }
 
     // ---------------------------------------------------------------- ayudas

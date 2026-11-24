@@ -124,6 +124,12 @@ public class VistaFilas {
     /** De las filas de ShippyPro con IMEI, las que dejan «ya puesto» su movil: las pendientes y las no pendientes, y las enviadas
      *  mientras NSYS no da el movil por vendido. IMEI (clave de cruce) -> ids de esas filas. */
     private Map<String, Set<Integer>> puestos(List<FilaPedido> filas) {
+        return puestos(filas, nsysDao);
+    }
+
+    /** {@link #puestos(List)} con el espejo de NSYS dado: tambien lo usa la pasada de reservas ({@link Reservas}), con las filas de
+     *  {@link FilasDAO#shippyProConImeiDesde} desde {@link #DIAS_PUESTOS} dias atras. */
+    static Map<String, Set<Integer>> puestos(List<FilaPedido> filas, NsysDAO nsysDao) {
         Set<String> deEnviadas = new LinkedHashSet<>();
         for (FilaPedido f : filas)
             if (ENVIADA.equals(estado(f)) && f.imei() != null && !f.imei().isBlank()) deEnviadas.add(f.imei());
