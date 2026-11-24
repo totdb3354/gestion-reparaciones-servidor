@@ -146,4 +146,13 @@ class RecomendadorTest {
     @Test void sinAceptacionNoHayCandidatos() {
         assertEquals(List.of(), de(null, Canal.AMAZON, List.of(movil("350000000000001", "A", D1)), SIN_TRABAJOS, NADIE));
     }
+
+    @Test void unaSimDistintaNoSeProponeYUnNaEsHayQueTransformarlo() {
+        MovilNsys esim = new MovilNsys("350000000000041", "BT-9001", "Apple iPhone 13 128GB Blue", "A", "Available", "CAJA LISTOS",
+                "Proveedor A", D1, null, "i13128AzulA", "13", "13", "128GB", "Azul", "A", true, "Listos", "Listos", EstadoMovil.STOCK, null, null);
+        MovilNsys na = movil("350000000000042", "n/a", D1);
+        List<Recomendador.Candidato> l = de(AMAZON_A, Canal.AMAZON, List.of(esim, na), SIN_TRABAJOS, NADIE);
+        assertEquals(List.of("350000000000042"), imeis(l));
+        assertEquals(3, l.get(0).nivel());
+    }
 }

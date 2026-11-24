@@ -89,6 +89,12 @@ de `model/` conservan su nombre.
     0.9.44: `FilaVista` gana al final `salidaDesde` (ISO, nullable): en las webs, primer día en que el pedido ya «sale hoy» (la entrada,
     o el primer laborable si entró en festivo o fin de semana); nulo en Amazon, en el histórico y sin `fechaSalida`. Desde la 0.9.44 la
     `fechaSalida` de las webs es el laborable siguiente a `salidaDesde`, sin mirar el servicio de envío (antes, entrada + 2 o 3 laborables).
+    `FilaVista` gana al final `detalle` (nullable): `{sim, na, ms, dato, trabajos}` con `sim` `"ESIM"` (el móvil es eSIM y el pedido no),
+    `"SIM_FISICA"` (al revés) o `null`; `na` y `ms` booleanos (el grado que cuenta es n/a; es un Ms); `dato` (nullable: lo que es el móvil
+    para el motivo, sea modelo, capacidad, color o grado) y `trabajos` (lista de `TrabajoAbierto`, solo con motivo `EN_TALLER`; si no, vacía).
+    `null` sin aviso o sin nada que decir. Motivos nuevos de `motivo`: `CAPACIDAD`, `COLOR` y `GRADO` (`COLOR_O_GRADO` solo queda si no se
+    puede decir cuál); `MS` ya no sale como motivo: un Ms es un `AVISO` con `motivo` `null` y `detalle.ms` `true`. Una fila validada
+    conserva `sim`, `na` y `ms` en `detalle` (el `dato` va `null` y `trabajos` vacía).
   - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
     de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
     que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o
@@ -158,13 +164,13 @@ de `model/` conservan su nombre.
     quita la validación; ausente o nulo, `400`). `imeiAnterior` (opcional, nullable) como en `PUT .../imei`: `null` no comprueba, `""` espera
     la fila sin IMEI, 15 cifras espera ese IMEI (otra cosa: `400`); si no coincide con el IMEI actual, `409` "Otra persona ha cambiado el IMEI de
     esta fila mientras tanto. Recarga y vuelve a intentarlo.". Validar exige que la fila tenga IMEI (si no, `409` "La fila no tiene IMEI: no hay
-    nada que validar") y que su aviso actual sea de SKU: `motivo` `MODELO`, `COLOR_O_GRADO`, `GRADO_NO_VENDIBLE` o `SKU_DESCONOCIDO` (con
+    nada que validar") y que su aviso actual sea de SKU: `motivo` `MODELO`, `CAPACIDAD`, `COLOR`, `GRADO`, `COLOR_O_GRADO`, `GRADO_NO_VENDIBLE` o `SKU_DESCONOCIDO` (con
     `NO_EN_NSYS`, `EN_OTRA_FILA`, cualquier aviso ámbar o sin aviso, `409` "Solo se puede validar un aviso de SKU ..."). `404` si la fila no
     existe; `409` "La fila es del histórico y no se edita" si es del histórico. Validar lo ya validado para ese IMEI, o quitar lo no
     validado, es un `200` sin apunte; quitar una validación que ya no vale (de otro IMEI) la borra sin apunte. Atómico, con la fila
     bloqueada. Cabecera opcional `Idempotency-Key` (el registro incluye validar e imeiAnterior). SUPERTECNICO y ADMIN (TECNICO `403`).
     `FilaVista` gana al final `validadaEn` (hora de Madrid), `validadaPor` (nombre de usuario) y `motivoValidado`, todos nullable. Al servir:
-    si la fila guarda una validación para su IMEI actual y el aviso calculado sigue siendo de uno de esos cuatro motivos, `nivel` pasa a `OK`,
+    si la fila guarda una validación para su IMEI actual y el aviso calculado sigue siendo de uno de esos motivos de SKU, `nivel` pasa a `OK`,
     `motivo` a `null` (`skuMovil` y `caja` se conservan) y `motivoValidado` es el motivo que tenía el aviso; con otro IMEI, o si el aviso
     ya es otro (p. ej. `EN_OTRA_FILA`), la validación se ignora y los tres campos van `null`. Poner (`PUT .../imei`) un IMEI distinto del
     validado, o quitarlo, borra la validación en la misma transacción y apunta `VALIDACION_QUITADA` (`detalle` `"al cambiar el IMEI"`,

@@ -17,12 +17,13 @@ import java.time.LocalDateTime;
  *  de Amazon sin asociar, aunque pedido venga: lo necesita el estado). asociadaOrigen: LIBRO (libro de ventas) o HISTORICO (carga del
  *  historico de la hoja); nulo sin asociar. En las webs y el historico los dos son nulos y no significan nada.
  *  validadaEn, validadaPor y motivoValidado: solo si una persona dio por bueno el aviso de SKU de este IMEI y el aviso sigue siendo de SKU
- *  (entonces nivel va OK, motivo nulo y motivoValidado es el motivo que tenia: MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO);
+ *  (entonces nivel va OK, motivo nulo y motivoValidado es el motivo que tenia: MODELO, CAPACIDAD, COLOR, GRADO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO);
  *  nulos si no hay validacion o dejo de valer (otro IMEI, o el aviso ya es otro).
  *  fechaSalida: ultimo dia para enviar (Amazon: Latest ship de ShippyPro; webs: el laborable siguiente al primer laborable desde la
  *  entrada; historico: nulo).
  *  salidaDesde: en las webs, primer dia en que el pedido ya «sale hoy» (la entrada, o el primer laborable si entro en festivo o fin de
  *  semana); nulo en Amazon, en el historico y sin fecha de salida.
+ *  detalle: lo que acompaña al motivo (DetalleAviso); nulo sin aviso o sin nada que decir. Validada: conserva sim, na y ms.
  *  pais: pais de destino (2 letras), nulo si no se conoce. */
 public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(nullable = true) String sku,
                         @Schema(nullable = true) String imei, @Schema(nullable = true) String pedido,
@@ -40,7 +41,21 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                         @Schema(nullable = true) LocalDateTime validadaEn, @Schema(nullable = true) String validadaPor,
                         @Schema(nullable = true) String motivoValidado,
                         @Schema(nullable = true) LocalDate fechaSalida, @Schema(nullable = true) String pais,
-                        @Schema(nullable = true) LocalDate salidaDesde) {
+                        @Schema(nullable = true) LocalDate salidaDesde,
+                        @Schema(nullable = true) DetalleAviso detalle) {
+
+    /** Una fila sin {@code detalle}. */
+    public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
+                     String estado, boolean editable, LocalDateTime envioFecha, String transportista, String seguimiento,
+                     LocalDateTime impresaEn, boolean tieneEtiqueta, String nivel, String motivo, String skuMovil, String caja,
+                     String canal, LocalDateTime faltaEnviarEn, LocalDateTime sincronizadaEn, String marca, String marcaNota,
+                     LocalDateTime marcaEn, String marcaPor, LocalDateTime asociadaEn, String asociadaOrigen,
+                     LocalDateTime validadaEn, String validadaPor, String motivoValidado, LocalDate fechaSalida, String pais,
+                     LocalDate salidaDesde) {
+        this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
+                impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn,
+                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, salidaDesde, null);
+    }
 
     /** Una fila sin {@code salidaDesde} (Amazon, historico o tests). */
     public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
@@ -51,7 +66,7 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                      LocalDateTime validadaEn, String validadaPor, String motivoValidado, LocalDate fechaSalida, String pais) {
         this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
                 impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn,
-                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, null);
+                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, null, null);
     }
 
     /** Una fila sin fecha de salida ni pais. */
