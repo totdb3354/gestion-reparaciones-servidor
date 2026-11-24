@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40,8 +41,8 @@ import java.util.TreeSet;
  *  Nunca cambia el IMEI de una fila con la etiqueta generada (ENVIO_FECHA) ni con la marca CANCELADO, y una cancelada tampoco se confirma;
  *  una con etiqueta si se confirma (su IMEI no cambia). Nunca toca el historico. Poner un IMEI en una fila «En espera de stock» le quita la
  *  marca como el PUT del IMEI. Todo cambio va al historial sin usuario: IMEI, IMEI_INTERCAMBIADO («con la fila n»), ASOCIADA (LIBRO) y
- *  MARCA_QUITADA. Si un IMEI sale varias veces en la pasada solo vale la ultima (las anteriores se descartan): asi repetir la misma pasada
- *  no cambia nada. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos. */
+ *  MARCA_QUITADA. Si el libro pone un IMEI en dos pedidos distintos, sus lineas van a «para revisar» (REPETIDO_EN_LIBRO) y no se aplica ninguna;
+ *  el mismo par repetido cuenta una vez: asi repetir la misma pasada no cambia nada. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos. */
 @Service
 public class AsociacionAmazon {
 
@@ -52,6 +53,8 @@ public class AsociacionAmazon {
     /** Ya no se guarda (un pedido sin filas en el ERP se cuenta en {@code ajenos}); queda por compatibilidad. */
     public static final String PEDIDO_AJENO = "PEDIDO_AJENO";
     public static final String CANCELADO = "CANCELADO";
+    /** El libro pone el mismo IMEI en dos pedidos distintos: no se aplica ninguno (spec «el libro manda» §1). */
+    public static final String REPETIDO_EN_LIBRO = "REPETIDO_EN_LIBRO";
 
     private static final String HUECOS = "SELECT ID_FILA, PEDIDO, POSICION, IMEI, ENVIO_FECHA, MARCA, ASOCIADA_EN, ASOCIADA_ORIGEN"
             + " FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ? AND ";
@@ -129,7 +132,7 @@ public class AsociacionAmazon {
         Timestamp hora = Timestamp.valueOf(ahora);
         jdbc.update(SQL_TOMAR_PASADA, canal.name(), hora);
 
-        // Limpiar: numero normalizado, IMEI de 15 cifras; si un IMEI sale varias veces, vale la ultima.
+        // Limpiar: numero normalizado, IMEI de 15 cifras; un IMEI en dos pedidos va a revisar.
         List<String[]> validos = new ArrayList<>();
         int descartadas = 0;
         for (PeticionAsociaciones.Par p : pares) {
@@ -138,12 +141,19 @@ public class AsociacionAmazon {
             if (pedido == null || !imei.matches("[0-9]{15}")) descartadas++;
             else validos.add(new String[]{pedido, imei});
         }
-        Map<String, Integer> ultima = new HashMap<>();
-        for (int i = 0; i < validos.size(); i++) ultima.put(validos.get(i)[1], i);
+        // Un IMEI en dos pedidos distintos: todas sus lineas a revisar y no se aplica ninguna. El mismo par repetido cuenta una vez.
+        Map<String, Set<String>> pedidosPorImei = new HashMap<>();
+        for (String[] v : validos) pedidosPorImei.computeIfAbsent(v[1], k -> new LinkedHashSet<>()).add(v[0]);
+        List<Object[]> repetidos = new ArrayList<>();
+        Set<String> vistos = new HashSet<>();
         List<String[]> aplicables = new ArrayList<>();
-        for (int i = 0; i < validos.size(); i++) {
-            if (ultima.get(validos.get(i)[1]) == i) aplicables.add(validos.get(i));
-            else descartadas++;
+        for (String[] v : validos) {
+            if (!vistos.add(v[0] + "|" + v[1])) {
+                descartadas++;
+                continue;
+            }
+            if (pedidosPorImei.get(v[1]).size() > 1) repetidos.add(new Object[]{canal.name(), v[0], v[1], REPETIDO_EN_LIBRO, null, hora});
+            else aplicables.add(v);
         }
 
         Set<String> pedidos = new LinkedHashSet<>();
@@ -153,6 +163,7 @@ public class AsociacionAmazon {
             imeis.add(p[1]);
         }
         Reparto reparto = new Reparto(canal, cargar(canal, pedidos, imeis), ahora);
+        reparto.revisar.addAll(repetidos);
         for (String[] p : aplicables) reparto.aplicar(p[0], p[1]);
         reparto.reintentarSinHueco();
 
