@@ -25,7 +25,7 @@ import java.util.function.Function;
  *  las filas que ya tienen IMEI puesto; 2) suelta las que ya no valen; 3) reparte ({@link Reparto}) un telefono a las filas que
  *  esperan y apunta «sin stock» a las que se quedan sin. Motivos para soltar (DETALLE de RESERVA_QUITADA): {@link #CANCELADA},
  *  {@link #ENVIADA_SIN_IMEI} (la fila se envio sin IMEI: logistica seguramente mando ese movil sin teclearlo, asi que las
- *  devoluciones NO deben devolverlo a stock), {@link #NO_ENCONTRADO} y {@link #NO_DISPONIBLE}. Cada escritura es una transaccion por fila con la fila bloqueada
+ *  devoluciones NO deben devolverlo a stock), {@link #NO_ENCONTRADO}, {@link #PUESTO_EN_OTRA} y {@link #NO_DISPONIBLE}. Cada escritura es una transaccion por fila con la fila bloqueada
  *  ({@link FilasDAO}), para no pisar a una persona que ponga el IMEI a la vez. */
 @Service
 public class Reservas {
@@ -38,8 +38,10 @@ public class Reservas {
     public static final String ENVIADA_SIN_IMEI = "ENVIADA_SIN_IMEI";
     /** El movil esta en una de las cajas de revisar ({@link #CAJAS_REVISAR}): una persona no lo encuentra. */
     public static final String NO_ENCONTRADO = "NO_ENCONTRADO";
-    /** El movil ya no esta en la empresa, su estado no es STOCK ni «de pedido», o esta puesto en otra fila. */
+    /** El movil ya no esta en la empresa o su estado no es STOCK ni «de pedido» (vendido, de baja, caja que no cuenta). */
     public static final String NO_DISPONIBLE = "NO_DISPONIBLE";
+    /** El IMEI reservado se tecleo en otra fila. */
+    public static final String PUESTO_EN_OTRA = "PUESTO_EN_OTRA";
     /** Las cajas de NSYS donde una persona deja un movil que no encuentra. */
     static final Set<String> CAJAS_REVISAR = Set.of("Pendiente revisar si hay error de inventario",
             "MV Pendiente revisar si hay error de inventario");
@@ -101,6 +103,8 @@ public class Reservas {
                 }
                 dao.soltarReserva(f.id(), f.imeiReservado(), motivo, ahora);
                 soltadas++;
+                // Seguramente salio sin teclearlo: no se reserva a otro pedido en esta pasada.
+                if (ENVIADA_SIN_IMEI.equals(motivo)) retenidos.add(clave);
                 if (espera(f)) esperando.add(f);
             }
         }
@@ -158,7 +162,7 @@ public class Reservas {
         if (CAJAS_REVISAR.contains(Normalizacion.caja(movil.location()))) return NO_ENCONTRADO;
         EstadoMovil estado = movil.estado() == null ? null : movil.estado().conGrado(grado(movil, vale));
         if (estado != EstadoMovil.STOCK && estado != EstadoMovil.DE_PEDIDO) return NO_DISPONIBLE;
-        if (puesto) return NO_DISPONIBLE;
+        if (puesto) return PUESTO_EN_OTRA;
         return null;
     }
 

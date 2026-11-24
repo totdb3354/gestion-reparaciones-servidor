@@ -11,6 +11,7 @@ import com.reparaciones.servidor.nsys.TrabajoAbierto;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -68,14 +69,23 @@ public final class Reparto {
             List<TrabajoAbierto> t = trabajos.get(clave);
             elegibles.add(new Elegible(m, v, clave, t != null && !t.isEmpty()));
         }
+        // Los elegibles por modelo y capacidad (como los compara mismoModelo): cada fila solo mira los de lo que pide.
+        Map<String, List<Elegible>> porModelo = new HashMap<>();
+        for (Elegible e : elegibles) {
+            String k = claveModelo(e.movil().modeloMaestro(), e.movil().capacidad());
+            if (k != null) porModelo.computeIfAbsent(k, x -> new ArrayList<>()).add(e);
+        }
         Set<String> usados = new HashSet<>();
         List<Resultado> resultados = new ArrayList<>();
         for (Fila f : filas.stream().sorted(ORDEN_FILAS).toList()) {
             Candidato mejor = null;
             Elegible deMejor = null;
-            for (Elegible e : elegibles) {
+            // Lo que pide la fila, una sola vez (no por cada teléfono).
+            Atributos pide = f.aceptacion() == null || f.canal() == null || !sirve(f.aceptacion()) ? null : f.aceptacion().pide();
+            String k = pide == null ? null : claveModelo(pide.modelo(), pide.capacidad());
+            for (Elegible e : k == null ? List.<Elegible>of() : porModelo.getOrDefault(k, List.of())) {
                 if (usados.contains(e.clave())) continue;
-                Candidato c = candidato(f, e);
+                Candidato c = candidato(f, pide, e);
                 if (c != null && (mejor == null || ORDEN_CANDIDATOS.compare(c, mejor) < 0)) {
                     mejor = c;
                     deMejor = e;
@@ -114,10 +124,9 @@ public final class Reparto {
         };
     }
 
-    private static Candidato candidato(Fila f, Elegible e) {
-        if (f.aceptacion() == null || f.canal() == null) return null;
-        Integer puesto = f.canal().esAmazon() ? puestoAmazon(f, e.movil(), e.valor(), e.conTrabajo())
-                : puestoWeb(f, e.movil(), e.valor(), e.conTrabajo());
+    private static Candidato candidato(Fila f, Atributos pide, Elegible e) {
+        Integer puesto = f.canal().esAmazon() ? puestoAmazon(f, pide, e.movil(), e.valor(), e.conTrabajo())
+                : puestoWeb(f, pide, e.movil(), e.valor(), e.conTrabajo());
         if (puesto == null) return null;
         Grado g = grado(e.movil(), e.valor());
         Caja caja = caja(e.movil());
@@ -128,10 +137,14 @@ public final class Reparto {
      *  móvil no vale para la fila. Con un trabajo del taller abierto, solo el puesto 1 y con su SKU entre los aceptados. */
     static Integer puestoAmazon(Fila f, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
         Aceptacion ac = f.aceptacion();
-        if (!sirve(ac) || !mismoModelo(ac, m)) return null;
+        return sirve(ac) ? puestoAmazon(f, ac.pide(), m, v, conTrabajo) : null;
+    }
+
+    private static Integer puestoAmazon(Fila f, Atributos pide, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
+        Aceptacion ac = f.aceptacion();
+        if (!mismoModelo(pide, m)) return null;
         Grado g = grado(m, v);
         if (g.id()) return null;
-        Atributos pide = ac.pide();
         boolean mismoFormato = m.esEsim() == pide.esEsim();
         boolean mismoColor = igualDato(v.color(), pide.color());
         Integer puesto;
@@ -158,9 +171,13 @@ public final class Reparto {
      *  aún no está revisado. Con un trabajo del taller abierto, solo el puesto 1. */
     static Integer puestoWeb(Fila f, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
         Aceptacion ac = f.aceptacion();
-        if (!sirve(ac) || !mismoModelo(ac, m)) return null;
+        return sirve(ac) ? puestoWeb(f, ac.pide(), m, v, conTrabajo) : null;
+    }
+
+    private static Integer puestoWeb(Fila f, Atributos pide, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
+        Aceptacion ac = f.aceptacion();
+        if (!mismoModelo(pide, m)) return null;
         Grado g = grado(m, v);
-        Atributos pide = ac.pide();
         if (g.id() || g.ms() || g.naPorCaja() || m.esEsim() != pide.esEsim() || !igualDato(v.color(), pide.color())) return null;
         Integer puesto;
         if (aceptaSku(ac, v)) puesto = 1;
@@ -208,8 +225,7 @@ public final class Reparto {
         return pais != null && pais.strip().equalsIgnoreCase("ES");
     }
 
-    private static boolean mismoModelo(Aceptacion ac, MovilNsys m) {
-        Atributos pide = ac.pide();
+    private static boolean mismoModelo(Atributos pide, MovilNsys m) {
         return igualDato(pide.modelo(), m.modeloMaestro()) && igualDato(pide.capacidad(), m.capacidad());
     }
 
@@ -264,6 +280,12 @@ public final class Reparto {
         String grade = v.grade() == null || v.grade().isBlank() ? "N/A" : v.grade().strip();
         String grado = g.naPorCaja() && !SkuNa.esNa(v.grade()) ? "N/A (es " + grade + ")" : g.na() ? "N/A" : grade;
         return "Puesto " + puesto + " · " + caja.nombre() + " · " + grado;
+    }
+
+    /** Clave de agrupar por modelo y capacidad, normalizada como {@link #igualDato}; null si falta alguno (no se sabe). */
+    private static String claveModelo(String modelo, String capacidad) {
+        if (modelo == null || modelo.isBlank() || capacidad == null || capacidad.isBlank()) return null;
+        return modelo.strip().toLowerCase(Locale.ROOT) + "|" + capacidad.strip().toLowerCase(Locale.ROOT);
     }
 
     /** Mismo color, modelo o capacidad: sin espacios a los lados ni mayúsculas. En blanco en cualquiera de los dos lados no es el

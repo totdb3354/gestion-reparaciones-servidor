@@ -255,13 +255,13 @@ class ReservasTest {
         verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.NO_DISPONIBLE), eq(AHORA));
     }
 
-    @Test void puestoEnOtraFilaSeSueltaComoNoDisponible() {
+    @Test void puestoEnOtraFilaSeSueltaComoPuestoEnOtra() {
         when(dao.shippyProConImeiDesde(HOY.minusDays(60))).thenReturn(List.of(fila(7, IMEI_1, null, null, null, null, null)));
         filas(reservada(1, IMEI_1));
         reservados(enStock(IMEI_1));
         stock();
         reservas.pasada(AHORA);
-        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.NO_DISPONIBLE), eq(AHORA));
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.PUESTO_EN_OTRA), eq(AHORA));
     }
 
     @Test void enStockOEnPedidosRealizadosNoSeSuelta() {
@@ -300,6 +300,15 @@ class ReservasTest {
         verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CANCELADA), eq(AHORA));
         verify(dao).reservar(eq(2), eq(IMEI_1), anyString(), eq(AHORA));
         verify(dao, never()).reservar(eq(1), anyString(), anyString(), any());
+    }
+
+    @Test void elEnviadoSinImeiSoltadoNoSeReservaAOtraFilaEnLaMismaPasada() {
+        filas(fila(1, null, null, AHORA.minusHours(2), AHORA.minusHours(3), IMEI_1, null), esperando(2));
+        reservados(enStock(IMEI_1));
+        stock(enStock(IMEI_1));
+        assertEquals(new Reservas.Resumen(0, 1, 1), reservas.pasada(AHORA));
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.ENVIADA_SIN_IMEI), eq(AHORA));
+        verify(dao, never()).reservar(anyInt(), anyString(), anyString(), any());
     }
 
     @Test void elOrdenEsResolverSoltarYReservar() {

@@ -697,7 +697,7 @@ public class FilasDAO {
     }
 
     /** Suelta la reserva de la fila sin poner IMEI: borra IMEI_RESERVADO y RESERVADA_EN y apunta RESERVA_QUITADA (IMEI_ANTERIOR = el
-     *  reservado, DETALLE = {@code motivo}: CANCELADA, ENVIADA_SIN_IMEI, NO_ENCONTRADO o NO_DISPONIBLE). Se decide con la fila
+     *  reservado, DETALLE = {@code motivo}: CANCELADA, ENVIADA_SIN_IMEI, NO_ENCONTRADO, PUESTO_EN_OTRA o NO_DISPONIBLE). Se decide con la fila
      *  bloqueada: no hace nada si no existe, si su reserva ya no es {@code imeiEsperado} (el que vio la pasada; por
      *  {@link NsysDAO#claveCruce}) o si ya tiene IMEI (una persona lo acaba de poner: la pasada siguiente lo resuelve como
      *  RESERVA_CONFIRMADA o RESERVA_SUSTITUIDA). */
