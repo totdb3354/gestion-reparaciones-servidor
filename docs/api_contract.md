@@ -86,6 +86,9 @@ de `model/` conservan su nombre.
     `estado` y el aviso no cambian: la web deriva de esos campos lo que enseña.
     `FilaVista` gana al final `fechaSalida` (ISO, nullable: último día para enviar; Amazon, Latest ship de ShippyPro; webs, entrada + 2 o 3
     días laborables; histórico, `null`) y `pais` (nullable).
+    0.9.44: `FilaVista` gana al final `salidaDesde` (ISO, nullable): en las webs, primer día en que el pedido ya «sale hoy» (la entrada,
+    o el primer laborable si entró en festivo o fin de semana); nulo en Amazon, en el histórico y sin `fechaSalida`. Desde la 0.9.44 la
+    `fechaSalida` de las webs es el laborable siguiente a `salidaDesde`, sin mirar el servicio de envío (antes, entrada + 2 o 3 laborables).
   - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
     de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
     que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o

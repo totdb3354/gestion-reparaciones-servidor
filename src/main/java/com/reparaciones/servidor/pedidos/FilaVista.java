@@ -19,7 +19,10 @@ import java.time.LocalDateTime;
  *  validadaEn, validadaPor y motivoValidado: solo si una persona dio por bueno el aviso de SKU de este IMEI y el aviso sigue siendo de SKU
  *  (entonces nivel va OK, motivo nulo y motivoValidado es el motivo que tenia: MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO);
  *  nulos si no hay validacion o dejo de valer (otro IMEI, o el aviso ya es otro).
- *  fechaSalida: ultimo dia para enviar (Amazon: Latest ship de ShippyPro; webs: entrada + 2 o 3 dias laborables; historico: nulo).
+ *  fechaSalida: ultimo dia para enviar (Amazon: Latest ship de ShippyPro; webs: el laborable siguiente al primer laborable desde la
+ *  entrada; historico: nulo).
+ *  salidaDesde: en las webs, primer dia en que el pedido ya «sale hoy» (la entrada, o el primer laborable si entro en festivo o fin de
+ *  semana); nulo en Amazon, en el historico y sin fecha de salida.
  *  pais: pais de destino (2 letras), nulo si no se conoce. */
 public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(nullable = true) String sku,
                         @Schema(nullable = true) String imei, @Schema(nullable = true) String pedido,
@@ -36,7 +39,20 @@ public record FilaVista(int idFila, LocalDate fecha, String plataforma, @Schema(
                         @Schema(nullable = true) LocalDateTime asociadaEn, @Schema(nullable = true) String asociadaOrigen,
                         @Schema(nullable = true) LocalDateTime validadaEn, @Schema(nullable = true) String validadaPor,
                         @Schema(nullable = true) String motivoValidado,
-                        @Schema(nullable = true) LocalDate fechaSalida, @Schema(nullable = true) String pais) {
+                        @Schema(nullable = true) LocalDate fechaSalida, @Schema(nullable = true) String pais,
+                        @Schema(nullable = true) LocalDate salidaDesde) {
+
+    /** Una fila sin {@code salidaDesde} (Amazon, historico o tests). */
+    public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
+                     String estado, boolean editable, LocalDateTime envioFecha, String transportista, String seguimiento,
+                     LocalDateTime impresaEn, boolean tieneEtiqueta, String nivel, String motivo, String skuMovil, String caja,
+                     String canal, LocalDateTime faltaEnviarEn, LocalDateTime sincronizadaEn, String marca, String marcaNota,
+                     LocalDateTime marcaEn, String marcaPor, LocalDateTime asociadaEn, String asociadaOrigen,
+                     LocalDateTime validadaEn, String validadaPor, String motivoValidado, LocalDate fechaSalida, String pais) {
+        this(idFila, fecha, plataforma, sku, imei, pedido, fechaCompra, estado, editable, envioFecha, transportista, seguimiento,
+                impresaEn, tieneEtiqueta, nivel, motivo, skuMovil, caja, canal, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn,
+                marcaPor, asociadaEn, asociadaOrigen, validadaEn, validadaPor, motivoValidado, fechaSalida, pais, null);
+    }
 
     /** Una fila sin fecha de salida ni pais. */
     public FilaVista(int idFila, LocalDate fecha, String plataforma, String sku, String imei, String pedido, LocalDate fechaCompra,
