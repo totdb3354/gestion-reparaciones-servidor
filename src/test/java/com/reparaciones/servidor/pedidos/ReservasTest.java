@@ -152,7 +152,7 @@ class ReservasTest {
         stock(enStock(IMEI_1));
         reservados(enStock(IMEI_1));
         Reservas.Resumen r = reservas.pasada(AHORA);
-        verify(dao, never()).soltarReserva(anyInt(), any(), any());
+        verify(dao, never()).soltarReserva(anyInt(), any(), any(), any());
         verify(dao, never()).reservar(anyInt(), anyString(), anyString(), any());
         verify(dao).apuntarSinStock(2, AHORA);
         assertEquals(new Reservas.Resumen(0, 0, 1), r);
@@ -191,7 +191,7 @@ class ReservasTest {
         filas(fila(1, IMEI_2, null, null, null, IMEI_1, null));
         Reservas.Resumen r = reservas.pasada(AHORA);
         verify(dao).resolverReservaPuesta(1, null, AHORA);
-        verify(dao, never()).soltarReserva(anyInt(), any(), any());
+        verify(dao, never()).soltarReserva(anyInt(), any(), any(), any());
         assertEquals(new Reservas.Resumen(0, 0, 0), r);
     }
 
@@ -199,7 +199,7 @@ class ReservasTest {
         filas(fila(1, IMEI_1, null, AHORA.minusHours(2), AHORA.minusHours(2), IMEI_1, null));
         reservas.pasada(AHORA);
         verify(dao).resolverReservaPuesta(1, null, AHORA);
-        verify(dao, never()).soltarReserva(anyInt(), any(), any());
+        verify(dao, never()).soltarReserva(anyInt(), any(), any(), any());
     }
 
     // ---------------------------------------------------------------- 2. soltar
@@ -208,21 +208,23 @@ class ReservasTest {
         filas(fila(1, null, null, AHORA.minusHours(1), null, IMEI_1, null));
         reservados(enStock(IMEI_1));
         assertEquals(new Reservas.Resumen(0, 1, 0), reservas.pasada(AHORA));
-        verify(dao).soltarReserva(1, Reservas.CANCELADA, AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CANCELADA), eq(AHORA));
     }
 
     @Test void conMarcaSeSueltaComoCancelada() {
         filas(fila(1, null, "PENDIENTE_COLOR", null, null, IMEI_1, null));
         reservados(enStock(IMEI_1));
         reservas.pasada(AHORA);
-        verify(dao).soltarReserva(1, Reservas.CANCELADA, AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CANCELADA), eq(AHORA));
     }
 
-    @Test void cerradaConEnvioYSinImeiSeSueltaComoNoDisponible() {
+    @Test void cerradaConEnvioYSinImeiSeSueltaComoEnviadaSinImei() {
+        // Logistica seguramente lo envio sin teclearlo: las devoluciones no deben devolverlo a stock.
         filas(fila(1, null, null, AHORA.minusHours(1), AHORA.minusHours(1), IMEI_1, null));
         reservados(enStock(IMEI_1));
         reservas.pasada(AHORA);
-        verify(dao).soltarReserva(1, Reservas.NO_DISPONIBLE, AHORA);
+        verify(dao).soltarReserva(1, IMEI_1, Reservas.ENVIADA_SIN_IMEI, AHORA);
+        assertEquals("ENVIADA_SIN_IMEI", Reservas.ENVIADA_SIN_IMEI);
     }
 
     @Test void enLasCajasDeRevisarSeSueltaComoNoEncontrado() {
@@ -230,8 +232,8 @@ class ReservasTest {
         reservados(movil(IMEI_1, REVISAR, EstadoMovil.NO_CUENTA), movil(IMEI_2, " " + MV_REVISAR + " ", EstadoMovil.NO_CUENTA));
         stock();
         assertEquals(2, reservas.pasada(AHORA).soltadas());
-        verify(dao).soltarReserva(1, Reservas.NO_ENCONTRADO, AHORA);
-        verify(dao).soltarReserva(2, Reservas.NO_ENCONTRADO, AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.NO_ENCONTRADO), eq(AHORA));
+        verify(dao).soltarReserva(eq(2), anyString(), eq(Reservas.NO_ENCONTRADO), eq(AHORA));
     }
 
     @Test void fueraDeLaEmpresaVendidoDeBajaOEnOtraCajaSeSueltaComoNoDisponible() {
@@ -240,7 +242,7 @@ class ReservasTest {
                 movil("350000000000004", "CF", EstadoMovil.NO_CUENTA)); // IMEI_1 ya no esta en el espejo
         stock();
         reservas.pasada(AHORA);
-        for (int id = 1; id <= 4; id++) verify(dao).soltarReserva(id, Reservas.NO_DISPONIBLE, AHORA);
+        for (int id = 1; id <= 4; id++) verify(dao).soltarReserva(eq(id), anyString(), eq(Reservas.NO_DISPONIBLE), eq(AHORA));
     }
 
     @Test void enStockConUnGradoQueNoSeVendeSeSueltaComoNoDisponible() {
@@ -250,7 +252,7 @@ class ReservasTest {
         reservados(conRma);
         stock();
         reservas.pasada(AHORA);
-        verify(dao).soltarReserva(1, Reservas.NO_DISPONIBLE, AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.NO_DISPONIBLE), eq(AHORA));
     }
 
     @Test void puestoEnOtraFilaSeSueltaComoNoDisponible() {
@@ -259,7 +261,7 @@ class ReservasTest {
         reservados(enStock(IMEI_1));
         stock();
         reservas.pasada(AHORA);
-        verify(dao).soltarReserva(1, Reservas.NO_DISPONIBLE, AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.NO_DISPONIBLE), eq(AHORA));
     }
 
     @Test void enStockOEnPedidosRealizadosNoSeSuelta() {
@@ -267,7 +269,7 @@ class ReservasTest {
         reservados(enStock(IMEI_1), movil(IMEI_2, "Pedidos realizados", EstadoMovil.DE_PEDIDO));
         stock(enStock(IMEI_1));
         assertEquals(new Reservas.Resumen(0, 0, 0), reservas.pasada(AHORA));
-        verify(dao, never()).soltarReserva(anyInt(), any(), any());
+        verify(dao, never()).soltarReserva(anyInt(), any(), any(), any());
         verify(dao, never()).reservar(anyInt(), anyString(), anyString(), any());
     }
 
@@ -277,7 +279,7 @@ class ReservasTest {
         reservados(enStock(IMEI_1), movil(IMEI_1, LISTOS, EstadoMovil.VENDIDO));
         stock();
         reservas.pasada(AHORA);
-        verify(dao, never()).soltarReserva(anyInt(), any(), any());
+        verify(dao, never()).soltarReserva(anyInt(), any(), any(), any());
     }
 
     @Test void laFilaSoltadaQueSigueEsperandoReservaOtroTelefonoEnLaMismaPasada() {
@@ -286,7 +288,7 @@ class ReservasTest {
         stock(enStock(IMEI_2));
         assertEquals(new Reservas.Resumen(1, 1, 0), reservas.pasada(AHORA));
         InOrder orden = inOrder(dao);
-        orden.verify(dao).soltarReserva(1, Reservas.NO_ENCONTRADO, AHORA);
+        orden.verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.NO_ENCONTRADO), eq(AHORA));
         orden.verify(dao).reservar(eq(1), eq(IMEI_2), anyString(), eq(AHORA));
     }
 
@@ -295,7 +297,7 @@ class ReservasTest {
         reservados(enStock(IMEI_1));
         stock(enStock(IMEI_1));
         assertEquals(new Reservas.Resumen(1, 1, 0), reservas.pasada(AHORA));
-        verify(dao).soltarReserva(1, Reservas.CANCELADA, AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CANCELADA), eq(AHORA));
         verify(dao).reservar(eq(2), eq(IMEI_1), anyString(), eq(AHORA));
         verify(dao, never()).reservar(eq(1), anyString(), anyString(), any());
     }
@@ -307,7 +309,7 @@ class ReservasTest {
         reservas.pasada(AHORA);
         InOrder orden = inOrder(dao);
         orden.verify(dao).resolverReservaPuesta(1, null, AHORA);
-        orden.verify(dao).soltarReserva(2, Reservas.NO_DISPONIBLE, AHORA);
+        orden.verify(dao).soltarReserva(eq(2), anyString(), eq(Reservas.NO_DISPONIBLE), eq(AHORA));
         orden.verify(dao).reservar(anyInt(), eq(IMEI_2), anyString(), eq(AHORA));
     }
 
@@ -317,5 +319,22 @@ class ReservasTest {
         stock();
         reservas.pasada(AHORA);
         verify(nsys).porImeis(argThat(c -> new ArrayList<>(c).containsAll(List.of(IMEI_1, IMEI_2)) && c.size() == 2));
+    }
+
+    @Test void alSoltarSePasaElImeiReservadoQueSeVio() {
+        filas(fila(1, null, "CANCELADO", null, null, IMEI_2, null));
+        reservados(enStock(IMEI_2));
+        reservas.pasada(AHORA);
+        verify(dao).soltarReserva(1, IMEI_2, Reservas.CANCELADA, AHORA);
+    }
+
+    @Test void unImeiConfirmadoEnElPaso1NoSeOfreceAOtraFilaEnLaMismaPasada() {
+        // La lectura de «ya puestos» no lo trae (p. ej. leida antes): aun asi el IMEI de la fila resuelta queda ocupado.
+        filas(fila(1, IMEI_1, null, null, null, IMEI_1, null), esperando(2));
+        stock(enStock(IMEI_1));
+        reservas.pasada(AHORA);
+        verify(dao).resolverReservaPuesta(1, null, AHORA);
+        verify(dao, never()).reservar(anyInt(), anyString(), anyString(), any());
+        verify(dao).apuntarSinStock(2, AHORA);
     }
 }

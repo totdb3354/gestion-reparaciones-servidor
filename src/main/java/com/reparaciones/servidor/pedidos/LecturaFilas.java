@@ -195,7 +195,7 @@ public class LecturaFilas {
                 try {
                     reservas.pasada(LocalDateTime.now(clock));
                 } catch (RuntimeException e) {
-                    log.warn("Pedidos: no se pudieron hacer las reservas de IMEI", e);
+                    log.warn("Pedidos: no se pudieron hacer las reservas de IMEI: {}", e.getClass().getSimpleName());
                     avisos.add(AVISO_RESERVAS);
                 }
             }

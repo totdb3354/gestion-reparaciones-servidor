@@ -15,7 +15,8 @@ import java.time.LocalDateTime;
  *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP).
  *  Reserva de IMEI (imeiAnterior/imeiNuevo son el IMEI reservado, segun el caso): RESERVADO (el ERP aparto un IMEI para la fila: imeiNuevo),
  *  RESERVA_CONFIRMADA (una persona o el bot puso ese mismo IMEI y la reserva paso a ser el IMEI de la fila), RESERVA_SUSTITUIDA (se puso
- *  otro IMEI distinto y la reserva se solto: imeiAnterior), RESERVA_QUITADA (la reserva se solto sin poner IMEI: imeiAnterior) y SIN_STOCK
+ *  otro IMEI distinto y la reserva se solto: imeiAnterior), RESERVA_QUITADA (la reserva se solto sin poner IMEI: imeiAnterior; detalle = el motivo: CANCELADA, ENVIADA_SIN_IMEI
+ *  (la fila se envio sin IMEI: el movil seguramente salio sin teclearlo y no se devuelve a stock), NO_ENCONTRADO o NO_DISPONIBLE) y SIN_STOCK
  *  (no habia IMEI libre que reservar; una vez hasta que reserve; sin IMEI). */
 public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime fecha,
                          @Schema(nullable = true) String imeiAnterior, @Schema(nullable = true) String imeiNuevo, String tipo,
@@ -36,7 +37,7 @@ public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime 
     public static final String RESERVA_CONFIRMADA = "RESERVA_CONFIRMADA";
     /** Se puso otro IMEI y la reserva se solto. */
     public static final String RESERVA_SUSTITUIDA = "RESERVA_SUSTITUIDA";
-    /** La reserva se solto sin poner IMEI. */
+    /** La reserva se solto sin poner IMEI; DETALLE = CANCELADA, ENVIADA_SIN_IMEI, NO_ENCONTRADO o NO_DISPONIBLE. */
     public static final String RESERVA_QUITADA = "RESERVA_QUITADA";
     /** No habia IMEI libre que reservar. */
     public static final String SIN_STOCK = "SIN_STOCK";

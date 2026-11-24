@@ -23,7 +23,9 @@ import java.util.function.Function;
 
 /** La pasada de reservas de IMEI (spec reserva §5), al final de cada vuelta de {@link LecturaFilas}: 1) resuelve las reservas de
  *  las filas que ya tienen IMEI puesto; 2) suelta las que ya no valen; 3) reparte ({@link Reparto}) un telefono a las filas que
- *  esperan y apunta «sin stock» a las que se quedan sin. Cada escritura es una transaccion por fila con la fila bloqueada
+ *  esperan y apunta «sin stock» a las que se quedan sin. Motivos para soltar (DETALLE de RESERVA_QUITADA): {@link #CANCELADA},
+ *  {@link #ENVIADA_SIN_IMEI} (la fila se envio sin IMEI: logistica seguramente mando ese movil sin teclearlo, asi que las
+ *  devoluciones NO deben devolverlo a stock), {@link #NO_ENCONTRADO} y {@link #NO_DISPONIBLE}. Cada escritura es una transaccion por fila con la fila bloqueada
  *  ({@link FilasDAO}), para no pisar a una persona que ponga el IMEI a la vez. */
 @Service
 public class Reservas {
@@ -32,6 +34,8 @@ public class Reservas {
 
     /** Motivos de RESERVA_QUITADA (DETALLE). La fila se cerro sin envio o tiene una marca. */
     public static final String CANCELADA = "CANCELADA";
+    /** La fila se cerro con envio y sin IMEI: seguramente salio el movil reservado sin teclearlo; no se devuelve a stock. */
+    public static final String ENVIADA_SIN_IMEI = "ENVIADA_SIN_IMEI";
     /** El movil esta en una de las cajas de revisar ({@link #CAJAS_REVISAR}): una persona no lo encuentra. */
     public static final String NO_ENCONTRADO = "NO_ENCONTRADO";
     /** El movil ya no esta en la empresa, su estado no es STOCK ni «de pedido», o esta puesto en otra fila. */
@@ -61,10 +65,13 @@ public class Reservas {
         List<FilaPedido> conReserva = new ArrayList<>();
         List<FilaPedido> sinReserva = new ArrayList<>();
         int resueltas = 0;
+        // El IMEI puesto en las resueltas queda ocupado aunque la lectura de «ya puestos» no lo traiga.
+        Set<String> resueltos = new HashSet<>();
         for (FilaPedido f : filas) {
             if (f.imeiReservado() == null) sinReserva.add(f);
             else if (conImei(f)) {
                 dao.resolverReservaPuesta(f.id(), null, ahora);
+                resueltos.add(NsysDAO.claveCruce(f.imei()));
                 resueltas++;
             } else conReserva.add(f);
         }
@@ -92,7 +99,7 @@ public class Reservas {
                     retenidos.add(clave);
                     continue;
                 }
-                dao.soltarReserva(f.id(), motivo, ahora);
+                dao.soltarReserva(f.id(), f.imeiReservado(), motivo, ahora);
                 soltadas++;
                 if (espera(f)) esperando.add(f);
             }
@@ -118,6 +125,7 @@ public class Reservas {
             if (!paraReparto.isEmpty()) {
                 Set<String> ocupados = new HashSet<>(puestos.keySet());
                 ocupados.addAll(retenidos);
+                ocupados.addAll(resueltos);
                 List<MovilNsys> stock = new ArrayList<>();
                 for (MovilNsys m : nsysDao.enEmpresa())
                     if (m.imeiSn() != null && m.imeiSn().strip().length() <= FilasDAO.ANCHO_RESERVADO) stock.add(m);
@@ -134,16 +142,18 @@ public class Reservas {
         }
 
         Resumen resumen = new Resumen(reservadas, soltadas, sinStock);
-        log.info("Pedidos: reservas de IMEI: {} reservadas, {} soltadas, {} sin stock, {} resueltas al poner el IMEI",
-                reservadas, soltadas, sinStock, resueltas);
+        // Cada 5 minutos: a INFO solo si hizo algo.
+        String texto = "Pedidos: reservas de IMEI: {} reservadas, {} soltadas, {} sin stock, {} resueltas al poner el IMEI";
+        if (reservadas > 0 || soltadas > 0 || resueltas > 0) log.info(texto, reservadas, soltadas, sinStock, resueltas);
+        else log.debug(texto, reservadas, soltadas, sinStock, resueltas);
         return resumen;
     }
 
     /** El motivo para soltar la reserva de una fila sin IMEI, o null si sigue valiendo. {@code movil}: el lote mas reciente del IMEI
      *  reservado (null si no esta en el espejo); {@code puesto}: el IMEI esta puesto en otra fila. */
     static String motivoParaSoltar(FilaPedido f, MovilNsys movil, Function<MovilNsys, LoQueVale.Valor> vale, boolean puesto) {
-        if (f.marca() != null) return CANCELADA;
-        if (f.cerradaEn() != null) return f.envioFecha() == null ? CANCELADA : NO_DISPONIBLE;
+        if (f.cerradaEn() != null && f.envioFecha() != null) return ENVIADA_SIN_IMEI;
+        if (f.marca() != null || f.cerradaEn() != null) return CANCELADA;
         if (movil == null) return NO_DISPONIBLE;
         if (CAJAS_REVISAR.contains(Normalizacion.caja(movil.location()))) return NO_ENCONTRADO;
         EstadoMovil estado = movil.estado() == null ? null : movil.estado().conGrado(grado(movil, vale));

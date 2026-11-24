@@ -119,7 +119,7 @@ class ReservaDAOTest {
 
     @Test void soltarReservaBorraLaReservaYApuntaElMotivoConElReservado() {
         bloqueada("SHIPPYPRO", null, "CANCELADO", null, IMEI_1, null);
-        dao.soltarReserva(5, Reservas.CANCELADA, AHORA);
+        dao.soltarReserva(5, IMEI_1, Reservas.CANCELADA, AHORA);
         var orden = inOrder(jdbc);
         orden.verify(jdbc).query(eq(BLOQUEO), any(RowMapper.class), eq(5));
         orden.verify(jdbc).update(QUITAR, 5);
@@ -128,9 +128,29 @@ class ReservaDAOTest {
 
     @Test void soltarReservaSinReservaNoHaceNada() {
         esperando();
-        dao.soltarReserva(5, Reservas.NO_DISPONIBLE, AHORA);
-        dao.soltarReserva(6, Reservas.NO_DISPONIBLE, AHORA); // no existe
+        dao.soltarReserva(5, IMEI_1, Reservas.NO_DISPONIBLE, AHORA);
+        dao.soltarReserva(6, IMEI_1, Reservas.NO_DISPONIBLE, AHORA); // no existe
         noEscribe();
+    }
+
+    @Test void soltarReservaNoTocaUnaFilaQueYaTieneImeiLoResuelveLaPasadaSiguiente() {
+        bloqueada("SHIPPYPRO", IMEI_2, "CANCELADO", null, IMEI_1, null);
+        dao.soltarReserva(5, IMEI_1, Reservas.CANCELADA, AHORA);
+        bloqueada("SHIPPYPRO", IMEI_1, null, null, IMEI_1, null);
+        dao.soltarReserva(5, IMEI_1, Reservas.NO_DISPONIBLE, AHORA);
+        noEscribe();
+    }
+
+    @Test void soltarReservaNoTocaUnaReservaQueYaNoEsLaQueSeVio() {
+        bloqueada("SHIPPYPRO", null, null, null, IMEI_2, null);
+        dao.soltarReserva(5, IMEI_1, Reservas.NO_DISPONIBLE, AHORA);
+        noEscribe();
+    }
+
+    @Test void soltarReservaComparaElReservadoPorClaveDeCruce() {
+        bloqueada("SHIPPYPRO", "", null, AHORA, IMEI_1, null);
+        dao.soltarReserva(5, " " + IMEI_1 + " ", Reservas.ENVIADA_SIN_IMEI, AHORA);
+        verify(jdbc).update(APUNTE, 5, null, T, IMEI_1, null, CambioImei.RESERVA_QUITADA, "ENVIADA_SIN_IMEI");
     }
 
     // ---------------------------------------------------------------- resolverReservaPuesta

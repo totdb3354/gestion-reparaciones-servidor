@@ -667,11 +667,15 @@ public class FilasDAO {
     }
 
     /** Suelta la reserva de la fila sin poner IMEI: borra IMEI_RESERVADO y RESERVADA_EN y apunta RESERVA_QUITADA (IMEI_ANTERIOR = el
-     *  reservado, DETALLE = {@code motivo}: CANCELADA, NO_ENCONTRADO o NO_DISPONIBLE). Sin reserva (o sin fila) no hace nada. */
+     *  reservado, DETALLE = {@code motivo}: CANCELADA, ENVIADA_SIN_IMEI, NO_ENCONTRADO o NO_DISPONIBLE). Se decide con la fila
+     *  bloqueada: no hace nada si no existe, si su reserva ya no es {@code imeiEsperado} (el que vio la pasada; por
+     *  {@link NsysDAO#claveCruce}) o si ya tiene IMEI (una persona lo acaba de poner: la pasada siguiente lo resuelve como
+     *  RESERVA_CONFIRMADA o RESERVA_SUSTITUIDA). */
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public void soltarReserva(int idFila, String motivo, LocalDateTime ahora) {
+    public void soltarReserva(int idFila, String imeiEsperado, String motivo, LocalDateTime ahora) {
         Optional<BloqueadaReserva> f = bloquearParaReserva(idFila);
-        if (f.isEmpty() || f.get().reservado() == null) return;
+        if (f.isEmpty() || f.get().reservado() == null || !f.get().sinImei()) return;
+        if (!NsysDAO.claveCruce(f.get().reservado()).equals(NsysDAO.claveCruce(imeiEsperado))) return;
         jdbc.update(SQL_QUITAR_RESERVA, idFila);
         jdbc.update(SQL_CAMBIO_RESERVA, idFila, null, Timestamp.valueOf(ahora), f.get().reservado(), null, CambioImei.RESERVA_QUITADA,
                 motivo);
