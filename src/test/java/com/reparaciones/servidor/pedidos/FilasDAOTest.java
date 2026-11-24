@@ -253,7 +253,7 @@ class FilasDAOTest {
         verifyNoInteractions(jdbc);
     }
 
-    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    private static final String SQL_BLOQUEO = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI, IMEI_RESERVADO FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
 
     /** El mapeador del bloqueo recibe un ResultSet: se simula con la fila indicada. */
     @SuppressWarnings("unchecked")

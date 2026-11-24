@@ -71,7 +71,7 @@ public class FilasDAO {
     static final String SQL_SHIPPYPRO_CON_IMEI_DESDE = SQL_FILAS + " WHERE ORIGEN = 'SHIPPYPRO' AND IMEI IS NOT NULL AND IMEI <> ''"
             + " AND (CERRADA_EN IS NULL OR FECHA >= ?)";
     static final String SQL_SHIPPYPRO_CON_IMEI = SQL_SHIPPYPRO_CON_IMEI_DESDE + " AND IMEI IN (%s) ORDER BY FECHA, ID_FILA";
-    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
+    static final String SQL_FILA_BLOQUEADA = "SELECT IMEI, ORIGEN, MARCA, VALIDADA_IMEI, IMEI_RESERVADO FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_FILA_VALIDACION_BLOQUEADA = "SELECT IMEI, ORIGEN, VALIDADA_IMEI FROM Pedido_fila WHERE ID_FILA = ? FOR UPDATE";
     static final String SQL_PONER_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = ?, VALIDADA_EN = ?, VALIDADA_USU = ? WHERE ID_FILA = ?";
     static final String SQL_QUITAR_VALIDACION = "UPDATE Pedido_fila SET VALIDADA_IMEI = NULL, VALIDADA_EN = NULL, VALIDADA_USU = NULL WHERE ID_FILA = ?";
@@ -157,10 +157,26 @@ public class FilasDAO {
     /** Ancho de Pedido_fila_cambio.DETALLE. */
     static final int ANCHO_DETALLE = 250;
 
+    /** Reservados al bot (spec reserva §6): las filas vivas sin IMEI con IMEI_RESERVADO cuya reserva cae en la ventana. Mismo
+     *  formato de columnas que {@link #SQL_VENDIDOS}; la fecha es RESERVADA_EN. Solo con {@code pedidos.reserva.al-bot=true}. */
+    static final String SQL_VENDIDOS_RESERVADOS = "SELECT f.IMEI_RESERVADO AS IMEI, f.SKU, f.CANAL,"
+            + " CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO,"
+            + " f.RESERVADA_EN AS FECHA_IMEI FROM Pedido_fila f"
+            + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.CERRADA_EN IS NULL AND f.MARCA IS NULL AND (f.IMEI IS NULL OR f.IMEI = '')"
+            + " AND f.IMEI_RESERVADO REGEXP '^[0-9]{15}$' AND f.RESERVADA_EN >= ?"
+            + " AND (? IS NULL OR f.CANAL = ?) ORDER BY f.RESERVADA_EN DESC, f.ID_FILA DESC LIMIT ?";
+
     private final JdbcTemplate jdbc;
+    private final boolean reservadosAlBot;
 
     public FilasDAO(JdbcTemplate jdbc) {
+        this(jdbc, false);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FilasDAO(JdbcTemplate jdbc, @org.springframework.beans.factory.annotation.Value("${pedidos.reserva.al-bot:false}") boolean reservadosAlBot) {
         this.jdbc = jdbc;
+        this.reservadosAlBot = reservadosAlBot;
     }
 
     // ---------------------------------------------------------------- filas
@@ -329,9 +345,20 @@ public class FilasDAO {
         List<Vendido> filas = jdbc.query(SQL_VENDIDOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
                 rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
                 Timestamp.valueOf(desde), Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
+        if (reservadosAlBot) {
+            List<Vendido> reservados = jdbc.query(SQL_VENDIDOS_RESERVADOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
+                    rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
+                    Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
+            // Las dos listas vienen de la mas reciente a la mas antigua: se mezclan (estable) y, tras el dedup, vuelve el tope.
+            List<Vendido> todas = new ArrayList<>(filas);
+            todas.addAll(reservados);
+            todas.sort(java.util.Comparator.comparing(Vendido::fechaImei, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+            filas = todas;
+        }
         java.util.Map<String, Vendido> porImei = new java.util.LinkedHashMap<>();
         for (Vendido v : filas) porImei.putIfAbsent(v.imei(), v);
-        return new ArrayList<>(porImei.values());
+        List<Vendido> r = new ArrayList<>(porImei.values());
+        return reservadosAlBot && r.size() > tope ? new ArrayList<>(r.subList(0, tope)) : r;
     }
 
     /** Resultado de {@link #ponerImei}: PUESTO, NO_EXISTE, CERRADA (del historico: no se toca) o CAMBIADA (el IMEI actual no es el que la persona esperaba). */
@@ -343,7 +370,7 @@ public class FilasDAO {
         /** Solo de {@link #ponerFaltaEnviar}: la fila esta cancelada; hay que quitar la cancelacion antes de marcar (spec 2026-11-23). */
         CANCELADA_NO_MARCABLE }
 
-    private record Bloqueada(String imei, boolean historico, String marca, String validadaImei) {}
+    private record Bloqueada(String imei, boolean historico, String marca, String validadaImei, String reservado) {}
 
     /** Lanza {@link ImeiDuplicadoException} (sin escribir nada) si el IMEI esta en otra fila que cuenta segun {@link #SQL_DUPLICADO}. */
     private void comprobarDuplicado(String imei, int idFila) {
@@ -363,7 +390,8 @@ public class FilasDAO {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Resultado ponerImei(int idFila, String imei, String imeiAnterior, Integer idUsu, LocalDateTime ahora) {
         List<Bloqueada> filas = jdbc.query(SQL_FILA_BLOQUEADA,
-                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA"), rs.getString("VALIDADA_IMEI")), idFila);
+                (rs, n) -> new Bloqueada(rs.getString("IMEI"), "HISTORICO".equals(rs.getString("ORIGEN")), rs.getString("MARCA"), rs.getString("VALIDADA_IMEI"),
+                        rs.getString("IMEI_RESERVADO")), idFila);
         if (filas.isEmpty()) return Resultado.NO_EXISTE;
         if (filas.get(0).historico()) return Resultado.CERRADA;
         if (imeiAnterior != null && !imeiAnterior.equals(filas.get(0).imei() == null ? "" : filas.get(0).imei()))
@@ -383,6 +411,8 @@ public class FilasDAO {
             jdbc.update(SQL_CAMBIO_DETALLE, idFila, idUsu, Timestamp.valueOf(ahora), CambioImei.MARCA_QUITADA,
                     Marca.ESPERA_STOCK.name() + SEP_DETALLE + "al poner el IMEI");
         }
+        // Una fila con reserva a la que una persona pone IMEI: se confirma o se sustituye con su usuario (spec reserva §7).
+        if (nuevo != null && !nuevo.isBlank() && filas.get(0).reservado() != null) apuntarReservaResuelta(idFila, idUsu, ahora, filas.get(0).reservado(), nuevo);
         return Resultado.PUESTO;
     }
 
@@ -689,8 +719,11 @@ public class FilasDAO {
     public void resolverReservaPuesta(int idFila, Integer idUsu, LocalDateTime ahora) {
         Optional<BloqueadaReserva> f = bloquearParaReserva(idFila);
         if (f.isEmpty() || f.get().reservado() == null || f.get().sinImei()) return;
-        String reservado = f.get().reservado();
-        String puesto = f.get().imei();
+        apuntarReservaResuelta(idFila, idUsu, ahora, f.get().reservado(), f.get().imei());
+    }
+
+    /** Sin bloqueo propio (lo pone quien llama): borra la reserva y apunta RESERVA_CONFIRMADA o RESERVA_SUSTITUIDA. */
+    private void apuntarReservaResuelta(int idFila, Integer idUsu, LocalDateTime ahora, String reservado, String puesto) {
         String tipo = NsysDAO.claveCruce(puesto).equals(NsysDAO.claveCruce(reservado)) ? CambioImei.RESERVA_CONFIRMADA
                 : CambioImei.RESERVA_SUSTITUIDA;
         jdbc.update(SQL_QUITAR_RESERVA, idFila);

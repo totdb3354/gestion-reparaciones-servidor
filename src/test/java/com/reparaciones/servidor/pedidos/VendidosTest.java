@@ -101,6 +101,62 @@ class VendidosTest {
         verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(desde), eq(desde), eq("DISTRIBUIDORES"), eq("DISTRIBUIDORES"), eq(5000));
     }
 
+    private static final Timestamp DESDE = Timestamp.valueOf(LocalDateTime.of(2026, 11, 5, 0, 0));
+
+    private static ResultSet reservada(String imei, String sku, String canal, int hora) throws Exception {
+        ResultSet rs = fila(imei, sku, hora);
+        when(rs.getString("CANAL")).thenReturn(canal);
+        return rs;
+    }
+
+    @Test void conElAjusteEncendidoSirveTambienLosReservadosMezclados() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), any(Timestamp.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+            RowMapper<Vendido> mapa = inv.getArgument(1);
+            return List.of(mapa.mapRow(fila("350000000000001", "a", 11), 0), mapa.mapRow(fila("350000000000002", "b", 9), 1));
+        });
+        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+            RowMapper<Vendido> mapa = inv.getArgument(1);
+            return List.of(mapa.mapRow(reservada("350000000000003", "r", "AMAZON", 12), 0), mapa.mapRow(reservada("350000000000002", "r2", "AMAZON", 10), 1));
+        });
+        List<Vendido> r = new FilasDAO(jdbc, true).vendidosDesde(DESDE.toLocalDateTime(), Canal.AMAZON, 5000);
+        assertEquals(List.of("350000000000003", "350000000000001", "350000000000002"), r.stream().map(Vendido::imei).toList());
+        assertEquals("r2", r.get(2).sku(), "el IMEI repetido se queda con la fecha mas reciente (la reserva de las 10, no la de las 9)");
+        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(DESDE), eq(DESDE), eq("AMAZON"), eq("AMAZON"), eq(5000));
+        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), eq(DESDE), eq("AMAZON"), eq("AMAZON"), eq(5000));
+    }
+
+    @Test void conElAjusteEncendidoElTopeSeAplicaTrasMezclar() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), any(Timestamp.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+            RowMapper<Vendido> mapa = inv.getArgument(1);
+            return List.of(mapa.mapRow(fila("350000000000001", "a", 11), 0));
+        });
+        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+            RowMapper<Vendido> mapa = inv.getArgument(1);
+            return List.of(mapa.mapRow(reservada("350000000000003", "r", "AMAZON", 12), 0));
+        });
+        List<Vendido> r = new FilasDAO(jdbc, true).vendidosDesde(DESDE.toLocalDateTime(), null, 1);
+        assertEquals(List.of("350000000000003"), r.stream().map(Vendido::imei).toList());
+    }
+
+    @Test void conElAjusteApagadoNoSeConsultanLosReservados() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        new FilasDAO(jdbc, false).vendidosDesde(DESDE.toLocalDateTime(), null, 5000);
+        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(DESDE), eq(DESDE), isNull(), isNull(), eq(5000));
+        org.mockito.Mockito.verifyNoMoreInteractions(jdbc);
+    }
+
+    @Test void laConsultaDeReservadosPideLoQueDiceLaSpec() {
+        String sql = FilasDAO.SQL_VENDIDOS_RESERVADOS;
+        assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO' AND f.CERRADA_EN IS NULL AND f.MARCA IS NULL AND (f.IMEI IS NULL OR f.IMEI = '')"));
+        assertTrue(sql.contains("f.RESERVADA_EN >= ?"));
+        assertTrue(sql.contains("f.RESERVADA_EN AS FECHA_IMEI"));
+        assertTrue(sql.contains("f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END"), "Amazon sin asociar: pedido nulo");
+        assertTrue(sql.contains("AND (? IS NULL OR f.CANAL = ?)"));
+        assertTrue(sql.endsWith("LIMIT ?"));
+    }
+
     @Test void laConsultaPideLoQueDiceLaSpec() {
         String sql = FilasDAO.SQL_VENDIDOS;
         assertTrue(!sql.contains("PLATAFORMA"), "la plataforma no se lee");
