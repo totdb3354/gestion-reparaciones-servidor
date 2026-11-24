@@ -86,4 +86,13 @@ class CalendarioLaboralTest {
         assertThat(cal.festivos()).containsExactly(LocalDate.of(2026, 12, 8));
         verify(jdbc, times(2)).query(anyString(), any(RowMapper.class));
     }
+
+    @Test
+    void primerLaborableEsElMismoDiaSiEsLaborableYSiNoElSiguiente() {
+        Set<LocalDate> festivos = Set.of(LocalDate.of(2026, 12, 8), LocalDate.of(2026, 11, 23));
+        assertThat(CalendarioLaboral.primerLaborable(LocalDate.of(2026, 11, 20), festivos)).isEqualTo(LocalDate.of(2026, 11, 20)); // viernes
+        assertThat(CalendarioLaboral.primerLaborable(LocalDate.of(2026, 11, 21), festivos)).isEqualTo(LocalDate.of(2026, 11, 24)); // sab -> lun festivo -> mar
+        assertThat(CalendarioLaboral.primerLaborable(LocalDate.of(2026, 11, 22), festivos)).isEqualTo(LocalDate.of(2026, 11, 24)); // domingo
+        assertThat(CalendarioLaboral.primerLaborable(LocalDate.of(2026, 12, 8), festivos)).isEqualTo(LocalDate.of(2026, 12, 9));   // festivo
+    }
 }
