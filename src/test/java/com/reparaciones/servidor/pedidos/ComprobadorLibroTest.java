@@ -4,6 +4,7 @@ import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.LoQueVale;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
+import com.reparaciones.servidor.nsys.ProductoMaestro;
 import com.reparaciones.servidor.nsys.TallerNsys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,25 @@ class ComprobadorLibroTest {
         ComprobadorLibro.Rechazo r = comprobador.rechazos(Canal.AMAZON, pedido).get(X);
         assertNotNull(r);
         assertEquals("el pedido es — y el móvil es i13128AzulA", r.detalle());
+    }
+
+    private static MovilNsys conEsim(MovilNsys m, boolean esim) {
+        return new MovilNsys(m.imeiSn(), m.batch(), m.goods(), m.grade(), m.status(), m.location(), m.supplier(), m.receivingDate(),
+                m.soldDate(), m.sku(), m.modelo(), m.modeloMaestro(), m.capacidad(), m.color(), m.gradoDetalle(), esim, m.ubicacion(),
+                m.ubicacionUltima(), m.estado(), m.vistoPrimero(), m.cambiado());
+    }
+
+    @Test void unMovilEsimEnUnPedidoSinEsimNoSeRechaza() {
+        when(nsysDao.porImeis(anyCollection())).thenReturn(List.of(conEsim(movil(X, "13"), true)));
+        assertTrue(comprobador.rechazos(Canal.AMAZON, Map.of(X, "i13128AzulA")).isEmpty());
+    }
+
+    @Test void unMovilConSimFisicaEnUnPedidoEsimNoSeRechaza() {
+        when(nsysDao.productosPorSkuDeCanal(anyCollection())).thenReturn(List.of(new ProductoMaestro("clave-esim", "13", "13", "128GB",
+                "Azul", "A", "i13128AzulAE", "i13128AzulAE", "i13128Azul", true, "Apple iPhone 13 128GB Azul eSIM", "i13128AzulAE",
+                null, null)));
+        when(nsysDao.porImeis(anyCollection())).thenReturn(List.of(conEsim(movil(X, "13"), false)));
+        assertTrue(comprobador.rechazos(Canal.AMAZON, Map.of(X, "i13128AzulAE")).isEmpty());
     }
 
     @Test void soloDevuelveLosQueNoValenYLeeUnaVez() {
