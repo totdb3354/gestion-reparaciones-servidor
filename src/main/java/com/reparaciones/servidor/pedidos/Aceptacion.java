@@ -31,6 +31,16 @@ public record Aceptacion(List<ProductoMaestro> productos, List<ProductoMaestro> 
         return productos.stream().anyMatch(p -> igual(p.color(), color) && igual(p.calidadDetalle(), grado));
     }
 
+    /** ¿Algún producto aceptado tiene ese color? Para decir «color: X» en vez de «otro color o grado». */
+    public boolean aceptaColor(String color) {
+        return productos.stream().anyMatch(p -> igual(p.color(), color));
+    }
+
+    /** ¿Algún producto aceptado tiene ese grado (Calidad Detalle)? */
+    public boolean aceptaGrado(String grado) {
+        return productos.stream().anyMatch(p -> igual(p.calidadDetalle(), grado));
+    }
+
     /** Lo que pide el pedido, para la tabla de diferencias: el modelo, la capacidad y la eSIM de sus productos, y el color y el
      *  grado del producto de grado A si lo hay (si no, del primero). */
     public Atributos pide() {

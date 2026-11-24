@@ -49,7 +49,7 @@ class ValidacionDAOTest {
     }
 
     @Test void validarBloqueaLaFilaLaEscribeConUsuarioYHoraYApuntaValidadaConElMotivo() {
-        for (String motivo : List.of("MODELO", "COLOR_O_GRADO", "GRADO_NO_VENDIBLE", "SKU_DESCONOCIDO")) {
+        for (String motivo : List.of("MODELO", "CAPACIDAD", "COLOR", "GRADO", "GRADO_NO_VENDIBLE", "SKU_DESCONOCIDO")) {
             clearInvocations(jdbc);
             fila("SHIPPYPRO", IMEI, null);
             assertEquals(FilasDAO.Resultado.PUESTO, dao.ponerValidacion(5, true, IMEI, motivo, null, 9, AHORA), motivo);

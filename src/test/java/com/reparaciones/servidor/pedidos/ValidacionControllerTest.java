@@ -47,7 +47,7 @@ class ValidacionControllerTest {
     }
 
     @Test void validarCadaMotivoDeSkuLlamaAlDaoConElImeiVistoElMotivoElUsuarioYLaHora() {
-        for (String motivo : new String[]{"MODELO", "COLOR_O_GRADO", "GRADO_NO_VENDIBLE", "SKU_DESCONOCIDO"}) {
+        for (String motivo : new String[]{"MODELO", "COLOR", "GRADO_NO_VENDIBLE", "SKU_DESCONOCIDO"}) {
             filaExiste();
             when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI, "MAL", motivo, null)));
             when(dao.ponerValidacion(5, true, IMEI, motivo, null, 7, AHORA)).thenReturn(FilasDAO.Resultado.PUESTO);
@@ -58,14 +58,14 @@ class ValidacionControllerTest {
 
     @Test void validarLoYaValidadoUsaElMotivoGuardadoYEsUn200() {
         filaExiste();
-        FilaVista validada = vistaDe(IMEI, "OK", null, "COLOR_O_GRADO");
+        FilaVista validada = vistaDe(IMEI, "OK", null, "COLOR");
         when(vista.fila(5)).thenReturn(Optional.of(validada));
-        when(dao.ponerValidacion(5, true, IMEI, "COLOR_O_GRADO", null, 7, AHORA)).thenReturn(FilasDAO.Resultado.SIN_CAMBIO);
+        when(dao.ponerValidacion(5, true, IMEI, "COLOR", null, 7, AHORA)).thenReturn(FilasDAO.Resultado.SIN_CAMBIO);
         assertSame(validada, controller.ponerValidacion(5, new PeticionValidacion(true, null), super_, null));
     }
 
     @Test void losMotivosQueNoSonDeSkuSon409SinEscribir() {
-        for (String motivo : new String[]{"NO_EN_NSYS", "EN_OTRA_FILA", "EN_TALLER", "MS", "B_POR_A", null}) {
+        for (String motivo : new String[]{"NO_EN_NSYS", "EN_OTRA_FILA", "EN_TALLER", "B_POR_A", null}) {
             filaExiste();
             when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI, motivo == null ? "OK" : "MAL", motivo, null)));
             ResponseStatusException e = assertThrows(ResponseStatusException.class,
@@ -89,7 +89,7 @@ class ValidacionControllerTest {
     @Test void quitarNoMiraElAvisoYLlamaAlDao() {
         filaExiste();
         when(dao.ponerValidacion(5, false, null, null, IMEI, 7, AHORA)).thenReturn(FilasDAO.Resultado.PUESTO);
-        when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI, "MAL", "COLOR_O_GRADO", null)));
+        when(vista.fila(5)).thenReturn(Optional.of(vistaDe(IMEI, "MAL", "COLOR", null)));
         assertNotNull(controller.ponerValidacion(5, new PeticionValidacion(false, IMEI), super_, null));
         verify(dao).ponerValidacion(5, false, null, null, IMEI, 7, AHORA);
     }

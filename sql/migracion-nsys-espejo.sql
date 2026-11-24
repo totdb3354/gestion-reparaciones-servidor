@@ -124,11 +124,11 @@ CREATE TABLE Nsys_ubicacion (
 INSERT INTO Nsys_ubicacion (LOCATION, UBICACION, CUENTA_STOCK, ES_PEDIDO, ORDEN) VALUES
     ('',                                                 'En revisión',            TRUE,  FALSE,  10),
     ('Funcionalidad pendiente',                          'Devolución',             TRUE,  FALSE,  20),
-    ('CAJA PULIR',                                       'Taller · Pulir',         TRUE,  FALSE,  30),
-    ('CAJA GLASS',                                       'Taller · Glass',         TRUE,  FALSE,  40),
-    ('CAJA REP. OFICINA',                                'Taller · Reparación',    TRUE,  FALSE,  50),
-    ('C.R. Pantalla Rota',                               'Taller · Pantalla rota', TRUE,  FALSE,  60),
-    ('CAJA LISTOS',                                      'Listos',                 TRUE,  FALSE,  70),
+    ('CAJA PULIR',                                       'Caja · Pulir',           TRUE,  FALSE,  30),
+    ('CAJA GLASS',                                       'Caja · Glass',           TRUE,  FALSE,  40),
+    ('CAJA REP. OFICINA',                                'Caja · Reparación',      TRUE,  FALSE,  50),
+    ('C.R. Pantalla Rota',                               'Caja · Pantalla rota',   TRUE,  FALSE,  60),
+    ('CAJA LISTOS',                                      'Caja · Listos',          TRUE,  FALSE,  70),
     ('AFaltaRepuestos',                                  'Esperando pieza',        FALSE, FALSE,  80),
     ('CF021',                                            'No vendible',            FALSE, FALSE,  90),
     ('Pedidos realizados',                               NULL,                     FALSE, TRUE,  100),
@@ -143,7 +143,7 @@ INSERT INTO Nsys_ubicacion (LOCATION, UBICACION, CUENTA_STOCK, ES_PEDIDO, ORDEN)
     ('MV Pedidos Realizados',                            NULL,                     FALSE, FALSE, 280),
     ('MV Pendiente revisar si hay error de inventario',  NULL,                     FALSE, FALSE, 290);
 
--- Comprobación (no modifica nada): debe dar 6. Compara los bytes UTF-8 de los seis nombres con tilde o «·», así no
+-- Comprobación (no modifica nada): debe dar 7. Compara los bytes UTF-8 de los siete nombres con tilde o «·», así no
 -- la engaña un cliente que enseñe mal los acentos. Si da menos, se guardaron mal (cliente sin utf8mb4) y la web,
 -- que busca esos nombres exactos, no los reconocerá.
 SELECT COUNT(*) AS ubicaciones_utf8_ok
@@ -151,7 +151,8 @@ SELECT COUNT(*) AS ubicaciones_utf8_ok
  WHERE HEX(UBICACION) IN (
        '456E20726576697369C3B36E',                          -- En revisión
        '4465766F6C756369C3B36E',                            -- Devolución
-       '54616C6C657220C2B72050756C6972',                    -- Taller · Pulir
-       '54616C6C657220C2B720476C617373',                    -- Taller · Glass
-       '54616C6C657220C2B7205265706172616369C3B36E',        -- Taller · Reparación
-       '54616C6C657220C2B72050616E74616C6C6120726F7461');   -- Taller · Pantalla rota
+       '43616A6120C2B72050756C6972',                        -- Caja · Pulir
+       '43616A6120C2B720476C617373',                        -- Caja · Glass
+       '43616A6120C2B7205265706172616369C3B36E',            -- Caja · Reparación
+       '43616A6120C2B72050616E74616C6C6120726F7461',        -- Caja · Pantalla rota
+       '43616A6120C2B7204C6973746F73');                     -- Caja · Listos

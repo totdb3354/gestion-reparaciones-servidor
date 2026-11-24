@@ -38,7 +38,9 @@ public final class Recomendador {
             String clave = NsysDAO.claveCruce(m.imeiSn());
             if (yaPuestos.contains(clave)) continue;
             EstadoUnidad.Resultado r = EstadoUnidad.de(ac, m, v, trabajos.get(clave), canal);
-            int nivel = switch (r.estado()) {
+            // Una SIM distinta no se propone (antes era MODELO); un n/a hay que transformarlo aunque el color cuadre.
+            if (r.sim() != null) continue;
+            int nivel = r.na() ? 3 : switch (r.estado()) {
                 case "CUADRA", "CON_AVISO" -> 1;
                 case "EN_TALLER" -> ac.acepta(v.sku()) ? 2 : 0;
                 case "NECESITA_TALLER" -> 3;

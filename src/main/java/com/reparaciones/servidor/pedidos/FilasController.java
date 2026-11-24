@@ -198,7 +198,7 @@ public class FilasController {
     }
 
     /** Da por bueno ({@code validar} true) el aviso naranja de SKU del IMEI de la fila, o quita la validacion (false). Validar exige IMEI y que el
-     *  aviso actual sea de SKU (MODELO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO; si no, 409). La validacion vale solo para ese IMEI.
+     *  aviso actual sea de SKU (MODELO, CAPACIDAD, COLOR, GRADO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO; si no, 409). La validacion vale solo para ese IMEI.
      *  {@code imeiAnterior} como en el PUT del IMEI (409 si no coincide). Validar lo ya validado o quitar lo no validado: 200 sin apunte. Devuelve la fila releida. */
     @ApiResponses({
         @ApiResponse(responseCode = "200", content = @Content(schema = @Schema(implementation = FilaVista.class))),

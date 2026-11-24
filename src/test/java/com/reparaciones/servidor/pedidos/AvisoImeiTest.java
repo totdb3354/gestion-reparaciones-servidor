@@ -10,7 +10,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 class AvisoImeiTest {
 
@@ -34,6 +34,12 @@ class AvisoImeiTest {
 
     private static LoQueVale.Valor vale(String color, String grade, String sku, String gradoNsys) {
         return new LoQueVale.Valor(color, grade, sku, null, gradoNsys, null, gradoNsys != null);
+    }
+
+    private static MovilNsys movilEsim(String grade) {
+        return new MovilNsys("350000000000001", "BT-9001", "Apple iPhone 13 128GB Blue", grade, "Available", "CAJA LISTOS",
+                "Proveedor A", LocalDate.of(2026, 9, 1), null, "i13128AzulA", "13", "13", "128GB", "Azul", grade, true,
+                "Listos", "Pedidos", EstadoMovil.STOCK, null, null);
     }
 
     private static void esperado(String nivel, String motivo, AvisoImei real) {
@@ -66,8 +72,8 @@ class AvisoImeiTest {
     }
 
     @Test void necesitaTallerEsMalColorOGrado() {
-        esperado("MAL", "COLOR_O_GRADO", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "A"), vale("Rojo", "A", "i13128RojoA", null), NINGUNO, false));
-        esperado("MAL", "COLOR_O_GRADO", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), NINGUNO, false));
+        esperado("MAL", "COLOR", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "A"), vale("Rojo", "A", "i13128RojoA", null), NINGUNO, false));
+        esperado("MAL", "GRADO", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), NINGUNO, false));
     }
 
     @Test void enTallerEsAviso() {
@@ -76,7 +82,9 @@ class AvisoImeiTest {
     }
 
     @Test void conAvisoMsYBPorA() {
-        esperado("AVISO", "MS", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "MsA"), vale("Azul", "MsA", "i13128AzulMs", null), NINGUNO, false));
+        AvisoImei ms = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "MsA"), vale("Azul", "MsA", "i13128AzulMs", null), NINGUNO, false);
+        esperado("AVISO", null, ms);
+        assertTrue(ms.detalle().ms());
         esperado("AVISO", "B_POR_A", AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "B"), vale("Azul", "B", "i13128AzulB", null), NINGUNO, false));
     }
 
@@ -88,5 +96,34 @@ class AvisoImeiTest {
     @Test void laCajaDeUnMovilDePedidoEsLaUltimaUbicacion() {
         assertEquals("Pedidos", AvisoImei.de(WEB_A, Canal.DISTRIBUIDORES, movil("13", "A", EstadoMovil.DE_PEDIDO),
                 vale("Azul", "A", "i13128AzulA", null), NINGUNO, false).caja());
+    }
+
+    @Test void lasSenalesYElNivel() {
+        AvisoImei sim = AvisoImei.de(AMAZON_A, Canal.AMAZON, movilEsim("A"), vale("Azul", "A", "i13128AzulA", null), NINGUNO, false);
+        assertEquals("AVISO", sim.nivel());
+        assertNull(sim.motivo());
+        assertEquals("ESIM", sim.detalle().sim());
+
+        AvisoImei na = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "n/a"), vale("Rosa", "n/a", null, null), NINGUNO, false);
+        assertEquals("MAL", na.nivel());
+        assertEquals("COLOR", na.motivo());
+        assertTrue(na.detalle().na());
+        assertEquals("Rosa", na.detalle().dato());
+
+        TrabajoAbierto glass = new TrabajoAbierto("GLASS", "Ana", LocalDateTime.of(2026, 11, 1, 9, 0), null);
+        AvisoImei taller = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "A"), vale("Azul", "A", "i13128AzulA", null), List.of(glass), false);
+        assertEquals("AVISO", taller.nivel());
+        assertEquals("EN_TALLER", taller.motivo());
+        assertEquals(List.of(glass), taller.detalle().trabajos());
+
+        AvisoImei bien = AvisoImei.de(AMAZON_A, Canal.AMAZON, movil("13", "A"), vale("Azul", "A", "i13128AzulA", null), NINGUNO, false);
+        assertEquals("OK", bien.nivel());
+        assertNull(bien.detalle(), "sin nada que decir, sin detalle");
+    }
+
+    @Test void losMotivosDeSkuNuevosSeValidan() {
+        for (String m : List.of("MODELO", "CAPACIDAD", "COLOR", "GRADO", "COLOR_O_GRADO", "GRADO_NO_VENDIBLE", "SKU_DESCONOCIDO"))
+            assertTrue(new AvisoImei("MAL", m, null, null).esDeSku(), m);
+        assertFalse(new AvisoImei("AVISO", "B_POR_A", null, null).esDeSku());
     }
 }
