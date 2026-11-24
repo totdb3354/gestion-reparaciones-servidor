@@ -30,7 +30,9 @@ public final class EstadoUnidad {
         if (ac == null) return new Resultado("NO_CUADRA", "SKU_DESCONOCIDO");
         Atributos pide = ac.pide();
         String sim = pide.esEsim() == m.esEsim() ? null : m.esEsim() ? "ESIM" : "SIM_FISICA";
-        if (!igual(pide.modelo(), m.modeloMaestro())) return new Resultado("NO_CUADRA", "MODELO", sim, false, false, m.modeloMaestro());
+        // El maestro y el espejo llaman al modelo de un eSIM «14 eSIM»: la SIM ya va en sim, el modelo se compara sin ella.
+        if (!igual(sinEsim(pide.modelo()), sinEsim(m.modeloMaestro())))
+            return new Resultado("NO_CUADRA", "MODELO", sim, false, false, sinEsim(m.modeloMaestro()));
         if (!igual(pide.capacidad(), m.capacidad())) return new Resultado("NO_CUADRA", "CAPACIDAD", sim, false, false, m.capacidad());
         String original = v.grade() == null ? "" : v.grade().strip();
         String grado = original.toUpperCase(Locale.ROOT);
@@ -65,6 +67,13 @@ public final class EstadoUnidad {
     /** Un C (con o sin Ms, con o sin «100») que el taller no ha convertido en A: solo el chasis lo hace A, la bateria nueva solo añade «100». Mira el grado que cuenta ahora. */
     static boolean cSinReparar(LoQueVale.Valor v) {
         return v.grade() != null && C_DE_NSYS.matcher(v.grade().strip()).matches();
+    }
+
+    private static final Pattern ESIM = Pattern.compile("(?i)\\s*\\besim\\b\\s*");
+
+    /** El modelo sin «eSIM» («14 eSIM» → «14», «16e eSIM» → «16e»); null sigue null. */
+    static String sinEsim(String modelo) {
+        return modelo == null ? null : ESIM.matcher(modelo).replaceAll(" ").strip();
     }
 
     private static boolean igual(String a, String b) {

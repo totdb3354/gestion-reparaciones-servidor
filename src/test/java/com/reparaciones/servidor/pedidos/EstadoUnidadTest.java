@@ -131,6 +131,22 @@ class EstadoUnidadTest {
                 "con otra capacidad también se apunta la SIM");
     }
 
+    /** En el maestro y en el espejo el modelo de un eSIM lleva «eSIM» («14 eSIM»): no es otro modelo, solo otra SIM. */
+    @Test void elModeloConEsimEsElMismoModeloConOtraSim() {
+        assertEquals(r("CON_AVISO", null, "ESIM", false, false, null),
+                de(AMAZON_A, movil("13 eSIM", "128GB", "A", true), vale("Azul", "A", "i13eSIM128AzulA", null), NINGUNO, Canal.AMAZON),
+                "pide SIM física y es eSIM, con el modelo del maestro «13 eSIM»");
+        Aceptacion pideEsim = new AceptaSku(List.of(new com.reparaciones.servidor.nsys.ProductoMaestro("clave-esim", "13", "13 eSIM",
+                "128GB", "Azul", "A", "i13eSIM128AzulA", "i13128AzulA", "i13eSIM128Azul", true, "Apple iPhone 13 128GB Azul eSIM",
+                "i13eSIM128AzulA", null, null))).para(Canal.AMAZON, "i13eSIM128AzulA");
+        assertEquals(r("CON_AVISO", null, "SIM_FISICA", false, false, null),
+                de(pideEsim, movil("13", "128GB", "A", false), vale("Azul", "A", "i13128AzulA", null), NINGUNO, Canal.AMAZON),
+                "pide eSIM y es de SIM física");
+        assertEquals(r("NO_CUADRA", "MODELO", "ESIM", false, false, "13 Pro"),
+                de(AMAZON_A, movil("13 Pro eSIM", "128GB", "A", true), vale("Azul", "A", "x", null), NINGUNO, Canal.AMAZON),
+                "otro modelo sigue siendo otro modelo, y se dice sin «eSIM» (la SIM va aparte)");
+    }
+
     @Test void unNaSoloMiraElColor() {
         assertEquals(r("CON_AVISO", null, null, true, false, null),
                 de(AMAZON_A, movil("13", "128GB", "n/a", false), vale("Azul", "n/a", "i13128AzulNA", null), NINGUNO, Canal.AMAZON));

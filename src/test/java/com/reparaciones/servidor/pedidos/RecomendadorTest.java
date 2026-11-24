@@ -69,7 +69,11 @@ class RecomendadorTest {
                 "i13256AzulA", "13", "13", "256GB", "Azul", "A", false, "Listos", "Listos", EstadoMovil.STOCK, null, null);
         MovilNsys esim = new MovilNsys("350000000000004", "BT-9001", "x", "A", "Available", "CAJA LISTOS", "P", D1, null,
                 "i13128AzulA", "13", "13", "128GB", "Azul", "A", true, "Listos", "Listos", EstadoMovil.STOCK, null, null);
-        List<Recomendador.Candidato> r = de(AMAZON_A, Canal.AMAZON, List.of(bueno, otroModelo, otraCapacidad, esim), SIN_TRABAJOS, NADIE);
+        // Como en el maestro y el espejo de verdad: el modelo de un eSIM es «13 eSIM». Tampoco se propone.
+        MovilNsys esimDelMaestro = new MovilNsys("350000000000005", "BT-9001", "x", "A", "Available", "CAJA LISTOS", "P", D1, null,
+                "i13eSIM128AzulA", "13", "13 eSIM", "128GB", "Azul", "A", true, "Listos", "Listos", EstadoMovil.STOCK, null, null);
+        List<Recomendador.Candidato> r = de(AMAZON_A, Canal.AMAZON, List.of(bueno, otroModelo, otraCapacidad, esim, esimDelMaestro),
+                SIN_TRABAJOS, NADIE);
         assertEquals(List.of(new Recomendador.Candidato("350000000000001", "i13128AzulA", "Listos", 1)), r);
     }
 
