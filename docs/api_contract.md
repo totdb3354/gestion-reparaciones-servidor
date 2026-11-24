@@ -235,10 +235,11 @@ de `model/` conservan su nombre.
       del lector en un canal falla, el canal aparece con `cuando` = la hora del error, los recuentos a 0 y `error`. El resto no es
       nullable.
       Cada elemento de `revisar` es `{pedido, imei, motivo, vistoEn, detalle}`; `detalle` es `null` salvo en `OTRO_MODELO`. Motivos:
-      `SIN_HUECO` (no hay fila libre donde poner el IMEI), `YA_SALIO` (el IMEI está en una fila con etiqueta de otro pedido), `CANCELADO`
+      `SIN_HUECO` (no hay fila libre donde poner el IMEI), `YA_SALIO` (el IMEI está en una fila con etiqueta de otro pedido, o está confirmado en otro pedido por el libro), `CANCELADO`
       (la fila afectada tiene la marca «Cancelado»), `REPETIDO_EN_LIBRO` (el libro pone el IMEI en dos pedidos), `NO_EN_NSYS` (el IMEI del
       libro no está en NSYS) y `OTRO_MODELO` (el móvil no cuadra con el pedido: modelo, capacidad, color, grado o SKU).
-      Desde la 0.9.45 el libro también corrige el IMEI de pedidos con etiqueta (spec 2026-11-24-asociacion-libro-manda-design.md).
+      Las líneas `REPETIDO_EN_LIBRO` van las primeras de la lista «para revisar»; el resto sigue el orden del libro.
+      El libro también corrige el IMEI de pedidos con etiqueta (spec `2026-11-24-asociacion-libro-manda`).
     - Lector de los libros (ajuste `PEDIDOS_LIBROS_ACTIVA`, apagado por defecto; ver `docs/deployment.md`): cada 10 minutos, por canal
       con libro (`PEDIDOS_LIBRO_AMAZON`, `PEDIDOS_LIBRO_STOCKROOM`), si el fichero cambió en Drive desde su última lectura buena, lee la
       pestaña «Paso 1. Meter IMEI» (cabecera en la fila 6; columnas «order id», «purchase-date» e «IMEI» por su nombre, sin mayúsculas ni

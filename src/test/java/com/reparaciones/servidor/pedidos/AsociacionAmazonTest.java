@@ -446,8 +446,10 @@ class AsociacionAmazonTest {
 
         fila(30, PC, 1, null).marca("CANCELADO");
         List<String> antes = estado();
+        int apuntesAntes = apuntes.size();
         assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PC, W));
         assertEquals(antes, estado());
+        assertEquals(apuntesAntes, apuntes.size(), "con CANCELADO no se escribe ningun apunte");
         assertEquals(List.of(paraRevisar(PC, W, "CANCELADO")), revisar(), "la lista se rehace: solo la ultima pasada");
     }
 
@@ -762,6 +764,22 @@ class AsociacionAmazonTest {
         assertNull(b2.asociadaEn);
         assertEquals(List.of(paraRevisar(PB, X, "OTRO_MODELO", "el pedido es i14128AzulA y el móvil es i14256AzulA")), revisar());
         assertEquals(List.of(Map.of(), Map.of(X, "i14128AzulA")), comprobados);
+    }
+
+    @Test void siLaFilaDestinoCambiaAOtraDeOtroSkuSeVuelveAComprobarConElSkuDeEsaFila() {
+        // Dos filas con etiqueta de PB con SKU distinto. Antes de la pasada los dos pares apuntan a la fila 20 (SKU A) y se comprueban con
+        // el suyo; al aplicar, X se queda la 20 y W va a la 21 (SKU B): W se vuelve a comprobar con el SKU de la 21 y, rechazado, no se escribe.
+        Fila b1 = fila(20, PB, 1, Y).etiqueta();
+        Fila b2 = fila(21, PB, 2, Z).etiqueta();
+        b2.sku = "i14256NegroA";
+        rechazos.put(W, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es i14256NegroA y el móvil es i14128AzulA"));
+        assertEquals(r(0, 0, 1, 0, 1, 0), aplicar(PB, X, PB, W));
+        assertEquals(X, b1.imei);
+        assertEquals(Z, b2.imei, "W no se pone: no cuadra con el SKU de la fila 21");
+        assertNull(b2.asociadaEn);
+        assertEquals(List.of(Map.of(X, "i14128AzulA", W, "i14128AzulA"), Map.of(W, "i14256NegroA")), comprobados);
+        assertEquals(List.of(paraRevisar(PB, W, "OTRO_MODELO", "el pedido es i14256NegroA y el móvil es i14128AzulA")), revisar());
+        assertEquals(List.of(libro(20, Y, X), asociada(20)), apuntes(), "solo lo de X: nada de W");
     }
 
     @Test void conUnaFilaPendienteLibreEnElPedidoSiguenLasReglasDeHoyYNoSeComprueba() {

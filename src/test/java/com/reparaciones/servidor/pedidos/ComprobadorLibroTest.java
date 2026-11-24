@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,15 @@ class ComprobadorLibroTest {
         when(nsysDao.porImeis(anyCollection())).thenReturn(List.of(movil(X, "13 mini")));
         assertEquals(Map.of(X, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es i13128AzulA y el móvil es i13128AzulA")),
                 comprobador.rechazos(Canal.AMAZON, Map.of(X, "i13128AzulA")));
+    }
+
+    @Test void otroModeloConPedidoSinSkuEscribeRayaYNoNull() {
+        when(nsysDao.porImeis(anyCollection())).thenReturn(List.of(movil(X, "13 mini")));
+        Map<String, String> pedido = new HashMap<>();
+        pedido.put(X, null);
+        ComprobadorLibro.Rechazo r = comprobador.rechazos(Canal.AMAZON, pedido).get(X);
+        assertNotNull(r);
+        assertEquals("el pedido es — y el móvil es i13128AzulA", r.detalle());
     }
 
     @Test void soloDevuelveLosQueNoValenYLeeUnaVez() {

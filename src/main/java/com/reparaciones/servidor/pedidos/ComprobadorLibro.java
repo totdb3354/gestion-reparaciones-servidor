@@ -51,7 +51,7 @@ public class ComprobadorLibro {
             if (!AvisoImei.MAL.equals(aviso.nivel())) return;
             if (NO_EN_NSYS.equals(aviso.motivo())) rechazos.put(imei, new Rechazo(NO_EN_NSYS, null));
             else rechazos.put(imei, new Rechazo(OTRO_MODELO,
-                    "el pedido es " + sku + " y el móvil es " + (aviso.skuMovil() == null ? "—" : aviso.skuMovil())));
+                    "el pedido es " + (sku == null ? "—" : sku) + " y el móvil es " + (aviso.skuMovil() == null ? "—" : aviso.skuMovil())));
         });
         return rechazos;
     }

@@ -23,7 +23,7 @@ public record EstadoAsociaciones(List<Pasada> canales) {
      *  {@code vistoEn}: la pasada que la dejo para revisar. */
     public record Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn,
                           @Schema(nullable = true) String detalle) {
-        /** Sin detalle (los motivos de antes de la 0.9.45). */
+        /** Sin detalle (los motivos de antes de la spec 2026-11-24-asociacion-libro-manda). */
         public Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn) {
             this(pedido, imei, motivo, vistoEn, null);
         }
