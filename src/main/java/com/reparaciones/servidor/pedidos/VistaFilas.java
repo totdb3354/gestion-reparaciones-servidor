@@ -220,9 +220,9 @@ public class VistaFilas {
 
     private static boolean llevaAviso(FilaPedido f) {
         String estado = estado(f);
-        // Con la etiqueta solo generada (sin imprimir) el movil sigue en el almacen: la ENVIADA sin impresion tambien lleva aviso.
-        boolean conAviso = PENDIENTE.equals(estado) || NO_PENDIENTE.equals(estado)
-                || (ENVIADA.equals(estado) && f.impresaEn() == null);
+        // Todas las de ShippyPro, tambien las enviadas: en una impresa el aviso solo informa de lo que salio (0.9.46.2; la web no la
+        // cuenta en «no cuadran» ni deja validarla).
+        boolean conAviso = PENDIENTE.equals(estado) || NO_PENDIENTE.equals(estado) || ENVIADA.equals(estado);
         return conAviso && f.imei() != null && !f.imei().isBlank();
     }
 

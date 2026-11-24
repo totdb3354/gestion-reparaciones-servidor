@@ -13,12 +13,15 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 /** La asociacion IMEI -> pedido de Amazon que llega de los libros de ventas (spec «asociación de IMEI y pedido en Amazon», plan B). En
  *  Amazon y Amazon Stockroom el ERP no da por bueno el pedido de una fila hasta que el libro lo confirma (ASOCIADA_EN); hasta entonces la
@@ -26,6 +29,13 @@ import java.util.TreeSet;
  *  «IMEI X -> pedido B» (numero normalizado como la lectura de ShippyPro):
  *  <ol>
  *  <li>X ya esta en una fila de B: se confirma (si ya lo estaba, «ya estaba» y no se toca nada).</li>
+ *  <li>Si B no tiene ninguna fila sin etiqueta ni confirmar (no cancelada) y si filas con etiqueta sin confirmar ni cancelar: el libro
+ *  manda (spec «el libro manda» §2.3). Antes, {@link ComprobadorLibro} mira que el movil X pueda ser el del pedido (el SKU de la fila
+ *  destino); si no, a «para revisar» con NO_EN_NSYS u OTRO_MODELO (y su detalle) y no se toca nada. La fila destino es la primera por
+ *  posicion con etiqueta, sin confirmar ni cancelar, cuyo IMEI (o ninguno) no lo pone el libro en B en esta pasada; sin ella, SIN_HUECO.
+ *  Si X esta en una fila de otro pedido O: O confirmada → YA_SALIO; O cancelada → CANCELADO; O con etiqueta se queda sin IMEI y sin
+ *  asociar (el ERP no inventa que fue en O) solo si su pedido esta en el libro de esta pasada (si no, YA_SALIO y no se toca nada); O pendiente (sin etiqueta) recibe por intercambio el IMEI que tenia la fila de B. La fila
+ *  de B recibe X y se confirma. Las reglas siguientes solo valen si no se da este caso.</li>
  *  <li>X esta en una fila de otro pedido sin etiqueta: se intercambian los IMEI con la primera fila de B sin confirmar (por posicion);
  *  X queda confirmado en B y la otra fila recibe el IMEI que tenia la de B (o ninguno) y queda sin confirmar, aunque lo estuviera.</li>
  *  <li>X no esta en ninguna fila: va a la primera fila LIBRE de B (sin IMEI, sin confirmar, sin etiqueta) y se confirma. Nunca saca de
@@ -37,11 +47,11 @@ import java.util.TreeSet;
  *  Un par puede quedar SIN_HUECO solo porque el hueco de B lo ocupa un IMEI que un par posterior de la misma pasada saca de ahi (regla 2):
  *  al terminar de recorrer los pares se vuelven a intentar los SIN_HUECO, mientras alguno avance y hasta 3 vueltas, en la misma transaccion;
  *  solo van a «para revisar» los que siguen sin hueco al final.
- *  Nunca cambia el IMEI de una fila con la etiqueta generada (ENVIO_FECHA) ni con la marca CANCELADO, y una cancelada tampoco se confirma;
- *  una con etiqueta si se confirma (su IMEI no cambia). Nunca toca el historico. Poner un IMEI en una fila «En espera de stock» le quita la
+ *  Solo cambia el IMEI de una fila con la etiqueta generada (ENVIO_FECHA) por la regla «el libro manda», y lo apunta con DETALLE = LIBRO;
+ *  nunca el de una fila con la marca CANCELADO, y una cancelada tampoco se confirma. Nunca toca el historico. Poner un IMEI en una fila «En espera de stock» le quita la
  *  marca como el PUT del IMEI. Todo cambio va al historial sin usuario: IMEI, IMEI_INTERCAMBIADO («con la fila n»), ASOCIADA (LIBRO) y
- *  MARCA_QUITADA. Si un IMEI sale varias veces en la pasada solo vale la ultima (las anteriores se descartan): asi repetir la misma pasada
- *  no cambia nada. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos. */
+ *  MARCA_QUITADA. Si el libro pone un IMEI en dos pedidos distintos, sus lineas van a «para revisar» (REPETIDO_EN_LIBRO) y no se aplica ninguna;
+ *  el mismo par repetido cuenta una vez: asi repetir la misma pasada no cambia nada. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos. */
 @Service
 public class AsociacionAmazon {
 
@@ -52,8 +62,10 @@ public class AsociacionAmazon {
     /** Ya no se guarda (un pedido sin filas en el ERP se cuenta en {@code ajenos}); queda por compatibilidad. */
     public static final String PEDIDO_AJENO = "PEDIDO_AJENO";
     public static final String CANCELADO = "CANCELADO";
+    /** El libro pone el mismo IMEI en dos pedidos distintos: no se aplica ninguno (spec «el libro manda» §1). */
+    public static final String REPETIDO_EN_LIBRO = "REPETIDO_EN_LIBRO";
 
-    private static final String HUECOS = "SELECT ID_FILA, PEDIDO, POSICION, IMEI, ENVIO_FECHA, MARCA, ASOCIADA_EN, ASOCIADA_ORIGEN"
+    private static final String HUECOS = "SELECT ID_FILA, PEDIDO, POSICION, SKU, IMEI, ENVIO_FECHA, IMPRESA_EN, MARCA, ASOCIADA_EN, ASOCIADA_ORIGEN"
             + " FROM Pedido_fila WHERE ORIGEN = 'SHIPPYPRO' AND CANAL = ? AND ";
     static final String SQL_DE_PEDIDOS = HUECOS + "PEDIDO IN (%s) FOR UPDATE";
     static final String SQL_CON_IMEI = HUECOS + "IMEI IN (%s) FOR UPDATE";
@@ -68,7 +80,8 @@ public class AsociacionAmazon {
     static final String SQL_APUNTE = "INSERT INTO Pedido_fila_cambio (ID_FILA, ID_USU, FECHA, IMEI_ANTERIOR, IMEI_NUEVO, TIPO, DETALLE)"
             + " VALUES (?, ?, ?, ?, ?, ?, ?)";
     static final String SQL_BORRAR_REVISAR = "DELETE FROM Pedido_asociacion_revisar WHERE CANAL = ?";
-    static final String SQL_INSERTAR_REVISAR = "INSERT INTO Pedido_asociacion_revisar (CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN) VALUES (?, ?, ?, ?, ?)";
+    static final String SQL_INSERTAR_REVISAR = "INSERT INTO Pedido_asociacion_revisar (CANAL, PEDIDO, IMEI, MOTIVO, DETALLE, VISTO_EN)"
+            + " VALUES (?, ?, ?, ?, ?, ?)";
     static final String SQL_PASADAS = "SELECT CANAL, CUANDO, CONFIRMADAS, INTERCAMBIADAS, PUESTAS, YA_ESTABAN, PARA_REVISAR, DESCARTADAS,"
             + " LIBRO_MODIFICADO, ERROR, ERROR_EN FROM Pedido_asociacion_pasada ORDER BY CANAL";
     /** El lector de los libros: la fecha de modificacion del libro de su ultima lectura buena. */
@@ -81,12 +94,14 @@ public class AsociacionAmazon {
             + " ON DUPLICATE KEY UPDATE ERROR = VALUES(ERROR), ERROR_EN = VALUES(ERROR_EN)";
     /** El libro no cambio y Drive respondio: el error de una vuelta anterior ya no vale (no toca nada mas). */
     static final String SQL_BORRAR_ERROR = "UPDATE Pedido_asociacion_pasada SET ERROR = NULL, ERROR_EN = NULL WHERE CANAL = ? AND ERROR IS NOT NULL";
-    static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
+    static final String SQL_REVISAR = "SELECT CANAL, PEDIDO, IMEI, MOTIVO, DETALLE, VISTO_EN FROM Pedido_asociacion_revisar ORDER BY CANAL, ID";
 
     private final JdbcTemplate jdbc;
+    private final ComprobadorLibro comprobador;
 
-    public AsociacionAmazon(JdbcTemplate jdbc) {
+    public AsociacionAmazon(JdbcTemplate jdbc, ComprobadorLibro comprobador) {
         this.jdbc = jdbc;
+        this.comprobador = comprobador;
     }
 
     /** Una pasada del libro de ventas de un canal de Amazon, en una transaccion (READ COMMITTED: MariaDB 11.6+ da el error 1020 al leer
@@ -128,7 +143,7 @@ public class AsociacionAmazon {
         Timestamp hora = Timestamp.valueOf(ahora);
         jdbc.update(SQL_TOMAR_PASADA, canal.name(), hora);
 
-        // Limpiar: numero normalizado, IMEI de 15 cifras; si un IMEI sale varias veces, vale la ultima.
+        // Limpiar: numero normalizado, IMEI de 15 cifras; un IMEI en dos pedidos va a revisar.
         List<String[]> validos = new ArrayList<>();
         int descartadas = 0;
         for (PeticionAsociaciones.Par p : pares) {
@@ -137,21 +152,50 @@ public class AsociacionAmazon {
             if (pedido == null || !imei.matches("[0-9]{15}")) descartadas++;
             else validos.add(new String[]{pedido, imei});
         }
-        Map<String, Integer> ultima = new HashMap<>();
-        for (int i = 0; i < validos.size(); i++) ultima.put(validos.get(i)[1], i);
-        List<String[]> aplicables = new ArrayList<>();
-        for (int i = 0; i < validos.size(); i++) {
-            if (ultima.get(validos.get(i)[1]) == i) aplicables.add(validos.get(i));
-            else descartadas++;
+        // El mismo par repetido cuenta una vez (las repeticiones, descartadas).
+        Map<String, Set<String>> pedidosPorImei = new HashMap<>();
+        Set<String> vistos = new HashSet<>();
+        List<String[]> unicos = new ArrayList<>();
+        for (String[] v : validos) {
+            if (!vistos.add(v[0] + "|" + v[1])) descartadas++;
+            else {
+                unicos.add(v);
+                pedidosPorImei.computeIfAbsent(v[1], k -> new LinkedHashSet<>()).add(v[0]);
+            }
         }
-
         Set<String> pedidos = new LinkedHashSet<>();
         Set<String> imeis = new LinkedHashSet<>();
-        for (String[] p : aplicables) {
+        for (String[] p : unicos) {
             pedidos.add(p[0]);
             imeis.add(p[1]);
         }
         Reparto reparto = new Reparto(canal, cargar(canal, pedidos, imeis), ahora);
+        // Un IMEI en varios pedidos del libro (decision de Imad, 24/11): los pedidos que ya lo tienen confirmado se quedan como estan
+        // (su linea cuenta como «ya estaba»). Si solo queda uno sin confirmar, es una reventa (devuelto y vuelto a vender): ese se
+        // aplica como cualquier par y los confirmados no pierden el IMEI. Si quedan dos o mas sin confirmar, van a revisar.
+        // Solo cuentan los pedidos que el ERP tiene: los demas son ajenos (se cuentan y no van a la lista), como un par suelto.
+        List<String[]> aplicables = new ArrayList<>();
+        for (String[] v : unicos) {
+            Set<String> todos = new LinkedHashSet<>(pedidosPorImei.get(v[1]));
+            todos.removeIf(p -> !reparto.tieneFilas(p));
+            if (todos.size() <= 1) {
+                aplicables.add(v);
+                continue;
+            }
+            // El libro manda (0.9.46.2): se pone en todos sus pedidos y ninguno se lo quita a otro; si no es una reventa, las celdas
+            // de los dos avisan «en otro pedido».
+            aplicables.add(v);
+            reparto.revendidos.put(v[1], todos);
+        }
+        // Los IMEI que el libro pone en cada pedido, y la comprobacion de los que pueden ir a una fila con etiqueta (una lectura).
+        Map<String, Set<String>> delLibro = new HashMap<>();
+        for (String[] p : aplicables) delLibro.computeIfAbsent(p[0], k -> new HashSet<>()).add(p[1]);
+        Map<String, String> aComprobar = new LinkedHashMap<>();
+        for (String[] p : aplicables) {
+            Hueco destino = reparto.destinoConEtiqueta(p[0], p[1], delLibro);
+            if (destino != null) aComprobar.put(p[1], destino.sku);
+        }
+        reparto.preparar(delLibro, aComprobar, comprobador.rechazos(canal, aComprobar), m -> comprobador.rechazos(canal, m));
         for (String[] p : aplicables) reparto.aplicar(p[0], p[1]);
         reparto.reintentarSinHueco();
 
@@ -179,7 +223,7 @@ public class AsociacionAmazon {
         Map<String, List<EstadoAsociaciones.Revisar>> porCanal = new HashMap<>();
         record ConCanal(String canal, EstadoAsociaciones.Revisar revisar) {}
         for (ConCanal c : jdbc.query(SQL_REVISAR, (rs, n) -> new ConCanal(rs.getString("CANAL"), new EstadoAsociaciones.Revisar(
-                rs.getString("PEDIDO"), rs.getString("IMEI"), rs.getString("MOTIVO"), hora(rs, "VISTO_EN")))))
+                rs.getString("PEDIDO"), rs.getString("IMEI"), rs.getString("MOTIVO"), hora(rs, "VISTO_EN"), rs.getString("DETALLE")))))
             porCanal.computeIfAbsent(c.canal(), k -> new ArrayList<>()).add(c.revisar());
         List<EstadoAsociaciones.Pasada> pasadas = jdbc.query(SQL_PASADAS, (rs, n) -> new EstadoAsociaciones.Pasada(rs.getString("CANAL"),
                 hora(rs, "CUANDO"), rs.getInt("CONFIRMADAS"), rs.getInt("INTERCAMBIADAS"), rs.getInt("PUESTAS"), rs.getInt("YA_ESTABAN"),
@@ -212,8 +256,9 @@ public class AsociacionAmazon {
     }
 
     private static Hueco hueco(ResultSet rs, int n) throws SQLException {
-        return new Hueco(rs.getInt("ID_FILA"), rs.getString("PEDIDO"), rs.getObject("POSICION", Integer.class), rs.getString("IMEI"),
-                rs.getTimestamp("ENVIO_FECHA") != null, rs.getString("MARCA"), hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"));
+        return new Hueco(rs.getInt("ID_FILA"), rs.getString("PEDIDO"), rs.getObject("POSICION", Integer.class), rs.getString("SKU"),
+                rs.getString("IMEI"), rs.getTimestamp("ENVIO_FECHA") != null, rs.getTimestamp("IMPRESA_EN") != null, rs.getString("MARCA"),
+                hora(rs, "ASOCIADA_EN"), rs.getString("ASOCIADA_ORIGEN"));
     }
 
     /** Una fila de ShippyPro del canal, con su IMEI y su asociacion tal como van quedando en la pasada. */
@@ -221,19 +266,24 @@ public class AsociacionAmazon {
         final int id;
         final String pedido;
         final Integer posicion;
+        final String sku;
         final boolean conEtiqueta;
+        /** La etiqueta impresa: el pedido ya se empaqueto. */
+        final boolean impresa;
         String imei;
         String marca;
         LocalDateTime asociadaEn;
         String asociadaOrigen;
 
-        Hueco(int id, String pedido, Integer posicion, String imei, boolean conEtiqueta, String marca, LocalDateTime asociadaEn,
-              String asociadaOrigen) {
+        Hueco(int id, String pedido, Integer posicion, String sku, String imei, boolean conEtiqueta, boolean impresa, String marca,
+              LocalDateTime asociadaEn, String asociadaOrigen) {
             this.id = id;
             this.pedido = pedido == null ? null : pedido.strip();
             this.posicion = posicion;
+            this.sku = sku;
             this.imei = imei == null || imei.isBlank() ? null : imei.strip();
             this.conEtiqueta = conEtiqueta;
+            this.impresa = impresa;
             this.marca = marca;
             this.asociadaEn = asociadaEn;
             this.asociadaOrigen = asociadaOrigen;
@@ -250,6 +300,11 @@ public class AsociacionAmazon {
         /** Un hueco del pedido: sin confirmar y sin etiqueta (cancelado o no; eso se mira aparte). */
         boolean abierto() {
             return !confirmada() && !conEtiqueta;
+        }
+
+        /** Una fila en la que el libro puede corregir el IMEI: con etiqueta o ya asociada (el libro la corrige si cambia), sin cancelar. */
+        boolean corregible() {
+            return !cancelada() && (conEtiqueta || confirmada());
         }
     }
 
@@ -269,6 +324,12 @@ public class AsociacionAmazon {
         final List<Object[]> revisar = new ArrayList<>();
         int confirmadas, intercambiadas, puestas, yaEstaban, ajenos;
         final List<String[]> sinHueco = new ArrayList<>();
+        Map<String, Set<String>> delLibro = Map.of();
+        /** IMEI → SKU con el que ya se comprobo; y lo que no valio. */
+        final Map<String, String> comprobadoCon = new HashMap<>();
+        final Map<String, ComprobadorLibro.Rechazo> rechazos = new HashMap<>();
+        /** Para un IMEI que llega al camino «con etiqueta» sin comprobar (o con otra fila destino de otro SKU) a mitad de pasada. */
+        Function<Map<String, String>, Map<String, ComprobadorLibro.Rechazo>> comprobar = m -> Map.of();
 
         Reparto(Canal canal, List<Hueco> filas, LocalDateTime ahora) {
             this.canal = canal;
@@ -281,15 +342,95 @@ public class AsociacionAmazon {
             porPedido.values().forEach(l -> l.sort(POR_POSICION));
         }
 
+        /** El detalle del ultimo motivo que devolvio intentar (en que pedido esta el IMEI), o null. */
+        String detalleMotivo;
+
+        /** IMEI que el libro pone en varios pedidos → esos pedidos: ninguno se lo quita a otro. */
+        final Map<String, Set<String>> revendidos = new HashMap<>();
+
+        /** Si el ERP tiene alguna fila de ese pedido en el canal. */
+        boolean tieneFilas(String pedido) {
+            return !porPedido.getOrDefault(pedido, List.of()).isEmpty();
+        }
+
+        /** Los pedidos con una fila (no cancelada) que tiene ese IMEI confirmado. */
+        Set<String> pedidosConfirmadosCon(String imei) {
+            Set<String> s = new HashSet<>();
+            for (Hueco h : porImei.getOrDefault(imei, Set.of())) if (h.confirmada() && !h.cancelada() && h.pedido != null) s.add(h.pedido);
+            return s;
+        }
+
+        /** Las filas de otros pedidos con ese IMEI, sin las de los pedidos en los que el libro tambien lo pone (reventa o repetido). */
+        private Set<Hueco> fuera(String imei) {
+            Set<Hueco> con = porImei.getOrDefault(imei, Set.of());
+            Set<String> tambien = revendidos.get(imei);
+            if (tambien == null) return con;
+            Set<Hueco> f = new LinkedHashSet<>();
+            for (Hueco h : con) if (!tambien.contains(h.pedido)) f.add(h);
+            return f;
+        }
+
         private Set<Hueco> conImei(String imei) {
             return porImei.computeIfAbsent(imei, k -> new TreeSet<>(Comparator.comparingInt(h -> h.id)));
+        }
+
+        /** {@code comprobados}: IMEI → SKU con el que se comprobo de una vez antes de aplicar; {@code rechazos}, lo que no valio;
+         *  {@code comprobar}, el comprobador para los que haga falta comprobar despues. */
+        void preparar(Map<String, Set<String>> delLibro, Map<String, String> comprobados, Map<String, ComprobadorLibro.Rechazo> rechazos,
+                      Function<Map<String, String>, Map<String, ComprobadorLibro.Rechazo>> comprobar) {
+            this.delLibro = delLibro;
+            this.comprobadoCon.putAll(comprobados);
+            this.rechazos.putAll(rechazos);
+            this.comprobar = comprobar;
+        }
+
+        /** Si el par va por el camino «con etiqueta» (spec «el libro manda» §2.3): el pedido existe, el IMEI no esta ya en el, no tiene
+         *  ninguna fila pendiente sin confirmar ni cancelar, y si una fila con etiqueta corregible cuyo IMEI (o ninguno) no lo pone el
+         *  libro en el pedido. Devuelve esa fila (la primera por posicion) o null. */
+        Hueco destinoConEtiqueta(String pedido, String imei, Map<String, Set<String>> delLibro) {
+            List<Hueco> d = destinosConEtiqueta(pedido, imei, delLibro);
+            return d.isEmpty() ? null : d.get(0);
+        }
+
+        /** Todas las filas posibles, por posicion: con unidades de distinto SKU, X va a la primera con la que cuadra. */
+        List<Hueco> destinosConEtiqueta(String pedido, String imei, Map<String, Set<String>> delLibro) {
+            List<Hueco> deB = porPedido.getOrDefault(pedido, List.of());
+            if (deB.isEmpty() || deB.stream().anyMatch(h -> imei.equals(h.imei))) return List.of();
+            if (deB.stream().anyMatch(h -> h.abierto() && !h.cancelada())) return List.of();
+            Set<String> delPedido = delLibro.getOrDefault(pedido, Set.of());
+            // Primero las que aun no estan asociadas; una asociada solo cambia si su IMEI ya no esta en el libro para el pedido.
+            return deB.stream().filter(h -> h.corregible() && (h.imei == null || !delPedido.contains(h.imei)))
+                    .sorted(Comparator.comparing(Hueco::confirmada)).toList();
+        }
+
+        /** Lo que dice el comprobador de X para la fila destino: lo comprobado antes de aplicar si fue con el SKU de esa fila; si no
+         *  (el par llego a este camino a mitad de pasada, o la fila destino es otra de otro SKU), se comprueba ahora. Sin destino, lo
+         *  comprobado antes (si lo hubo). */
+        private ComprobadorLibro.Rechazo rechazo(String imei, Hueco destino) {
+            if (destino == null || (comprobadoCon.containsKey(imei) && Objects.equals(comprobadoCon.get(imei), destino.sku)))
+                return rechazos.get(imei);
+            Map<String, String> uno = new HashMap<>();
+            uno.put(imei, destino.sku);
+            ComprobadorLibro.Rechazo r = comprobar.apply(uno).get(imei);
+            comprobadoCon.put(imei, destino.sku);
+            if (r == null) rechazos.remove(imei);
+            else rechazos.put(imei, r);
+            return r;
         }
 
         /** Aplica un par de la pasada; los SIN_HUECO se dejan para el reintento del final. */
         void aplicar(String pedido, String imei) {
             String motivo = intentar(pedido, imei);
             if (SIN_HUECO.equals(motivo)) sinHueco.add(new String[]{pedido, imei});
-            else if (motivo != null) paraRevisar(pedido, imei, motivo);
+            else if (motivo != null) paraRevisar(pedido, imei, motivo, detalleMotivo);
+        }
+
+        /** El motivo de un IMEI que esta en otra fila, con el pedido y como esta esa fila en el detalle. */
+        private String enOtro(String motivo, Hueco h) {
+            String como = h.cancelada() ? "cancelado" : h.confirmada() ? "asociado" : h.impresa ? "etiqueta impresa"
+                    : h.conEtiqueta ? "etiqueta sin imprimir" : "pendiente";
+            detalleMotivo = "está en el pedido " + h.pedido + " (" + como + ")";
+            return motivo;
         }
 
         /** Vuelve a intentar los SIN_HUECO mientras alguno avance (como mucho 3 vueltas); los que siguen sin hueco van a «para revisar». */
@@ -302,7 +443,7 @@ public class AsociacionAmazon {
                     String motivo = intentar(p[0], p[1]);
                     if (motivo == null) avanzo = true;
                     else if (SIN_HUECO.equals(motivo)) siguen.add(p);
-                    else paraRevisar(p[0], p[1], motivo);
+                    else paraRevisar(p[0], p[1], motivo, detalleMotivo);
                 }
                 pendientes = siguen;
                 if (!avanzo) break;
@@ -312,6 +453,7 @@ public class AsociacionAmazon {
 
         /** Aplica las reglas a un par: null si se resolvio (o es un pedido ajeno, que solo se cuenta); si no, el motivo y no toca nada. */
         private String intentar(String pedido, String imei) {
+            detalleMotivo = null;
             List<Hueco> deB = porPedido.getOrDefault(pedido, List.of());
             if (deB.isEmpty()) {
                 ajenos++;
@@ -329,16 +471,15 @@ public class AsociacionAmazon {
                 }
                 return null;
             }
+            // El libro manda en un pedido sin fila pendiente y con filas con etiqueta (spec «el libro manda» §2.3).
+            if (deB.stream().noneMatch(h -> h.abierto() && !h.cancelada()) && deB.stream().anyMatch(Hueco::corregible))
+                return conEtiqueta(pedido, imei);
             // 2. Esta en una fila de otro pedido.
-            Set<Hueco> fuera = porImei.getOrDefault(imei, Set.of());
+            // Las filas con etiqueta o canceladas de otro pedido se quedan con X (la celda avisa «en otro pedido»).
+            Set<Hueco> fuera = new LinkedHashSet<>(fuera(imei));
+            fuera.removeIf(h -> h.conEtiqueta || h.cancelada());
             if (!fuera.isEmpty()) {
-                if (fuera.stream().anyMatch(h -> h.conEtiqueta)) {
-                    return YA_SALIO;
-                }
-                Hueco origen = fuera.stream().filter(h -> !h.cancelada()).findFirst().orElse(null);
-                if (origen == null) {
-                    return CANCELADO;
-                }
+                Hueco origen = fuera.iterator().next();
                 Hueco destino = deB.stream().filter(h -> h.abierto() && !h.cancelada()).findFirst().orElse(null);
                 if (destino == null) {
                     return sinHueco(deB);
@@ -368,6 +509,45 @@ public class AsociacionAmazon {
             return null;
         }
 
+        /** La regla con etiqueta: comprobacion del movil, la fila de B y lo que pasa con la fila de otro pedido que tenia X. */
+        private String conEtiqueta(String pedido, String imei) {
+            // El libro manda (0.9.46.2): la comprobacion solo elige la fila con la que cuadra (unidades de distinto SKU); si no cuadra
+            // con ninguna, va a la primera y la celda avisa.
+            List<Hueco> candidatos = destinosConEtiqueta(pedido, imei, delLibro);
+            Hueco destino = null;
+            for (Hueco c : candidatos) {
+                if (rechazo(imei, c) == null) {
+                    destino = c;
+                    break;
+                }
+            }
+            if (destino == null && !candidatos.isEmpty()) destino = candidatos.get(0);
+            // Las filas de otros pedidos que se quedan con X (la celda de las dos avisa «en otro pedido»): asociadas, canceladas o con la
+            // etiqueta impresa y fuera del libro de la pasada. A las demas se les quita (con etiqueta y en el libro) o se intercambia.
+            Set<Hueco> fuera = new LinkedHashSet<>(fuera(imei));
+            fuera.removeIf(h -> h.confirmada() || h.cancelada() || (h.conEtiqueta && h.impresa && !delLibro.containsKey(h.pedido)));
+            if (destino == null) return SIN_HUECO;
+            String delDestino = destino.imei;
+            List<Hueco> otros = List.copyOf(fuera);                       // copia: ponerImei cambia porImei
+            ponerImei(destino, imei);
+            Hueco pendiente = null;
+            for (Hueco o : otros) {
+                if (o.conEtiqueta && delLibro.containsKey(o.pedido)) ponerImei(o, null);   // el ERP no inventa que fue en O
+                else if (pendiente == null) pendiente = o;
+                else ponerImei(o, null);
+            }
+            if (pendiente != null) {
+                ponerImei(pendiente, delDestino);
+                apunte(destino.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + pendiente.id);
+                apunte(pendiente.id, null, null, CambioImei.IMEI_INTERCAMBIADO, "con la fila " + destino.id
+                        + (pendiente.conEtiqueta ? " · por el libro: comprobar el móvil" : ""));
+            }
+            confirmar(destino);
+            if (otros.isEmpty()) puestas++;
+            else intercambiadas++;
+            return null;
+        }
+
         /** De los huecos posibles del pedido (los sin confirmar ni etiqueta en la regla 2; los libres en la 3): CANCELADO si alguno lo
          *  seria contando las canceladas; si no, SIN_HUECO. */
         private static String sinHueco(List<Hueco> deB) {
@@ -383,7 +563,7 @@ public class AsociacionAmazon {
             h.imei = nuevo;
             if (nuevo != null) conImei(nuevo).add(h);
             cambiadas.add(h);
-            apunte(h.id, anterior, nuevo, CambioImei.IMEI, null);
+            apunte(h.id, anterior, nuevo, CambioImei.IMEI, h.conEtiqueta ? LIBRO : null);
             // Un IMEI puesto resuelve «En espera de stock», como en el PUT del IMEI; las demas marcas se quedan.
             if (nuevo != null && Marca.ESPERA_STOCK.name().equals(h.marca)) {
                 h.marca = null;
@@ -404,7 +584,11 @@ public class AsociacionAmazon {
         }
 
         private void paraRevisar(String pedido, String imei, String motivo) {
-            revisar.add(new Object[]{canal.name(), pedido, imei, motivo, hora});
+            paraRevisar(pedido, imei, motivo, null);
+        }
+
+        private void paraRevisar(String pedido, String imei, String motivo, String detalle) {
+            revisar.add(new Object[]{canal.name(), pedido, imei, motivo, detalle, hora});
         }
     }
 }

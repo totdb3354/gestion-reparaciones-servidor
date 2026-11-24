@@ -92,7 +92,10 @@ class VistaFilasTest {
         assertNull(filas.get(1).nivel(), "sin IMEI no hay aviso");
         // una fila que ya no esta pendiente (sin envio) sigue llevando aviso
         assertEquals("OK", filas.get(2).nivel());
-        for (int i : new int[]{3, 4}) {
+        // 0.9.46.2: la enviada impresa tambien lleva aviso; aqui su IMEI esta tambien en la pendiente 1: «en otro pedido».
+        assertEquals("MAL", filas.get(3).nivel());
+        assertEquals("EN_OTRA_FILA", filas.get(3).motivo());
+        for (int i : new int[]{4}) {
             FilaVista f = filas.get(i);
             assertNull(f.nivel(), "la fila " + f.idFila() + " no lleva aviso");
             assertNull(f.motivo());
@@ -240,7 +243,7 @@ class VistaFilasTest {
         assertEquals("ENVIADA", f.get(0).estado(), "el estado no cambia");
     }
 
-    @Test void unaFilaEnviadaSinImprimirConImeiLlevaAvisoYUnaImpresaNo() {
+    @Test void unaFilaEnviadaSinImprimirConImeiLlevaAvisoYUnaImpresaTambien() {
         FilaPedido sinImprimir = enviada(3, IMEI1);
         FilaPedido impresa = new FilaPedido(5, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA", IMEI2, "402-0000000-0000005",
                 LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1), AHORA.minusDays(2), "UPSv2", "x", null,
@@ -254,24 +257,24 @@ class VistaFilasTest {
         assertEquals("ENVIADA", f.get(0).estado());
         assertNotNull(f.get(0).nivel());
         assertEquals("ENVIADA", f.get(1).estado());
-        assertNull(f.get(1).nivel());
+        assertEquals("OK", f.get(1).nivel(), "0.9.46.2: la impresa tambien lleva aviso (solo informa)");
         assertNull(f.get(1).motivo());
-        assertNull(f.get(1).skuMovil());
-        assertNull(f.get(1).caja());
+        assertEquals("i13128AzulA", f.get(1).skuMovil());
         // una sola carga para todas las filas, sin consultas por fila
         verify(nsys, atMost(2)).porImeis(any()); // el aviso y los ya puestos (enviadas), ambos por lotes
         verify(dao, times(1)).shippyProConImei(any(), any());
     }
 
-    @Test void unaFilaEnviadaImpresaConImeiNoLlevaAvisoNiConsultaNsys() {
+    /** 0.9.46.2: una enviada impresa tambien lleva aviso (solo informa de lo que salio; la web no la cuenta ni deja validarla). */
+    @Test void unaFilaEnviadaImpresaConImeiTambienLlevaAviso() {
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(new FilaPedido(3, LocalDate.of(2026, 11, 5), "AMZ", "i13128AzulA",
                 IMEI1, "402-0000000-0000003", LocalDate.of(2026, 11, 4), "SHIPPYPRO", Canal.AMAZON, 1, AHORA.minusDays(1),
                 AHORA.minusDays(2), "UPSv2", "x", null, 9L, AHORA.minusDays(1))));
+        nsysConUnMovilQueCuadra(movil(IMEI1));
         FilaVista f = vista.filas(null, null, null).filas().get(0);
         assertEquals("ENVIADA", f.estado());
         assertEquals(IMEI1, f.imei());
-        assertNull(f.nivel());
-        verifyNoInteractions(nsys, taller);
+        assertEquals("OK", f.nivel());
     }
 
     @Test void unImeiPuestoEnUnaFilaEnviadaCuyoMovilNoEstaVendidoAvisaEnOtraFila() {

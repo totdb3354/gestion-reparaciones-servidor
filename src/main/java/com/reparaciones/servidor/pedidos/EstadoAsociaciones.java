@@ -16,8 +16,16 @@ public record EstadoAsociaciones(List<Pasada> canales) {
                          int paraRevisar, int descartadas, @Schema(nullable = true) LocalDateTime libroModificado,
                          @Schema(nullable = true) String error, @Schema(nullable = true) LocalDateTime errorEn, List<Revisar> revisar) {}
 
-    /** Una asociacion que no se pudo aplicar. {@code motivo}: SIN_HUECO (el pedido no tiene hueco: si el IMEI esta en otra fila, ninguna sin confirmar ni etiqueta; si no esta en ninguna, ninguna libre), YA_SALIO (el IMEI
-     *  esta en una fila con etiqueta de otro pedido) o CANCELADO (las unicas filas
-     *  posibles estan canceladas). PEDIDO_AJENO (el pedido no tiene filas en el ERP) ya no se guarda. {@code vistoEn}: la pasada que la dejo para revisar. */
-    public record Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn) {}
+    /** Una asociacion que no se pudo aplicar. {@code motivo}: SIN_HUECO (el pedido no tiene hueco), YA_SALIO (el IMEI esta en una fila con
+     *  etiqueta de otro pedido), CANCELADO (las unicas filas posibles estan canceladas), REPETIDO_EN_LIBRO (el libro pone el IMEI en dos
+     *  pedidos), NO_EN_NSYS (el IMEI no esta en NSYS) u OTRO_MODELO (el movil no cuadra con el pedido), y PEDIDO_AJENO solo como herencia
+     *  (ya no se guarda); {@code detalle}: en OTRO_MODELO, que no cuadra, que es el movil y donde esta; en YA_SALIO y CANCELADO, en que pedido esta el IMEI; nulo en los demas;
+     *  {@code vistoEn}: la pasada que la dejo para revisar. */
+    public record Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn,
+                          @Schema(nullable = true) String detalle) {
+        /** Sin detalle (los motivos de antes de la spec 2026-11-24-asociacion-libro-manda). */
+        public Revisar(String pedido, String imei, String motivo, LocalDateTime vistoEn) {
+            this(pedido, imei, motivo, vistoEn, null);
+        }
+    }
 }

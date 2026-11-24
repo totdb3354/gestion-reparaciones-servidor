@@ -14,8 +14,10 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,6 +51,7 @@ class AsociacionAmazonTest {
         String marca;
         LocalDateTime asociadaEn;
         String asociadaOrigen;
+        String sku = "i14128AzulA";
 
         Fila(int id, String pedido, Integer posicion, String imei) {
             this.id = id;
@@ -57,8 +60,19 @@ class AsociacionAmazonTest {
             this.imei = imei;
         }
 
+        LocalDateTime impresa;
+
+        /** Con etiqueta impresa (empaquetado). */
         Fila etiqueta() {
             envio = ANTES;
+            impresa = ANTES;
+            return this;
+        }
+
+        /** Con la etiqueta generada pero sin imprimir (aún no empaquetado). */
+        Fila sinImprimir() {
+            envio = ANTES;
+            impresa = null;
             return this;
         }
 
@@ -84,7 +98,12 @@ class AsociacionAmazonTest {
     }
 
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
-    private final AsociacionAmazon servicio = new AsociacionAmazon(jdbc);
+    /** IMEI → rechazo que da el comprobador falso (por defecto, todo vale). */
+    private final Map<String, ComprobadorLibro.Rechazo> rechazos = new HashMap<>();
+    /** Lo que se le pidio comprobar en cada pasada (IMEI → SKU del pedido). */
+    private final List<Map<String, String>> comprobados = new ArrayList<>();
+    private final ComprobadorLibro comprobador = mock(ComprobadorLibro.class);
+    private final AsociacionAmazon servicio = new AsociacionAmazon(jdbc, comprobador);
     private final List<Fila> tabla = new ArrayList<>();
     private final List<Object[]> apuntes = new ArrayList<>();
     /** {canal, pedido, imei, motivo, vistoEn}. */
@@ -92,8 +111,22 @@ class AsociacionAmazonTest {
     private final List<Object[]> pasadas = new ArrayList<>();
     private final List<String> consultas = new ArrayList<>();
     private final List<Object[]> libros = new ArrayList<>();
+    /** IMEI → el unico SKU de pedido con el que cuadra en el comprobador falso (sin entrada: cuadra con todos). */
+    private final Map<String, String> skuDelMovil = new HashMap<>();
 
     @BeforeEach void preparar() {
+        when(comprobador.rechazos(any(Canal.class), anyMap())).thenAnswer(inv -> {
+            Map<String, String> pedidos = inv.getArgument(1);
+            comprobados.add(Map.copyOf(pedidos));
+            Map<String, ComprobadorLibro.Rechazo> r = new HashMap<>();
+            for (Map.Entry<String, String> e : pedidos.entrySet()) {
+                String imei = e.getKey();
+                if (rechazos.containsKey(imei)) r.put(imei, rechazos.get(imei));
+                else if (skuDelMovil.containsKey(imei) && !skuDelMovil.get(imei).equals(e.getValue()))
+                    r.put(imei, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es " + e.getValue() + " y el móvil es " + skuDelMovil.get(imei)));
+            }
+            return r;
+        });
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
             String sql = inv.getArgument(0);
             consultas.add(sql);
@@ -149,9 +182,11 @@ class AsociacionAmazonTest {
         when(rs.getObject("POSICION", Integer.class)).thenReturn(f.posicion);
         when(rs.getString("IMEI")).thenReturn(f.imei);
         when(rs.getTimestamp("ENVIO_FECHA")).thenReturn(ts(f.envio));
+        when(rs.getTimestamp("IMPRESA_EN")).thenReturn(ts(f.impresa));
         when(rs.getString("MARCA")).thenReturn(f.marca);
         when(rs.getTimestamp("ASOCIADA_EN")).thenReturn(ts(f.asociadaEn));
         when(rs.getString("ASOCIADA_ORIGEN")).thenReturn(f.asociadaOrigen);
+        when(rs.getString("SKU")).thenReturn(f.sku);
         return rs;
     }
 
@@ -211,7 +246,33 @@ class AsociacionAmazonTest {
     }
 
     private static String paraRevisar(String pedido, String imei, String motivo) {
-        return Arrays.toString(new Object[]{"AMAZON", pedido, imei, motivo, T});
+        return paraRevisar(pedido, imei, motivo, null);
+    }
+
+    private static String paraRevisar(String pedido, String imei, String motivo, String detalle) {
+        return Arrays.toString(new Object[]{"AMAZON", pedido, imei, motivo, detalle, T});
+    }
+
+    @Test void elEstadoLeeElDetalleDeParaRevisar() {
+        when(jdbc.query(eq(AsociacionAmazon.SQL_REVISAR), any(RowMapper.class))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("CANAL")).thenReturn("AMAZON");
+            when(rs.getString("PEDIDO")).thenReturn(PB);
+            when(rs.getString("IMEI")).thenReturn(X);
+            when(rs.getString("MOTIVO")).thenReturn("OTRO_MODELO");
+            when(rs.getString("DETALLE")).thenReturn("el pedido es a y el móvil es b");
+            when(rs.getTimestamp("VISTO_EN")).thenReturn(T);
+            return List.of(((RowMapper<Object>) inv.getArgument(1)).mapRow(rs, 0));
+        });
+        when(jdbc.query(eq(AsociacionAmazon.SQL_PASADAS), any(RowMapper.class))).thenAnswer(inv -> {
+            ResultSet rs = mock(ResultSet.class);
+            when(rs.getString("CANAL")).thenReturn("AMAZON");
+            when(rs.getTimestamp("CUANDO")).thenReturn(T);
+            return List.of(((RowMapper<Object>) inv.getArgument(1)).mapRow(rs, 0));
+        });
+        EstadoAsociaciones e = servicio.estado();
+        assertEquals(new EstadoAsociaciones.Revisar(PB, X, "OTRO_MODELO", AHORA, "el pedido es a y el móvil es b"),
+                e.canales().get(0).revisar().get(0));
     }
 
     private List<String> estado() {
@@ -301,42 +362,59 @@ class AsociacionAmazonTest {
         assertTrue(apuntes().contains(apunte(10, null, null, "MARCA_QUITADA", "ESPERA_STOCK — al poner el IMEI")), apuntes().toString());
     }
 
-    @Test void regla2ElImeiEnUnaFilaConEtiquetaDeOtroPedidoQuedaParaRevisarComoYaSalio() {
-        fila(10, PA, 1, X).etiqueta();
-        fila(20, PB, 1, null);
-        List<String> antes = estado();
-        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
-        assertEquals(antes, estado());
-        assertTrue(apuntes.isEmpty());
-        assertEquals(List.of(paraRevisar(PB, X, "YA_SALIO")), revisar());
+    @Test void regla2ElImeiEnUnaFilaConEtiquetaDeOtroPedidoSeQuedaYElPendienteTambienLoRecibe() {
+        Fila a = fila(10, PA, 1, X).etiqueta();
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, a.imei);
+        assertEquals(X, b.imei);
+        assertTrue(revisar().isEmpty());
     }
 
-    @Test void regla2ElImeiEnUnaFilaCanceladaDeOtroPedidoQuedaParaRevisarComoCancelado() {
-        fila(10, PA, 1, X).marca("CANCELADO");
-        fila(20, PB, 1, null);
-        List<String> antes = estado();
-        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
-        assertEquals(antes, estado());
-        assertEquals(List.of(paraRevisar(PB, X, "CANCELADO")), revisar());
+    @Test void regla2ElImeiEnUnaFilaCanceladaDeOtroPedidoSePoneIgualYLaCanceladaNoSeToca() {
+        Fila a = fila(10, PA, 1, X).marca("CANCELADO");
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(X, a.imei);
+        assertTrue(revisar().isEmpty());
     }
 
-    @Test void regla2SinFilaSinConfirmarNiSinEtiquetaEnElPedidoQuedaParaRevisarSinHueco() {
-        fila(10, PA, 1, X);
+    @Test void regla2SinFilaPendienteYConUnaConEtiquetaElLibroLaUsa() {
+        Fila a = fila(10, PA, 1, X);
         fila(20, PB, 1, Y).asociada("LIBRO");
-        fila(21, PB, 2, null).etiqueta();
-        List<String> antes = estado();
-        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
-        assertEquals(antes, estado());
-        assertEquals(List.of(paraRevisar(PB, X, "SIN_HUECO")), revisar());
+        Fila b2 = fila(21, PB, 2, null).etiqueta();
+        assertEquals(r(0, 1, 0, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b2.imei);
+        assertNull(a.imei, "pendiente: intercambio con el vacio de la fila de B");
+        assertTrue(revisar().isEmpty());
     }
 
-    @Test void regla2SiLasUnicasFilasPosiblesDelPedidoEstanCanceladasEsCancelado() {
-        fila(10, PA, 1, X);
-        fila(20, PB, 1, Y).asociada("LIBRO");
-        fila(21, PB, 2, null).marca("CANCELADO");
-        List<String> antes = estado();
+    /** Petición de Imad (24/11): si en el libro cambian el IMEI de un pedido ya asociado, el ERP también cambia. */
+    @Test void unaFilaYaAsociadaQueElLibroCambiaSeCorrigeYLaCanceladaNoSeToca() {
+        Fila pa = fila(10, PA, 1, X);
+        Fila b = fila(20, PB, 1, Y).asociada("LIBRO");
+        Fila c = fila(21, PB, 2, null).marca("CANCELADO");
+        assertEquals(r(0, 1, 0, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(Y, pa.imei, "el pendiente que tenía X recibe el que tenía la fila, como siempre");
+        assertNull(c.imei);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void conVariasUnidadesAsociadasSoloCambiaLaQueElLibroYaNoDice() {
+        Fila b1 = fila(20, PB, 1, Y).etiqueta().asociada("LIBRO");
+        Fila b2 = fila(21, PB, 2, Z).etiqueta().asociada("LIBRO");
+        assertEquals(r(0, 0, 1, 1, 0, 0), aplicar(PB, Y, PB, X));
+        assertEquals(Y, b1.imei);
+        assertEquals(X, b2.imei);
+        assertEquals(List.of(libro(21, Z, X), asociada(21)), apuntes(), "el IMEI viejo (Z) queda en el historial");
+    }
+
+    @Test void unPedidoConSoloFilasCanceladasSigueYendoARevisar() {
+        fila(20, PB, 1, null).marca("CANCELADO");
         assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
-        assertEquals(antes, estado());
         assertEquals(List.of(paraRevisar(PB, X, "CANCELADO")), revisar());
     }
 
@@ -396,18 +474,19 @@ class AsociacionAmazonTest {
         verify(jdbc, never()).batchUpdate(eq(AsociacionAmazon.SQL_QUITAR_ESPERA), anyList());
     }
 
-    @Test void regla3SinHuecoQuedaParaRevisarYSiSoloQuedanCanceladasEsCancelado() {
+    @Test void regla3ConEtiquetaElLibroPoneElImeiYSiSoloQuedanCanceladasEsCancelado() {
         fila(20, PB, 1, Y).asociada("LIBRO");
-        fila(21, PB, 2, Z).etiqueta();
-        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
-        assertEquals(List.of(paraRevisar(PB, X, "SIN_HUECO")), revisar());
+        Fila b2 = fila(21, PB, 2, Z).etiqueta();
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b2.imei);
 
-        fila(22, PB, 3, null).marca("CANCELADO");
+        fila(30, PC, 1, null).marca("CANCELADO");
         List<String> antes = estado();
-        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
+        int apuntesAntes = apuntes.size();
+        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PC, W));
         assertEquals(antes, estado());
-        assertEquals(List.of(paraRevisar(PB, X, "CANCELADO")), revisar(), "la lista se rehace: solo la ultima pasada");
-        assertTrue(apuntes.isEmpty());
+        assertEquals(apuntesAntes, apuntes.size(), "con CANCELADO no se escribe ningun apunte");
+        assertEquals(List.of(paraRevisar(PC, W, "CANCELADO")), revisar(), "la lista se rehace: solo la ultima pasada");
     }
 
     // ------------------------------------------------------------------ regla 4 y bordes
@@ -437,10 +516,10 @@ class AsociacionAmazonTest {
     @Test void unParQueSigueSinHuecoTrasLasVueltasSeGuardaComoSinHueco() {
         fila(20, PB, 1, Y);
         fila(30, PC, 1, Z).etiqueta();
-        assertEquals(r(0, 0, 0, 0, 2, 0), aplicar(PB, W, PC, Y));
-        assertEquals(List.of(paraRevisar(PB, W, "SIN_HUECO"), paraRevisar(PC, Y, "SIN_HUECO")), revisar());
-        assertEquals(Y, porId(20).imei, "nunca se saca un IMEI leido");
-        assertEquals(Z, porId(30).imei);
+        assertEquals(r(0, 1, 0, 0, 1, 0), aplicar(PB, W, PC, Y));
+        assertEquals(List.of(paraRevisar(PB, W, "SIN_HUECO")), revisar());
+        assertEquals(Y, porId(30).imei, "el libro manda en PC, que tiene etiqueta");
+        assertEquals(Z, porId(20).imei, "PB pendiente recibe por intercambio el que tenia PC; W sigue sin hueco");
     }
 
     @Test void unParConPedidoAjenoNoSeReintentaYRepetirLaPasadaConReintentoNoCambiaNada() {
@@ -520,13 +599,85 @@ class AsociacionAmazonTest {
         assertNull(segunda.imei);
     }
 
-    @Test void unImeiRepetidoEnLaPasadaSoloValeLaUltimaVezYLasAnterioresSeDescartan() {
+    @Test void unImeiEnDosPedidosDelLibroSePoneEnLosDos() {
         Fila a = fila(10, PA, 1, null);
         Fila b = fila(20, PB, 1, null);
-        assertEquals(r(0, 0, 1, 0, 0, 1), aplicar(PA, X, PB, X));
-        assertNull(a.imei);
+        assertEquals(r(0, 0, 2, 0, 0, 0), aplicar(PA, X, PB, X));
+        assertEquals(X, a.imei);
+        assertEquals(X, b.imei, "las dos celdas avisan «en otro pedido»");
+        assertTrue(revisar().isEmpty());
+    }
+
+    /** Devuelto y revendido (decision de Imad, 24/11): X ya confirmado en PA y el libro lo pone tambien en PB, sin confirmar. PB lo
+     *  recibe como cualquier otro par; PA se queda como estaba. */
+    @Test void unImeiYaConfirmadoEnUnPedidoYNuevoEnOtroEsUnaReventaYElNuevoSeAplica() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 0, 1, 1, 0, 0), aplicar(PA, X, PB, X));
+        assertEquals(X, a.imei, "el pedido viejo conserva su IMEI");
+        assertNotNull(a.asociadaEn);
         assertEquals(X, b.imei);
-        assertEquals(r(0, 0, 0, 1, 0, 1), aplicar(PA, X, PB, X), "y repetir no lo mueve");
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(List.of(libro(20, Y, X), asociada(20)), apuntes());
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unaReventaEnUnPedidoPendienteVaASuFilaLibre() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("HISTORICO");
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(r(0, 0, 1, 1, 0, 0), aplicar(PB, X, PA, X));
+        assertEquals(X, a.imei);
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unImeiYaConfirmadoEnLosDosPedidosNoEsRepetido() {
+        fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        fila(20, PB, 1, X).etiqueta().asociada("LIBRO");
+        List<String> antes = estado();
+        assertEquals(r(0, 0, 0, 2, 0, 0), aplicar(PA, X, PB, X));
+        assertEquals(antes, estado());
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void conDosPedidosNuevosParaElMismoImeiSePoneEnTodosYNingunoSeLoQuitaAOtro() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        Fila b = fila(20, PB, 1, null);
+        Fila c = fila(30, PC, 1, null);
+        assertEquals(r(0, 0, 2, 1, 0, 0), aplicar(PA, X, PB, X, PC, X));
+        assertEquals(X, a.imei);
+        assertEquals(X, b.imei);
+        assertEquals(X, c.imei);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unImeiEnDosPedidosQueElErpNoTieneSonDosAjenosYNoVanALaLista() {
+        assertEquals(new RespuestaAsociaciones(0, 0, 0, 0, 0, 0, 2), aplicar(PA, X, PB, X));
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void siDeLosDosPedidosSoloUnoEstaEnElErpElLibroSeAplicaAEseYElOtroEsAjeno() {
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(new RespuestaAsociaciones(0, 0, 1, 0, 0, 0, 1), aplicar(PA, X, PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void elMismoParRepetidoNoEsRepetidoYLasRepeticionesSeDescartan() {
+        Fila b = fila(20, PB, 1, null);
+        assertEquals(r(0, 0, 1, 0, 0, 1), aplicar(PB, X, PB, X));
+        assertEquals(X, b.imei);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unImeiRepetidoEnDosPedidosNoImpideQueLosDemasParesSeApliquen() {
+        fila(10, PA, 1, null);
+        fila(20, PB, 1, null);
+        Fila c = fila(30, PC, 1, null);
+        assertEquals(r(0, 0, 3, 0, 0, 0), aplicar(PA, X, PB, X, PC, Y));
+        assertEquals(Y, c.imei);
     }
 
     @Test void unIntercambioDejaElImeiDesplazadoDondePuedeConfirmarloOtraAsociacionDeLaMismaPasada() {
@@ -595,6 +746,212 @@ class AsociacionAmazonTest {
         assertEquals(r(0, 0, 1, 0, 0, 0, 1), servicio.aplicar(Canal.AMAZON_STOCKROOM, pares(PB, X, PC, Y), AHORA));
         assertTrue(revisar().isEmpty());
         assertEquals("AMAZON_STOCKROOM", pasadas.get(0)[7]);
+    }
+
+    // ------------------------------------------------------------------ el libro manda en pedidos con etiqueta (spec §2.3)
+
+    private static String libro(int id, String anterior, String nuevo) {
+        return apunte(id, anterior, nuevo, "IMEI", "LIBRO");
+    }
+
+    @Test void conEtiquetaSinImprimirPoneElImeiDelLibroYLoConfirma() {
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals("LIBRO", b.asociadaOrigen);
+        assertEquals(List.of(libro(20, Y, X), asociada(20)), apuntes());
+        assertEquals(List.of(Map.of(X, "i14128AzulA")), comprobados, "se comprueba con el SKU del pedido");
+    }
+
+    @Test void siElMovilNoCuadraSePoneIgualYLaCeldaAvisa() {
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        rechazos.put(X, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es i14128AzulA y el móvil es i14256AzulA"));
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void siElImeiDelLibroNoEstaEnNsysSePoneIgual() {
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        rechazos.put(X, new ComprobadorLibro.Rechazo("NO_EN_NSYS", null));
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei, "la celda avisará «no está en NSYS»");
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void elImeiDeOtroPedidoConEtiquetaSeLeQuitaSiEsePedidoEstaEnElLibroDeLaPasada() {
+        Fila o = fila(10, PA, 1, X).etiqueta();
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 1, 1, 0, 0, 0), aplicar(PB, X, PA, W));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(W, o.imei, "PA pierde X y su linea del libro le pone W");
+        assertEquals(List.of(libro(20, Y, X), libro(10, X, null), asociada(20), libro(10, null, W), asociada(10)), apuntes());
+    }
+
+    /** 0.9.46.2: el libro manda siempre; lo que antes iba a revisar se pone y la celda avisa. */
+    @Test void elImeiDeOtroPedidoConEtiquetaImpresaFueraDelLibroSeQuedaYBTambienLoRecibe() {
+        Fila o = fila(10, PA, 1, X).etiqueta();
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, o.imei, "el otro pedido se queda con X: las dos celdas avisan «en otro pedido»");
+        assertEquals(X, b.imei);
+        assertEquals(List.of(libro(20, Y, X), asociada(20)), apuntes());
+        assertTrue(revisar().isEmpty());
+    }
+
+    /** Peticion de Imad (24/11): O con etiqueta SIN imprimir (no empaquetado) y fuera del libro de la pasada: el movil X ya salio en
+     *  B, asi que O recibe el que tenia B, como un pendiente, con aviso de comprobar el movil. */
+    @Test void elImeiDeOtroPedidoConEtiquetaSinImprimirQueNoEstaEnElLibroSeIntercambia() {
+        Fila o = fila(10, PA, 1, X).sinImprimir();
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 1, 0, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(Y, o.imei, "O recibe el que tenia B");
+        assertNull(o.asociadaEn);
+        assertEquals(List.of(libro(20, Y, X), libro(10, X, Y),
+                apunte(20, null, null, "IMEI_INTERCAMBIADO", "con la fila 10"),
+                apunte(10, null, null, "IMEI_INTERCAMBIADO", "con la fila 20 · por el libro: comprobar el móvil"),
+                asociada(20)), apuntes());
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unaCadenaDeEtiquetasSinImprimirSeResuelveEnLaPasada() {
+        // O tiene X sin imprimir; el libro pone X en B (que tenia Z) y Z en C (que tenia W).
+        Fila o = fila(10, PA, 1, X).sinImprimir();
+        Fila b = fila(20, PB, 1, Z).etiqueta();
+        Fila c = fila(30, PC, 1, W).etiqueta();
+        aplicar(PB, X, PC, Z);
+        assertEquals(X, b.imei);
+        assertEquals(Z, c.imei);
+        assertEquals(W, o.imei, "al final O tiene el que tenia C, que sigue en casa");
+        assertEquals(AHORA, b.asociadaEn);
+        assertEquals(AHORA, c.asociadaEn);
+        assertNull(o.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    /** Caso de produccion (24/11, 408-2271545): un pedido con una unidad Plata y otra Oro. El IMEI del libro va a la fila con la que
+     *  cuadra, no a la primera. */
+    @Test void conUnidadesDeDistintoSkuElImeiVaALaFilaConLaQueCuadra() {
+        Fila plata = fila(20, PB, 1, Z).etiqueta();
+        plata.sku = "i14PROMAX256PlataA";
+        Fila oro = fila(21, PB, 2, null).etiqueta();
+        oro.sku = "i14PROMAX256OroA";
+        skuDelMovil.put(X, "i14PROMAX256OroA");
+        skuDelMovil.put(Y, "i14PROMAX256PlataA");
+        aplicar(PB, X, PB, Y);
+        assertEquals(X, oro.imei);
+        assertEquals(Y, plata.imei);
+        assertEquals(AHORA, oro.asociadaEn);
+        assertEquals(AHORA, plata.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void siNoCuadraConNingunaFilaVaALaPrimera() {
+        Fila plata = fila(20, PB, 1, Z).etiqueta();
+        plata.sku = "i14PROMAX256PlataA";
+        fila(21, PB, 2, null).etiqueta().sku = "i14PROMAX256OroA";
+        skuDelMovil.put(X, "i14PROMAX256NegroA");
+        aplicar(PB, X);
+        assertEquals(X, plata.imei, "la celda avisará «color: Negro»");
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void unCruceDeDosPedidosConEtiquetaSeResuelveEnLaMismaPasada() {
+        Fila a = fila(10, PA, 1, Y).etiqueta();
+        Fila b = fila(20, PB, 1, X).etiqueta();
+        aplicar(PA, X, PB, Y);
+        assertEquals(X, a.imei);
+        assertEquals(Y, b.imei);
+        assertEquals(AHORA, a.asociadaEn);
+        assertEquals(AHORA, b.asociadaEn);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void elImeiDeUnPedidoPendienteSeIntercambiaComoHoy() {
+        Fila o = fila(10, PA, 1, X);
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 1, 0, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(Y, o.imei, "el pendiente recibe el que tenia la fila de B, como en la regla 2");
+        assertNull(o.asociadaEn);
+    }
+
+    @Test void elImeiConfirmadoEnOtroPedidoSeQuedaYBTambienLoRecibe() {
+        Fila a = fila(10, PA, 1, X).etiqueta().asociada("LIBRO");
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, a.imei);
+        assertEquals(X, b.imei);
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void elImeiEnUnaFilaCanceladaDeOtroPedidoSePoneIgual() {
+        Fila a = fila(10, PA, 1, X).marca("CANCELADO");
+        Fila b = fila(20, PB, 1, Y).etiqueta();
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertEquals(X, b.imei);
+        assertEquals(X, a.imei, "la fila cancelada no se toca");
+        assertTrue(revisar().isEmpty());
+    }
+
+    @Test void conVariasUnidadesVaALaFilaCuyoImeiNoEstaEnElLibro() {
+        Fila b1 = fila(20, PB, 1, Y).etiqueta();
+        Fila b2 = fila(21, PB, 2, Z).etiqueta();
+        aplicar(PB, Y, PB, X);
+        assertEquals(Y, b1.imei, "Y la pone el libro en PB: se confirma");
+        assertEquals(AHORA, b1.asociadaEn);
+        assertEquals(X, b2.imei, "X va a la fila de Z, que el libro no pone en PB");
+        assertEquals(AHORA, b2.asociadaEn);
+    }
+
+    @Test void unaFilaConEtiquetaCanceladaNoRecibeNada() {
+        Fila b = fila(20, PB, 1, Y).etiqueta().marca("CANCELADO");
+        assertEquals(r(0, 0, 0, 0, 1, 0), aplicar(PB, X));
+        assertEquals(Y, b.imei);
+        assertEquals(List.of(paraRevisar(PB, X, "SIN_HUECO")), revisar(), "sin fila corregible siguen las reglas de hoy");
+        assertTrue(comprobados.isEmpty() || comprobados.get(0).isEmpty());
+    }
+
+    @Test void unParQueLlegaAlCaminoConEtiquetaEnElReintentoTambienSePone() {
+        // Al empezar, PB tiene la fila 20 pendiente (Y): X no va por el camino con etiqueta. «Y -> PB» confirma la 20 y en el reintento X
+        // va por ese camino: se comprueba (para elegir fila) y se pone aunque no cuadre.
+        fila(20, PB, 1, Y);
+        Fila b2 = fila(21, PB, 2, Z).etiqueta();
+        rechazos.put(X, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es i14128AzulA y el móvil es i14256AzulA"));
+        assertEquals(r(1, 0, 1, 0, 0, 0), aplicar(PB, X, PB, Y));
+        assertEquals(X, b2.imei);
+        assertTrue(revisar().isEmpty());
+        assertEquals(List.of(Map.of(), Map.of(X, "i14128AzulA")), comprobados);
+    }
+
+    @Test void siLaFilaDestinoCambiaAOtraDeOtroSkuSeVuelveAComprobarConElSkuDeEsaFila() {
+        // Dos filas con etiqueta de PB con SKU distinto. Antes de la pasada los dos pares apuntan a la fila 20 (SKU A) y se comprueban con
+        // el suyo; al aplicar, X se queda la 20 y W va a la 21 (SKU B): W se vuelve a comprobar con el SKU de la 21 y, aunque no cuadra,
+        // se pone (la celda avisa).
+        Fila b1 = fila(20, PB, 1, Y).etiqueta();
+        Fila b2 = fila(21, PB, 2, Z).etiqueta();
+        b2.sku = "i14256NegroA";
+        rechazos.put(W, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es i14256NegroA y el móvil es i14128AzulA"));
+        assertEquals(r(0, 0, 2, 0, 0, 0), aplicar(PB, X, PB, W));
+        assertEquals(X, b1.imei);
+        assertEquals(W, b2.imei);
+        assertEquals(List.of(Map.of(X, "i14128AzulA", W, "i14128AzulA"), Map.of(W, "i14256NegroA")), comprobados);
+        assertTrue(revisar().isEmpty());
+        assertEquals(List.of(libro(20, Y, X), asociada(20), libro(21, Z, W), asociada(21)), apuntes());
+    }
+
+    @Test void conUnaFilaPendienteLibreEnElPedidoSiguenLasReglasDeHoyYNoSeComprueba() {
+        Fila b1 = fila(20, PB, 1, null).etiqueta();
+        Fila b2 = fila(21, PB, 2, null);
+        assertEquals(r(0, 0, 1, 0, 0, 0), aplicar(PB, X));
+        assertNull(b1.imei);
+        assertEquals(X, b2.imei);
+        assertTrue(comprobados.isEmpty() || comprobados.get(0).isEmpty());
     }
 
     // ------------------------------------------------------------------ estado (GET)
