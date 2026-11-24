@@ -57,7 +57,10 @@ class EstadoUnidadTest {
                 de(WEB_A, movil("13", "ID"), vale("Azul", "ID", null, null), NINGUNO, Canal.DISTRIBUIDORES),
                 "un ID no está prohibido fuera de Amazon: no cuadra por grado");
         TrabajoAbierto glass = new TrabajoAbierto("GLASS", "Técnico 1", LocalDateTime.of(2026, 11, 1, 9, 0), null);
-        assertEquals(new EstadoUnidad.Resultado("EN_TALLER", null), de(AMAZON_A, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), List.of(glass), Canal.AMAZON));
+        assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "GRADO", null, false, false, "C"),
+                de(AMAZON_A, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), List.of(glass), Canal.AMAZON),
+                "con un técnico también se mira el grado (24/11)");
+        assertEquals(new EstadoUnidad.Resultado("EN_TALLER", null), de(AMAZON_A, movil("13", "A"), vale("Azul", "A", "i13128AzulA", null), List.of(glass), Canal.AMAZON));
         assertEquals(new EstadoUnidad.Resultado("NECESITA_TALLER", "GRADO", null, false, false, "C"), de(AMAZON_A, movil("13", "C"), vale("Azul", "C", "i13128AzulA", null), NINGUNO, Canal.AMAZON));
         assertEquals(new EstadoUnidad.Resultado("CUADRA", null), de(AMAZON_A, movil("13", "C"), vale("Azul", "A", "i13128AzulA", "C"), NINGUNO, Canal.AMAZON),
                 "un C que el taller ya dejó en A cuadra");
@@ -185,10 +188,22 @@ class EstadoUnidadTest {
                 de(AMAZON_A, movil("13", "MsA"), vale("Rojo", "MsA", null, null), NINGUNO, Canal.AMAZON));
     }
 
-    @Test void enElTallerNoMiraColorNiGradoNiApuntaNaNiMs() {
+    /** Decisión de Imad (24/11): con un técnico se compara igual; si no cuadra sale el motivo de verdad (la celda añade quién lo
+     *  tiene); si cuadra, «reparándose» con la SIM, el n/a y el Ms. */
+    @Test void conUnTecnicoSeComparaIgualYSiCuadraEsEnTaller() {
         TrabajoAbierto rep = new TrabajoAbierto("REPARACION", "Juan", LocalDateTime.of(2026, 11, 1, 9, 0), null);
-        assertEquals(r("EN_TALLER", null, null, false, false, null),
+        assertEquals(r("NECESITA_TALLER", "COLOR", null, true, false, "Rosa"),
                 de(AMAZON_A, movil("13", "128GB", "n/a", false), vale("Rosa", "n/a", null, null), List.of(rep), Canal.AMAZON));
+        assertEquals(r("NECESITA_TALLER", "COLOR", null, false, false, "Rojo"),
+                de(AMAZON_A, a(), vale("Rojo", "A", "i13128RojoA", null), List.of(rep), Canal.AMAZON));
+        assertEquals(r("NO_CUADRA", "MODELO", null, false, false, "14"),
+                de(AMAZON_A, movil("14", "A"), vale("Azul", "A", "x", null), List.of(rep), Canal.AMAZON));
+        assertEquals(r("EN_TALLER", null, null, true, false, null),
+                de(AMAZON_A, movil("13", "128GB", "n/a", false), vale("Azul", "n/a", "i13128AzulNA", null), List.of(rep), Canal.AMAZON),
+                "un n/a del color del pedido: reparándose, con el N/A");
+        assertEquals(r("EN_TALLER", null, "ESIM", false, true, null),
+                de(AMAZON_A, movil("13", "128GB", "MsA", true), vale("Azul", "MsA", "i13128AzulMs", null), List.of(rep), Canal.AMAZON),
+                "eSIM y Ms se siguen viendo");
     }
 
     private static MovilNsys a() {

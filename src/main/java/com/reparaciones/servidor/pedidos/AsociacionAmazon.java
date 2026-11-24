@@ -345,6 +345,9 @@ public class AsociacionAmazon {
             porPedido.values().forEach(l -> l.sort(POR_POSICION));
         }
 
+        /** El detalle del ultimo motivo que devolvio intentar (en que pedido esta el IMEI), o null. */
+        String detalleMotivo;
+
         /** Reventas de la pasada: IMEI → los pedidos que ya lo tenian confirmado, que no se tocan. */
         final Map<String, Set<String>> revendidos = new HashMap<>();
 
@@ -388,11 +391,17 @@ public class AsociacionAmazon {
          *  ninguna fila pendiente sin confirmar ni cancelar, y si una fila con etiqueta corregible cuyo IMEI (o ninguno) no lo pone el
          *  libro en el pedido. Devuelve esa fila (la primera por posicion) o null. */
         Hueco destinoConEtiqueta(String pedido, String imei, Map<String, Set<String>> delLibro) {
+            List<Hueco> d = destinosConEtiqueta(pedido, imei, delLibro);
+            return d.isEmpty() ? null : d.get(0);
+        }
+
+        /** Todas las filas posibles, por posicion: con unidades de distinto SKU, X va a la primera con la que cuadra. */
+        List<Hueco> destinosConEtiqueta(String pedido, String imei, Map<String, Set<String>> delLibro) {
             List<Hueco> deB = porPedido.getOrDefault(pedido, List.of());
-            if (deB.isEmpty() || deB.stream().anyMatch(h -> imei.equals(h.imei))) return null;
-            if (deB.stream().anyMatch(h -> h.abierto() && !h.cancelada())) return null;
+            if (deB.isEmpty() || deB.stream().anyMatch(h -> imei.equals(h.imei))) return List.of();
+            if (deB.stream().anyMatch(h -> h.abierto() && !h.cancelada())) return List.of();
             Set<String> delPedido = delLibro.getOrDefault(pedido, Set.of());
-            return deB.stream().filter(h -> h.corregible() && (h.imei == null || !delPedido.contains(h.imei))).findFirst().orElse(null);
+            return deB.stream().filter(h -> h.corregible() && (h.imei == null || !delPedido.contains(h.imei))).toList();
         }
 
         /** Lo que dice el comprobador de X para la fila destino: lo comprobado antes de aplicar si fue con el SKU de esa fila; si no
@@ -414,7 +423,15 @@ public class AsociacionAmazon {
         void aplicar(String pedido, String imei) {
             String motivo = intentar(pedido, imei);
             if (SIN_HUECO.equals(motivo)) sinHueco.add(new String[]{pedido, imei});
-            else if (motivo != null) paraRevisar(pedido, imei, motivo);
+            else if (motivo != null) paraRevisar(pedido, imei, motivo, detalleMotivo);
+        }
+
+        /** El motivo de un IMEI que esta en otra fila, con el pedido y como esta esa fila en el detalle. */
+        private String enOtro(String motivo, Hueco h) {
+            String como = h.cancelada() ? "cancelado" : h.confirmada() ? "asociado" : h.impresa ? "etiqueta impresa"
+                    : h.conEtiqueta ? "etiqueta sin imprimir" : "pendiente";
+            detalleMotivo = "está en el pedido " + h.pedido + " (" + como + ")";
+            return motivo;
         }
 
         /** Vuelve a intentar los SIN_HUECO mientras alguno avance (como mucho 3 vueltas); los que siguen sin hueco van a «para revisar». */
@@ -427,7 +444,7 @@ public class AsociacionAmazon {
                     String motivo = intentar(p[0], p[1]);
                     if (motivo == null) avanzo = true;
                     else if (SIN_HUECO.equals(motivo)) siguen.add(p);
-                    else paraRevisar(p[0], p[1], motivo);
+                    else paraRevisar(p[0], p[1], motivo, detalleMotivo);
                 }
                 pendientes = siguen;
                 if (!avanzo) break;
@@ -437,6 +454,7 @@ public class AsociacionAmazon {
 
         /** Aplica las reglas a un par: null si se resolvio (o es un pedido ajeno, que solo se cuenta); si no, el motivo y no toca nada. */
         private String intentar(String pedido, String imei) {
+            detalleMotivo = null;
             List<Hueco> deB = porPedido.getOrDefault(pedido, List.of());
             if (deB.isEmpty()) {
                 ajenos++;
@@ -460,13 +478,10 @@ public class AsociacionAmazon {
             // 2. Esta en una fila de otro pedido.
             Set<Hueco> fuera = fuera(imei);
             if (!fuera.isEmpty()) {
-                if (fuera.stream().anyMatch(h -> h.conEtiqueta)) {
-                    return YA_SALIO;
-                }
+                Hueco conEtiqueta = fuera.stream().filter(h -> h.conEtiqueta).findFirst().orElse(null);
+                if (conEtiqueta != null) return enOtro(YA_SALIO, conEtiqueta);
                 Hueco origen = fuera.stream().filter(h -> !h.cancelada()).findFirst().orElse(null);
-                if (origen == null) {
-                    return CANCELADO;
-                }
+                if (origen == null) return enOtro(CANCELADO, fuera.iterator().next());
                 Hueco destino = deB.stream().filter(h -> h.abierto() && !h.cancelada()).findFirst().orElse(null);
                 if (destino == null) {
                     return sinHueco(deB);
@@ -498,19 +513,32 @@ public class AsociacionAmazon {
 
         /** La regla con etiqueta: comprobacion del movil, la fila de B y lo que pasa con la fila de otro pedido que tenia X. */
         private String conEtiqueta(String pedido, String imei) {
-            Hueco destino = destinoConEtiqueta(pedido, imei, delLibro);
-            ComprobadorLibro.Rechazo rechazo = rechazo(imei, destino);
+            List<Hueco> candidatos = destinosConEtiqueta(pedido, imei, delLibro);
+            Hueco destino = null;
+            ComprobadorLibro.Rechazo rechazo = candidatos.isEmpty() ? rechazo(imei, null) : null;
+            for (Hueco c : candidatos) {
+                ComprobadorLibro.Rechazo r = rechazo(imei, c);
+                if (r == null) {
+                    destino = c;
+                    rechazo = null;
+                    break;
+                }
+                if (rechazo == null) rechazo = r;                          // si no cuadra con ninguna, lo que dijo la primera
+            }
             if (rechazo != null) {
                 paraRevisar(pedido, imei, rechazo.motivo(), rechazo.detalle());
                 return null;
             }
             Set<Hueco> fuera = fuera(imei);
-            if (fuera.stream().anyMatch(Hueco::confirmada)) return YA_SALIO;
-            if (fuera.stream().anyMatch(Hueco::cancelada)) return CANCELADO;
+            Hueco confirmada = fuera.stream().filter(Hueco::confirmada).findFirst().orElse(null);
+            if (confirmada != null) return enOtro(YA_SALIO, confirmada);
+            Hueco cancelada = fuera.stream().filter(Hueco::cancelada).findFirst().orElse(null);
+            if (cancelada != null) return enOtro(CANCELADO, cancelada);
             // O con etiqueta solo pierde X si su pedido esta en el libro de esta pasada (su linea lo corregira). Fuera del libro: con la
             // etiqueta impresa (ya empaquetado; p. ej. un pedido viejo con el movil devuelto y revendido) no se toca nada; sin imprimir,
             // X ya salio en B y O aun no se empaqueto: se trata como un pendiente (peticion de Imad, 24/11).
-            if (fuera.stream().anyMatch(h -> h.conEtiqueta && h.impresa && !delLibro.containsKey(h.pedido))) return YA_SALIO;
+            Hueco impresa = fuera.stream().filter(h -> h.conEtiqueta && h.impresa && !delLibro.containsKey(h.pedido)).findFirst().orElse(null);
+            if (impresa != null) return enOtro(YA_SALIO, impresa);
             if (destino == null) return SIN_HUECO;
             String delDestino = destino.imei;
             List<Hueco> otros = List.copyOf(fuera);                       // copia: ponerImei cambia porImei

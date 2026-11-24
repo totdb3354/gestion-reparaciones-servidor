@@ -46,13 +46,31 @@ public class ComprobadorLibro {
         skuPorImei.forEach((imei, sku) -> {
             String clave = NsysDAO.claveCruce(imei);
             MovilNsys m = moviles.get(clave);
-            AvisoImei aviso = AvisoImei.de(acepta.para(canal, sku), canal, m, m == null ? null : vale.apply(m),
-                    trabajos.getOrDefault(clave, List.of()), false);
+            LoQueVale.Valor v = m == null ? null : vale.apply(m);
+            AvisoImei aviso = AvisoImei.de(acepta.para(canal, sku), canal, m, v, trabajos.getOrDefault(clave, List.of()), false);
             if (!AvisoImei.MAL.equals(aviso.nivel())) return;
             if (NO_EN_NSYS.equals(aviso.motivo())) rechazos.put(imei, new Rechazo(NO_EN_NSYS, null));
-            else rechazos.put(imei, new Rechazo(OTRO_MODELO,
-                    "el pedido es " + (sku == null ? "—" : sku) + " y el móvil es " + (aviso.skuMovil() == null ? "—" : aviso.skuMovil())));
+            else rechazos.put(imei, new Rechazo(OTRO_MODELO, detalle(aviso, v, sku)));
         });
         return rechazos;
+    }
+
+    /** Qué no cuadra, qué es el móvil y dónde está: «grado C100 · el pedido es X y el móvil es Y · en Esperando pieza». */
+    static String detalle(AvisoImei aviso, LoQueVale.Valor v, String sku) {
+        String dato = aviso.detalle() == null ? null : aviso.detalle().dato();
+        String que = switch (aviso.motivo() == null ? "" : aviso.motivo()) {
+            case "MODELO" -> "modelo " + dato;
+            case "CAPACIDAD" -> "capacidad " + dato;
+            case "COLOR" -> "color " + dato;
+            case "GRADO" -> "grado " + (v != null && v.grade() != null ? v.grade().strip() : dato);
+            case "COLOR_O_GRADO" -> "ese color y ese grado no existen juntos";
+            case "GRADO_NO_VENDIBLE" -> "no se vende: " + dato;
+            case "SKU_DESCONOCIDO" -> "el SKU del pedido no está en el maestro";
+            default -> null;
+        };
+        String texto = (que == null ? "" : que + " · ") + "el pedido es " + (sku == null ? "—" : sku) + " y el móvil es "
+                + (aviso.skuMovil() == null ? "—" : aviso.skuMovil())
+                + (aviso.caja() == null || aviso.caja().isBlank() ? "" : " · en " + aviso.caja().strip());
+        return texto.length() <= 250 ? texto : texto.substring(0, 250);
     }
 }

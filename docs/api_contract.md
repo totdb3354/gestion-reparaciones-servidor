@@ -234,7 +234,7 @@ de `model/` conservan su nombre.
       IMEI en Paso 1. Meter IMEI», «falta la pestaña Paso 1. Meter IMEI» o «no se pudo leer el libro de Drive: …». Si la primera vuelta
       del lector en un canal falla, el canal aparece con `cuando` = la hora del error, los recuentos a 0 y `error`. El resto no es
       nullable.
-      Cada elemento de `revisar` es `{pedido, imei, motivo, vistoEn, detalle}`; `detalle` es `null` salvo en `OTRO_MODELO`. Motivos:
+      Cada elemento de `revisar` es `{pedido, imei, motivo, vistoEn, detalle}`; `detalle`: en `OTRO_MODELO`, qué no cuadra, qué es el móvil y dónde está («grado C100 · el pedido es X y el móvil es Y · en Esperando pieza»); en `YA_SALIO` y `CANCELADO`, en qué pedido está el IMEI («está en el pedido X (etiqueta impresa)»); `null` en los demás. Motivos:
       `SIN_HUECO` (no hay fila libre donde poner el IMEI), `YA_SALIO` (el IMEI está en una fila con etiqueta de otro pedido, o está confirmado en otro pedido por el libro, o está en una fila con etiqueta de un pedido que no está en el libro de esa pasada), `CANCELADO`
       (la fila afectada tiene la marca «Cancelado»), `REPETIDO_EN_LIBRO` (el libro pone el IMEI en dos pedidos), `NO_EN_NSYS` (el IMEI del
       libro no está en NSYS) y `OTRO_MODELO` (el móvil no cuadra con el pedido: modelo, capacidad, color, grado o SKU).

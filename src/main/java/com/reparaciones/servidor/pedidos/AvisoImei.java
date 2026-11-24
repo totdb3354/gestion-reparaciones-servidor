@@ -33,8 +33,8 @@ public record AvisoImei(String nivel, String motivo, String skuMovil, String caj
         String caja = m.estado() == EstadoMovil.DE_PEDIDO ? m.ubicacionUltima() : m.ubicacion();
         if (enOtraFilaViva) return new AvisoImei(MAL, "EN_OTRA_FILA", sku, caja);
         EstadoUnidad.Resultado r = EstadoUnidad.de(ac, m, v, trabajos, canal);
-        boolean enTaller = r.estado().equals("EN_TALLER");
-        DetalleAviso d = DetalleAviso.de(r.sim(), r.na(), r.ms(), r.dato(), enTaller ? trabajos : List.of());
+        // Quién lo tiene va siempre en el detalle, cuadre o no (decisión de Imad, 24/11).
+        DetalleAviso d = DetalleAviso.de(r.sim(), r.na(), r.ms(), r.dato(), trabajos);
         return switch (r.estado()) {
             case "NO_CUADRA", "NECESITA_TALLER" -> new AvisoImei(MAL, r.motivo(), sku, caja, d);
             case "EN_TALLER" -> new AvisoImei(AVISO, "EN_TALLER", sku, caja, d);

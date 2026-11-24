@@ -57,10 +57,22 @@ class ComprobadorLibroTest {
                 comprobador.rechazos(Canal.AMAZON, Map.of(X, "i13128AzulA")));
     }
 
-    @Test void otroModeloEsOtroModeloYDiceQueEsElMovil() {
+    @Test void otroModeloEsOtroModeloYDiceQueFallaQueEsElMovilYDondeEsta() {
         when(nsysDao.porImeis(anyCollection())).thenReturn(List.of(movil(X, "13 mini")));
-        assertEquals(Map.of(X, new ComprobadorLibro.Rechazo("OTRO_MODELO", "el pedido es i13128AzulA y el móvil es i13128AzulA")),
+        assertEquals(Map.of(X, new ComprobadorLibro.Rechazo("OTRO_MODELO",
+                        "modelo 13 mini · el pedido es i13128AzulA y el móvil es i13128AzulA · en Listos")),
                 comprobador.rechazos(Canal.AMAZON, Map.of(X, "i13128AzulA")));
+    }
+
+    /** Caso de producción (24/11): el SKU de NSYS dice A100 pero el grado es C100 y el móvil espera pieza. */
+    @Test void unGradoCSinRepararDiceElGradoDeVerdadYLaCaja() {
+        MovilNsys c = new MovilNsys(X, "BT-9001", "Apple iPhone 13 128GB Blue", "C100", "Available", "AFaltaRepuestos",
+                "Proveedor A", LocalDate.of(2026, 9, 1), null, "i13128AzulA100", "13", "13", "128GB", "Azul", "C100", false,
+                "Esperando pieza", null, EstadoMovil.STOCK, null, null);
+        when(nsysDao.porImeis(anyCollection())).thenReturn(List.of(c));
+        when(taller.valedor(anyCollection())).thenReturn(m -> new LoQueVale.Valor("Azul", "C100", m.sku(), null, null, null, false));
+        assertEquals("grado C100 · el pedido es i13128AzulA y el móvil es i13128AzulA100 · en Esperando pieza",
+                comprobador.rechazos(Canal.AMAZON, Map.of(X, "i13128AzulA")).get(X).detalle());
     }
 
     @Test void otroModeloConPedidoSinSkuEscribeRayaYNoNull() {
@@ -69,7 +81,7 @@ class ComprobadorLibroTest {
         pedido.put(X, null);
         ComprobadorLibro.Rechazo r = comprobador.rechazos(Canal.AMAZON, pedido).get(X);
         assertNotNull(r);
-        assertEquals("el pedido es — y el móvil es i13128AzulA", r.detalle());
+        assertEquals("el SKU del pedido no está en el maestro · el pedido es — y el móvil es i13128AzulA · en Listos", r.detalle());
     }
 
     private static MovilNsys conEsim(MovilNsys m, boolean esim) {
