@@ -133,7 +133,7 @@ class ReglaDevolucionesTest {
     /** Ventas anteriores enviadas (envio = cierre, etiqueta impresa, IMEI puesto la vispera). */
     private static Veredicto conFilasCerradas(List<LocalDateTime> cierres, List<LocalDateTime> vueltas) {
         List<FilaConImei> filas = cierres.stream()
-                .map(c -> new FilaConImei(20000, c, c, c, null, false, null, null, c.minusDays(1))).toList();
+                .map(c -> new FilaConImei(20000, c, c, c, null, false, null, null, c.minusDays(1), false)).toList();
         return conFilas(SALIDA, filas, vueltas);
     }
 
@@ -151,7 +151,7 @@ class ReglaDevolucionesTest {
 
     /** Una fila abierta marcada «Cancelar móvil» por Fati a la hora de SALIO, con el IMEI puesto en PUESTO. */
     private static FilaConImei cancelada(LocalDateTime impresa) {
-        return new FilaConImei(29200, null, null, impresa, null, true, SALIO, "Fati", PUESTO);
+        return new FilaConImei(29200, null, null, impresa, null, true, SALIO, "Fati", PUESTO, false);
     }
 
     @Test void cancelarMovilSinEtiquetaSeDevuelve() {
@@ -163,7 +163,7 @@ class ReglaDevolucionesTest {
     }
 
     @Test void cancelarMovilSinQuienLaPusoEsUnProceso() {
-        FilaConImei sinQuien = new FilaConImei(29200, null, null, null, null, true, SALIO, null, PUESTO);
+        FilaConImei sinQuien = new FilaConImei(29200, null, null, null, null, true, SALIO, null, PUESTO, false);
         assertEquals("un proceso", conFilas(null, List.of(sinQuien), List.of()).salida().quien());
     }
 
@@ -173,13 +173,13 @@ class ReglaDevolucionesTest {
     }
 
     @Test void unaFilaAbiertaSinCancelarImpide() {
-        FilaConImei abierta = new FilaConImei(29300, null, null, null, null, false, null, null, PUESTO);
+        FilaConImei abierta = new FilaConImei(29300, null, null, null, null, false, null, null, PUESTO, false);
         assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(abierta), List.of()).tipo());
         assertEquals(Tipo.NADA, conFilas(null, List.of(cancelada(null), abierta), List.of()).tipo());
     }
 
     @Test void yaNoEstaEnShippyProConElImeiPuestoAntesDelCierreQuedaSinDestino() {
-        FilaConImei cerrada = new FilaConImei(29400, SALIO, null, null, null, false, null, null, PUESTO);
+        FilaConImei cerrada = new FilaConImei(29400, SALIO, null, null, null, false, null, null, PUESTO, false);
         Veredicto v = conFilas(null, List.of(cerrada), List.of());
         assertEquals(Tipo.SIN_DESTINO, v.tipo());
         assertEquals(ReglaDevoluciones.MOTIVO_YA_NO_ESTA, v.motivo());
@@ -195,17 +195,28 @@ class ReglaDevolucionesTest {
     }
 
     @Test void yaNoEstaEnShippyProConElImeiTecleadoTrasElCierreEsVendido() {
-        FilaConImei tecleado = new FilaConImei(29400, SALIO, null, null, null, false, null, null, SALIO.plusMinutes(5));
+        FilaConImei tecleado = new FilaConImei(29400, SALIO, null, null, null, false, null, null, SALIO.plusMinutes(5), false);
         assertEquals(Tipo.NADA, conFilas(null, List.of(tecleado), List.of()).tipo());
         assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(tecleado), List.of()).tipo());
-        FilaConImei sinApunte = new FilaConImei(29400, SALIO, null, null, null, false, null, null, null);
+        FilaConImei sinApunte = new FilaConImei(29400, SALIO, null, null, null, false, null, null, null, false);
         assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(sinApunte), List.of()).tipo());
     }
 
     @Test void enviadaConFaltaPorEnviarImpide() {
         LocalDateTime c = dia(1, 10);
-        FilaConImei falta = new FilaConImei(29500, c, c, c, c.plusHours(1), false, null, null, c.minusDays(1));
+        FilaConImei falta = new FilaConImei(29500, c, c, c, c.plusHours(1), false, null, null, c.minusDays(1), false);
         assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(falta), List.of(dia(2, 1))).tipo());
+    }
+
+    @Test void unaVentaDelHistoricoCuentaComoEnviadaSalvoQueNsysRegistreUnaVueltaPosterior() {
+        LocalDateTime c = dia(1, 10);
+        // Hoja antigua: cerrada, sin envio, sin apuntes (puestoEn null) y con ORIGEN = HISTORICO.
+        FilaConImei historica = new FilaConImei(100, c, null, null, null, false, null, null, null, true);
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(historica), List.of()).tipo());
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(historica), List.of(c.minusDays(1))).tipo());
+        Veredicto v = conFilas(SALIDA, List.of(historica), List.of(c.plusDays(5)));
+        assertEquals(Tipo.DEVOLVER, v.tipo());
+        assertEquals(SALIDA, v.salida());
     }
 
     @Test void valeLaSalidaMasReciente() {
@@ -214,7 +225,7 @@ class ReglaDevolucionesTest {
         assertEquals(Tipo.DEVOLVER, v.tipo());
         assertEquals(new Salida(29200, SALIO, "Fati", "CANCELADO"), v.salida());
         // Al reves: cancelado antes del descuento y el IMEI quitado despues: vale el apunte.
-        FilaConImei canceladaAntes = new FilaConImei(29200, null, null, null, null, true, BOT.minusHours(1), "Fati", PUESTO);
+        FilaConImei canceladaAntes = new FilaConImei(29200, null, null, null, null, true, BOT.minusHours(1), "Fati", PUESTO, false);
         Veredicto w = conFilas(SALIDA, List.of(canceladaAntes), List.of());
         assertEquals(Tipo.DEVOLVER, w.tipo());
         assertEquals(SALIDA, w.salida());

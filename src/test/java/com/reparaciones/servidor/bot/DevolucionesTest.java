@@ -108,7 +108,7 @@ class DevolucionesTest {
     @Test void unaFilaCerradaSoloImpideDevolverSiNoHayVueltaPosterior() {
         tresCandidatos();
         LocalDateTime cierre = LocalDateTime.of(2026, 1, 10, 12, 0);
-        FilaConImei enviada = new FilaConImei(9, cierre, cierre, cierre, null, false, null, null, cierre.minusDays(1));
+        FilaConImei enviada = new FilaConImei(9, cierre, cierre, cierre, null, false, null, null, cierre.minusDays(1), false);
         when(dao.filasConImei(List.of(A, B, C))).thenReturn(Map.of(A, List.of(enviada), B, List.of(enviada)));
         when(dao.vueltas(List.of(A, B, C))).thenReturn(Map.of(A, List.of(cierre.plusDays(20))));
         ListaDevoluciones lista = servicio.lista();
@@ -126,8 +126,8 @@ class DevolucionesTest {
                 new BotDAO.Apunte(12, PUESTO, null, C, "IMEI", null, "Fati"),
                 new BotDAO.Apunte(12, SALIO, C, null, "IMEI", null, "Lucía")));
         when(dao.filasConImei(List.of(A, B, C))).thenReturn(Map.of(
-                A, List.of(new FilaConImei(10, null, null, null, null, true, SALIO, "Fati", PUESTO)),
-                B, List.of(new FilaConImei(11, SALIO, null, null, null, false, null, null, PUESTO))));
+                A, List.of(new FilaConImei(10, null, null, null, null, true, SALIO, "Fati", PUESTO, false)),
+                B, List.of(new FilaConImei(11, SALIO, null, null, null, false, null, null, PUESTO, false))));
         ListaDevoluciones lista = servicio.lista();
         assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(A, "IMEI_CORREGIDO")), lista.grupos().get(1).imeis());
         verify(dao).apuntar(11, AHORA, B, "SIN_DESTINO", "el pedido ya no está en ShippyPro: comprobar si salió");

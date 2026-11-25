@@ -51,10 +51,12 @@ public final class ReglaDevoluciones {
      *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO} o {@link #SALIDA_YA_NO_ESTA}). */
     public record Salida(int idFila, LocalDateTime fecha, String quien, String motivo) {}
     /** Una fila que hoy tiene el IMEI: cierre, envío, impresión, «falta por enviar», cancelación (marca CANCELADO: cuándo y quién)
-     *  y cuándo se puso el IMEI en ella (último apunte IMEI con IMEI_NUEVO = el IMEI en esa fila; null si no hay, p. ej. histórico). */
+     *  y cuándo se puso el IMEI en ella (último apunte IMEI con IMEI_NUEVO = el IMEI en esa fila; null si no hay, p. ej. histórico).
+     *  {@code historico}: fila cargada de la hoja antigua (ORIGEN = HISTORICO): una venta pasada, sin envío ni apuntes; cuenta como
+     *  enviada. «Ya no está en ShippyPro» y la cancelación solo valen para las de ShippyPro. */
     public record FilaConImei(int idFila, LocalDateTime cerradaEn, LocalDateTime envioFecha, LocalDateTime impresaEn,
                               LocalDateTime faltaEnviarEn, boolean cancelada, LocalDateTime canceladaEn, String canceladaPor,
-                              LocalDateTime puestoEn) {}
+                              LocalDateTime puestoEn, boolean historico) {}
     /** Un trabajo del taller del IMEI, con su asignacion en hora de Madrid. */
     public record Trabajo(String idRep, LocalDateTime asignado) {}
     /** Lo que se sabe de un IMEI candidato: sus pasos del bot (por fecha), su ultima salida de una fila, cuando se puso en filas,
@@ -86,15 +88,15 @@ public final class ReglaDevoluciones {
         Salida salida = d.salida();
         for (FilaConImei f : d.filas()) {
             Salida otra = null;
-            if (f.cancelada()) {
+            if (f.cancelada() && !f.historico()) {
                 if (f.impresaEn() != null) return Veredicto.NADA; // salio con etiqueta
                 if (f.canceladaEn() != null)
                     otra = new Salida(f.idFila(), f.canceladaEn(), f.canceladaPor() == null ? UN_PROCESO : f.canceladaPor(), SALIDA_CANCELADO);
             } else if (f.cerradaEn() == null) {
                 return Veredicto.NADA; // abierta: se esta vendiendo
-            } else if (f.envioFecha() != null) {
+            } else if (f.envioFecha() != null || f.historico()) {
                 if (f.faltaEnviarEn() != null) return Veredicto.NADA; // «falta por enviar»: se esta vendiendo
-                // Venta que salio, salvo que NSYS registre una vuelta posterior a su cierre (venta vieja devuelta por el cliente).
+                // Venta que salio (o venta del historico), salvo que NSYS registre una vuelta posterior a su cierre (venta vieja devuelta por el cliente).
                 if (d.vueltas().stream().noneMatch(v -> v.isAfter(f.cerradaEn()))) return Veredicto.NADA;
             } else {
                 // «Ya no está en ShippyPro»: si el IMEI se tecleo tras el cierre (o no se sabe cuando), el ERP lo da por vendido.

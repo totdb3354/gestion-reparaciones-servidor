@@ -65,7 +65,7 @@ public class BotDAO {
     static final String SQL_ENTRADAS = "SELECT IMEI_SN, MAX(FECHA) AS ENTRADA FROM Nsys_evento"
             + " WHERE TIPO = 'UBICACION' AND A_NSYS = 'Pedidos realizados' AND IMEI_SN IN (%s) GROUP BY IMEI_SN";
     /** Todas las filas que tienen el IMEI, abiertas incluidas, con quien las cancelo y cuando se puso el IMEI en ellas. */
-    static final String SQL_FILAS_CON_IMEI = "SELECT f.ID_FILA, f.IMEI, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN,"
+    static final String SQL_FILAS_CON_IMEI = "SELECT f.ID_FILA, f.IMEI, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN, f.ORIGEN,"
             + " (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = f.MARCA_USU) AS MARCA_POR,"
             + " (SELECT MAX(c.FECHA) FROM Pedido_fila_cambio c WHERE c.ID_FILA = f.ID_FILA AND c.TIPO = 'IMEI' AND c.IMEI_NUEVO = f.IMEI) AS PUESTO_EN"
             + " FROM Pedido_fila f WHERE f.IMEI IN (%s)";
@@ -75,7 +75,7 @@ public class BotDAO {
             + " AND (TIPO IN ('VENTA_DESHECHA', 'REENTRADA') OR (TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR A_NSYS = '')))";
     /** La ultima fila cancelada («Cancelar móvil») que se quedo con el IMEI. */
     static final String SQL_ULTIMA_CANCELACION = "SELECT f.ID_FILA, f.MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = f.MARCA_USU) AS MARCA_POR"
-            + " FROM Pedido_fila f WHERE f.IMEI = ? AND f.MARCA = 'CANCELADO' AND f.MARCA_EN IS NOT NULL"
+            + " FROM Pedido_fila f WHERE f.IMEI = ? AND f.MARCA = 'CANCELADO' AND f.MARCA_EN IS NOT NULL AND f.IMPRESA_EN IS NULL"
             + " ORDER BY f.MARCA_EN DESC, f.ID_FILA DESC LIMIT 1";
     static final String SQL_ULTIMA_SALIDA = "SELECT c.ID_FILA, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO, c.DETALLE, u.NOMBRE_USUARIO"
             + " FROM Pedido_fila_cambio c LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU"
@@ -128,7 +128,7 @@ public class BotDAO {
             porImei.computeIfAbsent(rs.getString("IMEI"), k -> new ArrayList<>()).add(new ReglaDevoluciones.FilaConImei(
                     rs.getInt("ID_FILA"), fecha(rs, "CERRADA_EN"), fecha(rs, "ENVIO_FECHA"), fecha(rs, "IMPRESA_EN"),
                     fecha(rs, "FALTA_ENVIAR_EN"), cancelada, cancelada ? fecha(rs, "MARCA_EN") : null,
-                    cancelada ? rs.getString("MARCA_POR") : null, fecha(rs, "PUESTO_EN")));
+                    cancelada ? rs.getString("MARCA_POR") : null, fecha(rs, "PUESTO_EN"), "HISTORICO".equals(rs.getString("ORIGEN"))));
             return null;
         }, imeis.toArray());
         return porImei;

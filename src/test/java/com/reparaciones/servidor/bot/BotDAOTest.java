@@ -80,7 +80,7 @@ class BotDAOTest {
         verify(jdbc).query(eq(String.format(BotDAO.SQL_FILAS_CON_IMEI, "?, ?")), any(RowMapper.class), eq("350000000000001"), eq("350000000000002"));
         verify(jdbc).query(eq(String.format(BotDAO.SQL_VUELTAS, "?")), any(RowMapper.class), eq("350000000000001"));
         // Todas las filas con el IMEI (abiertas incluidas), con cierre, envio, impresion, falta por enviar, marca y cuando se puso.
-        assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("f.ID_FILA, f.IMEI, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN"));
+        assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("f.ID_FILA, f.IMEI, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN, f.ORIGEN"));
         assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("(SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = f.MARCA_USU) AS MARCA_POR"));
         assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("(SELECT MAX(c.FECHA) FROM Pedido_fila_cambio c WHERE c.ID_FILA = f.ID_FILA"
                 + " AND c.TIPO = 'IMEI' AND c.IMEI_NUEVO = f.IMEI) AS PUESTO_EN"));
@@ -107,5 +107,43 @@ class BotDAOTest {
         when(jdbc.query(eq(BotDAO.SQL_ULTIMA_CANCELACION), any(RowMapper.class), eq(imei))).thenReturn(List.of());
         assertEquals(Optional.empty(), dao.ultimaSalida(imei));
         assertTrue(BotDAO.SQL_ULTIMA_CANCELACION.contains("f.IMEI = ? AND f.MARCA = 'CANCELADO'"));
+        // Una cancelada con etiqueta impresa salio: nunca lleva nota de «pedido cancelado» (igual que en la regla).
+        assertTrue(BotDAO.SQL_ULTIMA_CANCELACION.contains("AND f.MARCA_EN IS NOT NULL AND f.IMPRESA_EN IS NULL"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void filasConImeiMapeaLaCancelacionSoloSiEstaCanceladaYElOrigenHistorico() throws Exception {
+        String imei = "350000000000001";
+        LocalDateTime marca = LocalDateTime.of(2026, 11, 24, 19, 0);
+        LocalDateTime cierre = LocalDateTime.of(2026, 11, 20, 12, 0);
+
+        java.sql.ResultSet cancelada = mock(java.sql.ResultSet.class);
+        when(cancelada.getString("IMEI")).thenReturn(imei);
+        when(cancelada.getInt("ID_FILA")).thenReturn(29200);
+        when(cancelada.getString("MARCA")).thenReturn("CANCELADO");
+        when(cancelada.getTimestamp("MARCA_EN")).thenReturn(Timestamp.valueOf(marca));
+        when(cancelada.getString("MARCA_POR")).thenReturn("Fati");
+        when(cancelada.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+
+        // Con MARCA_EN y MARCA_POR rellenos pero sin MARCA CANCELADO: no es una cancelacion. ORIGEN HISTORICO.
+        java.sql.ResultSet historica = mock(java.sql.ResultSet.class);
+        when(historica.getString("IMEI")).thenReturn(imei);
+        when(historica.getInt("ID_FILA")).thenReturn(100);
+        when(historica.getString("MARCA")).thenReturn(null);
+        when(historica.getTimestamp("MARCA_EN")).thenReturn(Timestamp.valueOf(marca));
+        when(historica.getString("MARCA_POR")).thenReturn("Fati");
+        when(historica.getTimestamp("CERRADA_EN")).thenReturn(Timestamp.valueOf(cierre));
+        when(historica.getString("ORIGEN")).thenReturn("HISTORICO");
+
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
+            RowMapper<Object> mapper = inv.getArgument(1);
+            mapper.mapRow(cancelada, 0);
+            mapper.mapRow(historica, 1);
+            return null;
+        });
+
+        List<ReglaDevoluciones.FilaConImei> filas = dao.filasConImei(List.of(imei)).get(imei);
+        assertEquals(new ReglaDevoluciones.FilaConImei(29200, null, null, null, null, true, marca, "Fati", null, false), filas.get(0));
+        assertEquals(new ReglaDevoluciones.FilaConImei(100, cierre, null, null, null, false, null, null, null, true), filas.get(1));
     }
 }
