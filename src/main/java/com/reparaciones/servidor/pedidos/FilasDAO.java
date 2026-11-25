@@ -159,13 +159,14 @@ public class FilasDAO {
     /** Ancho de Pedido_fila_cambio.DETALLE. */
     static final int ANCHO_DETALLE = 250;
 
-    /** Reservados al bot (spec reserva §6): las filas vivas sin IMEI con IMEI_RESERVADO cuya reserva cae en la ventana. Mismo
+    /** Reservados al bot (spec reserva §6): TODAS las filas vivas sin IMEI con IMEI_RESERVADO, sin ventana de fechas (0.9.48.1: una
+     *  reserva de hace mas de los dias de vendidos tambien tiene que descontarse; si no, el movil seguiria vendible en NSYS). Mismo
      *  formato de columnas que {@link #SQL_VENDIDOS}; la fecha es RESERVADA_EN. Solo con {@code pedidos.reserva.al-bot=true}. */
     static final String SQL_VENDIDOS_RESERVADOS = "SELECT f.IMEI_RESERVADO AS IMEI, f.SKU, f.CANAL,"
             + " CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO,"
             + " f.RESERVADA_EN AS FECHA_IMEI FROM Pedido_fila f"
             + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.CERRADA_EN IS NULL AND f.MARCA IS NULL AND (f.IMEI IS NULL OR f.IMEI = '')"
-            + " AND f.IMEI_RESERVADO REGEXP '^[0-9]{15}$' AND f.RESERVADA_EN >= ?"
+            + " AND f.IMEI_RESERVADO REGEXP '^[0-9]{15}$'"
             + " AND (? IS NULL OR f.CANAL = ?) ORDER BY f.RESERVADA_EN DESC, f.ID_FILA DESC LIMIT ?";
 
     private final JdbcTemplate jdbc;
@@ -374,7 +375,7 @@ public class FilasDAO {
         if (reservadosAlBot) {
             List<Vendido> reservados = jdbc.query(SQL_VENDIDOS_RESERVADOS, (rs, n) -> new Vendido(rs.getString("IMEI"), rs.getString("SKU"),
                     rs.getString("CANAL"), rs.getString("PEDIDO"), hora(rs, "FECHA_IMEI")),
-                    Timestamp.valueOf(desde), nombreCanal, nombreCanal, tope);
+                    nombreCanal, nombreCanal, tope);
             // Las dos listas vienen de la mas reciente a la mas antigua: se mezclan (estable) y, tras el dedup, vuelve el tope.
             List<Vendido> todas = new ArrayList<>(filas);
             todas.addAll(reservados);

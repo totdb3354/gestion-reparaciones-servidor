@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -115,7 +116,7 @@ class VendidosTest {
             RowMapper<Vendido> mapa = inv.getArgument(1);
             return List.of(mapa.mapRow(fila("350000000000001", "a", 11), 0), mapa.mapRow(fila("350000000000002", "b", 9), 1));
         });
-        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), any(), any(), anyInt())).thenAnswer(inv -> {
             RowMapper<Vendido> mapa = inv.getArgument(1);
             return List.of(mapa.mapRow(reservada("350000000000003", "r", "AMAZON", 12), 0), mapa.mapRow(reservada("350000000000002", "r2", "AMAZON", 10), 1));
         });
@@ -123,7 +124,7 @@ class VendidosTest {
         assertEquals(List.of("350000000000003", "350000000000001", "350000000000002"), r.stream().map(Vendido::imei).toList());
         assertEquals("r2", r.get(2).sku(), "el IMEI repetido se queda con la fecha mas reciente (la reserva de las 10, no la de las 9)");
         verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS), any(RowMapper.class), eq(DESDE), eq(DESDE), eq("AMAZON"), eq("AMAZON"), eq(5000));
-        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), eq(DESDE), eq("AMAZON"), eq("AMAZON"), eq(5000));
+        verify(jdbc).query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), eq("AMAZON"), eq("AMAZON"), eq(5000));
     }
 
     @Test void conElAjusteEncendidoElTopeSeAplicaTrasMezclar() throws Exception {
@@ -132,7 +133,7 @@ class VendidosTest {
             RowMapper<Vendido> mapa = inv.getArgument(1);
             return List.of(mapa.mapRow(fila("350000000000001", "a", 11), 0));
         });
-        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), any(Timestamp.class), any(), any(), anyInt())).thenAnswer(inv -> {
+        when(jdbc.query(eq(FilasDAO.SQL_VENDIDOS_RESERVADOS), any(RowMapper.class), any(), any(), anyInt())).thenAnswer(inv -> {
             RowMapper<Vendido> mapa = inv.getArgument(1);
             return List.of(mapa.mapRow(reservada("350000000000003", "r", "AMAZON", 12), 0));
         });
@@ -150,7 +151,7 @@ class VendidosTest {
     @Test void laConsultaDeReservadosPideLoQueDiceLaSpec() {
         String sql = FilasDAO.SQL_VENDIDOS_RESERVADOS;
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO' AND f.CERRADA_EN IS NULL AND f.MARCA IS NULL AND (f.IMEI IS NULL OR f.IMEI = '')"));
-        assertTrue(sql.contains("f.RESERVADA_EN >= ?"));
+        assertFalse(sql.contains("RESERVADA_EN >= ?"), "sin ventana: una fila viva con reserva antigua tambien se descuenta");
         assertTrue(sql.contains("f.RESERVADA_EN AS FECHA_IMEI"));
         assertTrue(sql.contains("f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END"), "Amazon sin asociar: pedido nulo");
         assertTrue(sql.contains("AND (? IS NULL OR f.CANAL = ?)"));
