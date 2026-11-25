@@ -27,7 +27,7 @@ import java.util.function.Function;
  *  {@link #MARCADA}, {@link #YA_NO_ESTA}, {@link #CON_ETIQUETA}, {@link #ENVIADA_SIN_IMEI} (la fila se envio sin IMEI: logistica
  *  seguramente mando ese movil sin teclearlo, asi que las devoluciones NO deben devolverlo a stock), {@link #NO_ENCONTRADO},
  *  {@link #PUESTO_EN_OTRA} y {@link #NO_DISPONIBLE}. Las devoluciones del bot ({@code bot.Devoluciones}) siguen el criterio de la
- *  0.9.47: devuelven CANCELADA, MARCADA y NO_DISPONIBLE (y RESERVA_SUSTITUIDA), dejan YA_NO_ESTA «sin destino» (una persona
+ *  0.9.47: devuelven CANCELADA y MARCADA (y RESERVA_SUSTITUIDA), dejan YA_NO_ESTA «sin destino» (una persona
  *  comprueba si salio) y no tocan el resto. Cada escritura es una transaccion por fila con la fila bloqueada
  *  ({@link FilasDAO}), para no pisar a una persona que ponga el IMEI a la vez. */
 @Service
@@ -105,7 +105,7 @@ public class Reservas {
             vale = taller.valedorDeTodos();
             for (FilaPedido f : conReserva) {
                 String clave = NsysDAO.claveCruce(f.imeiReservado());
-                String motivo = motivoParaSoltar(f, moviles.get(clave), vale, puestos.containsKey(clave));
+                String motivo = motivoParaSoltar(f, moviles.get(clave), vale, puestos.containsKey(clave), dao.reservadosAlBot());
                 if (motivo == null) {
                     retenidos.add(clave);
                     continue;
@@ -163,8 +163,11 @@ public class Reservas {
     }
 
     /** El motivo para soltar la reserva de una fila sin IMEI, o null si sigue valiendo. {@code movil}: el lote mas reciente del IMEI
-     *  reservado (null si no esta en el espejo); {@code puesto}: el IMEI esta puesto en otra fila. */
-    static String motivoParaSoltar(FilaPedido f, MovilNsys movil, Function<MovilNsys, LoQueVale.Valor> vale, boolean puesto) {
+     *  reservado (null si no esta en el espejo); {@code puesto}: el IMEI esta puesto en otra fila; {@code alBot}: el bot descuenta
+     *  los reservados, asi que «de pedido» puede ser el descuento de esta misma reserva y sigue valiendo. Sin {@code alBot}, un
+     *  reservado «de pedido» se vendio por otro lado (Simulador, otra venta a mano) y se suelta como NO_DISPONIBLE. */
+    static String motivoParaSoltar(FilaPedido f, MovilNsys movil, Function<MovilNsys, LoQueVale.Valor> vale, boolean puesto,
+                                   boolean alBot) {
         if (f.cerradaEn() != null && f.envioFecha() != null) return ENVIADA_SIN_IMEI;
         // Como la regla de la 0.9.47: «Cancelar móvil» antes que «ya no está»; con etiqueta impresa, el movil pudo salir.
         if (Marca.CANCELADO.name().equals(f.marca())) return f.impresaEn() != null ? CON_ETIQUETA : CANCELADA;
@@ -173,7 +176,7 @@ public class Reservas {
         if (movil == null) return NO_DISPONIBLE;
         if (CAJAS_REVISAR.contains(Normalizacion.caja(movil.location()))) return NO_ENCONTRADO;
         EstadoMovil estado = movil.estado() == null ? null : movil.estado().conGrado(grado(movil, vale));
-        if (estado != EstadoMovil.STOCK && estado != EstadoMovil.DE_PEDIDO) return NO_DISPONIBLE;
+        if (estado != EstadoMovil.STOCK && !(alBot && estado == EstadoMovil.DE_PEDIDO)) return NO_DISPONIBLE;
         if (puesto) return PUESTO_EN_OTRA;
         return null;
     }

@@ -56,7 +56,7 @@ class BotDAOTest {
         // Salio de una fila: un apunte IMEI que lo quito o su reserva soltada (sustituida, o quitada por cancelada, marcada, no
         // disponible o «ya no está»; nunca por enviada sin IMEI, con etiqueta, no encontrado ni puesto en otra).
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("c.IMEI_ANTERIOR = b.IMEI AND (c.TIPO IN ('IMEI', 'RESERVA_SUSTITUIDA')"
-                + " OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('CANCELADA', 'MARCADA', 'NO_DISPONIBLE', 'YA_NO_ESTA')))"));
+                + " OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('CANCELADA', 'MARCADA', 'YA_NO_ESTA')))"));
         // O un pedido de ShippyPro cancelado o cerrado sin envio que se quedo con el IMEI.
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("OR EXISTS (SELECT 1 FROM Pedido_fila x WHERE x.IMEI = b.IMEI AND x.ORIGEN = 'SHIPPYPRO'"
                 + " AND (x.MARCA = 'CANCELADO' OR (x.CERRADA_EN IS NOT NULL AND x.ENVIO_FECHA IS NULL)))"));
@@ -182,13 +182,14 @@ class BotDAOTest {
         // Se pico otro encima del reservado: la devolucion prioritaria.
         assertEquals(new ReglaDevoluciones.Salida(7, t, "Ana", "RESERVA"),
                 new BotDAO.Apunte(7, t, imei, "350000000000009", "RESERVA_SUSTITUIDA", null, "Ana").salida(imei));
-        for (String motivo : List.of("CANCELADA", "MARCADA", "NO_DISPONIBLE"))
+        for (String motivo : List.of("CANCELADA", "MARCADA"))
             assertEquals(new ReglaDevoluciones.Salida(7, t, "el ERP", "RESERVA"),
                     new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", motivo, null).salida(imei), motivo);
         // «Ya no está en ShippyPro»: salida, pero la regla la deja sin destino (como en la 0.9.47).
         assertEquals(new ReglaDevoluciones.Salida(7, t, "ShippyPro", "YA_NO_ESTA"),
                 new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", "YA_NO_ESTA", null).salida(imei));
-        for (String motivo : List.of("ENVIADA_SIN_IMEI", "CON_ETIQUETA", "NO_ENCONTRADO", "PUESTO_EN_OTRA"))
+        // NO_DISPONIBLE tampoco: se vendio (p. ej. en el Simulador) o se dio de baja; devolverlo dejaria un movil fantasma.
+        for (String motivo : List.of("ENVIADA_SIN_IMEI", "CON_ETIQUETA", "NO_ENCONTRADO", "PUESTO_EN_OTRA", "NO_DISPONIBLE"))
             assertEquals(null, new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", motivo, null).salida(imei), motivo);
         assertEquals(null, new BotDAO.Apunte(7, t, imei, imei, "RESERVA_CONFIRMADA", null, "Ana").salida(imei));
         assertEquals(null, new BotDAO.Apunte(7, t, "350000000000009", null, "IMEI", null, "Ana").salida(imei));

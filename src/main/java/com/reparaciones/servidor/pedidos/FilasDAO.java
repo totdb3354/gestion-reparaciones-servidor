@@ -179,6 +179,11 @@ public class FilasDAO {
         this.reservadosAlBot = reservadosAlBot;
     }
 
+    /** {@code pedidos.reserva.al-bot}: el bot descuenta tambien los reservados (los pasa a «Pedidos realizados»). */
+    public boolean reservadosAlBot() {
+        return reservadosAlBot;
+    }
+
     // ---------------------------------------------------------------- filas
 
     public List<FilaPedido> vivasDeShippyPro() {

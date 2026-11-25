@@ -44,7 +44,7 @@ public final class ReglaDevoluciones {
     public static final String SALIDA_CANCELADO = "CANCELADO";
     public static final String SALIDA_YA_NO_ESTA = "YA_NO_ESTA";
     /** La reserva de IMEI de una fila se solto sin que nadie picara ese movil: se puso otro (RESERVA_SUSTITUIDA) o la fila se
-     *  cancelo, se marco o el movil dejo de valer (RESERVA_QUITADA con CANCELADA, MARCADA o NO_DISPONIBLE). */
+     *  cancelo o se marco (RESERVA_QUITADA con CANCELADA o MARCADA). */
     public static final String SALIDA_RESERVA = "RESERVA";
     /** El SIN_DESTINO de una fila cerrada sin envio y sin cancelar: puede que el movil saliera igualmente. */
     public static final String MOTIVO_YA_NO_ESTA = "el pedido ya no está en ShippyPro: comprobar si salió";

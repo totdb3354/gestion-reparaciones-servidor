@@ -287,13 +287,24 @@ class ReservasTest {
         verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.PUESTO_EN_OTRA), eq(AHORA));
     }
 
-    @Test void enStockOEnPedidosRealizadosNoSeSuelta() {
+    @Test void conAlBotUnReservadoEnPedidosRealizadosEsSuPropioDescuentoYNoSeSuelta() {
+        when(dao.reservadosAlBot()).thenReturn(true);
         filas(reservada(1, IMEI_1), reservada(2, IMEI_2));
         reservados(enStock(IMEI_1), movil(IMEI_2, "Pedidos realizados", EstadoMovil.DE_PEDIDO));
         stock(enStock(IMEI_1));
         assertEquals(new Reservas.Resumen(0, 0, 0), reservas.pasada(AHORA));
         verify(dao, never()).soltarReserva(anyInt(), any(), any(), any());
         verify(dao, never()).reservar(anyInt(), anyString(), anyString(), any());
+    }
+
+    @Test void sinAlBotUnReservadoEnPedidosRealizadosSeVendioPorOtroLadoYSeSuelta() {
+        // P. ej. vendido en directo (Simulador): el bot lo descontó, pero no por esta reserva.
+        filas(reservada(1, IMEI_1), reservada(2, IMEI_2));
+        reservados(enStock(IMEI_1), movil(IMEI_2, "Pedidos realizados", EstadoMovil.DE_PEDIDO));
+        stock(enStock(IMEI_1));
+        reservas.pasada(AHORA);
+        verify(dao).soltarReserva(2, IMEI_2, Reservas.NO_DISPONIBLE, AHORA);
+        verify(dao, never()).soltarReserva(eq(1), any(), any(), any());
     }
 
     @Test void deCadaImeiCuentaElLoteMasReciente() {

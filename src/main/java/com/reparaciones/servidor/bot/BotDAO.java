@@ -51,7 +51,7 @@ public class BotDAO {
          *  ({@link ReglaDevoluciones#SALIDA_IMEI}); su reserva soltada sin que nadie picara el movil: RESERVA_SUSTITUIDA o
          *  RESERVA_QUITADA por {@link #MOTIVOS_RESERVA_SALIDA} ({@link ReglaDevoluciones#SALIDA_RESERVA}), o por «ya no está»
          *  ({@link ReglaDevoluciones#SALIDA_YA_NO_ESTA}, que la regla deja sin destino). El resto de motivos (enviada sin IMEI, con
-         *  etiqueta, no encontrado, puesto en otra fila) no son una salida: el movil salio, lo tiene una persona o sigue vendiendose. */
+         *  etiqueta, no encontrado, puesto en otra fila, no disponible) no son una salida: el movil salio, lo tiene una persona o sigue vendiendose. */
         public Salida salida(String imei) {
             if (imei == null || !imei.equals(imeiAnterior)) return null;
             if (CambioImei.IMEI.equals(tipo)) return new Salida(idFila, fecha, quien(), ReglaDevoluciones.SALIDA_IMEI);
@@ -67,12 +67,14 @@ public class BotDAO {
         }
     }
 
-    /** Los motivos de RESERVA_QUITADA que devuelven el movil a stock (como «Cancelar móvil» en la 0.9.47). */
-    static final Set<String> MOTIVOS_RESERVA_SALIDA = Set.of(Reservas.CANCELADA, Reservas.MARCADA, Reservas.NO_DISPONIBLE);
+    /** Los motivos de RESERVA_QUITADA que devuelven el movil a stock (como «Cancelar móvil» en la 0.9.47). NO_DISPONIBLE no: el
+     *  movil se vendio, se dio de baja o (sin al-bot) lo descontaron por otra venta, p. ej. del Simulador; devolverlo dejaria en
+     *  NSYS un movil que ya salio. */
+    static final Set<String> MOTIVOS_RESERVA_SALIDA = Set.of(Reservas.CANCELADA, Reservas.MARCADA);
     /** Condicion SQL sobre un apunte {@code c} de Pedido_fila_cambio: saca a {@code c.IMEI_ANTERIOR} de su fila (la misma eleccion
      *  que {@link Apunte#salida}). */
     static final String ES_SALIDA = "(c.TIPO IN ('IMEI', 'RESERVA_SUSTITUIDA') OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('"
-            + Reservas.CANCELADA + "', '" + Reservas.MARCADA + "', '" + Reservas.NO_DISPONIBLE + "', '" + Reservas.YA_NO_ESTA + "')))";
+            + Reservas.CANCELADA + "', '" + Reservas.MARCADA + "', '" + Reservas.YA_NO_ESTA + "')))";
 
     /** Los IMEI con un descuento OK del bot desde {@code ?}, que salieron alguna vez de una fila (un apunte lo quito o solto su
      *  reserva, o un pedido de ShippyPro cancelado o cerrado sin envio se quedo con el) y que hoy no estan, ni puestos ni
