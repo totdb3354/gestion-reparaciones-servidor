@@ -46,11 +46,12 @@ public class BotDAO {
     }
 
     /** Los IMEI con un descuento OK del bot desde {@code ?}, que salieron alguna vez de una fila y que hoy no estan en ninguna
-     *  (vender gana a devolver): como mucho {@code ?}. */
+     *  fila abierta (vender gana a devolver; las filas cerradas las decide la regla con {@link #cierresDeFilas} y {@link #vueltas}):
+     *  como mucho {@code ?}. */
     static final String SQL_CANDIDATOS = "SELECT DISTINCT b.IMEI FROM Bot_movimiento b"
             + " WHERE b.ACCION = 'DESCONTADO' AND b.RESULTADO = 'OK' AND b.FECHA >= ?"
             + " AND EXISTS (SELECT 1 FROM Pedido_fila_cambio c WHERE c.TIPO = 'IMEI' AND c.IMEI_ANTERIOR = b.IMEI)"
-            + " AND NOT EXISTS (SELECT 1 FROM Pedido_fila f WHERE f.IMEI = b.IMEI)"
+            + " AND NOT EXISTS (SELECT 1 FROM Pedido_fila f WHERE f.IMEI = b.IMEI AND f.CERRADA_EN IS NULL)"
             + " ORDER BY b.IMEI LIMIT ?";
     static final String SQL_PASOS = "SELECT IMEI, ACCION, RESULTADO, ORIGEN_NSYS, FECHA FROM Bot_movimiento WHERE IMEI IN (";
     static final String ORDEN_PASOS = ") ORDER BY FECHA, ID";
@@ -60,6 +61,11 @@ public class BotDAO {
             + " ORDER BY c.FECHA, c.ID_CAMBIO";
     static final String SQL_ENTRADAS = "SELECT IMEI_SN, MAX(FECHA) AS ENTRADA FROM Nsys_evento"
             + " WHERE TIPO = 'UBICACION' AND A_NSYS = 'Pedidos realizados' AND IMEI_SN IN (%s) GROUP BY IMEI_SN";
+    static final String SQL_CIERRES = "SELECT IMEI, CERRADA_EN FROM Pedido_fila WHERE CERRADA_EN IS NOT NULL AND IMEI IN (%s)";
+    /** Cuando NSYS dice que el movil volvio a la empresa: venta deshecha, reentrada, sale de «Pedidos realizados» (DE lleva la caja
+     *  de NSYS tal cual) o entra sin localizacion. */
+    static final String SQL_VUELTAS = "SELECT IMEI_SN, FECHA FROM Nsys_evento WHERE IMEI_SN IN (%s)"
+            + " AND (TIPO IN ('VENTA_DESHECHA', 'REENTRADA') OR (TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR A_NSYS = '')))";
     static final String SQL_ULTIMA_SALIDA = "SELECT c.ID_FILA, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO, c.DETALLE, u.NOMBRE_USUARIO"
             + " FROM Pedido_fila_cambio c LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU"
             + " WHERE c.TIPO = 'IMEI' AND c.IMEI_ANTERIOR = ? ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT 1";
@@ -100,6 +106,26 @@ public class BotDAO {
             return null;
         }, imeis.toArray());
         return entradas;
+    }
+
+    /** Por IMEI, los cierres de las filas cerradas que lo tienen. */
+    public Map<String, List<LocalDateTime>> cierresDeFilas(Collection<String> imeis) {
+        return fechasPorImei(SQL_CIERRES, "IMEI", "CERRADA_EN", imeis);
+    }
+
+    /** Por IMEI, las fechas en que NSYS registra que el movil volvio a la empresa (cualquier lote). */
+    public Map<String, List<LocalDateTime>> vueltas(Collection<String> imeis) {
+        return fechasPorImei(SQL_VUELTAS, "IMEI_SN", "FECHA", imeis);
+    }
+
+    private Map<String, List<LocalDateTime>> fechasPorImei(String sql, String colImei, String colFecha, Collection<String> imeis) {
+        if (imeis.isEmpty()) return Map.of();
+        Map<String, List<LocalDateTime>> porImei = new HashMap<>();
+        jdbc.query(String.format(sql, marcas(imeis.size())), (ResultSet rs, int n) -> {
+            porImei.computeIfAbsent(rs.getString(colImei), k -> new ArrayList<>()).add(rs.getTimestamp(colFecha).toLocalDateTime());
+            return null;
+        }, imeis.toArray());
+        return porImei;
     }
 
     public Optional<Apunte> ultimaSalida(String imei) {

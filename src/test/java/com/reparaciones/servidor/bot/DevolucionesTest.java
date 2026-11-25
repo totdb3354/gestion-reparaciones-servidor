@@ -103,6 +103,17 @@ class DevolucionesTest {
         verify(dao, never()).apuntar(anyInt(), any(), any(), any(), any());
     }
 
+    @Test void unaFilaCerradaSoloImpideDevolverSiNoHayVueltaPosterior() {
+        tresCandidatos();
+        LocalDateTime cierre = LocalDateTime.of(2026, 1, 10, 12, 0);
+        when(dao.cierresDeFilas(List.of(A, B, C))).thenReturn(Map.of(A, List.of(cierre), B, List.of(cierre)));
+        when(dao.vueltas(List.of(A, B, C))).thenReturn(Map.of(A, List.of(cierre.plusDays(20))));
+        ListaDevoluciones lista = servicio.lista();
+        assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(A, "IMEI_CORREGIDO")), lista.grupos().get(1).imeis());
+        assertEquals(2, lista.grupos().size());
+        verify(dao, never()).apuntar(anyInt(), any(), any(), any(), any());
+    }
+
     @Test void elEspejoPrefiereElLoteQueEstaDePedido() {
         tresCandidatos();
         MovilNsys otroLote = mock(MovilNsys.class);

@@ -29,7 +29,7 @@ class ReglaDevolucionesTest {
     private static Paso devuelto(String resultado, LocalDateTime cuando) { return new Paso("DEVUELTO", resultado, "Pedidos realizados", cuando); }
 
     private static Datos datos(List<Paso> pasos) {
-        return new Datos("350000000000001", pasos, SALIDA, List.of(PUESTO), "DE_PEDIDO", "Pedidos realizados", "A", ENTRADA, List.of());
+        return new Datos("350000000000001", pasos, SALIDA, List.of(PUESTO), "DE_PEDIDO", "Pedidos realizados", "A", ENTRADA, List.of(), List.of(), List.of());
     }
 
     private static Datos base() { return datos(List.of(descontado("CAJA LISTOS"))); }
@@ -50,29 +50,29 @@ class ReglaDevolucionesTest {
 
     @Test void sinSalidaOSalidaAntesDelDescuentoNoSale() {
         Datos b = base();
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), null, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), null, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
         Salida antes = new Salida(29116, BOT.minusMinutes(1), "Lucía");
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), antes, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), antes, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
     }
 
     @Test void siNuncaEstuvoEnUnaFilaAntesDelDescuentoNoSale() {
         Datos b = base();
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(BOT.plusMinutes(5)), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos())).tipo());
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(BOT.plusMinutes(5)), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
     }
 
     @Test void siElEspejoYaNoLoTieneEnPedidosRealizadosNoSale() {
         Datos b = base();
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), "STOCK", "CAJA LISTOS", b.grado(), b.entradaPedidos(), b.trabajos())).tipo());
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), null, null, b.grado(), b.entradaPedidos(), b.trabajos())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), "STOCK", "CAJA LISTOS", b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), null, null, b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
     }
 
     @Test void siLoSacaronYLoVolvieronAMeterNoSale() {
         Datos b = base();
         LocalDateTime tarde = BOT.plusMinutes(31);
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), tarde, b.trabajos())).tipo());
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), null, b.trabajos())).tipo());
-        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), BOT.plusMinutes(30), b.trabajos())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), tarde, b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), null, b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), BOT.plusMinutes(30), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
     }
 
     @Test void yaDevueltoONoApareceNoSale() {
@@ -98,7 +98,7 @@ class ReglaDevolucionesTest {
         Datos b = base();
         List<Trabajo> trabajos = List.of(new Trabajo("R20261101_1", BOT.minusDays(20)), new Trabajo("A20261123_41", BOT.plusHours(1)),
                 new Trabajo("R20261123_47", BOT.plusHours(2)));
-        Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), trabajos));
+        Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), trabajos, b.cierresFilas(), b.vueltas()));
         assertEquals(Tipo.SIN_DESTINO, v.tipo());
         assertEquals("reparado después (A20261123_41, R20261123_47)", v.motivo());
         assertEquals(SALIDA, v.salida());
@@ -122,12 +122,38 @@ class ReglaDevolucionesTest {
     @Test void gradoQueNoSeVende() {
         Datos b = base();
         for (String grado : List.of("F", "fd", "RMA")) {
-            Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), grado, b.entradaPedidos(), b.trabajos()));
+            Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), grado, b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas()));
             assertEquals(Tipo.SIN_DESTINO, v.tipo(), grado);
             assertEquals("grado " + grado.toUpperCase() + " no es vendible", v.motivo());
         }
-        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), "A-100", b.entradaPedidos(), b.trabajos())).tipo());
-        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), null, b.entradaPedidos(), b.trabajos())).tipo());
+        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), "A-100", b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), null, b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+    }
+
+    private static Veredicto conFilasCerradas(List<LocalDateTime> cierres, List<LocalDateTime> vueltas) {
+        Datos b = base();
+        return evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(),
+                b.trabajos(), cierres, vueltas));
+    }
+
+    private static LocalDateTime dia(int mes, int dia) { return LocalDateTime.of(2026, mes, dia, 12, 0); }
+
+    @Test void unaVentaAnteriorDevueltaPorElClienteNoCuenta() {
+        assertEquals(Tipo.DEVOLVER, conFilasCerradas(List.of(dia(1, 10)), List.of(dia(2, 1))).tipo());
+    }
+
+    @Test void unaFilaCerradaSinVueltaPosteriorCuentaYNoSeDevuelve() {
+        assertEquals(Tipo.NADA, conFilasCerradas(List.of(dia(1, 10)), List.of()).tipo());
+    }
+
+    @Test void unaVueltaAnteriorAlCierreNoVale() {
+        assertEquals(Tipo.NADA, conFilasCerradas(List.of(dia(1, 10)), List.of(dia(1, 5))).tipo());
+    }
+
+    @Test void dosVentasAnterioresTienenQueTenerVueltaLasDos() {
+        List<LocalDateTime> cierres = List.of(dia(1, 10), dia(3, 10));
+        assertEquals(Tipo.NADA, conFilasCerradas(cierres, List.of(dia(2, 1))).tipo());
+        assertEquals(Tipo.DEVOLVER, conFilasCerradas(cierres, List.of(dia(2, 1), dia(4, 1))).tipo());
     }
 
     @Test void erroresSeguidosAlFinalCuentaSoloLosUltimos() {

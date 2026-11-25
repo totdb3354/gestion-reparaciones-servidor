@@ -12,7 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** La regla de la lista de devoluciones del bot (spec 2026-11-24-bot-devoluciones §5, con «reparado después» del 25/11). Pura:
+/** La regla de la lista de devoluciones del bot (spec 2026-11-24-bot-devoluciones §5, con «reparado después» y «venta anterior
+ *  devuelta» del 25/11: una fila cerrada con el IMEI cuenta salvo que NSYS registre una vuelta posterior a su cierre). Pura:
  *  recibe lo que se sabe de un IMEI y dice si se devuelve, a dónde, o por qué no se devuelve solo. */
 public final class ReglaDevoluciones {
 
@@ -42,9 +43,12 @@ public final class ReglaDevoluciones {
     public record Trabajo(String idRep, LocalDateTime asignado) {}
     /** Lo que se sabe de un IMEI candidato: sus pasos del bot (por fecha), su ultima salida de una fila, cuando se puso en filas,
      *  el espejo (estado y caja del lote que esta de pedido, si lo hay; grado de NSYS), su ultima entrada en «Pedidos realizados»
-     *  segun Nsys_evento y sus trabajos del taller. */
+     *  segun Nsys_evento y sus trabajos del taller. Ademas, los cierres de las filas cerradas que tienen el IMEI y las fechas en que
+     *  NSYS registra que el movil volvio a la empresa (venta deshecha, reentrada, salida de «Pedidos realizados» o entrada sin
+     *  localizacion): una fila cerrada solo deja de contar si hay una vuelta posterior a su cierre. */
     public record Datos(String imei, List<Paso> pasos, Salida salida, List<LocalDateTime> puestos, String estadoEspejo,
-                        String cajaEspejo, String grado, LocalDateTime entradaPedidos, List<Trabajo> trabajos) {}
+                        String cajaEspejo, String grado, LocalDateTime entradaPedidos, List<Trabajo> trabajos,
+                        List<LocalDateTime> cierresFilas, List<LocalDateTime> vueltas) {}
 
     public enum Tipo { DEVOLVER, SIN_DESTINO, NADA }
 
@@ -61,6 +65,9 @@ public final class ReglaDevoluciones {
                 .max(Comparator.comparing(Paso::fecha)).orElse(null);
         if (descuento == null) return Veredicto.NADA;
         LocalDateTime t = descuento.fecha();
+        // Una fila cerrada con el IMEI sigue contando (vender gana a devolver) salvo que NSYS registre una vuelta posterior a su cierre.
+        for (LocalDateTime cierre : d.cierresFilas())
+            if (d.vueltas().stream().noneMatch(v -> v.isAfter(cierre))) return Veredicto.NADA;
         Salida salida = d.salida();
         if (salida == null || !salida.fecha().isAfter(t)) return Veredicto.NADA;
         if (d.puestos().stream().noneMatch(p -> !p.isAfter(t))) return Veredicto.NADA;

@@ -60,6 +60,8 @@ public class Devoluciones {
         Map<String, List<ReglaDevoluciones.Paso>> pasos = dao.pasos(imeis);
         List<BotDAO.Apunte> apuntes = dao.apuntes(imeis);
         Map<String, LocalDateTime> entradas = dao.entradasEnPedidos(imeis);
+        Map<String, List<LocalDateTime>> cierres = dao.cierresDeFilas(imeis);
+        Map<String, List<LocalDateTime>> vueltas = dao.vueltas(imeis);
         Map<String, MovilNsys> espejo = new HashMap<>();
         for (MovilNsys m : nsys.porImeis(imeis))
             espejo.merge(m.imeiSn(), m, (viejo, nuevo) -> viejo.estado() != EstadoMovil.DE_PEDIDO && nuevo.estado() == EstadoMovil.DE_PEDIDO ? nuevo : viejo);
@@ -74,7 +76,8 @@ public class Devoluciones {
             MovilNsys m = espejo.get(imei);
             Datos d = new Datos(imei, pasos.getOrDefault(imei, List.of()), salida(apuntes, imei), puestos(apuntes, imei),
                     m == null || m.estado() == null ? null : m.estado().name(), m == null ? null : m.location(),
-                    m == null ? null : m.grade(), entradas.get(imei), trabajos.getOrDefault(imei, List.of()));
+                    m == null ? null : m.grade(), entradas.get(imei), trabajos.getOrDefault(imei, List.of()),
+                    cierres.getOrDefault(imei, List.of()), vueltas.getOrDefault(imei, List.of()));
             Veredicto v = ReglaDevoluciones.evaluar(d, ubicaciones);
             if (v.tipo() == ReglaDevoluciones.Tipo.DEVOLVER) porDestino.computeIfAbsent(v.destino(), k -> new ArrayList<>()).add(imei);
             else if (v.tipo() == ReglaDevoluciones.Tipo.SIN_DESTINO && !yaApuntado(apuntes, imei, v.salida().idFila()))

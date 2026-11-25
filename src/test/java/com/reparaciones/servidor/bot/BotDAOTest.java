@@ -43,19 +43,21 @@ class BotDAOTest {
                 + " VALUES (?, NULL, ?, ?, NULL, ?, ?)", 29116, Timestamp.valueOf(AHORA), "350000000000001", "SIN_DESTINO", "sin caja");
     }
 
-    @Test void candidatosSaleDeLosDescontadosQueSalieronDeUnaFilaYHoyNoEstanEnNinguna() {
+    @Test void candidatosSaleDeLosDescontadosQueSalieronDeUnaFilaYHoyNoEstanEnNingunaFilaAbierta() {
         LocalDateTime desde = LocalDateTime.of(2026, 8, 27, 10, 0);
         when(jdbc.queryForList(BotDAO.SQL_CANDIDATOS, String.class, Timestamp.valueOf(desde), 1000)).thenReturn(List.of("350000000000001"));
         assertEquals(List.of("350000000000001"), dao.candidatos(desde, 1000));
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("ACCION = 'DESCONTADO' AND b.RESULTADO = 'OK'"));
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("c.TIPO = 'IMEI' AND c.IMEI_ANTERIOR = b.IMEI"));
-        assertTrue(BotDAO.SQL_CANDIDATOS.contains("NOT EXISTS (SELECT 1 FROM Pedido_fila f WHERE f.IMEI = b.IMEI)"));
+        assertTrue(BotDAO.SQL_CANDIDATOS.contains("NOT EXISTS (SELECT 1 FROM Pedido_fila f WHERE f.IMEI = b.IMEI AND f.CERRADA_EN IS NULL)"));
     }
 
     @Test void sinImeisLasLecturasNoConsultan() {
         assertEquals(Map.of(), dao.pasos(List.of()));
         assertEquals(List.of(), dao.apuntes(List.of()));
         assertEquals(Map.of(), dao.entradasEnPedidos(List.of()));
+        assertEquals(Map.of(), dao.cierresDeFilas(List.of()));
+        assertEquals(Map.of(), dao.vueltas(List.of()));
         verifyNoInteractions(jdbc);
     }
 
@@ -63,5 +65,16 @@ class BotDAOTest {
     @Test void lasLecturasConImeisUsanUnInConSusMarcas() {
         dao.pasos(List.of("350000000000001", "350000000000002"));
         verify(jdbc).query(eq(BotDAO.SQL_PASOS + "?, ?" + BotDAO.ORDEN_PASOS), any(RowMapper.class), eq("350000000000001"), eq("350000000000002"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void cierresYVueltasUsanUnInConSusMarcasYSusCondiciones() {
+        dao.cierresDeFilas(List.of("350000000000001", "350000000000002"));
+        dao.vueltas(List.of("350000000000001"));
+        verify(jdbc).query(eq(String.format(BotDAO.SQL_CIERRES, "?, ?")), any(RowMapper.class), eq("350000000000001"), eq("350000000000002"));
+        verify(jdbc).query(eq(String.format(BotDAO.SQL_VUELTAS, "?")), any(RowMapper.class), eq("350000000000001"));
+        assertTrue(BotDAO.SQL_CIERRES.contains("CERRADA_EN IS NOT NULL"));
+        assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO IN ('VENTA_DESHECHA', 'REENTRADA')"));
+        assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR A_NSYS = '')"));
     }
 }
