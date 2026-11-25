@@ -148,9 +148,9 @@ public final class Reparto {
         boolean mismoFormato = m.esEsim() == pide.esEsim();
         boolean mismoColor = igualDato(v.color(), pide.color());
         Integer puesto;
-        // Ms (también en Devolución o sin caja): último recurso, solo a España, mismo formato y color, y que encaje quitándole
-        // el «Ms». Que un MsB o MsC no entre está pendiente de confirmar con Imad (el prototipo los dejaba).
-        if (g.ms()) puesto = mismoFormato && mismoColor && esEspana(f.pais()) && encajaSinMs(ac, v) ? 9 : null;
+        // Ms (también en Devolución o sin caja): nunca se reserva (Imad 25/11). Es una decisión excepcional de una persona: la fila
+        // se queda «sin stock» y quien la mira puede picar un Ms a mano (el recomendador los pone al final).
+        if (g.ms()) puesto = null;
         else {
             boolean encajaONa = g.na() || encaja(ac, v);
             if (mismoFormato && mismoColor && encajaONa) puesto = 1;
@@ -209,20 +209,9 @@ public final class Reparto {
                 || ac.aceptaColorYGrado(v.color(), Normalizacion.gradoSinBateria(grade));
     }
 
-    /** Un Ms que encajaría sin el «Ms» (o cuyo SKU ya está en el abanico, como hace {@link EstadoUnidad}). */
-    private static boolean encajaSinMs(Aceptacion ac, LoQueVale.Valor v) {
-        String sinMs = v.grade().strip().substring(2);
-        return aceptaSku(ac, v) || ac.aceptaColorYGrado(v.color(), v.grade().strip())
-                || ac.aceptaColorYGrado(v.color(), sinMs) || ac.aceptaColorYGrado(v.color(), Normalizacion.gradoSinBateria(sinMs));
-    }
-
     private static boolean pedidoA(String grado) {
         String g = grado == null ? "" : grado.strip().toUpperCase(Locale.ROOT);
         return g.equals("A") || g.equals("A100");
-    }
-
-    private static boolean esEspana(String pais) {
-        return pais != null && pais.strip().equalsIgnoreCase("ES");
     }
 
     private static boolean mismoModelo(Atributos pide, MovilNsys m) {

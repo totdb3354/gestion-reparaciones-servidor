@@ -23,7 +23,8 @@ public final class Recomendador {
 
     public static final int TOPE = 5;
 
-    private record Puntuado(MovilNsys movil, Candidato candidato) {}
+    /** ms: el grado del móvil empieza por «Ms» (sin mirar mayúsculas). */
+    private record Puntuado(MovilNsys movil, Candidato candidato, boolean ms) {}
 
     private Recomendador() {}
 
@@ -51,11 +52,19 @@ public final class Recomendador {
                 default -> 0;
             };
             if (nivel == 0) continue;
-            validos.add(new Puntuado(m, new Candidato(m.imeiSn(), v.sku(), m.ubicacion(), nivel)));
+            validos.add(new Puntuado(m, new Candidato(m.imeiSn(), v.sku(), m.ubicacion(), nivel), esMs(v.grade())));
         }
-        Comparator<Puntuado> orden = Comparator.<Puntuado>comparingInt(p -> p.candidato().nivel())
+        // Un Ms es una decisión excepcional de una persona (Imad 25/11): se propone, pero detrás de todos los demás, sea cual sea
+        // su nivel; entre Ms, el orden de siempre.
+        Comparator<Puntuado> orden = Comparator.<Puntuado, Boolean>comparing(Puntuado::ms)
+                .thenComparingInt(p -> p.candidato().nivel())
                 .thenComparing(p -> p.movil().receivingDate(), Comparator.nullsLast(Comparator.<LocalDate>naturalOrder()))
                 .thenComparing(p -> p.movil().imeiSn(), Comparator.nullsLast(Comparator.<String>naturalOrder()));
         return validos.stream().sorted(orden).limit(TOPE).map(Puntuado::candidato).toList();
+    }
+
+    private static boolean esMs(String grado) {
+        String g = grado == null ? "" : grado.strip();
+        return g.length() >= 2 && g.substring(0, 2).equalsIgnoreCase("Ms");
     }
 }

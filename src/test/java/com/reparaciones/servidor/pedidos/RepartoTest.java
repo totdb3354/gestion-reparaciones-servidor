@@ -185,28 +185,22 @@ class RepartoTest {
         assertEquals(6, puestoAmazon(e, "DE", movil("6", false, "Rojo", "n/a", LISTOS, D1)));
         assertEquals(7, puestoAmazon(e, "DE", movil("7", true, "Rojo", "A", LISTOS, D1)));
         assertEquals(8, puestoAmazon(e, "DE", movil("8", false, "Rojo", "A-", LISTOS, D1)));
-        assertEquals(9, puestoAmazon(e, "ES", movil("9", true, "Azul", "MsA", LISTOS, D1)));
-        assertNull(puestoAmazon(e, "ES", movil("9", false, "Azul", "MsA", LISTOS, D1)), "Ms: solo mismo formato");
+        assertNull(puestoAmazon(e, "ES", movil("9", true, "Azul", "MsA", LISTOS, D1)), "Ms: nunca");
     }
 
-    // ── Ms ──
+    // ── Ms: nunca se reserva (Imad 25/11; lo decide y lo pica una persona) ──
 
-    @Test void msSoloAEspanaYDespuesDeTodoIncluidoUnAdeOtroColor() {
+    @Test void msNuncaSeReservaNiAEspanaNiComoUltimoRecurso() {
         MovilNsys ms = movil("001", "Azul", "MsA", D1);
         MovilNsys aRojo = movil("002", false, "Rojo", "A", GLASS, D3);
-        assertNull(puestoAmazon(AMZ_AZUL_A, "DE", ms));
-        assertNull(puestoAmazon(AMZ_AZUL_A, "FR", ms));
-        assertEquals(9, puestoAmazon(AMZ_AZUL_A, "ES", ms));
-        assertEquals(9, puestoAmazon(AMZ_AZUL_A, "es", movil("003", "Azul", "MsA-100", D1)));
-        assertNull(puestoAmazon(AMZ_AZUL_A, "ES", movil("004", "Rojo", "MsA", D1)), "Ms de otro color, no");
+        for (String g : List.of("MsA", "MsA-", "MsA+", "MsB", "MsC", "MSA", "Ms", "MsA-100", "MsC100")) {
+            assertNull(puestoAmazon(AMZ_AZUL_A, "ES", movil("003", "Azul", g, D1)), g);
+            assertNull(puestoAmazon(AMZ_AZUL_A, "DE", movil("003", "Azul", g, D1)), g);
+        }
 
         List<Reparto.Fila> espana = List.of(fila(1, Canal.AMAZON, "ES", HOY, AMZ_AZUL_A), fila(2, Canal.AMAZON, "ES", HOY, AMZ_AZUL_A));
         List<Reparto.Resultado> r = de(espana, List.of(ms, aRojo));
-        assertEquals(List.of("002", "001"), imeis(r));
-        assertEquals(List.of(7, 9), puestos(r));
-
-        List<Reparto.Resultado> alemania = de(amazonN(2, AMZ_AZUL_A), List.of(ms, aRojo));
-        assertEquals(Arrays.asList("002", null), imeis(alemania));
+        assertEquals(Arrays.asList("002", null), imeis(r), "la segunda fila se queda sin stock aunque haya un Ms");
     }
 
     @Test void msNuncaEnLaWeb() {
@@ -263,23 +257,18 @@ class RepartoTest {
                 imeis(de(amazonN(3, AMZ_AZUL_A), List.of(idDevolucion, idSinCaja, idRojoDevolucion))));
     }
 
-    @Test void msEnDevolucionOSinCajaSoloPuesto9() {
+    @Test void msEnDevolucionOSinCajaTampocoComoNa() {
         MovilNsys msDevolucion = movil("001", false, "Azul", "MsA", DEVOLUCION, D1);
         MovilNsys msSinCaja = movil("002", false, "Azul", "MsA-", SIN_CAJA, D1);
         MovilNsys msRojoDevolucion = movil("003", false, "Rojo", "MsA", DEVOLUCION, D1);
         MovilNsys msEsimDevolucion = movil("004", true, "Azul", "MsA", DEVOLUCION, D1);
-        assertNull(puestoAmazon(AMZ_AZUL_A, "DE", msDevolucion));
-        assertNull(puestoAmazon(AMZ_AZUL_A, "DE", msSinCaja));
-        assertEquals(9, puestoAmazon(AMZ_AZUL_A, "ES", msDevolucion));
-        assertEquals(9, puestoAmazon(AMZ_AZUL_A, "ES", msSinCaja));
-        assertNull(puestoAmazon(AMZ_AZUL_A, "ES", msRojoDevolucion), "ni como N/A de otro color");
-        assertNull(puestoAmazon(AMZ_AZUL_A, "ES", msEsimDevolucion), "ni como N/A de otro formato");
+        for (MovilNsys m : List.of(msDevolucion, msSinCaja, msRojoDevolucion, msEsimDevolucion)) {
+            assertNull(puestoAmazon(AMZ_AZUL_A, "ES", m), m.imeiSn());
+            assertNull(puestoAmazon(AMZ_AZUL_A, "DE", m), m.imeiSn());
+        }
         assertNull(puestoWeb(ac(false, "Azul", "MsA"), msDevolucion));
-
-        assertEquals(Arrays.asList((String) null), imeis(de(amazonN(1, AMZ_AZUL_A), List.of(msDevolucion, msRojoDevolucion))));
-        List<Reparto.Resultado> espana = de(List.of(fila(1, Canal.AMAZON, "ES", HOY, AMZ_AZUL_A)), List.of(msDevolucion));
-        assertEquals(9, espana.get(0).puesto());
-        assertEquals("Puesto 9 · Devolución · N/A (es MsA)", espana.get(0).porque());
+        assertEquals(Arrays.asList((String) null), imeis(de(List.of(fila(1, Canal.AMAZON, "ES", HOY, AMZ_AZUL_A)),
+                List.of(msDevolucion, msSinCaja, msRojoDevolucion, msEsimDevolucion))));
     }
 
     @Test void colorOModeloEnBlancoNoCuentanComoIguales() {

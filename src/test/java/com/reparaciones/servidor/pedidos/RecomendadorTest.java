@@ -113,8 +113,26 @@ class RecomendadorTest {
         Map<String, List<TrabajoAbierto>> trabajos = Map.of(NsysDAO.claveCruce("350000000000003"), List.of(glass));
         List<Recomendador.Candidato> r = de(WEB_A, Canal.DISTRIBUIDORES,
                 List.of(transformar, cSinReparar, enTaller, conAviso, igual), trabajos, NADIE);
-        assertEquals(List.of("350000000000001", "350000000000002", "350000000000003", "350000000000004", "350000000000005"), imeis(r));
-        assertEquals(List.of(1, 1, 2, 3, 3), r.stream().map(Recomendador.Candidato::nivel).toList());
+        // el Ms (con aviso, nivel 1) va detrás de todos: es una decisión excepcional de una persona
+        assertEquals(List.of("350000000000001", "350000000000003", "350000000000004", "350000000000005", "350000000000002"), imeis(r));
+        assertEquals(List.of(1, 2, 3, 3, 1), r.stream().map(Recomendador.Candidato::nivel).toList());
+    }
+
+    @Test void unMsMasAntiguoVaDetrasDeUnAMasNuevoYDeLoQueHayQueTransformar() {
+        MovilNsys msViejo = movil("350000000000001", "MsA", D1);
+        MovilNsys msMayusculas = movil("350000000000002", "MSA", D1);
+        MovilNsys aNuevo = movil("350000000000003", "A", D3);
+        MovilNsys bViejo = movil("350000000000004", "B", D2);
+        List<Recomendador.Candidato> r = de(WEB_A, Canal.DISTRIBUIDORES, List.of(msViejo, msMayusculas, aNuevo, bViejo),
+                SIN_TRABAJOS, NADIE);
+        assertEquals("350000000000003", r.get(0).imei());
+        assertEquals("350000000000004", r.get(1).imei());
+        assertTrue(r.indexOf(r.stream().filter(c -> c.imei().equals("350000000000001")).findFirst().orElseThrow()) >= 2);
+        r.stream().filter(c -> c.imei().equals("350000000000002")).findFirst()
+                .ifPresent(c -> assertTrue(r.indexOf(c) >= 2, "un MSA en mayúsculas también va detrás"));
+
+        // solo con Ms, salen (alguien puede escogerlo a mano), en el orden de siempre
+        assertEquals(List.of("350000000000001"), imeis(de(AMAZON_A, Canal.AMAZON, List.of(msViejo), SIN_TRABAJOS, NADIE)));
     }
 
     @Test void unoEnElTallerSinSkuAceptadoNoEntra() {
