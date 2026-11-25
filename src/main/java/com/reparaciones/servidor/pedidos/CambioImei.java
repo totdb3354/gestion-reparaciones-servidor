@@ -12,9 +12,14 @@ import java.time.LocalDateTime;
  *  la quito el ERP al cambiar el IMEI); nunca nulo. En IMEI: imeiAnterior nulo = antes no habia; imeiNuevo nulo = se quito. En los demas tipos los dos IMEI
  *  son nulos. detalle: nulo salvo en MARCA ("<MARCA>" o "<MARCA> — <nota>"), MARCA_QUITADA (la marca que tenia, y "<MARCA> — al poner el
  *  IMEI" si la quito el ERP), ASOCIADA ("LIBRO" o "HISTORICO"), IMEI_INTERCAMBIADO ("con la fila <id>"), YA_ENVIADO (nulo, o "al cancelar"), VALIDADA (el motivo del aviso: MODELO, CAPACIDAD, COLOR, GRADO, COLOR_O_GRADO, GRADO_NO_VENDIBLE o SKU_DESCONOCIDO) y
- *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP), DEVUELTO, NO_DEVUELTO y SIN_DESTINO (devoluciones del bot
- *  de NSYS, spec 2026-11-24-bot-devoluciones §4.2: imeiAnterior = el IMEI que salio de la fila, imeiNuevo nulo, detalle con el
- *  destino o el motivo). */
+ *  VALIDACION_QUITADA (nulo; "al cambiar el IMEI" si la quito el ERP).
+ *  Reserva de IMEI (imeiAnterior/imeiNuevo son el IMEI reservado, segun el caso): RESERVADO (el ERP aparto un IMEI para la fila: imeiNuevo),
+ *  RESERVA_CONFIRMADA (una persona o el bot puso ese mismo IMEI y la reserva paso a ser el IMEI de la fila), RESERVA_SUSTITUIDA (se puso
+ *  otro IMEI distinto y la reserva se solto: imeiAnterior), RESERVA_QUITADA (la reserva se solto sin poner IMEI: imeiAnterior; detalle = el motivo: CANCELADA («Cancelar móvil»), MARCADA (otra marca), YA_NO_ESTA (cerrada sin envio), CON_ETIQUETA (marca con la etiqueta impresa), ENVIADA_SIN_IMEI
+ *  (la fila se envio sin IMEI: el movil seguramente salio sin teclearlo y no se devuelve a stock), NO_ENCONTRADO, PUESTO_EN_OTRA o NO_DISPONIBLE) y SIN_STOCK
+ *  (no habia IMEI libre que reservar; una vez hasta que reserve; sin IMEI).
+ *  Devoluciones del bot de NSYS: DEVUELTO, NO_DEVUELTO y SIN_DESTINO (spec 2026-11-24-bot-devoluciones §4.2: imeiAnterior = el IMEI
+ *  que salio de la fila, imeiNuevo nulo, detalle con el destino o el motivo). */
 public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime fecha,
                          @Schema(nullable = true) String imeiAnterior, @Schema(nullable = true) String imeiNuevo, String tipo,
                          @Schema(nullable = true) String detalle) {
@@ -28,6 +33,17 @@ public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime 
     public static final String IMEI_INTERCAMBIADO = "IMEI_INTERCAMBIADO";
     public static final String VALIDADA = "VALIDADA";
     public static final String VALIDACION_QUITADA = "VALIDACION_QUITADA";
+    /** El ERP aparto un IMEI para la fila. */
+    public static final String RESERVADO = "RESERVADO";
+    /** La reserva paso a ser el IMEI de la fila (se puso ese mismo IMEI). */
+    public static final String RESERVA_CONFIRMADA = "RESERVA_CONFIRMADA";
+    /** Se puso otro IMEI y la reserva se solto. */
+    public static final String RESERVA_SUSTITUIDA = "RESERVA_SUSTITUIDA";
+    /** La reserva se solto sin poner IMEI; DETALLE = uno de los motivos de {@code Reservas} (CANCELADA, MARCADA, YA_NO_ESTA, CON_ETIQUETA,
+     *  ENVIADA_SIN_IMEI, NO_ENCONTRADO, PUESTO_EN_OTRA o NO_DISPONIBLE). */
+    public static final String RESERVA_QUITADA = "RESERVA_QUITADA";
+    /** No habia IMEI libre que reservar. */
+    public static final String SIN_STOCK = "SIN_STOCK";
     /** El bot de NSYS devolvio a su caja el IMEI que salio de esta fila (imeiAnterior); detalle «de Pedidos realizados a <caja>; IMEI
      *  cambiado por <quien> el <dd/MM HH:mm>». Sin usuario. */
     public static final String DEVUELTO = "DEVUELTO";

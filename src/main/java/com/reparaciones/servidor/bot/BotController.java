@@ -41,7 +41,7 @@ public class BotController {
         for (MovimientoBot m : c.movimientos()) {
             if (m == null || vacio(m.imei()) || m.imei().length() > 40) throw mal("imei es obligatorio (40 caracteres como mucho)");
             if (!ReglaDevoluciones.ACCIONES.contains(m.accion())) throw mal("accion debe ser DESCONTADO o DEVUELTO");
-            if (!ReglaDevoluciones.RESULTADOS.contains(m.resultado())) throw mal("resultado debe ser OK, NO_APARECE o ERROR");
+            if (!ReglaDevoluciones.RESULTADOS.contains(m.resultado())) throw mal("resultado debe ser OK, NO_APARECE, ERROR o VENDIDO_PANEL");
             if (ReglaDevoluciones.DEVUELTO.equals(m.accion()) && vacio(m.destino())) throw mal("destino es obligatorio en DEVUELTO");
             if (m.fecha() == null) throw mal("fecha es obligatoria");
             if (largo(m.origen(), 80) || largo(m.destino(), 80) || largo(m.motivo(), 30)) throw mal("origen o destino de mas de 80 caracteres, o motivo de mas de 30");

@@ -95,6 +95,9 @@ de `model/` conservan su nombre.
     `null` sin aviso o sin nada que decir. Motivos nuevos de `motivo`: `CAPACIDAD`, `COLOR` y `GRADO` (`COLOR_O_GRADO` solo queda si no se
     puede decir cuál); `MS` ya no sale como motivo: un Ms es un `AVISO` con `motivo` `null` y `detalle.ms` `true`. Una fila validada
     conserva `sim`, `na` y `ms` en `detalle` (el `dato` va `null` y `trabajos` vacía).
+    Reserva de IMEI (0.9.48): `FilaVista` gana después de `detalle` `imeiReservado` (nullable: el IMEI que el ERP aparta para la fila; `null` = sin reserva; la fila
+    sigue contando como sin IMEI) y `reservadaEn` (nullable, hora de Madrid sin zona: cuándo se reservó). `CambioImei.tipo` admite además
+    `RESERVADO`, `RESERVA_CONFIRMADA`, `RESERVA_SUSTITUIDA`, `RESERVA_QUITADA` y `SIN_STOCK`.
   - `GET /api/pedidos/filas/{id}/cambios` → lista de `CambioImei` `{usuario, fecha, imeiAnterior, imeiNuevo, tipo}` con el historial
     de la fila, del más reciente al más antiguo (hasta 200; `fecha` y hora de Madrid sin zona). `tipo` (campo añadido, nunca nulo; la web
     que no lo conoce lo ignora): `IMEI` (cambio de IMEI, los de siempre), `FALTA_ENVIAR` (se marcó que el móvil falta por enviar) o

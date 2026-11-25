@@ -102,8 +102,12 @@ public class VistaFilas {
         Set<String> yaPuestos = new LinkedHashSet<>();
         for (String clave : puestos(dao.shippyProConImeiDesde(desdePuestos())).keySet())
             if (!clave.equals(propia)) yaPuestos.add(clave);
+        // Los reservados para otras filas no se proponen (Imad 25/11); el de esta fila sale el primero.
+        String reservada = f.imeiReservado() == null || f.imeiReservado().isBlank() ? null : NsysDAO.claveCruce(f.imeiReservado());
+        for (Map.Entry<Integer, String> r : dao.reservasVivas().entrySet())
+            if (r.getKey() != id) yaPuestos.add(NsysDAO.claveCruce(r.getValue()));
         return Optional.of(Recomendador.de(ac, f.canal(), nsysDao.enEmpresa(), taller.valedorDeTodos(),
-                nsysDao.trabajosAbiertos(), yaPuestos));
+                nsysDao.trabajosAbiertos(), yaPuestos, reservada));
     }
 
     private static String texto(String sku) {
@@ -124,6 +128,12 @@ public class VistaFilas {
     /** De las filas de ShippyPro con IMEI, las que dejan «ya puesto» su movil: las pendientes y las no pendientes, y las enviadas
      *  mientras NSYS no da el movil por vendido. IMEI (clave de cruce) -> ids de esas filas. */
     private Map<String, Set<Integer>> puestos(List<FilaPedido> filas) {
+        return puestos(filas, nsysDao);
+    }
+
+    /** {@link #puestos(List)} con el espejo de NSYS dado: tambien lo usa la pasada de reservas ({@link Reservas}), con las filas de
+     *  {@link FilasDAO#shippyProConImeiDesde} desde {@link #DIAS_PUESTOS} dias atras. */
+    static Map<String, Set<Integer>> puestos(List<FilaPedido> filas, NsysDAO nsysDao) {
         Set<String> deEnviadas = new LinkedHashSet<>();
         for (FilaPedido f : filas)
             if (ENVIADA.equals(estado(f)) && f.imei() != null && !f.imei().isBlank()) deEnviadas.add(f.imei());
@@ -201,7 +211,7 @@ public class VistaFilas {
                     aviso == null ? null : aviso.skuMovil(), aviso == null ? null : aviso.caja(), canal(f), f.faltaEnviarEn(), f.sincronizadaEn(),
                     f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(), f.asociadaEn(), f.asociadaOrigen(),
                     validada ? f.validadaEn() : null, validada ? f.validadaPor() : null, motivoValidado, f.fechaSalida(), f.pais(), salidaDesde,
-                    aviso == null ? null : aviso.detalle()));
+                    aviso == null ? null : aviso.detalle(), f.imeiReservado(), f.reservadaEn()));
         }
         return vistas;
     }

@@ -167,6 +167,14 @@ class DevolucionesTest {
         verify(dao, never()).apuntar(anyInt(), any(), eq(A), any(), any());
     }
 
+    @Test void unVendidoEnElPanelSeApuntaComoNoDevueltoEnLaFilaDeLaSalida() {
+        when(dao.guardar(any(), any(), any())).thenReturn(1);
+        when(dao.ultimaSalida(A)).thenReturn(Optional.of(new Salida(10, SALIO, "Ana", "RESERVA")));
+        servicio.registrar(new MovimientosBot("r", List.of(new MovimientoBot(A, "DEVUELTO", "VENDIDO_PANEL", null, "CAJA LISTOS",
+                "RESERVA_LIBERADA", AHORA))));
+        verify(dao).apuntar(10, AHORA, A, "NO_DEVUELTO", "vendido en el Panel: no se devuelve");
+    }
+
     @Test void unaDevolucionDeUnPedidoCanceladoSeApuntaEnLaFilaCancelada() {
         when(dao.guardar(any(), any(), any())).thenReturn(1);
         when(dao.ultimaSalida(B)).thenReturn(Optional.of(new Salida(29200, SALIO, "Juan", "CANCELADO")));
@@ -193,6 +201,65 @@ class DevolucionesTest {
         when(dao.ultimaSalida(B)).thenReturn(Optional.empty());
         servicio.registrar(new MovimientosBot("r", List.of(new MovimientoBot(B, "DEVUELTO", "OK", null, "CAJA LISTOS", null, AHORA))));
         verify(dao, never()).apuntar(anyInt(), any(), any(), any(), any());
+    }
+
+    @Test void unReservadoSustituidoOCanceladoSaleComoReservaLiberadaYUnoQueYaNoEstaSinDestino() {
+        tresCandidatos();
+        // A: se pico otro encima de su reserva; B: su fila se cancelo con la reserva puesta; C: su fila ya no esta en ShippyPro.
+        when(dao.apuntes(List.of(A, B, C))).thenReturn(List.of(
+                new BotDAO.Apunte(10, PUESTO, null, A, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(11, PUESTO, null, B, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(12, PUESTO, null, C, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(10, SALIO, A, "359999999999990", "RESERVA_SUSTITUIDA", null, "Ana"),
+                new BotDAO.Apunte(11, SALIO, B, null, "RESERVA_QUITADA", "CANCELADA", null),
+                new BotDAO.Apunte(12, SALIO, C, null, "RESERVA_QUITADA", "YA_NO_ESTA", null)));
+        ListaDevoluciones lista = servicio.lista();
+        assertEquals(List.of(new ListaDevoluciones.Grupo("CAJA LISTOS", List.of(new ListaDevoluciones.ImeiADevolver(A, "RESERVA_LIBERADA"),
+                new ListaDevoluciones.ImeiADevolver(B, "RESERVA_LIBERADA")))), lista.grupos());
+        verify(dao).apuntar(12, AHORA, C, "SIN_DESTINO", ReglaDevoluciones.MOTIVO_YA_NO_ESTA);
+    }
+
+    @Test void unReservadoQueSalioConLaEtiquetaOSinTeclearNoSeDevuelve() {
+        tresCandidatos();
+        when(dao.apuntes(List.of(A, B, C))).thenReturn(List.of(
+                new BotDAO.Apunte(10, PUESTO, null, A, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(11, PUESTO, null, B, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(12, PUESTO, null, C, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(10, SALIO, A, null, "RESERVA_QUITADA", "CON_ETIQUETA", null),
+                new BotDAO.Apunte(11, SALIO, B, null, "RESERVA_QUITADA", "ENVIADA_SIN_IMEI", null),
+                new BotDAO.Apunte(12, SALIO, C, null, "RESERVA_QUITADA", "PUESTO_EN_OTRA", null)));
+        assertEquals(List.of(), servicio.lista().grupos());
+        verify(dao, never()).apuntar(anyInt(), any(), any(), any(), any());
+    }
+
+    @Test void unReservadoAunVivoEnUnaFilaAbiertaNoSeDevuelve() {
+        tresCandidatos();
+        // A: su reserva se solto en una fila, pero hoy es la reserva de otra fila abierta (vender gana a devolver).
+        when(dao.filasConImei(List.of(A, B, C))).thenReturn(Map.of(
+                A, List.of(new FilaConImei(20, null, null, null, null, false, null, null, SALIO.plusHours(1), false))));
+        assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(B, "IMEI_CORREGIDO")), servicio.lista().grupos().get(1).imeis());
+    }
+
+    @Test void unaReservaSoltadaYaEnPedidosRealizadosSinAlBotQuedaSinDestinoParaComprobar() {
+        tresCandidatos();
+        when(dao.apuntes(List.of(A, B, C))).thenReturn(List.of(
+                new BotDAO.Apunte(10, PUESTO, null, A, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(11, PUESTO, null, B, "IMEI", null, "Juan"),
+                new BotDAO.Apunte(12, PUESTO, null, C, "IMEI", null, "Juan"),
+                new BotDAO.Apunte(10, SALIO, A, null, "RESERVA_QUITADA", "EN_PEDIDOS_REALIZADOS", null),
+                new BotDAO.Apunte(11, SALIO, B, null, "IMEI", null, "Ana"),
+                new BotDAO.Apunte(12, SALIO, C, null, "IMEI", null, "Ana")));
+        ListaDevoluciones lista = servicio.lista();
+        assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(B, "IMEI_CORREGIDO")), lista.grupos().get(1).imeis());
+        verify(dao).apuntar(10, AHORA, A, "SIN_DESTINO", ReglaDevoluciones.MOTIVO_COMPROBAR);
+    }
+
+    @Test void unaDevolucionDeUnaReservaSoltadaLoDiceEnLaNota() {
+        when(dao.guardar(any(), any(), any())).thenReturn(1);
+        when(dao.ultimaSalida(A)).thenReturn(Optional.of(new Salida(10, SALIO, "Ana", "RESERVA")));
+        servicio.registrar(new MovimientosBot("r", List.of(new MovimientoBot(A, "DEVUELTO", "OK", "Pedidos realizados", "CAJA LISTOS",
+                "RESERVA_LIBERADA", AHORA))));
+        verify(dao).apuntar(10, AHORA, A, "DEVUELTO", "de Pedidos realizados a CAJA LISTOS; reserva soltada por Ana el 24/11 18:07");
     }
 
     @Test void quienDeUnApunte() {

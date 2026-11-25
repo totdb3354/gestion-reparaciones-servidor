@@ -470,4 +470,44 @@ class LecturaFilasTest {
         verify(dao).cerrar(any(), any());
         verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), contains("No se pudo poner la fecha de salida"), any());
     }
+
+    // ---------------------------------------------------------------- reservas de IMEI (spec reserva §5)
+
+    private final Reservas reservas = mock(Reservas.class);
+
+    private LecturaFilas lecturaConReservas() {
+        return new LecturaFilas(shippy, dao, nsys, "100:AMAZON", calendario, reservas, reloj);
+    }
+
+    @Test void laPasadaDeReservasVaDespuesDeLasSalidasYAntesDeTerminar() throws Exception {
+        unPedidoBien();
+        lecturaConReservas().pasada();
+        InOrder orden = inOrder(dao, reservas);
+        orden.verify(dao).ponerSalidas(any());
+        orden.verify(reservas).pasada(AHORA);
+        orden.verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), eq(1), any(), isNull(), eq(AHORA));
+    }
+
+    @Test void unFalloDeLasReservasNoTumbaLaVueltaYDejaUnAviso() throws Exception {
+        unPedidoBien();
+        when(reservas.pasada(any())).thenThrow(new org.springframework.dao.DataAccessResourceFailureException("x"));
+        lecturaConReservas().pasada();
+        verify(dao).cerrar(any(), any());
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), eq(LecturaFilas.AVISO_RESERVAS), any());
+    }
+
+    @Test void lasReservasVanAunqueFallenLasSalidas() throws Exception {
+        unPedidoBien();
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("x")).when(dao).ponerSalidas(any());
+        lecturaConReservas().pasada();
+        verify(reservas).pasada(AHORA);
+        verify(dao).terminarLectura(eq(5), eq(LecturaFilas.OK), anyInt(), any(), eq(LecturaFilas.AVISO_SALIDA), any());
+    }
+
+    @Test void unaVueltaFallidaNoReserva() throws Exception {
+        when(dao.empezarLectura(any())).thenReturn(5);
+        when(shippy.pendientes()).thenThrow(new IOException("x"));
+        lecturaConReservas().pasada();
+        verifyNoInteractions(reservas);
+    }
 }

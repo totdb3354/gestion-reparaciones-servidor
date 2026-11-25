@@ -446,6 +446,28 @@ class VistaFilasTest {
         assertEquals(List.of(IMEI1, "350000000000003"), r.stream().map(Recomendador.Candidato::imei).toList());
     }
 
+    @Test void recomendadosNoOfrecenLosReservadosParaOtraFilaYPonenPrimeroElDeLaPropia() {
+        FilaPedido f = fila(7, null, null);
+        FilaPedido propia = new FilaPedido(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), f.origen(),
+                f.canal(), f.posicion(), f.cerradaEn(), f.envioFecha(), f.transportista(), f.seguimiento(), f.reabiertaEn(), f.envioId(),
+                f.impresaEn(), f.faltaEnviarEn(), f.sincronizadaEn(), f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(), f.asociadaEn(),
+                f.asociadaOrigen(), f.validadaImei(), f.validadaEn(), f.validadaPor(), f.fechaSalida(), f.pais(), IMEI2, AHORA, null);
+        when(dao.porId(7)).thenReturn(Optional.of(propia));
+        when(dao.shippyProConImeiDesde(any())).thenReturn(List.of());
+        when(dao.reservasVivas()).thenReturn(Map.of(7, IMEI2, 8, IMEI1));
+        when(nsys.productosPorSkuDeCanal(any())).thenReturn(List.of(
+                AceptaSkuTest.producto("Azul", "A", "i13128AzulA", "i13128AzulA", null, null)));
+        when(nsys.enEmpresa()).thenReturn(List.of(movil(IMEI1), movil("350000000000003"), movil(IMEI2)));
+        when(nsys.trabajosAbiertos()).thenReturn(Map.of());
+        when(taller.valedorDeTodos()).thenReturn(x -> new LoQueVale.Valor("Azul", "A", "i13128AzulA", null, null, null, false));
+
+        List<Recomendador.Candidato> r = vista.recomendados(7).orElseThrow();
+
+        // IMEI1 está reservado para la fila 8: no sale (Imad 25/11). IMEI2 es la reserva de esta fila: el primero, marcado.
+        assertEquals(List.of(IMEI2, "350000000000003"), r.stream().map(Recomendador.Candidato::imei).toList());
+        assertTrue(r.get(0).reservado());
+    }
+
     @Test void recomendadosCuentanComoPuestosLasEnviadasConMovilNoVendidoYNoLasVendidas() {
         FilaPedido propia = fila(7, null, null);
         when(dao.porId(7)).thenReturn(Optional.of(propia));
@@ -631,5 +653,18 @@ class VistaFilasTest {
         when(dao.delPeriodo(any(), any())).thenReturn(List.of(
                 conSalida(1, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", LocalDate.of(2026, 11, 10))));
         assertEquals(LocalDate.of(2026, 11, 9), vista.filas(null, null, null).filas().get(0).salidaDesde());
+    }
+
+    @Test void laVistaLlevaLaReservaDeImeiYNulosSinReserva() {
+        FilaPedido base = conSalida(1, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", null);
+        FilaPedido reservada = new FilaPedido(base.id(), base.fecha(), base.plataforma(), base.sku(), null, "0099-1", base.fechaCompra(),
+                base.origen(), base.canal(), 1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, "ES", "356000000000001", LocalDateTime.of(2026, 11, 24, 10, 0), null);
+        when(dao.delPeriodo(any(), any())).thenReturn(List.of(reservada, conSalida(2, LocalDate.of(2026, 11, 7), Canal.DISTRIBUIDORES, "SHIPPYPRO", null)));
+        List<FilaVista> f = vista.filas(null, null, null).filas();
+        assertEquals("356000000000001", f.get(0).imeiReservado());
+        assertEquals(LocalDateTime.of(2026, 11, 24, 10, 0), f.get(0).reservadaEn());
+        assertNull(f.get(1).imeiReservado());
+        assertNull(f.get(1).reservadaEn());
     }
 }

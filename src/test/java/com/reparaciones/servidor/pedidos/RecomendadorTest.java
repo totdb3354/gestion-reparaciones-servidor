@@ -113,8 +113,26 @@ class RecomendadorTest {
         Map<String, List<TrabajoAbierto>> trabajos = Map.of(NsysDAO.claveCruce("350000000000003"), List.of(glass));
         List<Recomendador.Candidato> r = de(WEB_A, Canal.DISTRIBUIDORES,
                 List.of(transformar, cSinReparar, enTaller, conAviso, igual), trabajos, NADIE);
-        assertEquals(List.of("350000000000001", "350000000000002", "350000000000003", "350000000000004", "350000000000005"), imeis(r));
-        assertEquals(List.of(1, 1, 2, 3, 3), r.stream().map(Recomendador.Candidato::nivel).toList());
+        // el Ms (con aviso, nivel 1) va detrás de todos: es una decisión excepcional de una persona
+        assertEquals(List.of("350000000000001", "350000000000003", "350000000000004", "350000000000005", "350000000000002"), imeis(r));
+        assertEquals(List.of(1, 2, 3, 3, 1), r.stream().map(Recomendador.Candidato::nivel).toList());
+    }
+
+    @Test void unMsMasAntiguoVaDetrasDeUnAMasNuevoYDeLoQueHayQueTransformar() {
+        MovilNsys msViejo = movil("350000000000001", "MsA", D1);
+        MovilNsys msMayusculas = movil("350000000000002", "MSA", D1);
+        MovilNsys aNuevo = movil("350000000000003", "A", D3);
+        MovilNsys bViejo = movil("350000000000004", "B", D2);
+        List<Recomendador.Candidato> r = de(WEB_A, Canal.DISTRIBUIDORES, List.of(msViejo, msMayusculas, aNuevo, bViejo),
+                SIN_TRABAJOS, NADIE);
+        assertEquals("350000000000003", r.get(0).imei());
+        assertEquals("350000000000004", r.get(1).imei());
+        assertTrue(r.indexOf(r.stream().filter(c -> c.imei().equals("350000000000001")).findFirst().orElseThrow()) >= 2);
+        r.stream().filter(c -> c.imei().equals("350000000000002")).findFirst()
+                .ifPresent(c -> assertTrue(r.indexOf(c) >= 2, "un MSA en mayúsculas también va detrás"));
+
+        // solo con Ms, salen (alguien puede escogerlo a mano), en el orden de siempre
+        assertEquals(List.of("350000000000001"), imeis(de(AMAZON_A, Canal.AMAZON, List.of(msViejo), SIN_TRABAJOS, NADIE)));
     }
 
     @Test void unoEnElTallerSinSkuAceptadoNoEntra() {
@@ -158,5 +176,43 @@ class RecomendadorTest {
         List<Recomendador.Candidato> l = de(AMAZON_A, Canal.AMAZON, List.of(esim, na), SIN_TRABAJOS, NADIE);
         assertEquals(List.of("350000000000042"), imeis(l));
         assertEquals(3, l.get(0).nivel());
+    }
+
+    @Test void elReservadoDeLaFilaVaElPrimeroMarcadoAunqueSeaMasNuevo() {
+        MovilNsys viejo = movil("350000000000051", "A", D1);
+        MovilNsys reservado = movil("350000000000052", "A", D3);
+        List<Recomendador.Candidato> l = Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(viejo, reservado), RecomendadorTest::vale,
+                SIN_TRABAJOS, NADIE, NsysDAO.claveCruce("350000000000052"));
+        assertEquals(List.of(new Recomendador.Candidato("350000000000052", "i13128AzulA", "Listos", 1, true),
+                new Recomendador.Candidato("350000000000051", "i13128AzulA", "Listos", 1, false)), l);
+    }
+
+    @Test void conElReservadoSiguenSiendoComoMuchoCincoYSiOtraFilaLoTecleoNoSale() {
+        List<MovilNsys> stock = new java.util.ArrayList<>();
+        for (int i = 0; i < 8; i++) stock.add(movil("35000000000006" + i, "A", D1));
+        String res = NsysDAO.claveCruce("350000000000060");
+        List<Recomendador.Candidato> l = Recomendador.de(AMAZON_A, Canal.AMAZON, stock, RecomendadorTest::vale, SIN_TRABAJOS, NADIE, res);
+        assertEquals(Recomendador.TOPE, l.size());
+        assertTrue(l.get(0).reservado());
+        List<Recomendador.Candidato> tecleado = Recomendador.de(AMAZON_A, Canal.AMAZON, stock, RecomendadorTest::vale, SIN_TRABAJOS,
+                Set.of(res), res);
+        assertTrue(tecleado.stream().noneMatch(c -> c.imei().equals("350000000000060")));
+    }
+
+    @Test void elReservadoSaleAunqueElBotLoHayaDescontadoOSeaUnSustitutoQueNoSeRecomendaria() {
+        // Con al-bot, el reservado está «de pedido» en Pedidos realizados; la reserva admite sustitutos eSIM que el recomendador no propone.
+        MovilNsys descontado = movil("350000000000053", "A", D1, EstadoMovil.DE_PEDIDO);
+        assertEquals(List.of("350000000000053"), imeis(Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(descontado),
+                RecomendadorTest::vale, SIN_TRABAJOS, NADIE, NsysDAO.claveCruce("350000000000053"))));
+        MovilNsys esim = new MovilNsys("350000000000054", "BT-9001", "x", "A", "Available", "CAJA LISTOS", "P", D1, null,
+                "i13128AzulA", "13", "13", "128GB", "Azul", "A", true, "Listos", "Listos", EstadoMovil.STOCK, null, null);
+        List<Recomendador.Candidato> l = Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(esim), RecomendadorTest::vale, SIN_TRABAJOS,
+                NADIE, NsysDAO.claveCruce("350000000000054"));
+        assertEquals(1, l.size());
+        assertTrue(l.get(0).reservado());
+        // Vendido o fuera de la empresa: no sale (la pasada de reservas lo soltará).
+        MovilNsys vendido = movil("350000000000055", "A", D1, EstadoMovil.VENDIDO);
+        assertEquals(List.of(), Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(vendido), RecomendadorTest::vale, SIN_TRABAJOS, NADIE,
+                NsysDAO.claveCruce("350000000000055")));
     }
 }

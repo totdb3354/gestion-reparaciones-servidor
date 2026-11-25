@@ -31,10 +31,14 @@ public final class ReglaDevoluciones {
     public static final String OK = "OK";
     public static final String NO_APARECE = "NO_APARECE";
     public static final String ERROR = "ERROR";
+    /** El bot no lo devolvio porque esta vendido en su Panel de Control (Simulador o PEDIDOS 2026): una venta que el ERP no ve.
+     *  Final, como NO_APARECE. */
+    public static final String VENDIDO_PANEL = "VENDIDO_PANEL";
     public static final Set<String> ACCIONES = Set.of(DESCONTADO, DEVUELTO);
-    public static final Set<String> RESULTADOS = Set.of(OK, NO_APARECE, ERROR);
-    /** El unico motivo de hoy; la reserva de IMEI añadira RESERVA_LIBERADA. */
+    public static final Set<String> RESULTADOS = Set.of(OK, NO_APARECE, ERROR, VENDIDO_PANEL);
+    /** Motivos de la lista: el IMEI salio de una fila (cambio o cancelacion) o era la reserva de una fila y se solto. */
     public static final String IMEI_CORREGIDO = "IMEI_CORREGIDO";
+    public static final String RESERVA_LIBERADA = "RESERVA_LIBERADA";
 
     /** Una fila de Bot_movimiento (hora de Madrid). */
     public record Paso(String accion, String resultado, String origen, LocalDateTime fecha) {}
@@ -42,13 +46,19 @@ public final class ReglaDevoluciones {
     public static final String SALIDA_IMEI = "IMEI";
     public static final String SALIDA_CANCELADO = "CANCELADO";
     public static final String SALIDA_YA_NO_ESTA = "YA_NO_ESTA";
+    /** La reserva de IMEI de una fila se solto sin que nadie picara ese movil: se puso otro (RESERVA_SUSTITUIDA) o la fila se
+     *  cancelo o se marco (RESERVA_QUITADA con CANCELADA o MARCADA). */
+    public static final String SALIDA_RESERVA = "RESERVA";
+    /** La reserva se solto con el movil ya en «Pedidos realizados» sin al-bot: nunca se devuelve solo. */
+    public static final String SALIDA_COMPROBAR = "COMPROBAR";
+    public static final String MOTIVO_COMPROBAR = "la reserva se soltó con el móvil ya en Pedidos realizados: comprobar si se vendió por otro lado";
     /** El SIN_DESTINO de una fila cerrada sin envio y sin cancelar: puede que el movil saliera igualmente. */
     public static final String MOTIVO_YA_NO_ESTA = "el pedido ya no está en ShippyPro: comprobar si salió";
     /** Quien hizo un cambio sin usuario. */
     public static final String UN_PROCESO = "un proceso";
 
     /** Una salida del IMEI de una fila: la fila, cuando (Madrid), quien («Ana», «el libro de ventas», «ShippyPro»…) y por donde
-     *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO} o {@link #SALIDA_YA_NO_ESTA}). */
+     *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO}, {@link #SALIDA_YA_NO_ESTA} o {@link #SALIDA_RESERVA}). */
     public record Salida(int idFila, LocalDateTime fecha, String quien, String motivo) {}
     /** Una fila que hoy tiene el IMEI: cierre, envío, impresión, «falta por enviar», cancelación (marca CANCELADO: cuándo y quién)
      *  y cuándo se puso el IMEI en ella (último apunte IMEI con IMEI_NUEVO = el IMEI en esa fila; null si no hay, p. ej. histórico).
@@ -112,9 +122,11 @@ public final class ReglaDevoluciones {
         if (entrada == null || entrada.isBefore(t.minus(MARGEN_ENTRADA)) || entrada.isAfter(t.plus(MARGEN_ENTRADA))) return Veredicto.NADA;
         List<Paso> devueltos = d.pasos().stream()
                 .filter(p -> DEVUELTO.equals(p.accion()) && p.fecha() != null && !p.fecha().isBefore(t)).toList();
-        if (devueltos.stream().anyMatch(p -> OK.equals(p.resultado()) || NO_APARECE.equals(p.resultado()))) return Veredicto.NADA;
+        if (devueltos.stream().anyMatch(p -> OK.equals(p.resultado()) || NO_APARECE.equals(p.resultado())
+                || VENDIDO_PANEL.equals(p.resultado()))) return Veredicto.NADA;
         if (erroresSeguidosAlFinal(devueltos) >= ERRORES_SEGUIDOS) return Veredicto.NADA;
         if (SALIDA_YA_NO_ESTA.equals(salida.motivo())) return sinDestino(MOTIVO_YA_NO_ESTA, salida);
+        if (SALIDA_COMPROBAR.equals(salida.motivo())) return sinDestino(MOTIVO_COMPROBAR, salida);
 
         List<String> reparaciones = d.trabajos().stream()
                 .filter(tr -> tr.asignado() != null && tr.asignado().isAfter(t)).map(Trabajo::idRep).toList();

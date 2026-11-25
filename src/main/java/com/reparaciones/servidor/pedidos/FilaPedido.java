@@ -16,7 +16,9 @@ import java.time.LocalDateTime;
  *  {@code validadaImei}: el IMEI para el que una persona dio por bueno el aviso de SKU (vale solo mientras sea el IMEI de la fila);
  *  {@code validadaEn} y {@code validadaPor} (nombre de usuario): cuando y quien; los tres nulos = sin validar.
  *  {@code fechaSalida}: ultimo dia para enviar el pedido (la lectura la recalcula en cada vuelta; nula = no se conoce o historico);
- *  {@code pais}: pais de destino de ShippyPro (2 letras; nulo = no se conoce). */
+ *  {@code pais}: pais de destino de ShippyPro (2 letras; nulo = no se conoce).
+ *  {@code imeiReservado}: el IMEI que el ERP aparta para la fila (reserva; nulo = sin reserva; cuenta como sin IMEI);
+ *  {@code reservadaEn}: cuando se reservo; {@code sinStockEn}: cuando se apunto «sin stock» (una vez hasta que reserve). */
 public record FilaPedido(int id, LocalDate fecha, String plataforma, String sku, String imei, String pedido,
                          LocalDate fechaCompra, String origen, Canal canal, Integer posicion, LocalDateTime cerradaEn,
                          LocalDateTime envioFecha, String transportista, String seguimiento,
@@ -24,7 +26,22 @@ public record FilaPedido(int id, LocalDate fecha, String plataforma, String sku,
                          LocalDateTime sincronizadaEn, String marca, String marcaNota, LocalDateTime marcaEn, String marcaPor,
                          LocalDateTime asociadaEn, String asociadaOrigen,
                          String validadaImei, LocalDateTime validadaEn, String validadaPor,
-                         LocalDate fechaSalida, String pais) {
+                         LocalDate fechaSalida, String pais,
+                         String imeiReservado, LocalDateTime reservadaEn, LocalDateTime sinStockEn) {
+
+    /** Una fila sin reserva de IMEI. */
+    public FilaPedido(int id, LocalDate fecha, String plataforma, String sku, String imei, String pedido,
+                      LocalDate fechaCompra, String origen, Canal canal, Integer posicion, LocalDateTime cerradaEn,
+                      LocalDateTime envioFecha, String transportista, String seguimiento,
+                      LocalDateTime reabiertaEn, Long envioId, LocalDateTime impresaEn, LocalDateTime faltaEnviarEn,
+                      LocalDateTime sincronizadaEn, String marca, String marcaNota, LocalDateTime marcaEn, String marcaPor,
+                      LocalDateTime asociadaEn, String asociadaOrigen,
+                      String validadaImei, LocalDateTime validadaEn, String validadaPor,
+                      LocalDate fechaSalida, String pais) {
+        this(id, fecha, plataforma, sku, imei, pedido, fechaCompra, origen, canal, posicion, cerradaEn, envioFecha, transportista,
+                seguimiento, reabiertaEn, envioId, impresaEn, faltaEnviarEn, sincronizadaEn, marca, marcaNota, marcaEn, marcaPor,
+                asociadaEn, asociadaOrigen, validadaImei, validadaEn, validadaPor, fechaSalida, pais, null, null, null);
+    }
 
     /** Una fila sin fecha de salida ni pais. */
     public FilaPedido(int id, LocalDate fecha, String plataforma, String sku, String imei, String pedido,

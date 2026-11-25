@@ -78,6 +78,8 @@ class ReglaDevolucionesTest {
     @Test void yaDevueltoONoApareceNoSale() {
         assertEquals(Tipo.NADA, evaluar(datos(List.of(descontado("CAJA LISTOS"), devuelto("OK", BOT.plusDays(1))))).tipo());
         assertEquals(Tipo.NADA, evaluar(datos(List.of(descontado("CAJA LISTOS"), devuelto("NO_APARECE", BOT.plusDays(1))))).tipo());
+        // Vendido en el Panel del bot (Simulador): final, no vuelve a la lista.
+        assertEquals(Tipo.NADA, evaluar(datos(List.of(descontado("CAJA LISTOS"), devuelto("VENDIDO_PANEL", BOT.plusDays(1))))).tipo());
     }
 
     @Test void tresErroresSeguidosLoDejanYDosNo() {
