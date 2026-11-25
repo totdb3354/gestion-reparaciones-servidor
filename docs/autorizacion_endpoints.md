@@ -40,6 +40,7 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
   - **Lista de IMEI vendidos para el bot de stock** (`GET /api/pedidos/vendidos`): no es de ningún rol de usuario. Se entra solo con la clave de máquina de la cabecera `X-API-Key` (`ClaveVendidosFilter`, ajuste `PEDIDOS_VENDIDOS_CLAVE`): ajuste vacío `404`, sin clave o con otra `401`; un token de usuario (ADMIN incluido) no vale y la clave no vale para ninguna otra ruta.
   - **Aviso del plugin de la web** (`POST /api/pedidos/sincronizados`): tampoco es de ningún rol de usuario. Clave de máquina en `X-API-Key` (`ClaveSincronizadosFilter`, ajuste propio `PEDIDOS_SINCRONIZADOS_CLAVE`, distinto del de los vendidos: una clave solo de lectura da `401` aquí): ajuste sin clave válida `404`, sin clave o con otra `401`; un token de usuario no vale y la clave no abre ninguna otra ruta.
   - **Asociaciones de los libros de ventas de Amazon** (`POST /api/pedidos/asociaciones`): no es de ningún rol de usuario. Clave de máquina en `X-API-Key` (`ClaveAsociacionesFilter`, ajuste propio `PEDIDOS_ASOCIACIONES_CLAVE`: las claves de vendidos o del plugin dan `401` aquí): ajuste sin clave válida `404`, sin clave o con otra `401`; un token de usuario no vale y la clave no abre ninguna otra ruta. Solo el `POST` es de la clave: la lista de la última pasada (`GET /api/pedidos/asociaciones`) la leen SUPERTECNICO y ADMIN con su token (TECNICO `403`; la clave sola, `403`).
+  - **Bot de stock de NSYS** (`GET /api/bot/devoluciones`, `POST /api/bot/movimientos`): no es de ningún rol de usuario. Clave de máquina en `X-API-Key` (`ClaveBotFilter`, ajuste propio `PEDIDOS_BOT_CLAVE`: la de vendidos da `401` aquí): ajuste sin clave válida `404`, sin clave o con otra `401`; un token de usuario no vale y la clave no abre ninguna otra ruta.
   - **Carga del histórico de «Pedidos como la hoja»** (`POST` y `GET /api/pedidos/historico`): solo **ADMIN**; SUPERTECNICO y TECNICO reciben `403`.
   - **Trabajo propio del técnico** — completar, guardar una fila, registrar un componente agotado, borrador del formulario, "por cerrar", entrega y llegada de glass, crear una solicitud de stock: **TECNICO y SUPERTECNICO**, siempre sobre sus propias asignaciones.
 - Un endpoint nuevo se anota en el mismo cambio que lo crea, con un test que compruebe al menos un rol admitido y uno no admitido.
@@ -75,6 +76,8 @@ Al iniciar sesión (`POST /api/auth/login`, la única ruta pública) el servidor
 | Esa ruta apagada (ajuste vacío: 404 para todos) | `controller/RolesVendidosApagadaTest` |
 | Clave de escritura del aviso del plugin (200, 401 con la clave solo de vendidos, token de usuario, otras rutas) | `controller/RolesSincronizadosTest` |
 | Esa ruta apagada (sin ajuste: 404 para todos) | `controller/RolesSincronizadosApagadaTest` |
+| Clave de máquina del bot de stock (200, 401, 400, token, otras rutas) | `controller/RolesBotTest` |
+| Esa ruta apagada (404) | `controller/RolesBotApagadaTest` |
 | Roles del GET y el PUT de las piezas de un proveedor (cadena de seguridad real, MockMvc) | `controller/RolesPiezasProveedorTest` |
 | Mínimo y parámetros solo ADMIN | `controller/RolesParametrosPrevisionTest`, `controller/ParametroControllerTest` |
 | Dueño de la asignación en la entrega y la llegada de glass | `controller/ReparacionControllerEntregaGlassTest` |

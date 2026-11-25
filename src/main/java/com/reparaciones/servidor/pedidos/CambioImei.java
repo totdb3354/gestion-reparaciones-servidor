@@ -17,7 +17,9 @@ import java.time.LocalDateTime;
  *  RESERVA_CONFIRMADA (una persona o el bot puso ese mismo IMEI y la reserva paso a ser el IMEI de la fila), RESERVA_SUSTITUIDA (se puso
  *  otro IMEI distinto y la reserva se solto: imeiAnterior), RESERVA_QUITADA (la reserva se solto sin poner IMEI: imeiAnterior; detalle = el motivo: CANCELADA, ENVIADA_SIN_IMEI
  *  (la fila se envio sin IMEI: el movil seguramente salio sin teclearlo y no se devuelve a stock), NO_ENCONTRADO, PUESTO_EN_OTRA o NO_DISPONIBLE) y SIN_STOCK
- *  (no habia IMEI libre que reservar; una vez hasta que reserve; sin IMEI). */
+ *  (no habia IMEI libre que reservar; una vez hasta que reserve; sin IMEI).
+ *  Devoluciones del bot de NSYS: DEVUELTO, NO_DEVUELTO y SIN_DESTINO (spec 2026-11-24-bot-devoluciones §4.2: imeiAnterior = el IMEI
+ *  que salio de la fila, imeiNuevo nulo, detalle con el destino o el motivo). */
 public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime fecha,
                          @Schema(nullable = true) String imeiAnterior, @Schema(nullable = true) String imeiNuevo, String tipo,
                          @Schema(nullable = true) String detalle) {
@@ -41,6 +43,14 @@ public record CambioImei(@Schema(nullable = true) String usuario, LocalDateTime 
     public static final String RESERVA_QUITADA = "RESERVA_QUITADA";
     /** No habia IMEI libre que reservar. */
     public static final String SIN_STOCK = "SIN_STOCK";
+    /** El bot de NSYS devolvio a su caja el IMEI que salio de esta fila (imeiAnterior); detalle «de Pedidos realizados a <caja>; IMEI
+     *  cambiado por <quien> el <dd/MM HH:mm>». Sin usuario. */
+    public static final String DEVUELTO = "DEVUELTO";
+    /** El bot no pudo devolverlo; detalle «no aparece en NSYS en Pedidos realizados» o «3 errores seguidos». Sin usuario. */
+    public static final String NO_DEVUELTO = "NO_DEVUELTO";
+    /** No se devuelve solo (lo mueve una persona); detalle «sin caja», «<caja> no es vendible», «grado <G> no es vendible» o
+     *  «reparado después (<ID_REP>, …)». Una vez por IMEI y fila. Sin usuario. */
+    public static final String SIN_DESTINO = "SIN_DESTINO";
 
     /** Un apunte sin detalle (IMEI, FALTA_ENVIAR o YA_ENVIADO). */
     public CambioImei(String usuario, LocalDateTime fecha, String imeiAnterior, String imeiNuevo, String tipo) {

@@ -355,7 +355,7 @@ class OpenApiContractTest {
 
         for (String operacion : List.of("get /api/pedidos/filas", "get /api/pedidos/filas/{id}/recomendados",
                 "put /api/pedidos/filas/{id}/imei", "put /api/pedidos/filas/{id}/falta-enviar", "put /api/pedidos/filas/{id}/marca",
-                "put /api/pedidos/filas/{id}/validacion", "post /api/pedidos/sincronizados", "post /api/pedidos/asociaciones", "get /api/pedidos/asociaciones",
+                "put /api/pedidos/filas/{id}/validacion", "post /api/pedidos/sincronizados", "post /api/pedidos/asociaciones", "get /api/pedidos/asociaciones", "get /api/bot/devoluciones", "post /api/bot/movimientos",
                 "get /api/pedidos/filas/{id}/cambios", "get /api/pedidos/fuentes",
                 "get /api/pedidos/filas/{id}/etiqueta")) {
             String[] partes = operacion.split(" ", 2);
