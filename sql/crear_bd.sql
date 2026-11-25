@@ -717,13 +717,33 @@ CREATE TABLE Pedido_fila_cambio (
     FECHA         DATETIME    NOT NULL,
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
-    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA',
+    TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA, DEVUELTO, NO_DEVUELTO o SIN_DESTINO (devoluciones del bot)',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA; el destino y el motivo en DEVUELTO, NO_DEVUELTO y SIN_DESTINO',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
+    KEY idx_cambio_imei_anterior (IMEI_ANTERIOR),
+    KEY idx_cambio_imei_nuevo (IMEI_NUEVO),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
     CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );
+
+-- Lo que el bot de NSYS informa que ha movido (spec 2026-11-24-bot-devoluciones §4.1). Solo se añade.
+CREATE TABLE Bot_movimiento (
+    ID           BIGINT      NOT NULL AUTO_INCREMENT,
+    RUN_ID       VARCHAR(40) NOT NULL COMMENT 'La vuelta del bot',
+    IMEI         VARCHAR(40) NOT NULL,
+    ACCION       VARCHAR(20) NOT NULL COMMENT 'DESCONTADO o DEVUELTO',
+    RESULTADO    VARCHAR(20) NOT NULL COMMENT 'OK, NO_APARECE o ERROR',
+    ORIGEN_NSYS  VARCHAR(80) NULL COMMENT 'Location que leyo el bot antes de mover, tal cual',
+    DESTINO_NSYS VARCHAR(80) NULL,
+    MOTIVO       VARCHAR(30) NULL COMMENT 'En DEVUELTO: el motivo de la lista (IMEI_CORREGIDO, RESERVA_LIBERADA)',
+    FECHA        DATETIME    NOT NULL COMMENT 'Hora de Madrid del bot',
+    RECIBIDO     DATETIME    NOT NULL COMMENT 'Hora de Madrid en que lo guardo el ERP',
+    PRIMARY KEY (ID),
+    UNIQUE KEY uq_bot_movimiento (RUN_ID, IMEI, ACCION),
+    KEY idx_bot_movimiento_imei (IMEI, ACCION, FECHA)
+);
+
 -- Asociacion de IMEI y pedido en Amazon («plan B»): lo que la ultima pasada de los libros de ventas de cada canal dejo «para revisar»
 -- (se rehace en cada pasada) y la ultima pasada de cada canal con sus recuentos.
 CREATE TABLE Pedido_asociacion_revisar (
