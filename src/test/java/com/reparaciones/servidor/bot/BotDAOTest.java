@@ -49,6 +49,9 @@ class BotDAOTest {
         when(jdbc.queryForList(BotDAO.SQL_CANDIDATOS, String.class, Timestamp.valueOf(desde), 1000)).thenReturn(List.of("350000000000001"));
         assertEquals(List.of("350000000000001"), dao.candidatos(desde, 1000));
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("ACCION = 'DESCONTADO' AND b.RESULTADO = 'OK'"));
+        // Condicion 4 de la regla: solo los que NSYS tiene hoy en Pedidos realizados.
+        assertTrue(BotDAO.SQL_CANDIDATOS.contains("EXISTS (SELECT 1 FROM Nsys_movil n WHERE n.IMEI_SN = b.IMEI"
+                + " AND n.ESTADO = 'DE_PEDIDO' AND n.LOCATION = 'Pedidos realizados')"));
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("c.TIPO = 'IMEI' AND c.IMEI_ANTERIOR = b.IMEI"));
         // O un pedido de ShippyPro cancelado o cerrado sin envio que se quedo con el IMEI.
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("OR EXISTS (SELECT 1 FROM Pedido_fila x WHERE x.IMEI = b.IMEI AND x.ORIGEN = 'SHIPPYPRO'"
@@ -86,19 +89,19 @@ class BotDAOTest {
                 + " AND c.TIPO = 'IMEI' AND c.IMEI_NUEVO = f.IMEI) AS PUESTO_EN"));
         assertTrue(BotDAO.SQL_FILAS_CON_IMEI.endsWith("FROM Pedido_fila f WHERE f.IMEI IN (%s)"));
         assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO IN ('VENTA_DESHECHA', 'REENTRADA')"));
-        assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR A_NSYS = '')"));
+        assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR COALESCE(A_NSYS, '') = '')"));
     }
 
     @SuppressWarnings("unchecked")
     @Test void ultimaSalidaEsLaMasRecienteEntreElApunteYLaCancelacion() {
         String imei = "350000000000001";
         BotDAO.Apunte apunte = new BotDAO.Apunte(11, LocalDateTime.of(2026, 11, 24, 18, 7), imei, null, "IMEI", "LIBRO", null);
-        ReglaDevoluciones.Salida cancelacion = new ReglaDevoluciones.Salida(29200, LocalDateTime.of(2026, 11, 24, 19, 0), "Fati", "CANCELADO");
+        ReglaDevoluciones.Salida cancelacion = new ReglaDevoluciones.Salida(29200, LocalDateTime.of(2026, 11, 24, 19, 0), "Juan", "CANCELADO");
         when(jdbc.query(eq(BotDAO.SQL_ULTIMA_SALIDA), any(RowMapper.class), eq(imei))).thenReturn(List.of(apunte));
         when(jdbc.query(eq(BotDAO.SQL_ULTIMA_CANCELACION), any(RowMapper.class), eq(imei))).thenReturn(List.of(cancelacion));
         assertEquals(Optional.of(cancelacion), dao.ultimaSalida(imei));
 
-        ReglaDevoluciones.Salida vieja = new ReglaDevoluciones.Salida(29200, LocalDateTime.of(2026, 11, 20, 9, 0), "Fati", "CANCELADO");
+        ReglaDevoluciones.Salida vieja = new ReglaDevoluciones.Salida(29200, LocalDateTime.of(2026, 11, 20, 9, 0), "Juan", "CANCELADO");
         when(jdbc.query(eq(BotDAO.SQL_ULTIMA_CANCELACION), any(RowMapper.class), eq(imei))).thenReturn(List.of(vieja));
         assertEquals(Optional.of(new ReglaDevoluciones.Salida(11, apunte.fecha(), "el libro de ventas", "IMEI")), dao.ultimaSalida(imei));
 
@@ -106,7 +109,7 @@ class BotDAOTest {
         assertEquals(Optional.of(vieja), dao.ultimaSalida(imei));
         when(jdbc.query(eq(BotDAO.SQL_ULTIMA_CANCELACION), any(RowMapper.class), eq(imei))).thenReturn(List.of());
         assertEquals(Optional.empty(), dao.ultimaSalida(imei));
-        assertTrue(BotDAO.SQL_ULTIMA_CANCELACION.contains("f.IMEI = ? AND f.MARCA = 'CANCELADO'"));
+        assertTrue(BotDAO.SQL_ULTIMA_CANCELACION.contains("f.IMEI = ? AND f.ORIGEN = 'SHIPPYPRO' AND f.MARCA = 'CANCELADO'"));
         // Una cancelada con etiqueta impresa salio: nunca lleva nota de «pedido cancelado» (igual que en la regla).
         assertTrue(BotDAO.SQL_ULTIMA_CANCELACION.contains("AND f.MARCA_EN IS NOT NULL AND f.IMPRESA_EN IS NULL"));
     }
@@ -122,7 +125,7 @@ class BotDAOTest {
         when(cancelada.getInt("ID_FILA")).thenReturn(29200);
         when(cancelada.getString("MARCA")).thenReturn("CANCELADO");
         when(cancelada.getTimestamp("MARCA_EN")).thenReturn(Timestamp.valueOf(marca));
-        when(cancelada.getString("MARCA_POR")).thenReturn("Fati");
+        when(cancelada.getString("MARCA_POR")).thenReturn("Juan");
         when(cancelada.getString("ORIGEN")).thenReturn("SHIPPYPRO");
 
         // Con MARCA_EN y MARCA_POR rellenos pero sin MARCA CANCELADO: no es una cancelacion. ORIGEN HISTORICO.
@@ -131,7 +134,7 @@ class BotDAOTest {
         when(historica.getInt("ID_FILA")).thenReturn(100);
         when(historica.getString("MARCA")).thenReturn(null);
         when(historica.getTimestamp("MARCA_EN")).thenReturn(Timestamp.valueOf(marca));
-        when(historica.getString("MARCA_POR")).thenReturn("Fati");
+        when(historica.getString("MARCA_POR")).thenReturn("Juan");
         when(historica.getTimestamp("CERRADA_EN")).thenReturn(Timestamp.valueOf(cierre));
         when(historica.getString("ORIGEN")).thenReturn("HISTORICO");
 
@@ -143,7 +146,7 @@ class BotDAOTest {
         });
 
         List<ReglaDevoluciones.FilaConImei> filas = dao.filasConImei(List.of(imei)).get(imei);
-        assertEquals(new ReglaDevoluciones.FilaConImei(29200, null, null, null, null, true, marca, "Fati", null, false), filas.get(0));
+        assertEquals(new ReglaDevoluciones.FilaConImei(29200, null, null, null, null, true, marca, "Juan", null, false), filas.get(0));
         assertEquals(new ReglaDevoluciones.FilaConImei(100, cierre, null, null, null, false, null, null, null, true), filas.get(1));
     }
 }

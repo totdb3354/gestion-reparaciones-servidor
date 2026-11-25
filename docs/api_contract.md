@@ -225,7 +225,8 @@ de `model/` conservan su nombre.
       Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban`, `paraRevisar` o `ajenos`).
     - `GET /api/bot/devoluciones` (no es una ruta de usuario: el bot de stock de NSYS; cabecera `X-API-Key`) → `ListaDevoluciones`
       `{grupos: [{destino, imeis: [{imei, motivo}]}]}`: los IMEI a devolver, agrupados por la caja de destino; `motivo` es
-      `IMEI_CORREGIDO` hoy (la reserva de IMEI añadirá `RESERVA_LIBERADA`).
+      `IMEI_CORREGIDO` hoy (la reserva de IMEI añadirá `RESERVA_LIBERADA`). Solo se miran los descuentos de los últimos 90 días
+      (`DIAS_DESCONTADO`).
     - `POST /api/bot/movimientos` (misma clave) con el cuerpo `{run, movimientos: [{imei, accion, resultado, origen, destino, motivo,
       fecha}]}` → `{"guardados": n, "repetidos": m}`: lo que el bot movió en una vuelta (`run`). `accion`: `DESCONTADO` o `DEVUELTO`;
       `resultado`: `OK`, `NO_APARECE` o `ERROR`; `fecha`, hora de Madrid del bot (`2026-11-25T10:12:03`). Un movimiento con la misma

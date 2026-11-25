@@ -77,6 +77,8 @@ class RolesBotTest {
 
     @Test void unTokenDeUsuarioNoVale() throws Exception {
         mvc.perform(get("/api/bot/devoluciones").header("Authorization", admin())).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/bot/movimientos").header("Authorization", admin()).contentType(MediaType.APPLICATION_JSON).content(CUERPO))
+                .andExpect(status().isUnauthorized());
         verifyNoInteractions(devoluciones);
     }
 
@@ -91,7 +93,9 @@ class RolesBotTest {
                 "{\"run\":\"r1\",\"movimientos\":[{\"imei\":\"350000000000001\",\"accion\":\"VENDIDO\",\"resultado\":\"OK\",\"fecha\":\"2026-11-25T10:12:03\"}]}",
                 "{\"run\":\"r1\",\"movimientos\":[{\"imei\":\"350000000000001\",\"accion\":\"DEVUELTO\",\"resultado\":\"QUIZA\",\"fecha\":\"2026-11-25T10:12:03\"}]}",
                 "{\"run\":\"r1\",\"movimientos\":[{\"imei\":\"\",\"accion\":\"DEVUELTO\",\"resultado\":\"OK\",\"fecha\":\"2026-11-25T10:12:03\"}]}",
-                "{\"run\":\"r1\",\"movimientos\":[{\"imei\":\"350000000000001\",\"accion\":\"DEVUELTO\",\"resultado\":\"OK\"}]}"))
+                "{\"run\":\"r1\",\"movimientos\":[{\"imei\":\"350000000000001\",\"accion\":\"DEVUELTO\",\"resultado\":\"OK\"}]}",
+                // DEVUELTO sin destino
+                "{\"run\":\"r1\",\"movimientos\":[{\"imei\":\"350000000000001\",\"accion\":\"DEVUELTO\",\"resultado\":\"OK\",\"fecha\":\"2026-11-25T10:12:03\"}]}"))
             mvc.perform(post("/api/bot/movimientos").header("X-API-Key", BOT).contentType(MediaType.APPLICATION_JSON).content(cuerpo))
                     .andExpect(status().isBadRequest());
         verifyNoInteractions(devoluciones);

@@ -51,7 +51,7 @@ class ReglaDevolucionesTest {
     @Test void sinSalidaOSalidaAntesDelDescuentoNoSale() {
         Datos b = base();
         assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), null, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
-        Salida antes = new Salida(29116, BOT.minusMinutes(1), "Lucía", ReglaDevoluciones.SALIDA_IMEI);
+        Salida antes = new Salida(29116, BOT.minusMinutes(1), "Ana", ReglaDevoluciones.SALIDA_IMEI);
         assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), antes, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
     }
 
@@ -149,16 +149,16 @@ class ReglaDevolucionesTest {
 
     private static LocalDateTime dia(int mes, int dia) { return LocalDateTime.of(2026, mes, dia, 12, 0); }
 
-    /** Una fila abierta marcada «Cancelar móvil» por Fati a la hora de SALIO, con el IMEI puesto en PUESTO. */
+    /** Una fila abierta marcada «Cancelar móvil» por Juan a la hora de SALIO, con el IMEI puesto en PUESTO. */
     private static FilaConImei cancelada(LocalDateTime impresa) {
-        return new FilaConImei(29200, null, null, impresa, null, true, SALIO, "Fati", PUESTO, false);
+        return new FilaConImei(29200, null, null, impresa, null, true, SALIO, "Juan", PUESTO, false);
     }
 
     @Test void cancelarMovilSinEtiquetaSeDevuelve() {
         Veredicto v = conFilas(null, List.of(cancelada(null)), List.of());
         assertEquals(Tipo.DEVOLVER, v.tipo());
         assertEquals("CAJA LISTOS", v.destino());
-        assertEquals(new Salida(29200, SALIO, "Fati", "CANCELADO"), v.salida());
+        assertEquals(new Salida(29200, SALIO, "Juan", "CANCELADO"), v.salida());
         assertEquals("CANCELADO", v.salida().motivo());
     }
 
@@ -220,12 +220,12 @@ class ReglaDevolucionesTest {
     }
 
     @Test void valeLaSalidaMasReciente() {
-        Salida vieja = new Salida(29116, BOT.minusMinutes(1), "Lucía", ReglaDevoluciones.SALIDA_IMEI);
+        Salida vieja = new Salida(29116, BOT.minusMinutes(1), "Ana", ReglaDevoluciones.SALIDA_IMEI);
         Veredicto v = conFilas(vieja, List.of(cancelada(null)), List.of());
         assertEquals(Tipo.DEVOLVER, v.tipo());
-        assertEquals(new Salida(29200, SALIO, "Fati", "CANCELADO"), v.salida());
+        assertEquals(new Salida(29200, SALIO, "Juan", "CANCELADO"), v.salida());
         // Al reves: cancelado antes del descuento y el IMEI quitado despues: vale el apunte.
-        FilaConImei canceladaAntes = new FilaConImei(29200, null, null, null, null, true, BOT.minusHours(1), "Fati", PUESTO, false);
+        FilaConImei canceladaAntes = new FilaConImei(29200, null, null, null, null, true, BOT.minusHours(1), "Juan", PUESTO, false);
         Veredicto w = conFilas(SALIDA, List.of(canceladaAntes), List.of());
         assertEquals(Tipo.DEVOLVER, w.tipo());
         assertEquals(SALIDA, w.salida());

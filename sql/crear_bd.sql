@@ -718,9 +718,11 @@ CREATE TABLE Pedido_fila_cambio (
     IMEI_ANTERIOR VARCHAR(60) NULL,
     IMEI_NUEVO    VARCHAR(60) NULL,
     TIPO          VARCHAR(20) NOT NULL DEFAULT 'IMEI' COMMENT 'IMEI, FALTA_ENVIAR (se marco que el movil falta por enviar), YA_ENVIADO (se quito esa marca), MARCA, MARCA_QUITADA, ASOCIADA, IMEI_INTERCAMBIADO, VALIDADA o VALIDACION_QUITADA, DEVUELTO, NO_DEVUELTO o SIN_DESTINO (devoluciones del bot)',
-    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA',
+    DETALLE       VARCHAR(250) NULL COMMENT 'Marca y nota en MARCA y MARCA_QUITADA; LIBRO o HISTORICO en ASOCIADA; con la fila <id> en IMEI_INTERCAMBIADO; el motivo del aviso en VALIDADA; el destino y el motivo en DEVUELTO, NO_DEVUELTO y SIN_DESTINO',
     PRIMARY KEY (ID_CAMBIO),
     KEY idx_cambio_fila (ID_FILA),
+    KEY idx_cambio_imei_anterior (IMEI_ANTERIOR),
+    KEY idx_cambio_imei_nuevo (IMEI_NUEVO),
     CONSTRAINT fk_cambio_fila FOREIGN KEY (ID_FILA) REFERENCES Pedido_fila (ID_FILA) ON DELETE CASCADE,
     CONSTRAINT fk_cambio_usuario FOREIGN KEY (ID_USU) REFERENCES Usuario (ID_USU) ON DELETE SET NULL
 );

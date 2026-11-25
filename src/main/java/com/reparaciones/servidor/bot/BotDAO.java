@@ -50,6 +50,7 @@ public class BotDAO {
      *  gana a devolver; el resto de filas las decide la regla con {@link #filasConImei} y {@link #vueltas}): como mucho {@code ?}. */
     static final String SQL_CANDIDATOS = "SELECT DISTINCT b.IMEI FROM Bot_movimiento b"
             + " WHERE b.ACCION = 'DESCONTADO' AND b.RESULTADO = 'OK' AND b.FECHA >= ?"
+            + " AND EXISTS (SELECT 1 FROM Nsys_movil n WHERE n.IMEI_SN = b.IMEI AND n.ESTADO = 'DE_PEDIDO' AND n.LOCATION = 'Pedidos realizados')"
             + " AND (EXISTS (SELECT 1 FROM Pedido_fila_cambio c WHERE c.TIPO = 'IMEI' AND c.IMEI_ANTERIOR = b.IMEI)"
             + " OR EXISTS (SELECT 1 FROM Pedido_fila x WHERE x.IMEI = b.IMEI AND x.ORIGEN = 'SHIPPYPRO'"
             + " AND (x.MARCA = 'CANCELADO' OR (x.CERRADA_EN IS NOT NULL AND x.ENVIO_FECHA IS NULL))))"
@@ -72,10 +73,10 @@ public class BotDAO {
     /** Cuando NSYS dice que el movil volvio a la empresa: venta deshecha, reentrada, sale de «Pedidos realizados» (DE lleva la caja
      *  de NSYS tal cual) o entra sin localizacion. */
     static final String SQL_VUELTAS = "SELECT IMEI_SN, FECHA FROM Nsys_evento WHERE IMEI_SN IN (%s)"
-            + " AND (TIPO IN ('VENTA_DESHECHA', 'REENTRADA') OR (TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR A_NSYS = '')))";
+            + " AND (TIPO IN ('VENTA_DESHECHA', 'REENTRADA') OR (TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR COALESCE(A_NSYS, '') = '')))";
     /** La ultima fila cancelada («Cancelar móvil») que se quedo con el IMEI. */
     static final String SQL_ULTIMA_CANCELACION = "SELECT f.ID_FILA, f.MARCA_EN, (SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = f.MARCA_USU) AS MARCA_POR"
-            + " FROM Pedido_fila f WHERE f.IMEI = ? AND f.MARCA = 'CANCELADO' AND f.MARCA_EN IS NOT NULL AND f.IMPRESA_EN IS NULL"
+            + " FROM Pedido_fila f WHERE f.IMEI = ? AND f.ORIGEN = 'SHIPPYPRO' AND f.MARCA = 'CANCELADO' AND f.MARCA_EN IS NOT NULL AND f.IMPRESA_EN IS NULL"
             + " ORDER BY f.MARCA_EN DESC, f.ID_FILA DESC LIMIT 1";
     static final String SQL_ULTIMA_SALIDA = "SELECT c.ID_FILA, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO, c.DETALLE, u.NOMBRE_USUARIO"
             + " FROM Pedido_fila_cambio c LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU"

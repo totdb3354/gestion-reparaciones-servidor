@@ -8,11 +8,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Sin pedidos.bot.clave (aunque haya clave de vendidos) /api/bot/** esta apagada: 404 para todos. */
@@ -36,6 +38,8 @@ class RolesBotApagadaTest {
     @Test void conElAjusteVacioEsUn404ParaTodos() throws Exception {
         mvc.perform(get("/api/bot/devoluciones")).andExpect(status().isNotFound());
         mvc.perform(get("/api/bot/devoluciones").header("X-API-Key", "clave-solo-lectura-inventada-000001")).andExpect(status().isNotFound());
+        mvc.perform(post("/api/bot/movimientos").header("X-API-Key", "clave-solo-lectura-inventada-000001")
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isNotFound());
         verifyNoInteractions(devoluciones);
     }
 }

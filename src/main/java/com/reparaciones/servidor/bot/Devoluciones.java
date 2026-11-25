@@ -10,6 +10,8 @@ import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
 import com.reparaciones.servidor.nsys.UbicacionNsys;
 import com.reparaciones.servidor.pedidos.CambioImei;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -23,6 +25,8 @@ import java.util.*;
 /** La lista de devoluciones del bot y lo que el bot informa (spec 2026-11-24-bot-devoluciones §5 y §6). */
 @Service
 public class Devoluciones {
+
+    private static final Logger log = LoggerFactory.getLogger(Devoluciones.class);
 
     /** Solo se miran los descuentos de los ultimos 90 dias. */
     static final int DIAS_DESCONTADO = 90;
@@ -56,6 +60,8 @@ public class Devoluciones {
     public ListaDevoluciones lista(int tope) {
         LocalDateTime ahora = LocalDateTime.now(clock);
         List<String> imeis = dao.candidatos(ahora.minusDays(DIAS_DESCONTADO), TOPE_CANDIDATOS);
+        if (imeis.size() == TOPE_CANDIDATOS)
+            log.warn("La lista de devoluciones llego al tope de {} candidatos: puede haber IMEI sin mirar", TOPE_CANDIDATOS);
         if (imeis.isEmpty()) return new ListaDevoluciones(List.of());
         Map<String, List<ReglaDevoluciones.Paso>> pasos = dao.pasos(imeis);
         List<BotDAO.Apunte> apuntes = dao.apuntes(imeis);

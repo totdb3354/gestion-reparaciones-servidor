@@ -47,7 +47,7 @@ public final class ReglaDevoluciones {
     /** Quien hizo un cambio sin usuario. */
     public static final String UN_PROCESO = "un proceso";
 
-    /** Una salida del IMEI de una fila: la fila, cuando (Madrid), quien («Lucía», «el libro de ventas», «ShippyPro»…) y por donde
+    /** Una salida del IMEI de una fila: la fila, cuando (Madrid), quien («Ana», «el libro de ventas», «ShippyPro»…) y por donde
      *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO} o {@link #SALIDA_YA_NO_ESTA}). */
     public record Salida(int idFila, LocalDateTime fecha, String quien, String motivo) {}
     /** Una fila que hoy tiene el IMEI: cierre, envío, impresión, «falta por enviar», cancelación (marca CANCELADO: cuándo y quién)
