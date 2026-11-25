@@ -167,6 +167,14 @@ class DevolucionesTest {
         verify(dao, never()).apuntar(anyInt(), any(), eq(A), any(), any());
     }
 
+    @Test void unVendidoEnElPanelSeApuntaComoNoDevueltoEnLaFilaDeLaSalida() {
+        when(dao.guardar(any(), any(), any())).thenReturn(1);
+        when(dao.ultimaSalida(A)).thenReturn(Optional.of(new Salida(10, SALIO, "Ana", "RESERVA")));
+        servicio.registrar(new MovimientosBot("r", List.of(new MovimientoBot(A, "DEVUELTO", "VENDIDO_PANEL", null, "CAJA LISTOS",
+                "RESERVA_LIBERADA", AHORA))));
+        verify(dao).apuntar(10, AHORA, A, "NO_DEVUELTO", "vendido en el Panel: no se devuelve");
+    }
+
     @Test void unaDevolucionDeUnPedidoCanceladoSeApuntaEnLaFilaCancelada() {
         when(dao.guardar(any(), any(), any())).thenReturn(1);
         when(dao.ultimaSalida(B)).thenReturn(Optional.of(new Salida(29200, SALIO, "Juan", "CANCELADO")));

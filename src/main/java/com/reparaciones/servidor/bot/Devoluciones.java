@@ -33,6 +33,7 @@ public class Devoluciones {
     static final int TOPE_CANDIDATOS = 1000;
     /** Tope defensivo de IMEI en la lista. */
     static final int TOPE_LISTA = 500;
+    static final String NOTA_VENDIDO_PANEL = "vendido en el Panel: no se devuelve";
     private static final DateTimeFormatter DIA_HORA = DateTimeFormatter.ofPattern("dd/MM HH:mm");
 
     private final BotDAO dao;
@@ -127,6 +128,7 @@ public class Devoluciones {
                     + porque(salida.get().motivo()) + salida.get().quien() + " el " + DIA_HORA.format(salida.get().fecha()));
             case ReglaDevoluciones.NO_APARECE -> dao.apuntar(fila, ahora, m.imei(), CambioImei.NO_DEVUELTO,
                     "no aparece en NSYS en Pedidos realizados");
+            case ReglaDevoluciones.VENDIDO_PANEL -> dao.apuntar(fila, ahora, m.imei(), CambioImei.NO_DEVUELTO, NOTA_VENDIDO_PANEL);
             case ReglaDevoluciones.ERROR -> {
                 if (esElTercerError(dao.ultimosDevueltos(m.imei())))
                     dao.apuntar(fila, ahora, m.imei(), CambioImei.NO_DEVUELTO, ReglaDevoluciones.ERRORES_SEGUIDOS + " errores seguidos");

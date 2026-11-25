@@ -31,8 +31,11 @@ public final class ReglaDevoluciones {
     public static final String OK = "OK";
     public static final String NO_APARECE = "NO_APARECE";
     public static final String ERROR = "ERROR";
+    /** El bot no lo devolvio porque esta vendido en su Panel de Control (Simulador o PEDIDOS 2026): una venta que el ERP no ve.
+     *  Final, como NO_APARECE. */
+    public static final String VENDIDO_PANEL = "VENDIDO_PANEL";
     public static final Set<String> ACCIONES = Set.of(DESCONTADO, DEVUELTO);
-    public static final Set<String> RESULTADOS = Set.of(OK, NO_APARECE, ERROR);
+    public static final Set<String> RESULTADOS = Set.of(OK, NO_APARECE, ERROR, VENDIDO_PANEL);
     /** Motivos de la lista: el IMEI salio de una fila (cambio o cancelacion) o era la reserva de una fila y se solto. */
     public static final String IMEI_CORREGIDO = "IMEI_CORREGIDO";
     public static final String RESERVA_LIBERADA = "RESERVA_LIBERADA";
@@ -116,7 +119,8 @@ public final class ReglaDevoluciones {
         if (entrada == null || entrada.isBefore(t.minus(MARGEN_ENTRADA)) || entrada.isAfter(t.plus(MARGEN_ENTRADA))) return Veredicto.NADA;
         List<Paso> devueltos = d.pasos().stream()
                 .filter(p -> DEVUELTO.equals(p.accion()) && p.fecha() != null && !p.fecha().isBefore(t)).toList();
-        if (devueltos.stream().anyMatch(p -> OK.equals(p.resultado()) || NO_APARECE.equals(p.resultado()))) return Veredicto.NADA;
+        if (devueltos.stream().anyMatch(p -> OK.equals(p.resultado()) || NO_APARECE.equals(p.resultado())
+                || VENDIDO_PANEL.equals(p.resultado()))) return Veredicto.NADA;
         if (erroresSeguidosAlFinal(devueltos) >= ERRORES_SEGUIDOS) return Veredicto.NADA;
         if (SALIDA_YA_NO_ESTA.equals(salida.motivo())) return sinDestino(MOTIVO_YA_NO_ESTA, salida);
 
