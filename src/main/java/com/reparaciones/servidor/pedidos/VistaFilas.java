@@ -102,8 +102,12 @@ public class VistaFilas {
         Set<String> yaPuestos = new LinkedHashSet<>();
         for (String clave : puestos(dao.shippyProConImeiDesde(desdePuestos())).keySet())
             if (!clave.equals(propia)) yaPuestos.add(clave);
+        // Los reservados para otras filas no se proponen (Imad 25/11); el de esta fila sale el primero.
+        String reservada = f.imeiReservado() == null || f.imeiReservado().isBlank() ? null : NsysDAO.claveCruce(f.imeiReservado());
+        for (Map.Entry<Integer, String> r : dao.reservasVivas().entrySet())
+            if (r.getKey() != id) yaPuestos.add(NsysDAO.claveCruce(r.getValue()));
         return Optional.of(Recomendador.de(ac, f.canal(), nsysDao.enEmpresa(), taller.valedorDeTodos(),
-                nsysDao.trabajosAbiertos(), yaPuestos));
+                nsysDao.trabajosAbiertos(), yaPuestos, reservada));
     }
 
     private static String texto(String sku) {

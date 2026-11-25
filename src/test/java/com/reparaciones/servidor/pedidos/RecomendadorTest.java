@@ -177,4 +177,30 @@ class RecomendadorTest {
         assertEquals(List.of("350000000000042"), imeis(l));
         assertEquals(3, l.get(0).nivel());
     }
+
+    @Test void elReservadoDeLaFilaVaElPrimeroMarcadoAunqueSeaMasNuevo() {
+        MovilNsys viejo = movil("350000000000051", "A", D1);
+        MovilNsys reservado = movil("350000000000052", "A", D3);
+        List<Recomendador.Candidato> l = Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(viejo, reservado), RecomendadorTest::vale,
+                SIN_TRABAJOS, NADIE, NsysDAO.claveCruce("350000000000052"));
+        assertEquals(List.of(new Recomendador.Candidato("350000000000052", "i13128AzulA", "Listos", 1, true),
+                new Recomendador.Candidato("350000000000051", "i13128AzulA", "Listos", 1, false)), l);
+    }
+
+    @Test void elReservadoSaleAunqueElBotLoHayaDescontadoOSeaUnSustitutoQueNoSeRecomendaria() {
+        // Con al-bot, el reservado está «de pedido» en Pedidos realizados; la reserva admite sustitutos eSIM que el recomendador no propone.
+        MovilNsys descontado = movil("350000000000053", "A", D1, EstadoMovil.DE_PEDIDO);
+        assertEquals(List.of("350000000000053"), imeis(Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(descontado),
+                RecomendadorTest::vale, SIN_TRABAJOS, NADIE, NsysDAO.claveCruce("350000000000053"))));
+        MovilNsys esim = new MovilNsys("350000000000054", "BT-9001", "x", "A", "Available", "CAJA LISTOS", "P", D1, null,
+                "i13128AzulA", "13", "13", "128GB", "Azul", "A", true, "Listos", "Listos", EstadoMovil.STOCK, null, null);
+        List<Recomendador.Candidato> l = Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(esim), RecomendadorTest::vale, SIN_TRABAJOS,
+                NADIE, NsysDAO.claveCruce("350000000000054"));
+        assertEquals(1, l.size());
+        assertTrue(l.get(0).reservado());
+        // Vendido o fuera de la empresa: no sale (la pasada de reservas lo soltará).
+        MovilNsys vendido = movil("350000000000055", "A", D1, EstadoMovil.VENDIDO);
+        assertEquals(List.of(), Recomendador.de(AMAZON_A, Canal.AMAZON, List.of(vendido), RecomendadorTest::vale, SIN_TRABAJOS, NADIE,
+                NsysDAO.claveCruce("350000000000055")));
+    }
 }

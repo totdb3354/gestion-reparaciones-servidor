@@ -20,7 +20,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -177,6 +179,15 @@ public class FilasDAO {
     public FilasDAO(JdbcTemplate jdbc, @org.springframework.beans.factory.annotation.Value("${pedidos.reserva.al-bot:false}") boolean reservadosAlBot) {
         this.jdbc = jdbc;
         this.reservadosAlBot = reservadosAlBot;
+    }
+
+    static final String SQL_RESERVAS_VIVAS = "SELECT ID_FILA, IMEI_RESERVADO FROM Pedido_fila WHERE IMEI_RESERVADO IS NOT NULL";
+
+    /** Las reservas de ahora, por fila (una reserva solo existe en filas vivas: al soltarla se borra). */
+    public Map<Integer, String> reservasVivas() {
+        Map<Integer, String> r = new LinkedHashMap<>();
+        jdbc.query(SQL_RESERVAS_VIVAS, (java.sql.ResultSet rs) -> { r.put(rs.getInt("ID_FILA"), rs.getString("IMEI_RESERVADO")); });
+        return r;
     }
 
     /** {@code pedidos.reserva.al-bot}: el bot descuenta tambien los reservados (los pasa a «Pedidos realizados»). */
