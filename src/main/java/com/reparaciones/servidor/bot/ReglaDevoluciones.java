@@ -33,8 +33,9 @@ public final class ReglaDevoluciones {
     public static final String ERROR = "ERROR";
     public static final Set<String> ACCIONES = Set.of(DESCONTADO, DEVUELTO);
     public static final Set<String> RESULTADOS = Set.of(OK, NO_APARECE, ERROR);
-    /** El unico motivo de hoy; la reserva de IMEI añadira RESERVA_LIBERADA. */
+    /** Motivos de la lista: el IMEI salio de una fila (cambio o cancelacion) o era la reserva de una fila y se solto. */
     public static final String IMEI_CORREGIDO = "IMEI_CORREGIDO";
+    public static final String RESERVA_LIBERADA = "RESERVA_LIBERADA";
 
     /** Una fila de Bot_movimiento (hora de Madrid). */
     public record Paso(String accion, String resultado, String origen, LocalDateTime fecha) {}
@@ -42,13 +43,16 @@ public final class ReglaDevoluciones {
     public static final String SALIDA_IMEI = "IMEI";
     public static final String SALIDA_CANCELADO = "CANCELADO";
     public static final String SALIDA_YA_NO_ESTA = "YA_NO_ESTA";
+    /** La reserva de IMEI de una fila se solto sin que nadie picara ese movil: se puso otro (RESERVA_SUSTITUIDA) o la fila se
+     *  cancelo, se marco o el movil dejo de valer (RESERVA_QUITADA con CANCELADA, MARCADA o NO_DISPONIBLE). */
+    public static final String SALIDA_RESERVA = "RESERVA";
     /** El SIN_DESTINO de una fila cerrada sin envio y sin cancelar: puede que el movil saliera igualmente. */
     public static final String MOTIVO_YA_NO_ESTA = "el pedido ya no está en ShippyPro: comprobar si salió";
     /** Quien hizo un cambio sin usuario. */
     public static final String UN_PROCESO = "un proceso";
 
     /** Una salida del IMEI de una fila: la fila, cuando (Madrid), quien («Ana», «el libro de ventas», «ShippyPro»…) y por donde
-     *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO} o {@link #SALIDA_YA_NO_ESTA}). */
+     *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO}, {@link #SALIDA_YA_NO_ESTA} o {@link #SALIDA_RESERVA}). */
     public record Salida(int idFila, LocalDateTime fecha, String quien, String motivo) {}
     /** Una fila que hoy tiene el IMEI: cierre, envío, impresión, «falta por enviar», cancelación (marca CANCELADO: cuándo y quién)
      *  y cuándo se puso el IMEI en ella (último apunte IMEI con IMEI_NUEVO = el IMEI en esa fila; null si no hay, p. ej. histórico).

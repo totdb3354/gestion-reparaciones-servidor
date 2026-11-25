@@ -13,6 +13,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -52,13 +53,16 @@ class BotDAOTest {
         // Condicion 4 de la regla: solo los que NSYS tiene hoy en Pedidos realizados.
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("EXISTS (SELECT 1 FROM Nsys_movil n WHERE n.IMEI_SN = b.IMEI"
                 + " AND n.ESTADO = 'DE_PEDIDO' AND n.LOCATION = 'Pedidos realizados')"));
-        assertTrue(BotDAO.SQL_CANDIDATOS.contains("c.TIPO = 'IMEI' AND c.IMEI_ANTERIOR = b.IMEI"));
+        // Salio de una fila: un apunte IMEI que lo quito o su reserva soltada (sustituida, o quitada por cancelada, marcada, no
+        // disponible o «ya no está»; nunca por enviada sin IMEI, con etiqueta, no encontrado ni puesto en otra).
+        assertTrue(BotDAO.SQL_CANDIDATOS.contains("c.IMEI_ANTERIOR = b.IMEI AND (c.TIPO IN ('IMEI', 'RESERVA_SUSTITUIDA')"
+                + " OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('CANCELADA', 'MARCADA', 'NO_DISPONIBLE', 'YA_NO_ESTA')))"));
         // O un pedido de ShippyPro cancelado o cerrado sin envio que se quedo con el IMEI.
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("OR EXISTS (SELECT 1 FROM Pedido_fila x WHERE x.IMEI = b.IMEI AND x.ORIGEN = 'SHIPPYPRO'"
                 + " AND (x.MARCA = 'CANCELADO' OR (x.CERRADA_EN IS NOT NULL AND x.ENVIO_FECHA IS NULL)))"));
-        // Una fila abierta impide, salvo que este cancelada.
-        assertTrue(BotDAO.SQL_CANDIDATOS.contains("NOT EXISTS (SELECT 1 FROM Pedido_fila f WHERE f.IMEI = b.IMEI AND f.CERRADA_EN IS NULL"
-                + " AND (f.MARCA IS NULL OR f.MARCA <> 'CANCELADO'))"));
+        // Una fila abierta impide, salvo que este cancelada; tambien si el IMEI es su reserva (vender gana a devolver).
+        assertTrue(BotDAO.SQL_CANDIDATOS.contains("NOT EXISTS (SELECT 1 FROM Pedido_fila f WHERE (f.IMEI = b.IMEI OR f.IMEI_RESERVADO = b.IMEI)"
+                + " AND f.CERRADA_EN IS NULL AND (f.MARCA IS NULL OR f.MARCA <> 'CANCELADO'))"));
     }
 
     @Test void sinImeisLasLecturasNoConsultan() {
@@ -80,14 +84,15 @@ class BotDAOTest {
     @Test void filasYVueltasUsanUnInConSusMarcasYSusCondiciones() {
         dao.filasConImei(List.of("350000000000001", "350000000000002"));
         dao.vueltas(List.of("350000000000001"));
-        verify(jdbc).query(eq(String.format(BotDAO.SQL_FILAS_CON_IMEI, "?, ?")), any(RowMapper.class), eq("350000000000001"), eq("350000000000002"));
+        verify(jdbc).query(eq(String.format(BotDAO.SQL_FILAS_CON_IMEI, "?, ?", "?, ?")), any(RowMapper.class), eq("350000000000001"),
+                eq("350000000000002"), eq("350000000000001"), eq("350000000000002"));
         verify(jdbc).query(eq(String.format(BotDAO.SQL_VUELTAS, "?")), any(RowMapper.class), eq("350000000000001"));
         // Todas las filas con el IMEI (abiertas incluidas), con cierre, envio, impresion, falta por enviar, marca y cuando se puso.
-        assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("f.ID_FILA, f.IMEI, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN, f.ORIGEN"));
+        assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("f.ID_FILA, f.IMEI, f.IMEI_RESERVADO, f.RESERVADA_EN, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN, f.ORIGEN"));
         assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("(SELECT NOMBRE_USUARIO FROM Usuario WHERE ID_USU = f.MARCA_USU) AS MARCA_POR"));
         assertTrue(BotDAO.SQL_FILAS_CON_IMEI.contains("(SELECT MAX(c.FECHA) FROM Pedido_fila_cambio c WHERE c.ID_FILA = f.ID_FILA"
                 + " AND c.TIPO = 'IMEI' AND c.IMEI_NUEVO = f.IMEI) AS PUESTO_EN"));
-        assertTrue(BotDAO.SQL_FILAS_CON_IMEI.endsWith("FROM Pedido_fila f WHERE f.IMEI IN (%s)"));
+        assertTrue(BotDAO.SQL_FILAS_CON_IMEI.endsWith("FROM Pedido_fila f WHERE f.IMEI IN (%s) OR f.IMEI_RESERVADO IN (%s)"));
         assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO IN ('VENTA_DESHECHA', 'REENTRADA')"));
         assertTrue(BotDAO.SQL_VUELTAS.contains("TIPO = 'UBICACION' AND (DE = 'Pedidos realizados' OR COALESCE(A_NSYS, '') = '')"));
     }
@@ -148,5 +153,70 @@ class BotDAOTest {
         List<ReglaDevoluciones.FilaConImei> filas = dao.filasConImei(List.of(imei)).get(imei);
         assertEquals(new ReglaDevoluciones.FilaConImei(29200, null, null, null, null, true, marca, "Juan", null, false), filas.get(0));
         assertEquals(new ReglaDevoluciones.FilaConImei(100, cierre, null, null, null, false, null, null, null, true), filas.get(1));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void filasConImeiCuentaLaReservaVivaComoElImeiDeLaFilaPuestoAlReservar() throws Exception {
+        String reservado = "350000000000001", otro = "350000000000009";
+        LocalDateTime reservadaEn = LocalDateTime.of(2026, 11, 25, 9, 0);
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("IMEI")).thenReturn(otro);
+        when(rs.getString("IMEI_RESERVADO")).thenReturn(reservado);
+        when(rs.getTimestamp("RESERVADA_EN")).thenReturn(Timestamp.valueOf(reservadaEn));
+        when(rs.getInt("ID_FILA")).thenReturn(29300);
+        when(rs.getString("ORIGEN")).thenReturn("SHIPPYPRO");
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenAnswer(inv -> {
+            ((RowMapper<Object>) inv.getArgument(1)).mapRow(rs, 0);
+            return null;
+        });
+        // Solo se pidio el reservado: la fila cuenta para el, no para el IMEI puesto (que no se busco).
+        Map<String, List<ReglaDevoluciones.FilaConImei>> filas = dao.filasConImei(List.of(reservado));
+        assertEquals(Map.of(reservado, List.of(new ReglaDevoluciones.FilaConImei(29300, null, null, null, null, false, null, null,
+                reservadaEn, false))), filas);
+    }
+
+    @Test void unApunteSacaAlImeiDeSuFilaSiLoQuitaOSueltaSuReservaSinQueNadieLoPicara() {
+        String imei = "350000000000001";
+        LocalDateTime t = LocalDateTime.of(2026, 11, 25, 9, 0);
+        assertEquals(new ReglaDevoluciones.Salida(7, t, "Ana", "IMEI"), new BotDAO.Apunte(7, t, imei, null, "IMEI", null, "Ana").salida(imei));
+        // Se pico otro encima del reservado: la devolucion prioritaria.
+        assertEquals(new ReglaDevoluciones.Salida(7, t, "Ana", "RESERVA"),
+                new BotDAO.Apunte(7, t, imei, "350000000000009", "RESERVA_SUSTITUIDA", null, "Ana").salida(imei));
+        for (String motivo : List.of("CANCELADA", "MARCADA", "NO_DISPONIBLE"))
+            assertEquals(new ReglaDevoluciones.Salida(7, t, "el ERP", "RESERVA"),
+                    new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", motivo, null).salida(imei), motivo);
+        // «Ya no está en ShippyPro»: salida, pero la regla la deja sin destino (como en la 0.9.47).
+        assertEquals(new ReglaDevoluciones.Salida(7, t, "ShippyPro", "YA_NO_ESTA"),
+                new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", "YA_NO_ESTA", null).salida(imei));
+        for (String motivo : List.of("ENVIADA_SIN_IMEI", "CON_ETIQUETA", "NO_ENCONTRADO", "PUESTO_EN_OTRA"))
+            assertEquals(null, new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", motivo, null).salida(imei), motivo);
+        assertEquals(null, new BotDAO.Apunte(7, t, imei, imei, "RESERVA_CONFIRMADA", null, "Ana").salida(imei));
+        assertEquals(null, new BotDAO.Apunte(7, t, "350000000000009", null, "IMEI", null, "Ana").salida(imei));
+        assertEquals(null, new BotDAO.Apunte(7, t, imei, null, "SIN_DESTINO", "sin caja", null).salida(imei));
+    }
+
+    @Test void unImeiSePoneEnUnaFilaTecleadoOReservado() {
+        String imei = "350000000000001";
+        LocalDateTime t = LocalDateTime.of(2026, 11, 25, 9, 0);
+        assertTrue(new BotDAO.Apunte(7, t, null, imei, "IMEI", null, "Ana").puesto(imei));
+        assertTrue(new BotDAO.Apunte(7, t, null, imei, "RESERVADO", "puesto 1", null).puesto(imei));
+        assertTrue(!new BotDAO.Apunte(7, t, "350000000000009", imei, "RESERVA_SUSTITUIDA", null, "Ana").puesto(imei));
+        assertTrue(!new BotDAO.Apunte(7, t, null, "350000000000009", "RESERVADO", null, null).puesto(imei));
+    }
+
+    @Test void losApuntesYLaUltimaSalidaMiranTambienLaReserva() {
+        assertTrue(BotDAO.SQL_APUNTES.contains("c.TIPO IN ('IMEI', 'SIN_DESTINO', 'RESERVADO', 'RESERVA_SUSTITUIDA', 'RESERVA_QUITADA')"));
+        assertTrue(BotDAO.SQL_ULTIMA_SALIDA.contains("c.IMEI_ANTERIOR = ? AND " + BotDAO.ES_SALIDA));
+        // «Ya no está» nunca se devuelve solo: no da nota de devolucion.
+        assertTrue(BotDAO.SQL_ULTIMA_SALIDA.contains("AND NOT (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE = 'YA_NO_ESTA')"));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test void ultimaSalidaDeUnaReservaSustituida() {
+        String imei = "350000000000001";
+        BotDAO.Apunte apunte = new BotDAO.Apunte(11, LocalDateTime.of(2026, 11, 25, 9, 0), imei, "350000000000009", "RESERVA_SUSTITUIDA", null, "Ana");
+        when(jdbc.query(eq(BotDAO.SQL_ULTIMA_SALIDA), any(RowMapper.class), eq(imei))).thenReturn(List.of(apunte));
+        when(jdbc.query(eq(BotDAO.SQL_ULTIMA_CANCELACION), any(RowMapper.class), eq(imei))).thenReturn(List.of());
+        assertEquals(Optional.of(new ReglaDevoluciones.Salida(11, apunte.fecha(), "Ana", "RESERVA")), dao.ultimaSalida(imei));
     }
 }

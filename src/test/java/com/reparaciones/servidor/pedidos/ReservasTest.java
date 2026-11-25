@@ -204,18 +204,41 @@ class ReservasTest {
 
     // ---------------------------------------------------------------- 2. soltar
 
-    @Test void cerradaSinEnvioSeSueltaComoCancelada() {
+    @Test void cerradaSinEnvioSeSueltaComoYaNoEsta() {
         filas(fila(1, null, null, AHORA.minusHours(1), null, IMEI_1, null));
         reservados(enStock(IMEI_1));
         assertEquals(new Reservas.Resumen(0, 1, 0), reservas.pasada(AHORA));
-        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CANCELADA), eq(AHORA));
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.YA_NO_ESTA), eq(AHORA));
     }
 
-    @Test void conMarcaSeSueltaComoCancelada() {
+    @Test void conOtraMarcaSeSueltaComoMarcada() {
         filas(fila(1, null, "PENDIENTE_COLOR", null, null, IMEI_1, null));
         reservados(enStock(IMEI_1));
         reservas.pasada(AHORA);
+        verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.MARCADA), eq(AHORA));
+    }
+
+    @Test void canceladaYCerradaSigueSiendoCancelada() {
+        // Como la 0.9.47: «Cancelar móvil» manda sobre «ya no está».
+        filas(fila(1, null, "CANCELADO", AHORA.minusHours(1), null, IMEI_1, null));
+        reservados(enStock(IMEI_1));
+        reservas.pasada(AHORA);
         verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CANCELADA), eq(AHORA));
+    }
+
+    @Test void conMarcaYEtiquetaImpresaSeSueltaComoConEtiqueta() {
+        for (String marca : List.of("CANCELADO", "EN_REVISION")) {
+            org.mockito.Mockito.clearInvocations(dao);
+            FilaPedido f = fila(1, null, marca, null, null, IMEI_1, null);
+            filas(new FilaPedido(f.id(), f.fecha(), f.plataforma(), f.sku(), f.imei(), f.pedido(), f.fechaCompra(), f.origen(), f.canal(),
+                    f.posicion(), f.cerradaEn(), f.envioFecha(), f.transportista(), f.seguimiento(), f.reabiertaEn(), f.envioId(),
+                    AHORA.minusHours(1), f.faltaEnviarEn(), f.sincronizadaEn(), f.marca(), f.marcaNota(), f.marcaEn(), f.marcaPor(),
+                    f.asociadaEn(), f.asociadaOrigen(), f.validadaImei(), f.validadaEn(), f.validadaPor(), f.fechaSalida(), f.pais(),
+                    f.imeiReservado(), f.reservadaEn(), f.sinStockEn()));
+            reservados(enStock(IMEI_1));
+            reservas.pasada(AHORA);
+            verify(dao).soltarReserva(eq(1), anyString(), eq(Reservas.CON_ETIQUETA), eq(AHORA));
+        }
     }
 
     @Test void cerradaConEnvioYSinImeiSeSueltaComoEnviadaSinImei() {

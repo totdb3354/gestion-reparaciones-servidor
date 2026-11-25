@@ -24,16 +24,25 @@ import java.util.function.Function;
 /** La pasada de reservas de IMEI (spec reserva §5), al final de cada vuelta de {@link LecturaFilas}: 1) resuelve las reservas de
  *  las filas que ya tienen IMEI puesto; 2) suelta las que ya no valen; 3) reparte ({@link Reparto}) un telefono a las filas que
  *  esperan y apunta «sin stock» a las que se quedan sin. Motivos para soltar (DETALLE de RESERVA_QUITADA): {@link #CANCELADA},
- *  {@link #ENVIADA_SIN_IMEI} (la fila se envio sin IMEI: logistica seguramente mando ese movil sin teclearlo, asi que las
- *  devoluciones NO deben devolverlo a stock), {@link #NO_ENCONTRADO}, {@link #PUESTO_EN_OTRA} y {@link #NO_DISPONIBLE}. Cada escritura es una transaccion por fila con la fila bloqueada
+ *  {@link #MARCADA}, {@link #YA_NO_ESTA}, {@link #CON_ETIQUETA}, {@link #ENVIADA_SIN_IMEI} (la fila se envio sin IMEI: logistica
+ *  seguramente mando ese movil sin teclearlo, asi que las devoluciones NO deben devolverlo a stock), {@link #NO_ENCONTRADO},
+ *  {@link #PUESTO_EN_OTRA} y {@link #NO_DISPONIBLE}. Las devoluciones del bot ({@code bot.Devoluciones}) siguen el criterio de la
+ *  0.9.47: devuelven CANCELADA, MARCADA y NO_DISPONIBLE (y RESERVA_SUSTITUIDA), dejan YA_NO_ESTA «sin destino» (una persona
+ *  comprueba si salio) y no tocan el resto. Cada escritura es una transaccion por fila con la fila bloqueada
  *  ({@link FilasDAO}), para no pisar a una persona que ponga el IMEI a la vez. */
 @Service
 public class Reservas {
 
     private static final Logger log = LoggerFactory.getLogger(Reservas.class);
 
-    /** Motivos de RESERVA_QUITADA (DETALLE). La fila se cerro sin envio o tiene una marca. */
+    /** Motivos de RESERVA_QUITADA (DETALLE). «Cancelar móvil» (marca CANCELADO) sin etiqueta impresa. */
     public static final String CANCELADA = "CANCELADA";
+    /** Otra marca (ESPERA_STOCK, EN_REVISION, PENDIENTE_COLOR) sin etiqueta impresa: la fila espera, pero no a ese telefono. */
+    public static final String MARCADA = "MARCADA";
+    /** «Ya no está en ShippyPro»: la fila se cerro sin envio (y sin «Cancelar móvil»). Puede que el movil saliera igualmente. */
+    public static final String YA_NO_ESTA = "YA_NO_ESTA";
+    /** Con marca y con la etiqueta ya impresa: el movil reservado pudo salir con ella; no se devuelve a stock. */
+    public static final String CON_ETIQUETA = "CON_ETIQUETA";
     /** La fila se cerro con envio y sin IMEI: seguramente salio el movil reservado sin teclearlo; no se devuelve a stock. */
     public static final String ENVIADA_SIN_IMEI = "ENVIADA_SIN_IMEI";
     /** El movil esta en una de las cajas de revisar ({@link #CAJAS_REVISAR}): una persona no lo encuentra. */
@@ -157,7 +166,10 @@ public class Reservas {
      *  reservado (null si no esta en el espejo); {@code puesto}: el IMEI esta puesto en otra fila. */
     static String motivoParaSoltar(FilaPedido f, MovilNsys movil, Function<MovilNsys, LoQueVale.Valor> vale, boolean puesto) {
         if (f.cerradaEn() != null && f.envioFecha() != null) return ENVIADA_SIN_IMEI;
-        if (f.marca() != null || f.cerradaEn() != null) return CANCELADA;
+        // Como la regla de la 0.9.47: «Cancelar móvil» antes que «ya no está»; con etiqueta impresa, el movil pudo salir.
+        if (Marca.CANCELADO.name().equals(f.marca())) return f.impresaEn() != null ? CON_ETIQUETA : CANCELADA;
+        if (f.cerradaEn() != null) return YA_NO_ESTA;
+        if (f.marca() != null) return f.impresaEn() != null ? CON_ETIQUETA : MARCADA;
         if (movil == null) return NO_DISPONIBLE;
         if (CAJAS_REVISAR.contains(Normalizacion.caja(movil.location()))) return NO_ENCONTRADO;
         EstadoMovil estado = movil.estado() == null ? null : movil.estado().conGrado(grado(movil, vale));

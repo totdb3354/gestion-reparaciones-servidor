@@ -77,7 +77,7 @@ public class Devoluciones {
         for (NsysDAO.TrabajoFecha t : nsys.trabajosDe(imeis))
             trabajos.computeIfAbsent(t.imei(), k -> new ArrayList<>()).add(new Trabajo(t.idRep(), t.asignado()));
 
-        Map<String, List<String>> porDestino = new TreeMap<>();
+        Map<String, List<ListaDevoluciones.ImeiADevolver>> porDestino = new TreeMap<>();
         for (String imei : imeis) {
             MovilNsys m = espejo.get(imei);
             Datos d = new Datos(imei, pasos.getOrDefault(imei, List.of()), salida(apuntes, imei), puestos(apuntes, imei),
@@ -85,16 +85,17 @@ public class Devoluciones {
                     m == null ? null : m.grade(), entradas.get(imei), trabajos.getOrDefault(imei, List.of()),
                     filas.getOrDefault(imei, List.of()), vueltas.getOrDefault(imei, List.of()));
             Veredicto v = ReglaDevoluciones.evaluar(d, ubicaciones);
-            if (v.tipo() == ReglaDevoluciones.Tipo.DEVOLVER) porDestino.computeIfAbsent(v.destino(), k -> new ArrayList<>()).add(imei);
+            if (v.tipo() == ReglaDevoluciones.Tipo.DEVOLVER)
+                porDestino.computeIfAbsent(v.destino(), k -> new ArrayList<>()).add(new ListaDevoluciones.ImeiADevolver(imei, motivo(v.salida())));
             else if (v.tipo() == ReglaDevoluciones.Tipo.SIN_DESTINO && !yaApuntado(apuntes, imei, v.salida().idFila()))
                 dao.apuntar(v.salida().idFila(), ahora, imei, CambioImei.SIN_DESTINO, v.motivo());
         }
         List<ListaDevoluciones.Grupo> grupos = new ArrayList<>();
         int quedan = tope;
-        for (Map.Entry<String, List<String>> e : porDestino.entrySet()) {
+        for (Map.Entry<String, List<ListaDevoluciones.ImeiADevolver>> e : porDestino.entrySet()) {
             if (quedan <= 0) break;
-            List<ListaDevoluciones.ImeiADevolver> suyos = e.getValue().stream().sorted().limit(quedan)
-                    .map(i -> new ListaDevoluciones.ImeiADevolver(i, ReglaDevoluciones.IMEI_CORREGIDO)).toList();
+            List<ListaDevoluciones.ImeiADevolver> suyos = e.getValue().stream()
+                    .sorted(Comparator.comparing(ListaDevoluciones.ImeiADevolver::imei)).limit(quedan).toList();
             grupos.add(new ListaDevoluciones.Grupo(e.getKey(), suyos));
             quedan -= suyos.size();
         }
@@ -123,8 +124,7 @@ public class Devoluciones {
         int fila = salida.get().idFila();
         switch (m.resultado()) {
             case ReglaDevoluciones.OK -> dao.apuntar(fila, ahora, m.imei(), CambioImei.DEVUELTO, "de Pedidos realizados a " + m.destino()
-                    + (ReglaDevoluciones.SALIDA_CANCELADO.equals(salida.get().motivo()) ? "; pedido cancelado por " : "; IMEI cambiado por ")
-                    + salida.get().quien() + " el " + DIA_HORA.format(salida.get().fecha()));
+                    + porque(salida.get().motivo()) + salida.get().quien() + " el " + DIA_HORA.format(salida.get().fecha()));
             case ReglaDevoluciones.NO_APARECE -> dao.apuntar(fila, ahora, m.imei(), CambioImei.NO_DEVUELTO,
                     "no aparece en NSYS en Pedidos realizados");
             case ReglaDevoluciones.ERROR -> {
@@ -135,6 +135,12 @@ public class Devoluciones {
         }
     }
 
+    private static String porque(String motivoSalida) {
+        if (ReglaDevoluciones.SALIDA_CANCELADO.equals(motivoSalida)) return "; pedido cancelado por ";
+        if (ReglaDevoluciones.SALIDA_RESERVA.equals(motivoSalida)) return "; reserva soltada por ";
+        return "; IMEI cambiado por ";
+    }
+
     /** Los resultados, el mas reciente primero: los tres primeros son ERROR y el cuarto (si hay) no. */
     static boolean esElTercerError(List<String> ultimos) {
         int n = ReglaDevoluciones.ERRORES_SEGUIDOS;
@@ -143,14 +149,24 @@ public class Devoluciones {
         return ultimos.size() == n || !ReglaDevoluciones.ERROR.equals(ultimos.get(n));
     }
 
+    /** La ultima salida del IMEI segun los apuntes (vienen por fecha): un cambio de IMEI o su reserva soltada. */
     private static Salida salida(List<BotDAO.Apunte> apuntes, String imei) {
-        BotDAO.Apunte ultima = null;
-        for (BotDAO.Apunte a : apuntes) if (CambioImei.IMEI.equals(a.tipo()) && imei.equals(a.imeiAnterior())) ultima = a;
-        return ultima == null ? null : new Salida(ultima.idFila(), ultima.fecha(), ultima.quien(), ReglaDevoluciones.SALIDA_IMEI);
+        Salida ultima = null;
+        for (BotDAO.Apunte a : apuntes) {
+            Salida s = a.salida(imei);
+            if (s != null) ultima = s;
+        }
+        return ultima;
     }
 
+    /** Cuando se puso el IMEI en una fila: tecleado o reservado por el ERP. */
     private static List<LocalDateTime> puestos(List<BotDAO.Apunte> apuntes, String imei) {
-        return apuntes.stream().filter(a -> CambioImei.IMEI.equals(a.tipo()) && imei.equals(a.imeiNuevo())).map(BotDAO.Apunte::fecha).toList();
+        return apuntes.stream().filter(a -> a.puesto(imei)).map(BotDAO.Apunte::fecha).toList();
+    }
+
+    /** El motivo de la lista: RESERVA_LIBERADA si lo que lo saco fue su reserva soltada; si no, IMEI_CORREGIDO. */
+    static String motivo(Salida salida) {
+        return ReglaDevoluciones.SALIDA_RESERVA.equals(salida.motivo()) ? ReglaDevoluciones.RESERVA_LIBERADA : ReglaDevoluciones.IMEI_CORREGIDO;
     }
 
     private static boolean yaApuntado(List<BotDAO.Apunte> apuntes, String imei, int idFila) {
