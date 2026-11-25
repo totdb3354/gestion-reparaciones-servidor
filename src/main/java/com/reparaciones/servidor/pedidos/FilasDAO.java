@@ -174,7 +174,7 @@ public class FilasDAO {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public FilasDAO(JdbcTemplate jdbc, @org.springframework.beans.factory.annotation.Value("${pedidos.reserva.al-bot:true}") boolean reservadosAlBot) {
+    public FilasDAO(JdbcTemplate jdbc, @org.springframework.beans.factory.annotation.Value("${pedidos.reserva.al-bot:false}") boolean reservadosAlBot) {
         this.jdbc = jdbc;
         this.reservadosAlBot = reservadosAlBot;
     }
