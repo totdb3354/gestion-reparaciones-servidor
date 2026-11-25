@@ -223,6 +223,18 @@ de `model/` conservan su nombre.
       saca de ahí con la regla 2), repitiendo mientras alguno avance y hasta 3 vueltas, en la misma transacción; solo los que siguen sin hueco van a
       `paraRevisar`. Cada pasada rehace la lista «para revisar» de su canal y guarda sus recuentos (`ajenos` solo está en la respuesta del `POST`).
       Idempotente: repetir la misma pasada no cambia nada (todo `yaEstaban`, `paraRevisar` o `ajenos`).
+    - `GET /api/bot/devoluciones` (no es una ruta de usuario: el bot de stock de NSYS; cabecera `X-API-Key`) → `ListaDevoluciones`
+      `{grupos: [{destino, imeis: [{imei, motivo}]}]}`: los IMEI a devolver, agrupados por la caja de destino; `motivo` es
+      `IMEI_CORREGIDO` hoy (la reserva de IMEI añadirá `RESERVA_LIBERADA`).
+    - `POST /api/bot/movimientos` (misma clave) con el cuerpo `{run, movimientos: [{imei, accion, resultado, origen, destino, motivo,
+      fecha}]}` → `{"guardados": n, "repetidos": m}`: lo que el bot movió en una vuelta (`run`). `accion`: `DESCONTADO` o `DEVUELTO`;
+      `resultado`: `OK`, `NO_APARECE` o `ERROR`; `fecha`, hora de Madrid del bot (`2026-11-25T10:12:03`). Un movimiento con la misma
+      vuelta, IMEI y acción que otro ya guardado cuenta en `repetidos` y no se guarda dos veces. Validación (`400`, sin guardar nada):
+      `run` obligatorio (40 caracteres como mucho); `movimientos` presente y hasta 2.000; en cada uno `imei` obligatorio (40 como mucho),
+      `accion` y `resultado` de la lista, `fecha` obligatoria, `origen` y `destino` de 80 como mucho, `motivo` de 30 como mucho y `destino`
+      obligatorio si la acción es `DEVUELTO`. La clave es una de las del ajuste `PEDIDOS_BOT_CLAVE` (propio): sin ninguna válida `404` para
+      todos, clave ausente o mala `401` (también las de vendidos, plugin o asociaciones), un token de usuario no vale y la clave no abre
+      ninguna otra ruta.
     - `GET /api/pedidos/asociaciones` (SUPERTECNICO y ADMIN; TECNICO `403`) → `EstadoAsociaciones` `{canales: [{canal, cuando,
       confirmadas, intercambiadas, puestas, yaEstaban, paraRevisar, descartadas, libroModificado, error, errorEn, revisar: [{pedido, imei,
       motivo, vistoEn, detalle}]}]}`: un elemento por canal que ha tenido alguna pasada (`AMAZON` antes que `AMAZON_STOCKROOM`; lista vacía si no

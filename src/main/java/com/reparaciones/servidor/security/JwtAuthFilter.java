@@ -37,11 +37,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Las rutas de maquina solo admiten su clave (ClaveVendidosFilter y las que heredan de el): un token de usuario no cuenta
-        // para ellas. De /api/pedidos/asociaciones solo el POST es de maquina; el GET es de usuario.
+        // para ellas. De /api/pedidos/asociaciones solo el POST es de maquina; el GET es de usuario. Y /api/bot/**.
         return ("POST".equals(request.getMethod()) && "/api/auth/login".equals(request.getRequestURI()))
                 || ClaveVendidosFilter.RUTA.equals(request.getRequestURI())
                 || ClaveSincronizadosFilter.RUTA.equals(request.getRequestURI())
-                || ClaveAsociacionesFilter.esDeMaquina(request);
+                || ClaveAsociacionesFilter.esDeMaquina(request)
+                || ClaveBotFilter.esDeMaquina(request);
     }
 
     @Override
