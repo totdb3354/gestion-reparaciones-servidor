@@ -240,6 +240,20 @@ class DevolucionesTest {
         assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(B, "IMEI_CORREGIDO")), servicio.lista().grupos().get(1).imeis());
     }
 
+    @Test void unaReservaSoltadaYaEnPedidosRealizadosSinAlBotQuedaSinDestinoParaComprobar() {
+        tresCandidatos();
+        when(dao.apuntes(List.of(A, B, C))).thenReturn(List.of(
+                new BotDAO.Apunte(10, PUESTO, null, A, "RESERVADO", "puesto 1", null),
+                new BotDAO.Apunte(11, PUESTO, null, B, "IMEI", null, "Juan"),
+                new BotDAO.Apunte(12, PUESTO, null, C, "IMEI", null, "Juan"),
+                new BotDAO.Apunte(10, SALIO, A, null, "RESERVA_QUITADA", "EN_PEDIDOS_REALIZADOS", null),
+                new BotDAO.Apunte(11, SALIO, B, null, "IMEI", null, "Ana"),
+                new BotDAO.Apunte(12, SALIO, C, null, "IMEI", null, "Ana")));
+        ListaDevoluciones lista = servicio.lista();
+        assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(B, "IMEI_CORREGIDO")), lista.grupos().get(1).imeis());
+        verify(dao).apuntar(10, AHORA, A, "SIN_DESTINO", ReglaDevoluciones.MOTIVO_COMPROBAR);
+    }
+
     @Test void unaDevolucionDeUnaReservaSoltadaLoDiceEnLaNota() {
         when(dao.guardar(any(), any(), any())).thenReturn(1);
         when(dao.ultimaSalida(A)).thenReturn(Optional.of(new Salida(10, SALIO, "Ana", "RESERVA")));

@@ -187,6 +187,18 @@ class RecomendadorTest {
                 new Recomendador.Candidato("350000000000051", "i13128AzulA", "Listos", 1, false)), l);
     }
 
+    @Test void conElReservadoSiguenSiendoComoMuchoCincoYSiOtraFilaLoTecleoNoSale() {
+        List<MovilNsys> stock = new java.util.ArrayList<>();
+        for (int i = 0; i < 8; i++) stock.add(movil("35000000000006" + i, "A", D1));
+        String res = NsysDAO.claveCruce("350000000000060");
+        List<Recomendador.Candidato> l = Recomendador.de(AMAZON_A, Canal.AMAZON, stock, RecomendadorTest::vale, SIN_TRABAJOS, NADIE, res);
+        assertEquals(Recomendador.TOPE, l.size());
+        assertTrue(l.get(0).reservado());
+        List<Recomendador.Candidato> tecleado = Recomendador.de(AMAZON_A, Canal.AMAZON, stock, RecomendadorTest::vale, SIN_TRABAJOS,
+                Set.of(res), res);
+        assertTrue(tecleado.stream().noneMatch(c -> c.imei().equals("350000000000060")));
+    }
+
     @Test void elReservadoSaleAunqueElBotLoHayaDescontadoOSeaUnSustitutoQueNoSeRecomendaria() {
         // Con al-bot, el reservado está «de pedido» en Pedidos realizados; la reserva admite sustitutos eSIM que el recomendador no propone.
         MovilNsys descontado = movil("350000000000053", "A", D1, EstadoMovil.DE_PEDIDO);

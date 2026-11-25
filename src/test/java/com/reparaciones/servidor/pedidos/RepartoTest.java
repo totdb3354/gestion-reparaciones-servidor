@@ -203,6 +203,12 @@ class RepartoTest {
         assertEquals(Arrays.asList("002", null), imeis(r), "la segunda fila se queda sin stock aunque haya un Ms");
     }
 
+    @Test void unMsASecasTampocoAunqueElPedidoLoAcepte() {
+        MovilNsys ms = movil("001", "Azul", "Ms", D1);
+        assertNull(puestoAmazon(ac(false, "Azul", "Ms"), "ES", ms));
+        assertNull(puestoWeb(ac(false, "Azul", "Ms"), ms));
+    }
+
     @Test void msNuncaEnLaWeb() {
         MovilNsys ms = movil("001", "Azul", "MsA", D1);
         assertNull(puestoWeb(ac(false, "Azul", "MsA"), ms), "ni con el SKU exacto");

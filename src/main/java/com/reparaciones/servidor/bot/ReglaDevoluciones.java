@@ -49,6 +49,9 @@ public final class ReglaDevoluciones {
     /** La reserva de IMEI de una fila se solto sin que nadie picara ese movil: se puso otro (RESERVA_SUSTITUIDA) o la fila se
      *  cancelo o se marco (RESERVA_QUITADA con CANCELADA o MARCADA). */
     public static final String SALIDA_RESERVA = "RESERVA";
+    /** La reserva se solto con el movil ya en «Pedidos realizados» sin al-bot: nunca se devuelve solo. */
+    public static final String SALIDA_COMPROBAR = "COMPROBAR";
+    public static final String MOTIVO_COMPROBAR = "la reserva se soltó con el móvil ya en Pedidos realizados: comprobar si se vendió por otro lado";
     /** El SIN_DESTINO de una fila cerrada sin envio y sin cancelar: puede que el movil saliera igualmente. */
     public static final String MOTIVO_YA_NO_ESTA = "el pedido ya no está en ShippyPro: comprobar si salió";
     /** Quien hizo un cambio sin usuario. */
@@ -123,6 +126,7 @@ public final class ReglaDevoluciones {
                 || VENDIDO_PANEL.equals(p.resultado()))) return Veredicto.NADA;
         if (erroresSeguidosAlFinal(devueltos) >= ERRORES_SEGUIDOS) return Veredicto.NADA;
         if (SALIDA_YA_NO_ESTA.equals(salida.motivo())) return sinDestino(MOTIVO_YA_NO_ESTA, salida);
+        if (SALIDA_COMPROBAR.equals(salida.motivo())) return sinDestino(MOTIVO_COMPROBAR, salida);
 
         List<String> reparaciones = d.trabajos().stream()
                 .filter(tr -> tr.asignado() != null && tr.asignado().isAfter(t)).map(Trabajo::idRep).toList();

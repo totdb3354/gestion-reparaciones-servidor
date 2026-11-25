@@ -58,6 +58,8 @@ public class BotDAO {
             if (CambioImei.RESERVA_SUSTITUIDA.equals(tipo)) return new Salida(idFila, fecha, quien(), ReglaDevoluciones.SALIDA_RESERVA);
             if (!CambioImei.RESERVA_QUITADA.equals(tipo)) return null;
             if (Reservas.YA_NO_ESTA.equals(detalle)) return new Salida(idFila, fecha, "ShippyPro", ReglaDevoluciones.SALIDA_YA_NO_ESTA);
+            if (Reservas.EN_PEDIDOS_REALIZADOS.equals(detalle))
+                return new Salida(idFila, fecha, "el ERP", ReglaDevoluciones.SALIDA_COMPROBAR);
             return MOTIVOS_RESERVA_SALIDA.contains(detalle) ? new Salida(idFila, fecha, "el ERP", ReglaDevoluciones.SALIDA_RESERVA) : null;
         }
 
@@ -74,7 +76,7 @@ public class BotDAO {
     /** Condicion SQL sobre un apunte {@code c} de Pedido_fila_cambio: saca a {@code c.IMEI_ANTERIOR} de su fila (la misma eleccion
      *  que {@link Apunte#salida}). */
     static final String ES_SALIDA = "(c.TIPO IN ('IMEI', 'RESERVA_SUSTITUIDA') OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('"
-            + Reservas.CANCELADA + "', '" + Reservas.MARCADA + "', '" + Reservas.YA_NO_ESTA + "')))";
+            + Reservas.CANCELADA + "', '" + Reservas.MARCADA + "', '" + Reservas.YA_NO_ESTA + "', '" + Reservas.EN_PEDIDOS_REALIZADOS + "')))";
 
     /** Los IMEI con un descuento OK del bot desde {@code ?}, que salieron alguna vez de una fila (un apunte lo quito o solto su
      *  reserva, o un pedido de ShippyPro cancelado o cerrado sin envio se quedo con el) y que hoy no estan, ni puestos ni
@@ -113,7 +115,8 @@ public class BotDAO {
             + " ORDER BY f.MARCA_EN DESC, f.ID_FILA DESC LIMIT 1";
     static final String SQL_ULTIMA_SALIDA = "SELECT c.ID_FILA, c.FECHA, c.IMEI_ANTERIOR, c.IMEI_NUEVO, c.TIPO, c.DETALLE, u.NOMBRE_USUARIO"
             + " FROM Pedido_fila_cambio c LEFT JOIN Usuario u ON u.ID_USU = c.ID_USU"
-            + " WHERE c.IMEI_ANTERIOR = ? AND " + ES_SALIDA + " AND NOT (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE = '" + Reservas.YA_NO_ESTA + "')"
+            + " WHERE c.IMEI_ANTERIOR = ? AND " + ES_SALIDA + " AND NOT (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('" + Reservas.YA_NO_ESTA
+            + "', '" + Reservas.EN_PEDIDOS_REALIZADOS + "'))"
             + " ORDER BY c.FECHA DESC, c.ID_CAMBIO DESC LIMIT 1";
     /** Los resultados de los DEVUELTO desde el ultimo descuento OK, el mas reciente primero (hasta 4: basta para saber si el
      *  que acaba de llegar es el tercer ERROR seguido). */

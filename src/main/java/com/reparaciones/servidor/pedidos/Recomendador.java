@@ -52,7 +52,8 @@ public final class Recomendador {
         for (MovilNsys m : stock) {
             LoQueVale.Valor v = vale.apply(m);
             String clave = NsysDAO.claveCruce(m.imeiSn());
-            if (reservado == null && clave.equals(reservadaPropia) && m.estado() != null) {
+            // Si ya lo tecleó otra fila (la pasada aún no soltó la reserva), no se ofrece: daría «duplicado».
+            if (reservado == null && clave.equals(reservadaPropia) && m.estado() != null && !yaPuestos.contains(clave)) {
                 EstadoMovil e = m.estado().conGrado(v.grado());
                 if (e == EstadoMovil.STOCK || e == EstadoMovil.DE_PEDIDO) {
                     int nivel = nivel(ac, canal, m, v, trabajos.get(clave));
@@ -74,7 +75,7 @@ public final class Recomendador {
                 .thenComparing(p -> p.movil().imeiSn(), Comparator.nullsLast(Comparator.<String>naturalOrder()));
         List<Candidato> lista = new ArrayList<>();
         if (reservado != null) lista.add(reservado);
-        validos.stream().sorted(orden).limit(TOPE).map(Puntuado::candidato).forEach(lista::add);
+        validos.stream().sorted(orden).limit(TOPE - lista.size()).map(Puntuado::candidato).forEach(lista::add);
         return lista;
     }
 

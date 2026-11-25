@@ -53,10 +53,11 @@ class BotDAOTest {
         // Condicion 4 de la regla: solo los que NSYS tiene hoy en Pedidos realizados.
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("EXISTS (SELECT 1 FROM Nsys_movil n WHERE n.IMEI_SN = b.IMEI"
                 + " AND n.ESTADO = 'DE_PEDIDO' AND n.LOCATION = 'Pedidos realizados')"));
-        // Salio de una fila: un apunte IMEI que lo quito o su reserva soltada (sustituida, o quitada por cancelada, marcada, no
-        // disponible o «ya no está»; nunca por enviada sin IMEI, con etiqueta, no encontrado ni puesto en otra).
+        // Salio de una fila: un apunte IMEI que lo quito o su reserva soltada (sustituida, o quitada por cancelada o marcada; «ya no
+        // está» y «en Pedidos realizados» entran para quedar sin destino; nunca enviada sin IMEI, con etiqueta, no encontrado, puesto
+        // en otra ni no disponible).
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("c.IMEI_ANTERIOR = b.IMEI AND (c.TIPO IN ('IMEI', 'RESERVA_SUSTITUIDA')"
-                + " OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('CANCELADA', 'MARCADA', 'YA_NO_ESTA')))"));
+                + " OR (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('CANCELADA', 'MARCADA', 'YA_NO_ESTA', 'EN_PEDIDOS_REALIZADOS')))"));
         // O un pedido de ShippyPro cancelado o cerrado sin envio que se quedo con el IMEI.
         assertTrue(BotDAO.SQL_CANDIDATOS.contains("OR EXISTS (SELECT 1 FROM Pedido_fila x WHERE x.IMEI = b.IMEI AND x.ORIGEN = 'SHIPPYPRO'"
                 + " AND (x.MARCA = 'CANCELADO' OR (x.CERRADA_EN IS NOT NULL AND x.ENVIO_FECHA IS NULL)))"));
@@ -188,6 +189,9 @@ class BotDAOTest {
         // «Ya no está en ShippyPro»: salida, pero la regla la deja sin destino (como en la 0.9.47).
         assertEquals(new ReglaDevoluciones.Salida(7, t, "ShippyPro", "YA_NO_ESTA"),
                 new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", "YA_NO_ESTA", null).salida(imei));
+        // Ya en «Pedidos realizados» sin al-bot (vendido por otro lado, o al-bot apagado después): sin destino, una persona comprueba.
+        assertEquals(new ReglaDevoluciones.Salida(7, t, "el ERP", "COMPROBAR"),
+                new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", "EN_PEDIDOS_REALIZADOS", null).salida(imei));
         // NO_DISPONIBLE tampoco: se vendio (p. ej. en el Simulador) o se dio de baja; devolverlo dejaria un movil fantasma.
         for (String motivo : List.of("ENVIADA_SIN_IMEI", "CON_ETIQUETA", "NO_ENCONTRADO", "PUESTO_EN_OTRA", "NO_DISPONIBLE"))
             assertEquals(null, new BotDAO.Apunte(7, t, imei, null, "RESERVA_QUITADA", motivo, null).salida(imei), motivo);
@@ -209,7 +213,7 @@ class BotDAOTest {
         assertTrue(BotDAO.SQL_APUNTES.contains("c.TIPO IN ('IMEI', 'SIN_DESTINO', 'RESERVADO', 'RESERVA_SUSTITUIDA', 'RESERVA_QUITADA')"));
         assertTrue(BotDAO.SQL_ULTIMA_SALIDA.contains("c.IMEI_ANTERIOR = ? AND " + BotDAO.ES_SALIDA));
         // «Ya no está» nunca se devuelve solo: no da nota de devolucion.
-        assertTrue(BotDAO.SQL_ULTIMA_SALIDA.contains("AND NOT (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE = 'YA_NO_ESTA')"));
+        assertTrue(BotDAO.SQL_ULTIMA_SALIDA.contains("AND NOT (c.TIPO = 'RESERVA_QUITADA' AND c.DETALLE IN ('YA_NO_ESTA', 'EN_PEDIDOS_REALIZADOS'))"));
     }
 
     @SuppressWarnings("unchecked")

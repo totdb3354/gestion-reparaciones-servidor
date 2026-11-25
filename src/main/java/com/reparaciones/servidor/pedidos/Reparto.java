@@ -225,7 +225,7 @@ public final class Reparto {
         boolean naPorCaja = caja.isEmpty() || caja.equals(DEVOLUCION);
         if (SkuNa.esNa(v.grade())) return new Grado(true, naPorCaja, false, "N/A", false);
         String g = v.grade().strip();
-        boolean ms = g.length() > 2 && g.substring(0, 2).equalsIgnoreCase("Ms");
+        boolean ms = g.length() >= 2 && g.substring(0, 2).equalsIgnoreCase("Ms");
         if (ms) g = g.substring(2);
         boolean bateria = Normalizacion.bateriaNueva(g);
         String letra = Normalizacion.gradoSinBateria(g).toUpperCase(Locale.ROOT);

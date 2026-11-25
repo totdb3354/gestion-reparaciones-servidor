@@ -49,6 +49,11 @@ public class Reservas {
     public static final String NO_ENCONTRADO = "NO_ENCONTRADO";
     /** El movil ya no esta en la empresa o su estado no es STOCK ni «de pedido» (vendido, de baja, caja que no cuenta). */
     public static final String NO_DISPONIBLE = "NO_DISPONIBLE";
+    /** Sin al-bot, el reservado aparece «de pedido» en «Pedidos realizados»: se vendio por otro lado (Simulador) o lo desconto el bot
+     *  cuando al-bot estaba encendido (y se apago despues). No se reserva otra vez ni se devuelve solo: una persona lo comprueba. */
+    public static final String EN_PEDIDOS_REALIZADOS = "EN_PEDIDOS_REALIZADOS";
+    /** Lo que salio seguramente con el pedido (sin teclearlo): no se vuelve a reservar en {@link #DIAS_SALIDOS} dias. */
+    static final int DIAS_SALIDOS = 30;
     /** El IMEI reservado se tecleo en otra fila. */
     public static final String PUESTO_EN_OTRA = "PUESTO_EN_OTRA";
     /** Las cajas de NSYS donde una persona deja un movil que no encuentra. */
@@ -112,8 +117,8 @@ public class Reservas {
                 }
                 dao.soltarReserva(f.id(), f.imeiReservado(), motivo, ahora);
                 soltadas++;
-                // Seguramente salio sin teclearlo: no se reserva a otro pedido en esta pasada.
-                if (ENVIADA_SIN_IMEI.equals(motivo)) retenidos.add(clave);
+                // Seguramente salio sin teclearlo: no se reserva a otro pedido (en esta pasada y, por la lectura del paso 3, en las siguientes).
+                if (ENVIADA_SIN_IMEI.equals(motivo) || CON_ETIQUETA.equals(motivo) || EN_PEDIDOS_REALIZADOS.equals(motivo)) retenidos.add(clave);
                 if (espera(f)) esperando.add(f);
             }
         }
@@ -139,6 +144,8 @@ public class Reservas {
                 Set<String> ocupados = new HashSet<>(puestos.keySet());
                 ocupados.addAll(retenidos);
                 ocupados.addAll(resueltos);
+                // Sin al-bot, NSYS sigue dando como stock lo que salio sin teclearlo: fuera de la bolsa unos dias (revision 0.9.48).
+                for (String imei : dao.reservasQueSalieron(ahora.minusDays(DIAS_SALIDOS))) ocupados.add(NsysDAO.claveCruce(imei));
                 List<MovilNsys> stock = new ArrayList<>();
                 for (MovilNsys m : nsysDao.enEmpresa())
                     if (m.imeiSn() != null && m.imeiSn().strip().length() <= FilasDAO.ANCHO_RESERVADO) stock.add(m);
@@ -165,7 +172,7 @@ public class Reservas {
     /** El motivo para soltar la reserva de una fila sin IMEI, o null si sigue valiendo. {@code movil}: el lote mas reciente del IMEI
      *  reservado (null si no esta en el espejo); {@code puesto}: el IMEI esta puesto en otra fila; {@code alBot}: el bot descuenta
      *  los reservados, asi que «de pedido» puede ser el descuento de esta misma reserva y sigue valiendo. Sin {@code alBot}, un
-     *  reservado «de pedido» se vendio por otro lado (Simulador, otra venta a mano) y se suelta como NO_DISPONIBLE. */
+     *  reservado «de pedido» se suelta como {@link #EN_PEDIDOS_REALIZADOS}. */
     static String motivoParaSoltar(FilaPedido f, MovilNsys movil, Function<MovilNsys, LoQueVale.Valor> vale, boolean puesto,
                                    boolean alBot) {
         if (f.cerradaEn() != null && f.envioFecha() != null) return ENVIADA_SIN_IMEI;
@@ -176,7 +183,8 @@ public class Reservas {
         if (movil == null) return NO_DISPONIBLE;
         if (CAJAS_REVISAR.contains(Normalizacion.caja(movil.location()))) return NO_ENCONTRADO;
         EstadoMovil estado = movil.estado() == null ? null : movil.estado().conGrado(grado(movil, vale));
-        if (estado != EstadoMovil.STOCK && !(alBot && estado == EstadoMovil.DE_PEDIDO)) return NO_DISPONIBLE;
+        if (estado == EstadoMovil.DE_PEDIDO && !alBot) return EN_PEDIDOS_REALIZADOS;
+        if (estado != EstadoMovil.STOCK && estado != EstadoMovil.DE_PEDIDO) return NO_DISPONIBLE;
         if (puesto) return PUESTO_EN_OTRA;
         return null;
     }

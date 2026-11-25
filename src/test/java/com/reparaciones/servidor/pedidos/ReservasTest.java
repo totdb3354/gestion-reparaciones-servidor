@@ -303,8 +303,17 @@ class ReservasTest {
         reservados(enStock(IMEI_1), movil(IMEI_2, "Pedidos realizados", EstadoMovil.DE_PEDIDO));
         stock(enStock(IMEI_1));
         reservas.pasada(AHORA);
-        verify(dao).soltarReserva(2, IMEI_2, Reservas.NO_DISPONIBLE, AHORA);
+        verify(dao).soltarReserva(2, IMEI_2, Reservas.EN_PEDIDOS_REALIZADOS, AHORA);
         verify(dao, never()).soltarReserva(eq(1), any(), any(), any());
+    }
+
+    @Test void loQueSalioConElPedidoNoSeVuelveAReservarEnLasPasadasSiguientes() {
+        filas(esperando(1));
+        stock(enStock(IMEI_1), enStock(IMEI_2));
+        when(dao.reservasQueSalieron(AHORA.minusDays(Reservas.DIAS_SALIDOS))).thenReturn(List.of(IMEI_1));
+        reservas.pasada(AHORA);
+        verify(dao).reservar(eq(1), eq(IMEI_2), anyString(), eq(AHORA));
+        verify(dao, never()).reservar(anyInt(), eq(IMEI_1), anyString(), any());
     }
 
     @Test void deCadaImeiCuentaElLoteMasReciente() {

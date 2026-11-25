@@ -181,6 +181,16 @@ public class FilasDAO {
         this.reservadosAlBot = reservadosAlBot;
     }
 
+    static final String SQL_RESERVAS_QUE_SALIERON = "SELECT DISTINCT IMEI_ANTERIOR FROM Pedido_fila_cambio WHERE TIPO = 'RESERVA_QUITADA'"
+            + " AND DETALLE IN ('" + Reservas.ENVIADA_SIN_IMEI + "', '" + Reservas.CON_ETIQUETA + "', '" + Reservas.EN_PEDIDOS_REALIZADOS + "')"
+            + " AND FECHA >= ? AND IMEI_ANTERIOR IS NOT NULL";
+
+    /** Los IMEI de reservas soltadas desde {@code desde} porque el telefono seguramente salio (enviada sin IMEI, con la etiqueta
+     *  impresa) o ya esta en «Pedidos realizados» sin al-bot: no se vuelven a reservar. */
+    public List<String> reservasQueSalieron(LocalDateTime desde) {
+        return jdbc.queryForList(SQL_RESERVAS_QUE_SALIERON, String.class, Timestamp.valueOf(desde));
+    }
+
     static final String SQL_RESERVAS_VIVAS = "SELECT ID_FILA, IMEI_RESERVADO FROM Pedido_fila WHERE IMEI_RESERVADO IS NOT NULL";
 
     /** Las reservas de ahora, por fila (una reserva solo existe en filas vivas: al soltarla se borra). */
