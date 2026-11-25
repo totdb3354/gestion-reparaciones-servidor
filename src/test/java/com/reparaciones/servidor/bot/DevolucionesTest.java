@@ -1,6 +1,8 @@
 package com.reparaciones.servidor.bot;
 
+import com.reparaciones.servidor.bot.ReglaDevoluciones.FilaConImei;
 import com.reparaciones.servidor.bot.ReglaDevoluciones.Paso;
+import com.reparaciones.servidor.bot.ReglaDevoluciones.Salida;
 import com.reparaciones.servidor.nsys.EstadoMovil;
 import com.reparaciones.servidor.nsys.MovilNsys;
 import com.reparaciones.servidor.nsys.NsysDAO;
@@ -106,12 +108,30 @@ class DevolucionesTest {
     @Test void unaFilaCerradaSoloImpideDevolverSiNoHayVueltaPosterior() {
         tresCandidatos();
         LocalDateTime cierre = LocalDateTime.of(2026, 1, 10, 12, 0);
-        when(dao.cierresDeFilas(List.of(A, B, C))).thenReturn(Map.of(A, List.of(cierre), B, List.of(cierre)));
+        FilaConImei enviada = new FilaConImei(9, cierre, cierre, cierre, null, false, null, null, cierre.minusDays(1));
+        when(dao.filasConImei(List.of(A, B, C))).thenReturn(Map.of(A, List.of(enviada), B, List.of(enviada)));
         when(dao.vueltas(List.of(A, B, C))).thenReturn(Map.of(A, List.of(cierre.plusDays(20))));
         ListaDevoluciones lista = servicio.lista();
         assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(A, "IMEI_CORREGIDO")), lista.grupos().get(1).imeis());
         assertEquals(2, lista.grupos().size());
         verify(dao, never()).apuntar(anyInt(), any(), any(), any(), any());
+    }
+
+    @Test void unCanceladoSinApunteDeSalidaSeDevuelveYUnoQueYaNoEstaSeApuntaSinDestino() {
+        tresCandidatos();
+        // A y B sin apunte de salida: A cancelado (sale) y B cerrado sin envio («Ya no está en ShippyPro»: se apunta en su fila).
+        when(dao.apuntes(List.of(A, B, C))).thenReturn(List.of(
+                new BotDAO.Apunte(10, PUESTO, null, A, "IMEI", null, "Fati"),
+                new BotDAO.Apunte(11, PUESTO, null, B, "IMEI", null, "Fati"),
+                new BotDAO.Apunte(12, PUESTO, null, C, "IMEI", null, "Fati"),
+                new BotDAO.Apunte(12, SALIO, C, null, "IMEI", null, "Lucía")));
+        when(dao.filasConImei(List.of(A, B, C))).thenReturn(Map.of(
+                A, List.of(new FilaConImei(10, null, null, null, null, true, SALIO, "Fati", PUESTO)),
+                B, List.of(new FilaConImei(11, SALIO, null, null, null, false, null, null, PUESTO))));
+        ListaDevoluciones lista = servicio.lista();
+        assertEquals(List.of(new ListaDevoluciones.ImeiADevolver(A, "IMEI_CORREGIDO")), lista.grupos().get(1).imeis());
+        verify(dao).apuntar(11, AHORA, B, "SIN_DESTINO", "el pedido ya no está en ShippyPro: comprobar si salió");
+        verify(dao, times(1)).apuntar(anyInt(), any(), any(), any(), any());
     }
 
     @Test void elEspejoPrefiereElLoteQueEstaDePedido() {
@@ -139,18 +159,27 @@ class DevolucionesTest {
         MovimientoBot dev = new MovimientoBot(B, "DEVUELTO", "OK", "Pedidos realizados", "CAJA LISTOS", "IMEI_CORREGIDO", AHORA);
         MovimientoBot noAp = new MovimientoBot(C, "DEVUELTO", "NO_APARECE", null, "CAJA GLASS", "IMEI_CORREGIDO", AHORA);
         when(dao.guardar(eq("run-7"), any(), eq(AHORA))).thenReturn(0, 1, 1);
-        when(dao.ultimaSalida(B)).thenReturn(Optional.of(new BotDAO.Apunte(11, SALIO, B, null, "IMEI", null, "Lucía")));
-        when(dao.ultimaSalida(C)).thenReturn(Optional.of(new BotDAO.Apunte(12, SALIO, C, null, "IMEI", "LIBRO", null)));
+        when(dao.ultimaSalida(B)).thenReturn(Optional.of(new Salida(11, SALIO, "Lucía", "IMEI")));
+        when(dao.ultimaSalida(C)).thenReturn(Optional.of(new Salida(12, SALIO, "el libro de ventas", "IMEI")));
         assertEquals(new InformeMovimientos(2, 1), servicio.registrar(new MovimientosBot("run-7", List.of(desc, dev, noAp))));
         verify(dao).apuntar(11, AHORA, B, "DEVUELTO", "de Pedidos realizados a CAJA LISTOS; IMEI cambiado por Lucía el 24/11 18:07");
         verify(dao).apuntar(12, AHORA, C, "NO_DEVUELTO", "no aparece en NSYS en Pedidos realizados");
         verify(dao, never()).apuntar(anyInt(), any(), eq(A), any(), any());
     }
 
+    @Test void unaDevolucionDeUnPedidoCanceladoSeApuntaEnLaFilaCancelada() {
+        when(dao.guardar(any(), any(), any())).thenReturn(1);
+        when(dao.ultimaSalida(B)).thenReturn(Optional.of(new Salida(29200, SALIO, "Fati", "CANCELADO")));
+        servicio.registrar(new MovimientosBot("r", List.of(new MovimientoBot(B, "DEVUELTO", "OK", "Pedidos realizados", "CAJA LISTOS",
+                "IMEI_CORREGIDO", AHORA))));
+        verify(dao).apuntar(29200, AHORA, B, "DEVUELTO", "de Pedidos realizados a CAJA LISTOS; pedido cancelado por Fati el 24/11 18:07");
+        verify(dao, times(1)).apuntar(anyInt(), any(), any(), any(), any());
+    }
+
     @Test void elTercerErrorSeguidoSeApuntaUnaSolaVez() {
         MovimientoBot err = new MovimientoBot(B, "DEVUELTO", "ERROR", null, "CAJA LISTOS", "IMEI_CORREGIDO", AHORA);
         when(dao.guardar(any(), any(), any())).thenReturn(1);
-        when(dao.ultimaSalida(B)).thenReturn(Optional.of(new BotDAO.Apunte(11, SALIO, B, null, "IMEI", null, "Lucía")));
+        when(dao.ultimaSalida(B)).thenReturn(Optional.of(new Salida(11, SALIO, "Lucía", "IMEI")));
         when(dao.ultimosDevueltos(B)).thenReturn(List.of("ERROR", "ERROR"), List.of("ERROR", "ERROR", "ERROR"),
                 List.of("ERROR", "ERROR", "ERROR", "ERROR"));
         servicio.registrar(new MovimientosBot("r2", List.of(err)));

@@ -18,7 +18,7 @@ class ReglaDevolucionesTest {
     private static final LocalDateTime BOT = LocalDateTime.of(2026, 11, 23, 9, 25);
     private static final LocalDateTime ENTRADA = LocalDateTime.of(2026, 11, 23, 9, 32);
     private static final LocalDateTime SALIO = LocalDateTime.of(2026, 11, 24, 18, 7);
-    private static final Salida SALIDA = new Salida(29116, SALIO, "el libro de ventas");
+    private static final Salida SALIDA = new Salida(29116, SALIO, "el libro de ventas", ReglaDevoluciones.SALIDA_IMEI);
     private static final Map<String, UbicacionNsys> UBICACIONES = Map.of(
             "CAJA LISTOS", new UbicacionNsys("CAJA LISTOS", "Caja · Listos", true, false),
             "Pedidos realizados", new UbicacionNsys("Pedidos realizados", "Pedidos realizados", true, true),
@@ -50,29 +50,29 @@ class ReglaDevolucionesTest {
 
     @Test void sinSalidaOSalidaAntesDelDescuentoNoSale() {
         Datos b = base();
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), null, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
-        Salida antes = new Salida(29116, BOT.minusMinutes(1), "Lucía");
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), antes, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), null, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
+        Salida antes = new Salida(29116, BOT.minusMinutes(1), "Lucía", ReglaDevoluciones.SALIDA_IMEI);
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), antes, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
     }
 
     @Test void siNuncaEstuvoEnUnaFilaAntesDelDescuentoNoSale() {
         Datos b = base();
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(BOT.plusMinutes(5)), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(BOT.plusMinutes(5)), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), List.of(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
     }
 
     @Test void siElEspejoYaNoLoTieneEnPedidosRealizadosNoSale() {
         Datos b = base();
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), "STOCK", "CAJA LISTOS", b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), null, null, b.grado(), b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), "STOCK", "CAJA LISTOS", b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), null, null, b.grado(), b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
     }
 
     @Test void siLoSacaronYLoVolvieronAMeterNoSale() {
         Datos b = base();
         LocalDateTime tarde = BOT.plusMinutes(31);
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), tarde, b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
-        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), null, b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
-        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), BOT.plusMinutes(30), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), tarde, b.trabajos(), b.filas(), b.vueltas())).tipo());
+        assertEquals(Tipo.NADA, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), null, b.trabajos(), b.filas(), b.vueltas())).tipo());
+        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), BOT.plusMinutes(30), b.trabajos(), b.filas(), b.vueltas())).tipo());
     }
 
     @Test void yaDevueltoONoApareceNoSale() {
@@ -98,7 +98,7 @@ class ReglaDevolucionesTest {
         Datos b = base();
         List<Trabajo> trabajos = List.of(new Trabajo("R20261101_1", BOT.minusDays(20)), new Trabajo("A20261123_41", BOT.plusHours(1)),
                 new Trabajo("R20261123_47", BOT.plusHours(2)));
-        Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), trabajos, b.cierresFilas(), b.vueltas()));
+        Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(), trabajos, b.filas(), b.vueltas()));
         assertEquals(Tipo.SIN_DESTINO, v.tipo());
         assertEquals("reparado después (A20261123_41, R20261123_47)", v.motivo());
         assertEquals(SALIDA, v.salida());
@@ -122,21 +122,105 @@ class ReglaDevolucionesTest {
     @Test void gradoQueNoSeVende() {
         Datos b = base();
         for (String grado : List.of("F", "fd", "RMA")) {
-            Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), grado, b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas()));
+            Veredicto v = evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), grado, b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas()));
             assertEquals(Tipo.SIN_DESTINO, v.tipo(), grado);
             assertEquals("grado " + grado.toUpperCase() + " no es vendible", v.motivo());
         }
-        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), "A-100", b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
-        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), null, b.entradaPedidos(), b.trabajos(), b.cierresFilas(), b.vueltas())).tipo());
+        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), "A-100", b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
+        assertEquals(Tipo.DEVOLVER, evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), null, b.entradaPedidos(), b.trabajos(), b.filas(), b.vueltas())).tipo());
     }
 
+    /** Ventas anteriores enviadas (envio = cierre, etiqueta impresa, IMEI puesto la vispera). */
     private static Veredicto conFilasCerradas(List<LocalDateTime> cierres, List<LocalDateTime> vueltas) {
+        List<FilaConImei> filas = cierres.stream()
+                .map(c -> new FilaConImei(20000, c, c, c, null, false, null, null, c.minusDays(1))).toList();
+        return conFilas(SALIDA, filas, vueltas);
+    }
+
+    private static Veredicto conFilas(Salida salida, List<FilaConImei> filas, List<LocalDateTime> vueltas) {
+        return evaluar(conFilas(salida, filas, vueltas, base().pasos()));
+    }
+
+    private static Datos conFilas(Salida salida, List<FilaConImei> filas, List<LocalDateTime> vueltas, List<Paso> pasos) {
         Datos b = base();
-        return evaluar(new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(),
-                b.trabajos(), cierres, vueltas));
+        return new Datos(b.imei(), pasos, salida, b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(),
+                b.trabajos(), filas, vueltas);
     }
 
     private static LocalDateTime dia(int mes, int dia) { return LocalDateTime.of(2026, mes, dia, 12, 0); }
+
+    /** Una fila abierta marcada «Cancelar móvil» por Fati a la hora de SALIO, con el IMEI puesto en PUESTO. */
+    private static FilaConImei cancelada(LocalDateTime impresa) {
+        return new FilaConImei(29200, null, null, impresa, null, true, SALIO, "Fati", PUESTO);
+    }
+
+    @Test void cancelarMovilSinEtiquetaSeDevuelve() {
+        Veredicto v = conFilas(null, List.of(cancelada(null)), List.of());
+        assertEquals(Tipo.DEVOLVER, v.tipo());
+        assertEquals("CAJA LISTOS", v.destino());
+        assertEquals(new Salida(29200, SALIO, "Fati", "CANCELADO"), v.salida());
+        assertEquals("CANCELADO", v.salida().motivo());
+    }
+
+    @Test void cancelarMovilSinQuienLaPusoEsUnProceso() {
+        FilaConImei sinQuien = new FilaConImei(29200, null, null, null, null, true, SALIO, null, PUESTO);
+        assertEquals("un proceso", conFilas(null, List.of(sinQuien), List.of()).salida().quien());
+    }
+
+    @Test void cancelarMovilConEtiquetaImpresaNoSeTocaNada() {
+        assertEquals(Tipo.NADA, conFilas(null, List.of(cancelada(SALIO.minusHours(2))), List.of()).tipo());
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(cancelada(SALIO.minusHours(2))), List.of()).tipo());
+    }
+
+    @Test void unaFilaAbiertaSinCancelarImpide() {
+        FilaConImei abierta = new FilaConImei(29300, null, null, null, null, false, null, null, PUESTO);
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(abierta), List.of()).tipo());
+        assertEquals(Tipo.NADA, conFilas(null, List.of(cancelada(null), abierta), List.of()).tipo());
+    }
+
+    @Test void yaNoEstaEnShippyProConElImeiPuestoAntesDelCierreQuedaSinDestino() {
+        FilaConImei cerrada = new FilaConImei(29400, SALIO, null, null, null, false, null, null, PUESTO);
+        Veredicto v = conFilas(null, List.of(cerrada), List.of());
+        assertEquals(Tipo.SIN_DESTINO, v.tipo());
+        assertEquals(ReglaDevoluciones.MOTIVO_YA_NO_ESTA, v.motivo());
+        assertEquals("el pedido ya no está en ShippyPro: comprobar si salió", v.motivo());
+        assertEquals(new Salida(29400, SALIO, "ShippyPro", "YA_NO_ESTA"), v.salida());
+        // Antes de mirar la caja: sin caja de origen sigue siendo «ya no está».
+        assertEquals(ReglaDevoluciones.MOTIVO_YA_NO_ESTA,
+                evaluar(conFilas(null, List.of(cerrada), List.of(), List.of(descontado(null)))).motivo());
+        // Y las demas condiciones siguen valiendo: con el espejo fuera de «Pedidos realizados» no sale.
+        Datos d = conFilas(null, List.of(cerrada), List.of(), base().pasos());
+        assertEquals(Tipo.NADA, evaluar(new Datos(d.imei(), d.pasos(), d.salida(), d.puestos(), "STOCK", "CAJA LISTOS", d.grado(),
+                d.entradaPedidos(), d.trabajos(), d.filas(), d.vueltas())).tipo());
+    }
+
+    @Test void yaNoEstaEnShippyProConElImeiTecleadoTrasElCierreEsVendido() {
+        FilaConImei tecleado = new FilaConImei(29400, SALIO, null, null, null, false, null, null, SALIO.plusMinutes(5));
+        assertEquals(Tipo.NADA, conFilas(null, List.of(tecleado), List.of()).tipo());
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(tecleado), List.of()).tipo());
+        FilaConImei sinApunte = new FilaConImei(29400, SALIO, null, null, null, false, null, null, null);
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(sinApunte), List.of()).tipo());
+    }
+
+    @Test void enviadaConFaltaPorEnviarImpide() {
+        LocalDateTime c = dia(1, 10);
+        FilaConImei falta = new FilaConImei(29500, c, c, c, c.plusHours(1), false, null, null, c.minusDays(1));
+        assertEquals(Tipo.NADA, conFilas(SALIDA, List.of(falta), List.of(dia(2, 1))).tipo());
+    }
+
+    @Test void valeLaSalidaMasReciente() {
+        Salida vieja = new Salida(29116, BOT.minusMinutes(1), "Lucía", ReglaDevoluciones.SALIDA_IMEI);
+        Veredicto v = conFilas(vieja, List.of(cancelada(null)), List.of());
+        assertEquals(Tipo.DEVOLVER, v.tipo());
+        assertEquals(new Salida(29200, SALIO, "Fati", "CANCELADO"), v.salida());
+        // Al reves: cancelado antes del descuento y el IMEI quitado despues: vale el apunte.
+        FilaConImei canceladaAntes = new FilaConImei(29200, null, null, null, null, true, BOT.minusHours(1), "Fati", PUESTO);
+        Veredicto w = conFilas(SALIDA, List.of(canceladaAntes), List.of());
+        assertEquals(Tipo.DEVOLVER, w.tipo());
+        assertEquals(SALIDA, w.salida());
+        // Las dos antes del descuento: no sale.
+        assertEquals(Tipo.NADA, conFilas(vieja, List.of(canceladaAntes), List.of()).tipo());
+    }
 
     @Test void unaVentaAnteriorDevueltaPorElClienteNoCuenta() {
         assertEquals(Tipo.DEVOLVER, conFilasCerradas(List.of(dia(1, 10)), List.of(dia(2, 1))).tipo());

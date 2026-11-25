@@ -60,7 +60,7 @@ public class Devoluciones {
         Map<String, List<ReglaDevoluciones.Paso>> pasos = dao.pasos(imeis);
         List<BotDAO.Apunte> apuntes = dao.apuntes(imeis);
         Map<String, LocalDateTime> entradas = dao.entradasEnPedidos(imeis);
-        Map<String, List<LocalDateTime>> cierres = dao.cierresDeFilas(imeis);
+        Map<String, List<ReglaDevoluciones.FilaConImei>> filas = dao.filasConImei(imeis);
         Map<String, List<LocalDateTime>> vueltas = dao.vueltas(imeis);
         Map<String, MovilNsys> espejo = new HashMap<>();
         for (MovilNsys m : nsys.porImeis(imeis))
@@ -77,7 +77,7 @@ public class Devoluciones {
             Datos d = new Datos(imei, pasos.getOrDefault(imei, List.of()), salida(apuntes, imei), puestos(apuntes, imei),
                     m == null || m.estado() == null ? null : m.estado().name(), m == null ? null : m.location(),
                     m == null ? null : m.grade(), entradas.get(imei), trabajos.getOrDefault(imei, List.of()),
-                    cierres.getOrDefault(imei, List.of()), vueltas.getOrDefault(imei, List.of()));
+                    filas.getOrDefault(imei, List.of()), vueltas.getOrDefault(imei, List.of()));
             Veredicto v = ReglaDevoluciones.evaluar(d, ubicaciones);
             if (v.tipo() == ReglaDevoluciones.Tipo.DEVOLVER) porDestino.computeIfAbsent(v.destino(), k -> new ArrayList<>()).add(imei);
             else if (v.tipo() == ReglaDevoluciones.Tipo.SIN_DESTINO && !yaApuntado(apuntes, imei, v.salida().idFila()))
@@ -112,12 +112,13 @@ public class Devoluciones {
     }
 
     private void apuntarDevolucion(MovimientoBot m, LocalDateTime ahora) {
-        Optional<BotDAO.Apunte> salida = dao.ultimaSalida(m.imei());
+        Optional<Salida> salida = dao.ultimaSalida(m.imei());
         if (salida.isEmpty()) return;
         int fila = salida.get().idFila();
         switch (m.resultado()) {
             case ReglaDevoluciones.OK -> dao.apuntar(fila, ahora, m.imei(), CambioImei.DEVUELTO, "de Pedidos realizados a " + m.destino()
-                    + "; IMEI cambiado por " + salida.get().quien() + " el " + DIA_HORA.format(salida.get().fecha()));
+                    + (ReglaDevoluciones.SALIDA_CANCELADO.equals(salida.get().motivo()) ? "; pedido cancelado por " : "; IMEI cambiado por ")
+                    + salida.get().quien() + " el " + DIA_HORA.format(salida.get().fecha()));
             case ReglaDevoluciones.NO_APARECE -> dao.apuntar(fila, ahora, m.imei(), CambioImei.NO_DEVUELTO,
                     "no aparece en NSYS en Pedidos realizados");
             case ReglaDevoluciones.ERROR -> {
@@ -139,7 +140,7 @@ public class Devoluciones {
     private static Salida salida(List<BotDAO.Apunte> apuntes, String imei) {
         BotDAO.Apunte ultima = null;
         for (BotDAO.Apunte a : apuntes) if (CambioImei.IMEI.equals(a.tipo()) && imei.equals(a.imeiAnterior())) ultima = a;
-        return ultima == null ? null : new Salida(ultima.idFila(), ultima.fecha(), ultima.quien());
+        return ultima == null ? null : new Salida(ultima.idFila(), ultima.fecha(), ultima.quien(), ReglaDevoluciones.SALIDA_IMEI);
     }
 
     private static List<LocalDateTime> puestos(List<BotDAO.Apunte> apuntes, String imei) {

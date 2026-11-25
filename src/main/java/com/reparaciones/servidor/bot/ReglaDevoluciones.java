@@ -12,9 +12,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** La regla de la lista de devoluciones del bot (spec 2026-11-24-bot-devoluciones §5, con «reparado después» y «venta anterior
- *  devuelta» del 25/11: una fila cerrada con el IMEI cuenta salvo que NSYS registre una vuelta posterior a su cierre). Pura:
- *  recibe lo que se sabe de un IMEI y dice si se devuelve, a dónde, o por qué no se devuelve solo. */
+/** La regla de la lista de devoluciones del bot (spec 2026-11-24-bot-devoluciones §5, con «reparado después», «venta anterior
+ *  devuelta» y cancelaciones del 25/11: como el aviso de duplicado de Pedidos, una fila pendiente no cancelada, o enviada con
+ *  «falta por enviar», se esta vendiendo; una cancelada, no). Pura: recibe lo que se sabe de un IMEI y dice si se devuelve, a
+ *  dónde, o por qué no se devuelve solo. */
 public final class ReglaDevoluciones {
 
     public static final String CAJA_PEDIDOS = "Pedidos realizados";
@@ -37,18 +38,33 @@ public final class ReglaDevoluciones {
 
     /** Una fila de Bot_movimiento (hora de Madrid). */
     public record Paso(String accion, String resultado, String origen, LocalDateTime fecha) {}
-    /** El ultimo apunte en que el IMEI salio de una fila: la fila, cuando (Madrid) y quien («Lucía», «el libro de ventas»…). */
-    public record Salida(int idFila, LocalDateTime fecha, String quien) {}
+    /** Por donde salio el IMEI de una fila: un apunte que lo quito o sobreescribio, «Cancelar móvil» o «Ya no está en ShippyPro». */
+    public static final String SALIDA_IMEI = "IMEI";
+    public static final String SALIDA_CANCELADO = "CANCELADO";
+    public static final String SALIDA_YA_NO_ESTA = "YA_NO_ESTA";
+    /** El SIN_DESTINO de una fila cerrada sin envio y sin cancelar: puede que el movil saliera igualmente. */
+    public static final String MOTIVO_YA_NO_ESTA = "el pedido ya no está en ShippyPro: comprobar si salió";
+    /** Quien hizo un cambio sin usuario. */
+    public static final String UN_PROCESO = "un proceso";
+
+    /** Una salida del IMEI de una fila: la fila, cuando (Madrid), quien («Lucía», «el libro de ventas», «ShippyPro»…) y por donde
+     *  ({@link #SALIDA_IMEI}, {@link #SALIDA_CANCELADO} o {@link #SALIDA_YA_NO_ESTA}). */
+    public record Salida(int idFila, LocalDateTime fecha, String quien, String motivo) {}
+    /** Una fila que hoy tiene el IMEI: cierre, envío, impresión, «falta por enviar», cancelación (marca CANCELADO: cuándo y quién)
+     *  y cuándo se puso el IMEI en ella (último apunte IMEI con IMEI_NUEVO = el IMEI en esa fila; null si no hay, p. ej. histórico). */
+    public record FilaConImei(int idFila, LocalDateTime cerradaEn, LocalDateTime envioFecha, LocalDateTime impresaEn,
+                              LocalDateTime faltaEnviarEn, boolean cancelada, LocalDateTime canceladaEn, String canceladaPor,
+                              LocalDateTime puestoEn) {}
     /** Un trabajo del taller del IMEI, con su asignacion en hora de Madrid. */
     public record Trabajo(String idRep, LocalDateTime asignado) {}
     /** Lo que se sabe de un IMEI candidato: sus pasos del bot (por fecha), su ultima salida de una fila, cuando se puso en filas,
      *  el espejo (estado y caja del lote que esta de pedido, si lo hay; grado de NSYS), su ultima entrada en «Pedidos realizados»
-     *  segun Nsys_evento y sus trabajos del taller. Ademas, los cierres de las filas cerradas que tienen el IMEI y las fechas en que
-     *  NSYS registra que el movil volvio a la empresa (venta deshecha, reentrada, salida de «Pedidos realizados» o entrada sin
-     *  localizacion): una fila cerrada solo deja de contar si hay una vuelta posterior a su cierre. */
+     *  segun Nsys_evento y sus trabajos del taller. Ademas, las filas que hoy tienen el IMEI y las fechas en que NSYS registra que
+     *  el movil volvio a la empresa (venta deshecha, reentrada, salida de «Pedidos realizados» o entrada sin localizacion): una
+     *  fila enviada solo deja de contar si hay una vuelta posterior a su cierre. */
     public record Datos(String imei, List<Paso> pasos, Salida salida, List<LocalDateTime> puestos, String estadoEspejo,
                         String cajaEspejo, String grado, LocalDateTime entradaPedidos, List<Trabajo> trabajos,
-                        List<LocalDateTime> cierresFilas, List<LocalDateTime> vueltas) {}
+                        List<FilaConImei> filas, List<LocalDateTime> vueltas) {}
 
     public enum Tipo { DEVOLVER, SIN_DESTINO, NADA }
 
@@ -65,10 +81,28 @@ public final class ReglaDevoluciones {
                 .max(Comparator.comparing(Paso::fecha)).orElse(null);
         if (descuento == null) return Veredicto.NADA;
         LocalDateTime t = descuento.fecha();
-        // Una fila cerrada con el IMEI sigue contando (vender gana a devolver) salvo que NSYS registre una vuelta posterior a su cierre.
-        for (LocalDateTime cierre : d.cierresFilas())
-            if (d.vueltas().stream().noneMatch(v -> v.isAfter(cierre))) return Veredicto.NADA;
+        // Las filas que hoy tienen el IMEI: si alguna lo esta vendiendo, nada (vender gana a devolver); las canceladas y las
+        // cerradas sin envio dan una salida mas, ademas del apunte que quito el IMEI.
         Salida salida = d.salida();
+        for (FilaConImei f : d.filas()) {
+            Salida otra = null;
+            if (f.cancelada()) {
+                if (f.impresaEn() != null) return Veredicto.NADA; // salio con etiqueta
+                if (f.canceladaEn() != null)
+                    otra = new Salida(f.idFila(), f.canceladaEn(), f.canceladaPor() == null ? UN_PROCESO : f.canceladaPor(), SALIDA_CANCELADO);
+            } else if (f.cerradaEn() == null) {
+                return Veredicto.NADA; // abierta: se esta vendiendo
+            } else if (f.envioFecha() != null) {
+                if (f.faltaEnviarEn() != null) return Veredicto.NADA; // «falta por enviar»: se esta vendiendo
+                // Venta que salio, salvo que NSYS registre una vuelta posterior a su cierre (venta vieja devuelta por el cliente).
+                if (d.vueltas().stream().noneMatch(v -> v.isAfter(f.cerradaEn()))) return Veredicto.NADA;
+            } else {
+                // «Ya no está en ShippyPro»: si el IMEI se tecleo tras el cierre (o no se sabe cuando), el ERP lo da por vendido.
+                if (f.puestoEn() == null || f.puestoEn().isAfter(f.cerradaEn())) return Veredicto.NADA;
+                otra = new Salida(f.idFila(), f.cerradaEn(), "ShippyPro", SALIDA_YA_NO_ESTA);
+            }
+            if (otra != null && (salida == null || otra.fecha().isAfter(salida.fecha()))) salida = otra;
+        }
         if (salida == null || !salida.fecha().isAfter(t)) return Veredicto.NADA;
         if (d.puestos().stream().noneMatch(p -> !p.isAfter(t))) return Veredicto.NADA;
         if (!EstadoMovil.DE_PEDIDO.name().equals(d.estadoEspejo()) || !CAJA_PEDIDOS.equals(d.cajaEspejo())) return Veredicto.NADA;
@@ -78,6 +112,7 @@ public final class ReglaDevoluciones {
                 .filter(p -> DEVUELTO.equals(p.accion()) && p.fecha() != null && !p.fecha().isBefore(t)).toList();
         if (devueltos.stream().anyMatch(p -> OK.equals(p.resultado()) || NO_APARECE.equals(p.resultado()))) return Veredicto.NADA;
         if (erroresSeguidosAlFinal(devueltos) >= ERRORES_SEGUIDOS) return Veredicto.NADA;
+        if (SALIDA_YA_NO_ESTA.equals(salida.motivo())) return sinDestino(MOTIVO_YA_NO_ESTA, salida);
 
         List<String> reparaciones = d.trabajos().stream()
                 .filter(tr -> tr.asignado() != null && tr.asignado().isAfter(t)).map(Trabajo::idRep).toList();
