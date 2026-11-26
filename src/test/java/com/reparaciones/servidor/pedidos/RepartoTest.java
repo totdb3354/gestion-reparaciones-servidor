@@ -188,6 +188,62 @@ class RepartoTest {
         assertNull(puestoAmazon(e, "ES", movil("9", true, "Azul", "MsA", LISTOS, D1)), "Ms: nunca");
     }
 
+    // ── El modelo del maestro con «eSIM» (0.9.48.4): el maestro y el espejo llaman «13 eSIM» al eSIM y «13» al físico ──
+
+    /** Como movil(...), pero con el modelo como lo pone el maestro de verdad: «13 eSIM» si es eSIM. */
+    private static MovilNsys movilMaestro(String imei, boolean esim, String color, String grade, String location) {
+        return new MovilNsys(imei, "BT-1", "Apple iPhone 13 128GB", grade, "Available", location, "Proveedor", D1, null,
+                sku(esim, color, grade), "13", esim ? "13 eSIM" : "13", "128GB", color, grade, esim, null, null,
+                EstadoMovil.STOCK, null, null);
+    }
+
+    /** Como ac(...), con el modelo del maestro de verdad. */
+    private static Aceptacion acMaestro(boolean esim, String color, String... grados) {
+        return new Aceptacion(Arrays.stream(grados).map(g -> new ProductoMaestro("clave-" + sku(esim, color, g), "13",
+                esim ? "13 eSIM" : "13", "128GB", color, g, sku(esim, color, g), null, "i13128" + color, esim)).toList(), List.of());
+    }
+
+    private static Reparto.Resultado unaFila(Canal canal, Aceptacion ac, MovilNsys... stock) {
+        return de(List.of(fila(1, canal, "DE", HOY, ac)), List.of(stock)).get(0);
+    }
+
+    @Test void pedidoFisicoReservaElEsimDelMismoColorYGradoAntesQueUnNaFisicoDeOtroColor() {
+        // Caso de la fila 29468 (26/11): dos eSIM del color y grado del pedido libres, y reservó un N/A físico de otro color.
+        MovilNsys esimAzul = movilMaestro("001", true, "Azul", "A100", GLASS);
+        MovilNsys naRojo = movilMaestro("002", false, "Rojo", "n/a", SIN_CAJA);
+        Reparto.Resultado r = unaFila(Canal.AMAZON, acMaestro(false, "Azul", "A", "A+", "A-", "A100"), naRojo, esimAzul);
+        assertEquals("001", r.imei());
+        assertEquals(3, r.puesto());
+    }
+
+    @Test void pedidoFisicoEsimByCEsPuesto4() {
+        assertEquals(4, unaFila(Canal.AMAZON, acMaestro(false, "Azul", "A"), movilMaestro("001", true, "Azul", "B", LISTOS)).puesto());
+        assertEquals(4, unaFila(Canal.AMAZON, acMaestro(false, "Azul", "A"), movilMaestro("002", true, "Azul", "C", LISTOS)).puesto());
+    }
+
+    @Test void pedidoFisicoEsimNaDeOtroColorEsPuesto6() {
+        assertEquals(6, unaFila(Canal.AMAZON, acMaestro(false, "Azul", "A"), movilMaestro("001", true, "Rojo", "n/a", LISTOS)).puesto());
+    }
+
+    @Test void pedidoFisicoEsimAoAMenosDeOtroColorEsPuesto8() {
+        assertEquals(8, unaFila(Canal.AMAZON, acMaestro(false, "Azul", "A"), movilMaestro("001", true, "Rojo", "A", LISTOS)).puesto());
+        assertEquals(8, unaFila(Canal.AMAZON, acMaestro(false, "Azul", "A"), movilMaestro("002", true, "Rojo", "A-", LISTOS)).puesto());
+    }
+
+    @Test void pedidoEsimReservaElFisicoDelMismoColorYGrado() {
+        Reparto.Resultado r = unaFila(Canal.AMAZON, acMaestro(true, "Azul", "A"), movilMaestro("001", false, "Azul", "A", LISTOS));
+        assertEquals("001", r.imei());
+        assertEquals(3, r.puesto());
+    }
+
+    @Test void laWebSigueSinAceptarElOtroFormato() {
+        // Mismo color y grado: solo el formato es distinto. La web nunca coge otro formato.
+        assertNull(unaFila(Canal.DISTRIBUIDORES, acMaestro(false, "Azul", "A"), movilMaestro("001", true, "Azul", "A", LISTOS)).imei());
+        assertNull(unaFila(Canal.PARTICULARES, acMaestro(true, "Azul", "A"), movilMaestro("002", false, "Azul", "A", LISTOS)).imei());
+        // Y el del mismo formato sí, aunque el maestro le ponga «eSIM» al modelo.
+        assertEquals(1, unaFila(Canal.DISTRIBUIDORES, acMaestro(true, "Azul", "A"), movilMaestro("003", true, "Azul", "A", LISTOS)).puesto());
+    }
+
     // ── Ms: nunca se reserva (Imad 25/11; lo decide y lo pica una persona) ──
 
     @Test void msNuncaSeReservaNiAEspanaNiComoUltimoRecurso() {
