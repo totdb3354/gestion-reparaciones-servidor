@@ -180,7 +180,9 @@ public final class Reparto {
         if (!mismoModelo(pide, m)) return null;
         Grado g = grado(m, v);
         if (g.id() || g.ms() || m.esEsim() != pide.esEsim() || !igualDato(v.color(), pide.color())) return null;
-        boolean pedidoA = pedidoA(pide.grado());
+        // Lo que acepta el SKU, no el grado de pide(): un «…A100» del maestro puede ser A+100, A100 y C100, y pide() se quedaba con
+        // el primero (A+100), que no es «A o A100» (preprod 26/11).
+        boolean pedidoA = pedidoA(pide.grado()) || ac.aceptaGrado("A") || ac.aceptaGrado("A100");
         Integer puesto;
         if (!g.naPorCaja() && aceptaSku(ac, v)) puesto = 1;
         else if (pedidoA && g.na()) puesto = 2;
