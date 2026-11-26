@@ -64,9 +64,11 @@ public class FilasDAO {
             + " IMPRESA_EN = COALESCE(IMPRESA_EN, ?) WHERE ID_FILA = ? AND ENVIO_FECHA IS NOT NULL";
     static final String SQL_DEL_PERIODO = SQL_FILAS + " WHERE (FECHA BETWEEN ? AND ?) OR CERRADA_EN IS NULL ORDER BY FECHA, ID_FILA";
     /** Escapa con la barra invertida: en MariaDB el literal '\\' es una sola barra. El numero de pedido de una fila de Amazon sin
-     *  asociar no se busca (la web no lo enseña); el del historico (sin canal), el de las webs y el de las de Amazon asociadas, si. */
+     *  asociar no se busca (la web no lo enseña); el del historico (sin canal), el de las webs y el de las de Amazon asociadas, si.
+     *  El IMEI se busca puesto y reservado (0.9.48.5: la fila que aparta un movil sale al buscar su IMEI). */
     static final String SQL_BUSCAR = SQL_FILAS + " WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
-            + " OR IMEI LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
+            + " OR IMEI LIKE ? ESCAPE '\\\\' OR IMEI_RESERVADO LIKE ? ESCAPE '\\\\'"
+            + " OR (PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
             + " OR CANAL NOT IN ('AMAZON', 'AMAZON_STOCKROOM'))) ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?";
     static final String SQL_POR_ID = SQL_FILAS + " WHERE ID_FILA = ?";
     /** Filas de ShippyPro con IMEI: las vivas (de cualquier fecha) y las cerradas con FECHA desde la fecha dada. */
@@ -308,7 +310,7 @@ public class FilasDAO {
     public List<FilaPedido> buscar(String texto, int tope) {
         String patron = "%" + texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
         List<FilaPedido> filas = new ArrayList<>(
-                jdbc.query(SQL_BUSCAR, FilasDAO::fila, patron, patron, patron, patron, tope + 1));
+                jdbc.query(SQL_BUSCAR, FilasDAO::fila, patron, patron, patron, patron, patron, tope + 1));
         Collections.reverse(filas);
         return filas;
     }

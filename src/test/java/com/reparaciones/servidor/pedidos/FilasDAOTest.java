@@ -97,9 +97,9 @@ class FilasDAOTest {
         List<FilaPedido> r = dao.buscar("50%_a\\b", 2);
         String patron = "%50\\%\\_a\\\\b%";
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(patron), eq(patron), eq(patron), eq(patron), eq(3));
+        verify(jdbc).query(sql.capture(), any(RowMapper.class), eq(patron), eq(patron), eq(patron), eq(patron), eq(patron), eq(3));
         assertTrue(sql.getValue().contains(" WHERE PLATAFORMA LIKE ? ESCAPE '\\\\' OR SKU LIKE ? ESCAPE '\\\\'"
-                + " OR IMEI LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND "), sql.getValue());
+                + " OR IMEI LIKE ? ESCAPE '\\\\' OR IMEI_RESERVADO LIKE ? ESCAPE '\\\\' OR (PEDIDO LIKE ? ESCAPE '\\\\' AND "), sql.getValue());
         assertTrue(sql.getValue().endsWith(" ORDER BY FECHA DESC, ID_FILA DESC LIMIT ?"), sql.getValue());
         assertEquals(List.of(1, 2, 3), r.stream().map(FilaPedido::id).toList(), "el mas antiguo primero");
     }
@@ -109,7 +109,12 @@ class FilasDAOTest {
         assertTrue(FilasDAO.SQL_BUSCAR.contains("(PEDIDO LIKE ? ESCAPE '\\\\' AND (ASOCIADA_EN IS NOT NULL OR CANAL IS NULL"
                 + " OR CANAL NOT IN ('AMAZON', 'AMAZON_STOCKROOM')))"), FilasDAO.SQL_BUSCAR);
         assertTrue(FilasDAO.SQL_BUSCAR.contains(" OR IMEI LIKE ? ESCAPE '\\\\' OR "), "el IMEI se sigue buscando en todas");
-        assertEquals(5, FilasDAO.SQL_BUSCAR.chars().filter(c -> c == '?').count(), "los cuatro textos y el tope");
+        assertEquals(6, FilasDAO.SQL_BUSCAR.chars().filter(c -> c == '?').count(), "los cinco textos y el tope");
+    }
+
+    @Test void buscarUnImeiEncuentraTambienLaFilaQueLoTieneReservado() {
+        // 0.9.48.5: buscando el IMEI de un móvil reservado salía solo la venta antigua donde estaba puesto, no la fila que lo aparta.
+        assertTrue(FilasDAO.SQL_BUSCAR.contains(" OR IMEI_RESERVADO LIKE ? ESCAPE '\\\\' OR "), FilasDAO.SQL_BUSCAR);
     }
 
     @Test void porBuscarPideSoloPendientesYFaltaPorEnviarSinImeiNiCancelado() throws Exception {
