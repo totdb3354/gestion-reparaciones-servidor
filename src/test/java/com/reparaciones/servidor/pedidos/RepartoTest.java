@@ -298,9 +298,10 @@ class RepartoTest {
         assertEquals(1, puestoAmazon(AMZ_AZUL_A, "DE", aNull));
         assertEquals(5, puestoAmazon(AMZ_AZUL_A, "DE", aRojoDevolucion), "N/A de otro color, no A de otro color");
         assertEquals(5, puestoAmazon(AMZ_AZUL_A, "DE", bRojoSinCaja), "N/A, no B");
-        // En la web no valen como exacto.
-        assertNull(puestoWeb(ac(false, "Azul", "A"), aDevolucion));
-        assertNull(puestoWeb(ac(false, "Azul", "A"), aSinCaja));
+        // En la web no valen como exacto, pero sí como N/A (0.9.49).
+        assertEquals(2, puestoWeb(ac(false, "Azul", "A"), aDevolucion));
+        assertEquals(2, puestoWeb(ac(false, "Azul", "A"), aSinCaja));
+        assertNull(puestoWeb(ac(false, "Azul", "A-"), aSinCaja), "para A- no");
 
         List<Reparto.Resultado> r = de(amazonN(1, AMZ_AZUL_A), List.of(aDevolucion));
         assertEquals("Puesto 1 · Devolución · N/A (es A)", r.get(0).porque());
@@ -363,7 +364,7 @@ class RepartoTest {
         assertEquals(1, puestoWeb(webA, movil("001", "Azul", "A", D1)));
         assertNull(puestoWeb(webA, movil("002", "Azul", "A-", D1)));
         assertNull(puestoWeb(webA, movil("003", "Azul", "A100", D1)), "el «100» cuenta");
-        assertNull(puestoWeb(webA, movil("004", "Azul", "n/a", D1)));
+        assertEquals(2, puestoWeb(webA, movil("004", "Azul", "n/a", D1)), "N/A: puesto 2, no exacto");
         Aceptacion webA100 = ac(false, "Azul", "A100");
         assertEquals(1, puestoWeb(webA100, movil("005", "Azul", "A100", D1)));
         assertEquals(1, puestoWeb(ac(true, "Azul", "A"), movil("006", true, "Azul", "A", LISTOS, D1)));
@@ -372,9 +373,9 @@ class RepartoTest {
     @Test void webBoCSoloConPedidoAoA100DelMismoColorYFormato() {
         MovilNsys b = movil("001", "Azul", "B", D1);
         MovilNsys c = movil("002", false, "Azul", "C", REPARACION, D1);
-        assertEquals(2, puestoWeb(ac(false, "Azul", "A"), b));
-        assertEquals(2, puestoWeb(ac(false, "Azul", "A"), c));
-        assertEquals(2, puestoWeb(ac(false, "Azul", "A100"), b));
+        assertEquals(3, puestoWeb(ac(false, "Azul", "A"), b));
+        assertEquals(3, puestoWeb(ac(false, "Azul", "A"), c));
+        assertEquals(3, puestoWeb(ac(false, "Azul", "A100"), b));
         assertNull(puestoWeb(ac(false, "Azul", "A-"), b), "para A- no");
         assertNull(puestoWeb(ac(false, "Azul", "A-100"), b));
         assertNull(puestoWeb(ac(false, "Rosa", "A"), b), "otro color, no");
@@ -385,7 +386,7 @@ class RepartoTest {
         Reparto.Fila dist2 = fila(2, Canal.DISTRIBUIDORES, "ES", HOY, ac(false, "Azul", "A"));
         List<Reparto.Resultado> r = de(List.of(dist, dist2), List.of(c, b, movil("004", false, "Azul", "A", GLASS, D3)));
         assertEquals(List.of("004", "001"), imeis(r));
-        assertEquals(List.of(1, 2), puestos(r));
+        assertEquals(List.of(1, 3), puestos(r));
     }
 
     @Test void webNuncaOtroColorNiOtroFormato() {
@@ -393,6 +394,61 @@ class RepartoTest {
         assertNull(puestoWeb(webA, movil("001", "Rosa", "A", D1)));
         assertNull(puestoWeb(webA, movil("002", true, "Azul", "A", LISTOS, D1)));
         assertNull(puestoWeb(webA, movil("003", "Rosa", "n/a", D1)));
+    }
+
+    // ── Web: el N/A (0.9.49, regla «n/a como A» del ciclo de stock) ──
+
+    @Test void webNaSoloConPedidoAoA100DelMismoColorYFormato() {
+        MovilNsys na = movil("001", "Azul", "n/a", D1);
+        MovilNsys naEsim = movil("002", true, "Azul", "n/a", LISTOS, D1);
+        assertEquals(2, puestoWeb(ac(false, "Azul", "A"), na));
+        assertEquals(2, puestoWeb(ac(false, "Azul", "A100"), na));
+        assertEquals(2, puestoWeb(ac(true, "Azul", "A100"), naEsim));
+        assertNull(puestoWeb(ac(false, "Azul", "A-"), na), "para A- no");
+        assertNull(puestoWeb(ac(false, "Azul", "A-100"), na));
+        assertNull(puestoWeb(ac(false, "Azul", "B"), na), "para B no");
+        assertNull(puestoWeb(ac(false, "Rosa", "A"), na), "otro color, no");
+        assertNull(puestoWeb(ac(true, "Azul", "A"), na), "otro formato, no");
+        assertNull(puestoWeb(ac(false, "Azul", "A"), movil("003", false, "Azul", "ID", SIN_CAJA, D1)), "ID sin caja, no");
+        assertNull(puestoWeb(ac(false, "Azul", "A"), movil("004", false, "Azul", "MsA", DEVOLUCION, D1)), "Ms, no");
+    }
+
+    @Test void webElNaVaDelanteDelBoCYDetrasDelExacto() {
+        MovilNsys b = movil("001", "Azul", "B", D1);
+        MovilNsys c = movil("002", false, "Azul", "C", REPARACION, D1);
+        MovilNsys na = movil("003", false, "Azul", "n/a", SIN_CAJA, D3);
+        MovilNsys a = movil("004", false, "Azul", "A", GLASS, D3);
+        Aceptacion webA = ac(false, "Azul", "A");
+        List<Reparto.Fila> filas = List.of(fila(1, Canal.DISTRIBUIDORES, "ES", HOY, webA),
+                fila(2, Canal.PARTICULARES, "ES", HOY, webA), fila(3, Canal.BACKIPHONE, "ES", HOY, webA));
+        List<Reparto.Resultado> r = de(filas, List.of(b, c, na, a));
+        assertEquals(List.of("004", "003", "001"), imeis(r));
+        assertEquals(List.of(1, 2, 3), puestos(r));
+        assertEquals("Puesto 2 · En revisión · N/A", r.get(1).porque());
+    }
+
+    @Test void webConSoloNaYUnBElNaSeReservaYElBSeQueda() {
+        MovilNsys b = movil("001", "Azul", "B", D1);
+        MovilNsys na = movil("002", "Azul", "n/a", D2);
+        List<Reparto.Resultado> r = de(List.of(fila(1, Canal.DISTRIBUIDORES, "ES", HOY, ac(false, "Azul", "A100"))), List.of(b, na));
+        assertEquals(List.of("002"), imeis(r));
+        assertEquals(List.of(2), puestos(r));
+    }
+
+    @Test void webAConSkuExactoPeroSinCajaEsPuesto2ComoNa() {
+        MovilNsys aSinCaja = movil("001", false, "Azul", "A", SIN_CAJA, D1);
+        List<Reparto.Resultado> r = de(List.of(fila(1, Canal.DISTRIBUIDORES, "ES", HOY, ac(false, "Azul", "A"))), List.of(aSinCaja));
+        assertEquals(List.of(2), puestos(r));
+        assertEquals("Puesto 2 · En revisión · N/A (es A)", r.get(0).porque());
+    }
+
+    @Test void webFFdYRmaSinCajaNuncaComoNa() {
+        List<MovilNsys> stock = List.of(movil("001", false, "Azul", "F", SIN_CAJA, D1),
+                movil("002", false, "Azul", "FD", DEVOLUCION, D1), movil("003", false, "Azul", "rma", SIN_CAJA, D1));
+        Aceptacion webA = ac(false, "Azul", "A");
+        List<Reparto.Fila> filas = List.of(fila(1, Canal.DISTRIBUIDORES, "ES", HOY, webA), fila(2, Canal.DISTRIBUIDORES, "ES", HOY, webA),
+                fila(3, Canal.DISTRIBUIDORES, "ES", HOY, webA));
+        assertEquals(Arrays.asList(null, null, null), imeis(de(filas, stock)));
     }
 
     // ── Prioridad entre filas ──
@@ -468,6 +524,8 @@ class RepartoTest {
         assertEquals(1, Reparto.puestoWeb(web, aConTrabajo, vale(aConTrabajo), true));
         MovilNsys bAzul = movil("005", "Azul", "B", D1);
         assertNull(Reparto.puestoWeb(web, bAzul, vale(bAzul), true));
+        MovilNsys naAzul = movil("006", "Azul", "n/a", D1);
+        assertNull(Reparto.puestoWeb(web, naAzul, vale(naAzul), true), "N/A con trabajo abierto, no");
 
         Map<String, List<TrabajoAbierto>> trabajos = Map.of(NsysDAO.claveCruce("002"), List.of(t), NsysDAO.claveCruce("003"), List.of(t));
         List<Reparto.Resultado> r = Reparto.de(amazonN(2, AMZ_AZUL_A), List.of(naConTrabajo, bConTrabajo), RepartoTest::vale,
@@ -506,7 +564,9 @@ class RepartoTest {
         // A1 y A2 entraron el mismo día (08:00 y 10:00): la fecha del pedido es un día, así que desempata el id.
         List<Reparto.Resultado> r = de(filas, stock);
         assertEquals(List.of(11, 21, 22, 31, 41, 51, 52, 61, 71), r.stream().map(Reparto.Resultado::idFila).toList());
-        assertEquals(Arrays.asList("…001", "…002", "…003", "…006", "…007", null, null, null, "…008"), imeis(r));
-        assertEquals(Arrays.asList(1, 1, 1, 2, 1, null, null, null, 2), puestos(r));
+        // Desde la 0.9.49 (no en el prototipo): las dos de Distribuidores cogen como N/A el A en Devolución (el más antiguo) y el
+        // A sin caja (puesto 2); el C de BackiPhone pasa al puesto 3.
+        assertEquals(Arrays.asList("…001", "…002", "…003", "…006", "…007", "…010", "…005", null, "…008"), imeis(r));
+        assertEquals(Arrays.asList(1, 1, 1, 2, 1, 2, 2, null, 3), puestos(r));
     }
 }
