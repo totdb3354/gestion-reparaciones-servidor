@@ -427,6 +427,16 @@ class RepartoTest {
         assertEquals("Puesto 2 · En revisión · N/A", r.get(1).porque());
     }
 
+    /** Preprod 26/11: el SKU web «…A100» del maestro son tres productos (A+100, A100 y C100) y pide() cogía el primero (A+100), así
+     *  que el pedido no contaba como A100: ni el N/A ni el B/C entraban. Cuenta lo que acepta el SKU, no el primero. */
+    @Test void webUnSkuA100QueAgrupaAMas100A100YC100CuentaComoPedidoA() {
+        Aceptacion a100 = ac(false, "Azul", "A+100", "A100", "C100");
+        assertEquals(2, puestoWeb(a100, movil("001", "Azul", "n/a", D1)));
+        assertEquals(3, puestoWeb(a100, movil("002", "Azul", "B", D1)));
+        Aceptacion aMenos = ac(false, "Azul", "A-100", "A-");
+        assertNull(puestoWeb(aMenos, movil("003", "Azul", "n/a", D1)), "un SKU A- sigue sin aceptar N/A");
+    }
+
     @Test void webConSoloNaYUnBElNaSeReservaYElBSeQueda() {
         MovilNsys b = movil("001", "Azul", "B", D1);
         MovilNsys na = movil("002", "Azul", "n/a", D2);
