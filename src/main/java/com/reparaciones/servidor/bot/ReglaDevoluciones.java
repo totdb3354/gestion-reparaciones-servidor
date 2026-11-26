@@ -76,7 +76,17 @@ public final class ReglaDevoluciones {
      *  fila enviada solo deja de contar si hay una vuelta posterior a su cierre. */
     public record Datos(String imei, List<Paso> pasos, Salida salida, List<LocalDateTime> puestos, String estadoEspejo,
                         String cajaEspejo, String grado, LocalDateTime entradaPedidos, List<Trabajo> trabajos,
-                        List<FilaConImei> filas, List<LocalDateTime> vueltas) {}
+                        List<FilaConImei> filas, List<LocalDateTime> vueltas, String deEntrada) {
+        /** Sin la ubicacion de antes de la entrada en «Pedidos realizados» (deEntrada = null). */
+        public Datos(String imei, List<Paso> pasos, Salida salida, List<LocalDateTime> puestos, String estadoEspejo,
+                     String cajaEspejo, String grado, LocalDateTime entradaPedidos, List<Trabajo> trabajos,
+                     List<FilaConImei> filas, List<LocalDateTime> vueltas) {
+            this(imei, pasos, salida, puestos, estadoEspejo, cajaEspejo, grado, entradaPedidos, trabajos, filas, vueltas, null);
+        }
+    }
+
+    /** La ubicacion del ERP de los moviles sin caja en NSYS (Nsys_ubicacion de LOCATION = ''). */
+    static final String EN_REVISION = "En revisión";
 
     public enum Tipo { DEVOLVER, SIN_DESTINO, NADA }
 
@@ -131,12 +141,21 @@ public final class ReglaDevoluciones {
         List<String> reparaciones = d.trabajos().stream()
                 .filter(tr -> tr.asignado() != null && tr.asignado().isAfter(t)).map(Trabajo::idRep).toList();
         if (!reparaciones.isEmpty()) return sinDestino("reparado después (" + String.join(", ", reparaciones) + ")", salida);
-        String caja = descuento.origen() == null ? "" : descuento.origen().strip();
-        if (caja.isEmpty()) return sinDestino("sin caja", salida);
-        if (!vendible(caja, ubicaciones.get(caja))) return sinDestino(caja + " no es vendible", salida);
+        String caja = Normalizacion.caja(descuento.origen());
+        String destino;
+        if (caja.isEmpty()) {
+            // Sin caja (o en «--------------»): solo si el espejo confirma que entro en «Pedidos realizados» desde «En revisión»
+            // (el bot manda la caja vacia tambien si no pudo leerla). NSYS no deja volver a «sin localizacion»: va a
+            // SIN_LOCALIZACION, que es lo mismo (0.9.48.3).
+            if (!EN_REVISION.equals(d.deEntrada())) return sinDestino("sin caja", salida);
+            destino = Normalizacion.SIN_LOCALIZACION;
+        } else {
+            if (!vendible(caja, ubicaciones.get(caja))) return sinDestino(caja + " no es vendible", salida);
+            destino = caja;
+        }
         String grado = Normalizacion.gradoSinBateria(d.grado()).strip().toUpperCase(Locale.ROOT);
         if (EstadoMovil.NO_VENDIBLES.contains(grado)) return sinDestino("grado " + grado + " no es vendible", salida);
-        return new Veredicto(Tipo.DEVOLVER, caja, null, salida);
+        return new Veredicto(Tipo.DEVOLVER, destino, null, salida);
     }
 
     /** Cuantos ERROR seguidos hay al final de la lista (en su orden). */

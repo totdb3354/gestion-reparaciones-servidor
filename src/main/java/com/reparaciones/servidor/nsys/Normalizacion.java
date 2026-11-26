@@ -22,9 +22,15 @@ public final class Normalizacion {
         return clave(productNameCalidad, null);
     }
 
-    /** Caja de NSYS tal como se busca en Nsys_ubicacion: sin espacios a los lados; sin caja = "". */
+    /** La localizacion de NSYS que hace de «sin localizacion» (0.9.48.3, Imad 26/11): NSYS no deja mover un movil a «sin
+     *  localizacion», asi que para devolverle a donde estaba se usa esta, que cuenta como stock y no significa nada mas. */
+    public static final String SIN_LOCALIZACION = "--------------";
+
+    /** Caja de NSYS tal como se busca en Nsys_ubicacion: sin espacios a los lados; sin caja = "". {@link #SIN_LOCALIZACION} es
+     *  lo mismo que sin caja («En revisión»). */
     public static String caja(String location) {
-        return location == null ? "" : location.strip();
+        String caja = location == null ? "" : location.strip();
+        return SIN_LOCALIZACION.equals(caja) ? "" : caja;
     }
 
     /** Código de modelo del ERP a partir de la columna «Modelo» del maestro: en minúsculas, sin espacios y sin «eSIM»

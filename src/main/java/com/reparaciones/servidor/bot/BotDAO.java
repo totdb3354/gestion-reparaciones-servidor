@@ -99,6 +99,11 @@ public class BotDAO {
             + " ORDER BY c.FECHA, c.ID_CAMBIO";
     static final String SQL_ENTRADAS = "SELECT IMEI_SN, MAX(FECHA) AS ENTRADA FROM Nsys_evento"
             + " WHERE TIPO = 'UBICACION' AND A_NSYS = 'Pedidos realizados' AND IMEI_SN IN (%s) GROUP BY IMEI_SN";
+    /** De donde (DE: ubicacion del ERP, p. ej. «En revisión») entro el movil en «Pedidos realizados» la ultima vez (0.9.48.3). */
+    static final String SQL_DE_ENTRADAS = "SELECT e.IMEI_SN, e.DE FROM Nsys_evento e"
+            + " WHERE e.TIPO = 'UBICACION' AND e.A_NSYS = 'Pedidos realizados' AND e.IMEI_SN IN (%s)"
+            + " AND e.FECHA = (SELECT MAX(e2.FECHA) FROM Nsys_evento e2 WHERE e2.IMEI_SN = e.IMEI_SN AND e2.TIPO = 'UBICACION'"
+            + " AND e2.A_NSYS = 'Pedidos realizados')";
     /** Todas las filas que tienen el IMEI, puesto o reservado, abiertas incluidas, con quien las cancelo y cuando se puso el IMEI en
      *  ellas (el reservado, cuando se reservo). */
     static final String SQL_FILAS_CON_IMEI = "SELECT f.ID_FILA, f.IMEI, f.IMEI_RESERVADO, f.RESERVADA_EN, f.CERRADA_EN, f.ENVIO_FECHA, f.IMPRESA_EN, f.FALTA_ENVIAR_EN, f.MARCA, f.MARCA_EN, f.ORIGEN,"
@@ -155,6 +160,16 @@ public class BotDAO {
             return null;
         }, imeis.toArray());
         return entradas;
+    }
+
+    public Map<String, String> deEntradasEnPedidos(Collection<String> imeis) {
+        if (imeis.isEmpty()) return Map.of();
+        Map<String, String> de = new HashMap<>();
+        jdbc.query(String.format(SQL_DE_ENTRADAS, marcas(imeis.size())), (ResultSet rs, int n) -> {
+            de.put(rs.getString("IMEI_SN"), rs.getString("DE"));
+            return null;
+        }, imeis.toArray());
+        return de;
     }
 
     /** Por IMEI, las filas que hoy lo tienen. */
