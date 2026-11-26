@@ -22,6 +22,9 @@ class NormalizacionTest {
         assertEquals("CAJA LISTOS", Normalizacion.caja(" CAJA LISTOS "));
         assertEquals("", Normalizacion.caja(null));
         assertEquals("", Normalizacion.caja("   "));
+        assertEquals("", Normalizacion.caja("--------------"), "0.9.48.3: la de los guiones es «sin localizacion»");
+        assertEquals("", Normalizacion.caja(" -------------- "));
+        assertEquals("-------------", Normalizacion.caja("-------------"), "solo la de 14 guiones");
     }
 
     @Test void elModeloDelMaestroPasaAlCodigoDelErp() {

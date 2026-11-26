@@ -106,6 +106,35 @@ class ReglaDevolucionesTest {
         assertEquals(SALIDA, v.salida());
     }
 
+    private static Datos conDeEntrada(Datos b, String de) {
+        return new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), b.grado(), b.entradaPedidos(),
+                b.trabajos(), b.filas(), b.vueltas(), de);
+    }
+
+    @Test void sinCajaDeOrigenYEntroDesdeEnRevisionVuelveALaDeLosGuiones() {
+        for (String origen : new String[] {null, "", "  ", "--------------"}) {
+            Veredicto v = evaluar(conDeEntrada(datos(List.of(descontado(origen))), "En revisión"));
+            assertEquals(Tipo.DEVOLVER, v.tipo(), "origen " + origen);
+            assertEquals("--------------", v.destino());
+        }
+    }
+
+    @Test void sinCajaDeOrigenSinConfirmarQueVeniaDeEnRevisionSigueSinDestino() {
+        assertEquals("sin caja", evaluar(conDeEntrada(datos(List.of(descontado(null))), null)).motivo());
+        assertEquals("sin caja", evaluar(conDeEntrada(datos(List.of(descontado(null))), "Caja · Listos")).motivo());
+    }
+
+    @Test void sinCajaDeOrigenYGradoNoVendibleNoSeDevuelve() {
+        Datos b = conDeEntrada(datos(List.of(descontado(null))), "En revisión");
+        Datos f = new Datos(b.imei(), b.pasos(), b.salida(), b.puestos(), b.estadoEspejo(), b.cajaEspejo(), "F", b.entradaPedidos(),
+                b.trabajos(), b.filas(), b.vueltas(), b.deEntrada());
+        assertEquals(Tipo.SIN_DESTINO, evaluar(f).tipo());
+    }
+
+    @Test void conCajaLaDeEntradaNoCambiaNada() {
+        assertEquals("CAJA LISTOS", evaluar(conDeEntrada(base(), "En revisión")).destino());
+    }
+
     @Test void sinCajaDeOrigen() {
         assertEquals("sin caja", evaluar(datos(List.of(descontado(null)))).motivo());
         assertEquals("sin caja", evaluar(datos(List.of(descontado("  ")))).motivo());

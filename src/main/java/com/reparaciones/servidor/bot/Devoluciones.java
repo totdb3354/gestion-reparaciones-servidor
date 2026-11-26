@@ -67,6 +67,7 @@ public class Devoluciones {
         Map<String, List<ReglaDevoluciones.Paso>> pasos = dao.pasos(imeis);
         List<BotDAO.Apunte> apuntes = dao.apuntes(imeis);
         Map<String, LocalDateTime> entradas = dao.entradasEnPedidos(imeis);
+        Map<String, String> deEntradas = dao.deEntradasEnPedidos(imeis);
         Map<String, List<ReglaDevoluciones.FilaConImei>> filas = dao.filasConImei(imeis);
         Map<String, List<LocalDateTime>> vueltas = dao.vueltas(imeis);
         Map<String, MovilNsys> espejo = new HashMap<>();
@@ -84,7 +85,7 @@ public class Devoluciones {
             Datos d = new Datos(imei, pasos.getOrDefault(imei, List.of()), salida(apuntes, imei), puestos(apuntes, imei),
                     m == null || m.estado() == null ? null : m.estado().name(), m == null ? null : m.location(),
                     m == null ? null : m.grade(), entradas.get(imei), trabajos.getOrDefault(imei, List.of()),
-                    filas.getOrDefault(imei, List.of()), vueltas.getOrDefault(imei, List.of()));
+                    filas.getOrDefault(imei, List.of()), vueltas.getOrDefault(imei, List.of()), deEntradas.get(imei));
             Veredicto v = ReglaDevoluciones.evaluar(d, ubicaciones);
             if (v.tipo() == ReglaDevoluciones.Tipo.DEVOLVER)
                 porDestino.computeIfAbsent(v.destino(), k -> new ArrayList<>()).add(new ListaDevoluciones.ImeiADevolver(imei, motivo(v.salida())));
