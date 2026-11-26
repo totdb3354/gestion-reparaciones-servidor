@@ -161,12 +161,16 @@ public class FilasDAO {
 
     /** Reservados al bot (spec reserva §6): TODAS las filas vivas sin IMEI con IMEI_RESERVADO, sin ventana de fechas (0.9.48.1: una
      *  reserva de hace mas de los dias de vendidos tambien tiene que descontarse; si no, el movil seguiria vendible en NSYS). Mismo
-     *  formato de columnas que {@link #SQL_VENDIDOS}; la fecha es RESERVADA_EN. Solo con {@code pedidos.reserva.al-bot=true}. */
+     *  formato de columnas que {@link #SQL_VENDIDOS}; la fecha es RESERVADA_EN. Solo con {@code pedidos.reserva.al-bot=true}.
+     *  0.9.48.2: solo los reservados cuyo lote mas reciente en NSYS tiene caja (LOCATION no vacia). NSYS no deja mover a «sin
+     *  localizacion», asi que un reservado «En revision» descontado no se podria devolver si se suelta: se queda solo en el ERP. */
     static final String SQL_VENDIDOS_RESERVADOS = "SELECT f.IMEI_RESERVADO AS IMEI, f.SKU, f.CANAL,"
             + " CASE WHEN f.CANAL IN ('AMAZON', 'AMAZON_STOCKROOM') AND f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END AS PEDIDO,"
             + " f.RESERVADA_EN AS FECHA_IMEI FROM Pedido_fila f"
             + " WHERE f.ORIGEN = 'SHIPPYPRO' AND f.CERRADA_EN IS NULL AND f.MARCA IS NULL AND (f.IMEI IS NULL OR f.IMEI = '')"
             + " AND f.IMEI_RESERVADO REGEXP '^[0-9]{15}$'"
+            + " AND COALESCE((SELECT m.LOCATION FROM Nsys_movil m WHERE m.IMEI_SN = f.IMEI_RESERVADO"
+            + " ORDER BY m.VISTO_PRIMERO DESC, m.RECEIVING_DATE DESC, m.BATCH DESC LIMIT 1), '') <> ''"
             + " AND (? IS NULL OR f.CANAL = ?) ORDER BY f.RESERVADA_EN DESC, f.ID_FILA DESC LIMIT ?";
 
     private final JdbcTemplate jdbc;

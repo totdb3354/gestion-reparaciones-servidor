@@ -153,6 +153,9 @@ class VendidosTest {
         assertTrue(sql.contains("f.ORIGEN = 'SHIPPYPRO' AND f.CERRADA_EN IS NULL AND f.MARCA IS NULL AND (f.IMEI IS NULL OR f.IMEI = '')"));
         assertFalse(sql.contains("RESERVADA_EN >= ?"), "sin ventana: una fila viva con reserva antigua tambien se descuenta");
         assertTrue(sql.contains("f.RESERVADA_EN AS FECHA_IMEI"));
+        assertTrue(sql.contains("COALESCE((SELECT m.LOCATION FROM Nsys_movil m WHERE m.IMEI_SN = f.IMEI_RESERVADO"
+                + " ORDER BY m.VISTO_PRIMERO DESC, m.RECEIVING_DATE DESC, m.BATCH DESC LIMIT 1), '') <> ''"),
+                "solo los reservados con caja en NSYS (el lote mas reciente): a «sin localizacion» no se puede devolver");
         assertTrue(sql.contains("f.ASOCIADA_EN IS NULL THEN NULL ELSE f.PEDIDO END"), "Amazon sin asociar: pedido nulo");
         assertTrue(sql.contains("AND (? IS NULL OR f.CANAL = ?)"));
         assertTrue(sql.endsWith("LIMIT ?"));
