@@ -69,7 +69,7 @@ public final class Reparto {
             List<TrabajoAbierto> t = trabajos.get(clave);
             elegibles.add(new Elegible(m, v, clave, t != null && !t.isEmpty()));
         }
-        // Los elegibles por modelo y capacidad (como los compara mismoModelo): cada fila solo mira los de lo que pide.
+        // Los elegibles por modelo (sin «eSIM») y capacidad, como los compara mismoModelo: cada fila solo mira los de lo que pide.
         Map<String, List<Elegible>> porModelo = new HashMap<>();
         for (Elegible e : elegibles) {
             String k = claveModelo(e.movil().modeloMaestro(), e.movil().capacidad());
@@ -214,8 +214,11 @@ public final class Reparto {
         return g.equals("A") || g.equals("A100");
     }
 
+    /** El maestro llama al eSIM «15 PRO eSIM» y al físico «15 PRO»: el modelo se compara sin el «eSIM» (como en EstadoUnidad);
+     *  el formato lo deciden los puestos. */
     private static boolean mismoModelo(Atributos pide, MovilNsys m) {
-        return igualDato(pide.modelo(), m.modeloMaestro()) && igualDato(pide.capacidad(), m.capacidad());
+        return igualDato(EstadoUnidad.sinEsim(pide.modelo()), EstadoUnidad.sinEsim(m.modeloMaestro()))
+                && igualDato(pide.capacidad(), m.capacidad());
     }
 
     /** El grado que cuenta (§3): N/A si NSYS no lo sabe («n/a» o en blanco) o si el móvil está en Devolución o sin caja. El Ms y
@@ -271,8 +274,10 @@ public final class Reparto {
         return "Puesto " + puesto + " · " + caja.nombre() + " · " + grado;
     }
 
-    /** Clave de agrupar por modelo y capacidad, normalizada como {@link #igualDato}; null si falta alguno (no se sabe). */
+    /** Clave de agrupar por modelo (sin «eSIM», como {@link #mismoModelo}: el físico y el eSIM van juntos) y capacidad,
+     *  normalizada como {@link #igualDato}; null si falta alguno (no se sabe). */
     private static String claveModelo(String modelo, String capacidad) {
+        modelo = EstadoUnidad.sinEsim(modelo);
         if (modelo == null || modelo.isBlank() || capacidad == null || capacidad.isBlank()) return null;
         return modelo.strip().toLowerCase(Locale.ROOT) + "|" + capacidad.strip().toLowerCase(Locale.ROOT);
     }
