@@ -166,9 +166,10 @@ public final class Reparto {
         return conTrabajo(puesto, conTrabajo, ac, v);
     }
 
-    /** Tabla 4.2: el SKU exacto del pedido (puesto 1) o, solo si el pedido es A o A100, un B o C (puesto 2); siempre del mismo
-     *  formato y color, nunca Ms. Un N/A por la caja (Devolución, sin caja) no vale como exacto: su SKU es el de un grado que
-     *  aún no está revisado. Con un trabajo del taller abierto, solo el puesto 1. */
+    /** Tabla 4.2 (0.9.49): el SKU exacto del pedido (puesto 1) y, solo si el pedido es A o A100, un N/A (puesto 2: puede salir A
+     *  al revisarlo y ahorrarse la reparación; es el que vende la regla «n/a como A» del ciclo de stock) o un B o C (puesto 3);
+     *  siempre del mismo formato y color, nunca Ms ni ID. Un N/A por la caja (Devolución, sin caja) no vale como exacto: su SKU es
+     *  el de un grado que aún no está revisado; cuenta como N/A. Con un trabajo del taller abierto, solo el puesto 1. */
     static Integer puestoWeb(Fila f, MovilNsys m, LoQueVale.Valor v, boolean conTrabajo) {
         Aceptacion ac = f.aceptacion();
         return sirve(ac) ? puestoWeb(f, ac.pide(), m, v, conTrabajo) : null;
@@ -178,10 +179,12 @@ public final class Reparto {
         Aceptacion ac = f.aceptacion();
         if (!mismoModelo(pide, m)) return null;
         Grado g = grado(m, v);
-        if (g.id() || g.ms() || g.naPorCaja() || m.esEsim() != pide.esEsim() || !igualDato(v.color(), pide.color())) return null;
+        if (g.id() || g.ms() || m.esEsim() != pide.esEsim() || !igualDato(v.color(), pide.color())) return null;
+        boolean pedidoA = pedidoA(pide.grado());
         Integer puesto;
-        if (aceptaSku(ac, v)) puesto = 1;
-        else if (pedidoA(pide.grado()) && g.bOC()) puesto = 2;
+        if (!g.naPorCaja() && aceptaSku(ac, v)) puesto = 1;
+        else if (pedidoA && g.na()) puesto = 2;
+        else if (pedidoA && g.bOC()) puesto = 3;
         else puesto = null;
         return conTrabajo(puesto, conTrabajo, ac, v);
     }
